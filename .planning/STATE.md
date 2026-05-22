@@ -2,7 +2,7 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 1 completa — 7/7 planos; Fase 2 aguardando planejamento
+status: Fase 2 discuss concluída — 02-CONTEXT.md criado; aguardando /gsd-plan-phase 2A
 last_updated: "2026-05-22T00:00:00Z"
 progress:
   total_phases: 2
@@ -19,7 +19,7 @@ progress:
 **Fase ativa:** 2 — MVP Funcional
 **Status:** Fase 1 concluída com UAT aprovado — aguardando planejamento da Fase 2
 **Data:** 2026-05-22
-**Próximo comando:** `/gsd-discuss-phase 2` (recomendado) ou `/gsd-plan-phase 2`
+**Próximo comando:** `/gsd-plan-phase 2A` — planejar Fase 2A (Catálogo, Orçamento, PDF, Aprovação, OS)
 
 ## Deliverables concluídos na Fase 1
 
