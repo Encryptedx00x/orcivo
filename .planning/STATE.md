@@ -2,62 +2,63 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 1 planejada — 7 planos prontos para execução
+status: Fase 1 completa — 7/7 planos; Fase 2 aguardando planejamento
 last_updated: "2026-05-22T00:00:00Z"
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 5
-  percent: 42
+  completed_plans: 12
+  percent: 100
 ---
 
 # Orcivo — STATE.md
 
 ## Estado atual
 
-**Fase ativa:** 1 — Vertical Slice
-**Status:** Planejada — 7 planos prontos para execução
+**Fase ativa:** 2 — MVP Funcional
+**Status:** Fase 1 concluída com UAT aprovado — aguardando planejamento da Fase 2
 **Data:** 2026-05-22
-**Próximo comando:** `/gsd-execute-phase 1`
+**Próximo comando:** `/gsd-discuss-phase 2` (recomendado) ou `/gsd-plan-phase 2`
 
-## Deliverables da Fase 0
+## Deliverables concluídos na Fase 1
 
-| Deliverable | Status | Critério de pronto |
-|---|---|---|
-| D0.1 — Validação com técnicos | Artefatos prontos — aguardando entrevistas | 3+ técnicos confirmariam pagar Orcivo Mais |
-| D0.2 — VPS segura | Artefatos prontos — aguardando execução na VPS | SSH por chave, firewall ativo, Docker instalado |
-| D0.3 — Stack core deployada | Artefatos prontos — aguardando execução na VPS | Postgres, Redis, MinIO, Caddy com HTTPS |
-| D0.4 — Monorepo e CI | Completo | CI verde em push para main |
-| D0.5 — Hello world | Código completo — aguardando deploy VPS + EAS Build | health API + APK Android + web no ar |
+| Deliverable | Status |
+|---|---|
+| D1.1 — Auth (signup 2 etapas, login, refresh, logout) | ✅ Completo |
+| D1.2 — Tenant context + isolamento (Company, TenantGuard) | ✅ Completo |
+| D1.3 — Vertical slice Customer (mobile + web + CI) | ✅ Completo |
+| D1.4 — Documentação do molde arquitetural | ✅ Completo |
+
+## Gap closures aplicados (pós-execução)
+
+| Gap | Fix |
+|---|---|
+| `@orcivo/shared-types` apontava para `src` em runtime | `main`/`types`/`exports` corrigidos para `dist`; `build: tsc` emite CommonJS |
+| `GET /health` retornava 401 | `@Public()` adicionado ao `HealthController` |
+| Scripts `dev:*` não garantiam build de shared-types | `dev:backend/web/mobile` compilam shared-types antes de iniciar |
 
 ## Bloqueios
 
 Nenhum bloqueio ativo.
 
-**Gate D0.1:** se < 3 técnicos confirmarem pagamento, pausar e ajustar proposta antes de continuar.
+## Decisões tomadas na Fase 1
 
-## Decisões tomadas nesta sessão
-
-- Modo de execução: Interativo
-- Granularidade: Detalhado (fine)
-- Git tracking: Sim (planning docs versionados)
-- Agentes: Pesquisa + Verificador de plano + Verificador pós-execução
-- Pesquisa de domínio: pulada (toda documentação já existe em `/docs/`)
-
-## Próximos passos
-
-1. `/gsd-execute-phase 1` (recomendado: `/clear` antes para janela de contexto limpa)
-2. P05 e P06 têm checkpoint humano (Wave 5) — requerem teste manual em device Android e browser
+- Signup em 2 etapas (user → company) — D-01
+- 2FA diferido para Fase 2+ — D-18, ADR-012
+- Reset de senha diferido para Fase 2 — D-19
+- 5 bottom tabs mobile — D-06
+- Sidebar web com 9 itens — D-07 a D-15
+- CustomerModule como módulo canônico — ver ARCHITECTURE-MOLD.md
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
-| 2026-05-22 | Fase 1 planejada — 7 planos (P01-P07), 6 waves, verification passed |
-| 2026-05-22 | P0.1 executado — kit de validação criado (roteiro, demo, template, síntese) |
-| 2026-05-21 | P0.4 executado — monorepo scaffold completo (pnpm, turbo, CI, 11 ADRs) |
-| 2026-05-21 | P0.2 executado — script vps-init.sh e runbook vps-setup.md criados |
-| 2026-05-21 | P0.3 executado — docker-compose.yml, Caddyfile, .env.example, backup script e runbook stack-setup.md criados |
-| 2026-05-22 | P0.5 executado — NestJS GET /health, Expo app shell, Next.js App Router, Dockerfiles, deploy runbook, PRODUCT.md, ARCHITECTURE.md |
+| 2026-05-22 | Fase 1 planejada — 7 planos (P01-P07), 6 waves |
+| 2026-05-22 | P01-P06 executados (schema, auth, company, customer, mobile shell, web shell) |
+| 2026-05-22 | P07 executado — CI com Postgres+Redis, isolamento real, ARCHITECTURE-MOLD.md |
+| 2026-05-22 | Gap closures: shared-types dist, @Public health, scripts dev:* |
+| 2026-05-22 | UAT aprovado — web e mobile subiram corretamente |
+| 2026-05-22 | Fase 0 executada — monorepo, CI, hello world, VPS scripts |

@@ -175,14 +175,16 @@
 
 **Plans:** 7 plans em 6 waves
 
+**Status:** ✅ Completa — 2026-05-22
+
 Plans:
-- [ ] 01-P01-PLAN.md — Schema Prisma + DTOs Zod + stubs Wave 0 + db push (Wave 1)
-- [ ] 01-P02-PLAN.md — Módulo Auth NestJS: signup 2 etapas, login, refresh, logout, guards, TenantGuard (Wave 2)
-- [ ] 01-P03-PLAN.md — Módulo Company: GET /company/me via TenantGuard (Wave 3)
-- [ ] 01-P04-PLAN.md — Módulo Customer: CRUD com tenant scope + teste de isolamento (Wave 4)
-- [ ] 01-P05-PLAN.md — Shell mobile + telas de Auth e Customer (Wave 5)
-- [ ] 01-P06-PLAN.md — Shell web (sidebar + topbar) + páginas de Auth e Clientes (Wave 5)
-- [ ] 01-P07-PLAN.md — Teste de isolamento em CI + documentação do molde (D1.4) (Wave 6)
+- [x] 01-P01-PLAN.md — Schema Prisma + DTOs Zod + stubs Wave 0 + db push (Wave 1)
+- [x] 01-P02-PLAN.md — Módulo Auth NestJS: signup 2 etapas, login, refresh, logout, guards, TenantGuard (Wave 2)
+- [x] 01-P03-PLAN.md — Módulo Company: GET /company/me via TenantGuard (Wave 3)
+- [x] 01-P04-PLAN.md — Módulo Customer: CRUD com tenant scope + teste de isolamento (Wave 4)
+- [x] 01-P05-PLAN.md — Shell mobile + telas de Auth e Customer (Wave 5)
+- [x] 01-P06-PLAN.md — Shell web (sidebar + topbar) + páginas de Auth e Clientes (Wave 5)
+- [x] 01-P07-PLAN.md — Teste de isolamento em CI + documentação do molde (D1.4) (Wave 6)
 
 **Decisões:** Reset de senha diferido para Fase 2 (D-19); 2FA diferido (D-18, ADR-012).
 

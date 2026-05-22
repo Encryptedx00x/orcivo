@@ -1,5 +1,5 @@
 ---
-status: partial
+status: approved
 phase: 01-vertical-slice
 source: [01-VERIFICATION.md]
 started: 2026-05-22T00:00:00Z
