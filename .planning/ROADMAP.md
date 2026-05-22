@@ -161,17 +161,30 @@
 
 ---
 
-## Fase 1 — Vertical Slice (detalhamento pendente)
+## Fase 1 — Vertical Slice
 
 **Goal:** Provar que a arquitetura multi-tenant funciona. Customer de ponta a ponta (banco → API → mobile → web), com todo o molde arquitetural que as fases seguintes vão replicar.
 
 **Deliverables de alto nível:**
-- D1.1 — Auth funcional (signup, login, 2FA, refresh, reset)
+- D1.1 — Auth funcional (signup 2 etapas, login, refresh, logout — sem 2FA e sem reset nesta fase)
 - D1.2 — Tenant context e isolamento (Company, CompanyMember, TenantGuard)
 - D1.3 — Vertical slice Customer (mobile + web, teste de tenant isolation em CI)
 - D1.4 — Documentação do molde arquitetural
 
-**Planejar com:** `/gsd-plan-phase 1` após aprovação e conclusão da Fase 0.
+**Requirements cobertos:** AUTH-01..04, TENANT-01, TENANT-02, CUSTOMER-01, CUSTOMER-02, CUSTOMER-03, NAV-01, NAV-02, TYPES-01, ARCH-01
+
+**Plans:** 7 plans em 6 waves
+
+Plans:
+- [ ] 01-P01-PLAN.md — Schema Prisma + DTOs Zod + stubs Wave 0 + db push (Wave 1)
+- [ ] 01-P02-PLAN.md — Módulo Auth NestJS: signup 2 etapas, login, refresh, logout, guards, TenantGuard (Wave 2)
+- [ ] 01-P03-PLAN.md — Módulo Company: GET /company/me via TenantGuard (Wave 3)
+- [ ] 01-P04-PLAN.md — Módulo Customer: CRUD com tenant scope + teste de isolamento (Wave 4)
+- [ ] 01-P05-PLAN.md — Shell mobile + telas de Auth e Customer (Wave 5)
+- [ ] 01-P06-PLAN.md — Shell web (sidebar + topbar) + páginas de Auth e Clientes (Wave 5)
+- [ ] 01-P07-PLAN.md — Teste de isolamento em CI + documentação do molde (D1.4) (Wave 6)
+
+**Decisões:** Reset de senha diferido para Fase 2 (D-19); 2FA diferido (D-18, ADR-012).
 
 ---
 
