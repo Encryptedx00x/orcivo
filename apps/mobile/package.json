@@ -2,13 +2,24 @@
   "name": "@orcivo/mobile",
   "version": "0.0.0",
   "private": true,
+  "main": "App.tsx",
   "scripts": {
-    "lint": "echo 'Mobile placeholder lint OK'",
-    "typecheck": "echo 'Mobile placeholder typecheck OK'",
-    "build": "echo 'Mobile placeholder build OK (EAS handles real builds)'"
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "build": "echo 'Mobile: use EAS Build para gerar APK/IPA'"
   },
-  "dependencies": {},
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-status-bar": "~1.12.1",
+    "react": "18.2.0",
+    "react-native": "0.74.5"
+  },
   "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.2.79",
     "typescript": "^5.4.0"
   }
 }
