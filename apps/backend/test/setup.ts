@@ -1,13 +1,21 @@
-// Wave 0 stub — implementação real em P02/P04. Ver VALIDATION.md Per-Task Verification Map.
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
+import { AppModule } from '../src/app.module';
 
 const prisma = new PrismaClient({
   datasources: { db: { url: process.env['DATABASE_URL_TEST'] } },
 });
 
-// IMPLEMENTAR EM: P04 — bootstrap do app NestJS de teste com supertest
-export async function getTestApp(): Promise<never> {
-  throw new Error('getTestApp not implemented yet — implement in P04');
+export async function getTestApp(): Promise<INestApplication> {
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
+
+  const app = moduleFixture.createNestApplication();
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  await app.init();
+  return app;
 }
 
 export async function cleanupDatabase(): Promise<void> {

@@ -152,6 +152,7 @@ infra/          Docker Compose, scripts, Caddyfile
 | Screen specs | `/docs/FRONTEND_DESIGN_MASTER.md` §4 (mobile) §5 (web) |
 | Telas operacionais | `/docs/OPERATIONS_UI_MISSING_SPECS.md` |
 | GSD Fase 0 | `.planning/ROADMAP.md` |
+| Molde arquitetural (Fase 1+) | `/docs/ARCHITECTURE-MOLD.md` |
 
 # CLAUDE.md — Orcivo
 
