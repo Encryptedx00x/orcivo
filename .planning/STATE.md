@@ -2,24 +2,24 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: P0.5 completo — hello world NestJS + Expo + Next.js implementado localmente
-last_updated: "2026-05-22T11:36:41Z"
+status: Fase 1 planejada — 7 planos prontos para execução
+last_updated: "2026-05-22T00:00:00Z"
 progress:
-  total_phases: 1
-  completed_phases: 0
-  total_plans: 5
+  total_phases: 2
+  completed_phases: 1
+  total_plans: 12
   completed_plans: 5
-  percent: 100
+  percent: 42
 ---
 
 # Orcivo — STATE.md
 
 ## Estado atual
 
-**Fase ativa:** 0 — Validação e Fundação
-**Status:** P0.5 completo — todos os 5 planos da Fase 0 executados
+**Fase ativa:** 1 — Vertical Slice
+**Status:** Planejada — 7 planos prontos para execução
 **Data:** 2026-05-22
-**Plano atual:** — (Fase 0 concluída — aguardando ações humanas: deploy VPS, EAS Build, entrevistas)
+**Próximo comando:** `/gsd-execute-phase 1`
 
 ## Deliverables da Fase 0
 
@@ -47,16 +47,15 @@ Nenhum bloqueio ativo.
 
 ## Próximos passos
 
-1. Conduzir 5 entrevistas usando `docs/validation/roteiro-entrevista.md` e o demo HTML
-2. Registrar cada entrevista em `docs/validation/registros/entrevista-0X.md`
-3. Preencher `docs/validation/sintese.md` e tomar decisão GO/NO-GO
-4. Se GO: executar P0.2 (fundação técnica — VPS, stack core, monorepo)
+1. `/gsd-execute-phase 1` (recomendado: `/clear` antes para janela de contexto limpa)
+2. P05 e P06 têm checkpoint humano (Wave 5) — requerem teste manual em device Android e browser
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
+| 2026-05-22 | Fase 1 planejada — 7 planos (P01-P07), 6 waves, verification passed |
 | 2026-05-22 | P0.1 executado — kit de validação criado (roteiro, demo, template, síntese) |
 | 2026-05-21 | P0.4 executado — monorepo scaffold completo (pnpm, turbo, CI, 11 ADRs) |
 | 2026-05-21 | P0.2 executado — script vps-init.sh e runbook vps-setup.md criados |
