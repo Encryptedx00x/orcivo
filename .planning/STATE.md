@@ -2,7 +2,7 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: P0.4 completo — monorepo scaffold e CI prontos
+status: P0.2 completo — VPS hardening script e runbook criados
 last_updated: "2026-05-21T00:00:00.000Z"
 ---
 
@@ -20,7 +20,7 @@ last_updated: "2026-05-21T00:00:00.000Z"
 | Deliverable | Status | Critério de pronto |
 |---|---|---|
 | D0.1 — Validação com técnicos | Artefatos prontos — aguardando entrevistas | 3+ técnicos confirmariam pagar Orcivo Mais |
-| D0.2 — VPS segura | Não iniciado | SSH por chave, firewall ativo, Docker instalado |
+| D0.2 — VPS segura | Artefatos prontos — aguardando execução na VPS | SSH por chave, firewall ativo, Docker instalado |
 | D0.3 — Stack core deployada | Não iniciado | Postgres, Redis, MinIO, Caddy com HTTPS |
 | D0.4 — Monorepo e CI | Completo | CI verde em push para main |
 | D0.5 — Hello world | Não iniciado | health API + APK Android + web no ar |
@@ -53,3 +53,4 @@ Nenhum bloqueio ativo.
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
 | 2026-05-22 | P0.1 executado — kit de validação criado (roteiro, demo, template, síntese) |
 | 2026-05-21 | P0.4 executado — monorepo scaffold completo (pnpm, turbo, CI, 11 ADRs) |
+| 2026-05-21 | P0.2 executado — script vps-init.sh e runbook vps-setup.md criados |
