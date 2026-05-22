@@ -2,6 +2,18 @@
 // REGRA CRITICA: NAO importar @prisma/client, @nestjs/*, react, react-native neste package
 // Este package e consumido por backend, mobile e web — deve ser agnostico de framework
 
-export {};
+import { z } from 'zod';
 
-// Adicionar types aqui na Fase 1+
+export const PlanCodeEnum = z.enum(['LIVRE', 'SOLO', 'MAIS', 'EQUIPE']);
+export const CustomerTypeEnum = z.enum(['PF', 'PJ']);
+export const DocumentTypeEnum = z.enum(['CPF', 'CNPJ']);
+
+export type PlanCode = z.infer<typeof PlanCodeEnum>;
+export type CustomerType = z.infer<typeof CustomerTypeEnum>;
+export type DocumentType = z.infer<typeof DocumentTypeEnum>;
+
+export * from './auth/signup-step1.dto';
+export * from './auth/signup-step2.dto';
+export * from './auth/login.dto';
+export * from './customer/customer-create.dto';
+export * from './customer/customer-list.dto';

@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Usuário ──────────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  name              String
+  phone             String?
+  password_hash     String
+  accepted_terms_at DateTime
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company_members    CompanyMember[]
+  refresh_tokens     RefreshToken[]
+  assigned_customers Customer[]      @relation("AssignedTo")
+
+  @@map("users")
+}
+
+// ─── Empresa (tenant) ─────────────────────────────────────────────────────────
+
+model Company {
+  id            String       @id @default(uuid())
+  trade_name    String
+  document_type DocumentType?
+  document      String?
+  phone         String?
+  city          String?
+  state         String?
+  brand_color   String?
+  logo_url      String?
+  pix_key       String?
+  plan_code     PlanCode     @default(LIVRE)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  members   CompanyMember[]
+  customers Customer[]
+
+  @@map("companies")
+}
+
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+enum PlanCode {
+  LIVRE
+  SOLO
+  MAIS
+  EQUIPE
+}
+
+// ─── Membership (usuário ↔ empresa) ──────────────────────────────────────────
+
+model CompanyMember {
+  id         String     @id @default(uuid())
+  company_id String
+  user_id    String
+  role       MemberRole @default(TECNICO)
+  active     Boolean    @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([company_id, user_id])
+  @@index([user_id])
+  @@index([company_id])
+  @@map("company_members")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  TECNICO
+}
+
+// ─── Cliente (tabela de negócio — tem company_id obrigatório) ─────────────────
+
+model Customer {
+  id                  String       @id @default(uuid())
+  company_id          String
+  name                String
+  type                CustomerType?
+  tax_id              String?
+  phone               String?
+  email               String?
+  city                String?
+  state               String?
+  notes               String?
+  assigned_to_user_id String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company     Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  assigned_to User?   @relation("AssignedTo", fields: [assigned_to_user_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, name])
+  @@map("customers")
+}
+
+enum CustomerType {
+  PF
+  PJ
+}
+
+// ─── Refresh Token ────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
