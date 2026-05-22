@@ -898,17 +898,17 @@ export const config = {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Reset de senha (D-19)**
    - O que sabemos: está marcado como "pode incluir ou diferir — menos crítico para o molde arquitetural"
-   - O que está em aberto: inclui ou não na Fase 1?
-   - Recomendação: **diferir para Fase 2**. Requer integração com Resend (email) e fluxo de token one-time. Não faz parte do molde arquitetural que outras features vão replicar. Registrar como pendente.
+   - O que estava em aberto: inclui ou não na Fase 1?
+   - **RESOLVED: deferido para Fase 2.** Requer integração com Resend (email) e fluxo de token one-time. Não faz parte do molde arquitetural que outras features vão replicar. ADR-012 registra o deferimento.
 
 2. **Refresh token: cookie httpOnly vs SecureStore no mobile**
    - O que sabemos: web usa cookie httpOnly (decisão boa — inacessível ao JS); mobile não tem cookies nativos.
-   - O que está em aberto: mobile envia refresh token como header `X-Refresh-Token` ou como body de `POST /auth/refresh`?
-   - Recomendação: mobile envia `{ refresh_token: "<token>" }` no body de `POST /auth/refresh`. Token fica no `expo-secure-store`. Web envia o cookie automaticamente (credentials: 'include' não é necessário se a API está no mesmo domínio, mas deve ser configurado para cross-origin).
+   - O que estava em aberto: mobile envia refresh token como header `X-Refresh-Token` ou como body de `POST /auth/refresh`?
+   - **RESOLVED: mobile envia `{ refresh_token: "<token>" }` no body de `POST /auth/refresh`.** Token armazenado no `expo-secure-store`. Web envia o cookie httpOnly automaticamente via browser. P02 e P05 implementam esta decisão.
 
 ---
 
