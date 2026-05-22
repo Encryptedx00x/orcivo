@@ -55,6 +55,26 @@ Usar **sempre**:
 - **Não** commitar prompts, transcripts, logs de IA ou arquivos temporários.
 - Commits devem ser técnicos, objetivos e humanos.
 
+### Regras de Git e GitHub
+
+**Repositório privado — apenas desenvolvimento/testes.**
+
+Permitido automaticamente:
+- `git status`, `git diff`, `git add`, `git commit`
+- `git push` para `main`/`master` e branches GSD (`gsd/*`)
+- commits pequenos durante execução de planos GSD
+- push após cada plano/deliverable concluído
+- push após correções de lint/typecheck/test
+
+Condições obrigatórias antes de qualquer push:
+- diff não contém secrets, tokens ou API keys
+- diff não contém "Generated with Claude" ou "Co-authored-by Claude"
+- diff não contém prompts, transcripts ou logs de IA
+- validações disponíveis (lint/typecheck/test) rodadas quando fizer sentido
+
+**Ainda proibido sem aprovação explícita:**
+`git push --force` · `git push --force-with-lease` · `git reset --hard` · `git clean -fd` · deletar branch remota · reescrever histórico · tornar repo público · alterar GitHub Secrets · deploy produção · DNS/domínio · VPS/SSH/firewall · billing/fiscal · LGPD · mudança de stack · mudança de design system · qualquer comando destrutivo
+
 ## Workflow GSD
 
 Este projeto usa GSD (Get Shit Done) para execução estruturada.
@@ -132,3 +152,76 @@ infra/          Docker Compose, scripts, Caddyfile
 | Screen specs | `/docs/FRONTEND_DESIGN_MASTER.md` §4 (mobile) §5 (web) |
 | Telas operacionais | `/docs/OPERATIONS_UI_MISSING_SPECS.md` |
 | GSD Fase 0 | `.planning/ROADMAP.md` |
+
+# CLAUDE.md — Orcivo
+
+Leia sempre:
+- AGENTS.md
+- docs/AUTONOMY_POLICY.md
+- docs/DECISION_MATRIX.md
+- docs/GPT_DECISION_BRIDGE.md
+
+## Autonomia
+
+Execute sozinho decisões Nível A.
+
+Consulte GPT Decision Agent para decisões Nível B:
+
+node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
+
+Peça aprovação do usuário somente para decisões Nível C.
+
+## Nível C
+
+Parar apenas para:
+- mudança de stack;
+- custo novo;
+- deploy/publicação;
+- domínio/DNS;
+- secrets/API keys;
+- billing/fiscal;
+- LGPD;
+- multi-tenancy strategy;
+- money handling;
+- design system;
+- git push;
+- comando destrutivo;
+- perda de dados.
+
+## GSD
+
+Para prompts internos:
+- criar plano/checkpoint/summary/contexto: sim;
+- fase com arquitetura nova: Research first;
+- continuação repetitiva: Skip research;
+- correções reversíveis: executar;
+- não chamar usuário para trivialidades.
+
+## Design
+
+Seguir Orcivo:
+- white / black / purple;
+- --purple-600 #6D28D9;
+- Inter;
+- Lucide;
+- pt-BR;
+- Orcivo Livre, Orcivo Solo, Orcivo Mais, Orcivo Equipe.
+
+Não usar:
+- FREE;
+- POP;
+- PRO;
+- TOP;
+- ilimitado;
+- 14 dias;
+- Assinar PRO.
+
+## Commits
+
+Não adicionar:
+- Generated with Claude;
+- Co-authored-by Claude;
+- AI-generated;
+- prompts;
+- transcripts;
+- logs de IA.
