@@ -64,3 +64,26 @@ ios/
 *.crt
 *.p12
 *.pfx
+
+# Infrastructure env (never commit real values)
+infra/.env
+
+# Expo / React Native certificates
+*.jks
+*.p8
+*.mobileprovision
+*.orig.*
+
+# Editor extra
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Prisma
+prisma/migrations/*.sql.bak
+
+# Transcripts / prompts (do not version)
+*.transcript
+.agents/

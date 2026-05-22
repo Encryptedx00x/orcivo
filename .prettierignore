@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+build
+coverage
+*.lock
+pnpm-lock.yaml
+.planning
+docs/design-handoff
