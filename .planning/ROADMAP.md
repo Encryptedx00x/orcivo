@@ -190,10 +190,46 @@ Plans:
 
 ---
 
-## Fases 2-7 (alto nível — não planejar ainda)
+## Fase 2A — MVP Funcional Core
+
+**Goal:** Técnico consegue cadastrar catálogo, montar orçamento, gerar PDF, compartilhar via WhatsApp, receber aprovação por link público (3 métodos), executar OS com fotos — tudo no mobile e na web.
+
+**Deliverables:**
+- D2.1 — Catálogo de serviços/produtos (mobile + web)
+- D2.2 — Orçamento estruturado com máquina de estados (mobile + web)
+- D2.3 — Geração de PDF + compartilhamento WhatsApp
+- D2.4 — Aprovação por link público (3 métodos: botão, nome, assinatura)
+- D2.5 — Ordem de Serviço com fotos BEFORE/DURING/AFTER (mobile + web)
+- + Reset de senha (D2-02)
+- + StorageService MinIO (D2-17)
+- + PlanLimitsService scaffold (D2-18)
+
+**Requirements cobertos:** D2.1, D2.2, D2.3, D2.4, D2.5, AUTH
+
+**Plans:** 12 plans em 7 waves
+
+**Status:** Em planejamento — 2026-05-22
+
+Plans:
+- [ ] 02-P01-PLAN.md — Schema Prisma + DTOs shared-types (Wave 1)
+- [ ] 02-P02-PLAN.md — Backend infra: StorageService + MailService + PlanLimitsService (Wave 2)
+- [ ] 02-P03-PLAN.md — Auth reset de senha: forgot-password + reset-password (Wave 2)
+- [ ] 02-P04-PLAN.md — Backend CatalogModule CRUD com isolation spec (Wave 3)
+- [ ] 02-P05-PLAN.md — Backend QuoteModule: CRUD + state machine + BullMQ + isolation spec (Wave 3)
+- [ ] 02-P06-PLAN.md — Backend WorkOrderModule: CRUD + upload fotos + isolation spec (Wave 3)
+- [ ] 02-P07-PLAN.md — PDF service + Approval flow: QuoteApproval + WorkOrder automática (Wave 4)
+- [ ] 02-P08-PLAN.md — Mobile: Catálogo + OS com upload de fotos (Wave 5)
+- [ ] 02-P09-PLAN.md — Mobile: Orçamentos + compartilhamento WhatsApp (Wave 5)
+- [ ] 02-P10-PLAN.md — Web: Catálogo + Ordem de Serviço (Wave 6)
+- [ ] 02-P11-PLAN.md — Web: Orçamentos + WhatsApp share (Wave 6)
+- [ ] 02-P12-PLAN.md — Página pública de aprovação + prisma migrate + smoke tests (Wave 7)
+
+---
+
+## Fases 2B-7 (alto nível — não planejar ainda)
 
 Ver `PROJECT.md` para descrição de cada fase.
 
 ---
 *Criado: 2026-05-21 — Fase 0 planejada*
-*Próxima atualização: após conclusão da Fase 0 e aprovação para a Fase 1*
+*Atualizado: 2026-05-22 — Fase 2A planejada (12 plans, 7 waves)*
