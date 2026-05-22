@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.expo/
+.expo-shared/
+web-build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Turbo / tooling cache
+.turbo/
+.cache/
+
+# Docker local volumes / temp
+docker-data/
+tmp/
+temp/
+
+# Mobile
+android/
+ios/
+
+# AI local context / scratchpad
+.claude/
+.cursor/
+.windsurf/
+.codex/
+.ai/
+.decision/
+*.decision.json
+*.decision.md
+*.transcript.md
+*.prompt.md
+.claude.json
+
+# Local secrets / credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
