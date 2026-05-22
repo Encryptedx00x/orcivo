@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orcivo — Demo</title>
+  <!-- brand-color: #6D28D9 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --purple-600: #6D28D9;
+      --purple-700: #5B21B6;
+      --purple-100: #EDE9FE;
+      --bg: #FFFFFF;
+      --ink: #0A0A0F;
+      --ink-2: #4B5563;
+      --border: #E5E7EB;
+      --success: #059669;
+      --warning: #D97706;
+      --radius: 8px;
+    }
+
+    /* brand: primary #6D28D9, hover #5B21B6, light #EDE9FE */
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #F3F4F6;
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Progress bar */
+    .progress-bar {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .progress-label {
+      font-size: 12px;
+      color: var(--ink-2);
+      white-space: nowrap;
+    }
+
+    .progress-track {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--purple-600);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* App frame */
+    .app-frame {
+      width: 100%;
+      max-width: 480px;
+      min-height: calc(100vh - 48px);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      background: var(--purple-600);
+      color: #fff;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-back {
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      line-height: 1;
+      padding: 4px;
+    }
+
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .header-logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    /* Content area */
+    .content {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Cards */
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      background: var(--bg);
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+
+    /* Client list */
+    .client-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .client-item:last-child { border-bottom: none; }
+
+    .client-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--purple-100);
+      color: var(--purple-600);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .client-info { flex: 1; }
+    .client-name { font-size: 15px; font-weight: 500; }
+    .client-meta { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+
+    .chevron {
+      color: var(--ink-2);
+      font-size: 18px;
+    }
+
+    /* Button */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--purple-600);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .btn:hover { background: var(--purple-700); }
+
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid var(--purple-600);
+      color: var(--purple-600);
+    }
+
+    .btn-outline:hover { background: var(--purple-100); }
+
+    /* Form */
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+    .form-input {
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .form-input:focus { outline: none; border-color: var(--purple-600); }
+
+    /* Line items */
+    .line-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .line-item:last-child { border-bottom: none; }
+    .line-desc { font-size: 14px; }
+    .line-val { font-size: 14px; font-weight: 600; }
+
+    /* Total row */
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-top: 2px solid var(--ink);
+      margin-top: 8px;
+    }
+    .total-label { font-size: 16px; font-weight: 700; }
+    .total-val { font-size: 20px; font-weight: 700; color: var(--purple-600); }
+
+    /* Status badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .badge-warning { background: #FEF3C7; color: var(--warning); }
+    .badge-success { background: #D1FAE5; color: var(--success); }
+    .badge-purple { background: var(--purple-100); color: var(--purple-600); }
+
+    /* PDF preview */
+    .pdf-preview {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .pdf-header {
+      background: var(--purple-600);
+      color: #fff;
+      padding: 16px;
+    }
+    .pdf-company { font-size: 16px; font-weight: 700; }
+    .pdf-cnpj { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+    .pdf-body { padding: 16px; }
+    .pdf-section-title { font-size: 11px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+    /* Calendar */
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      text-align: center;
+    }
+    .cal-day-label { font-size: 11px; color: var(--ink-2); font-weight: 500; padding: 4px 0; }
+    .cal-day {
+      padding: 6px 4px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: default;
+    }
+    .cal-day.today { background: var(--purple-100); color: var(--purple-600); font-weight: 700; }
+    .cal-day.has-event { background: var(--purple-600); color: #fff; font-weight: 600; }
+    .cal-day.inactive { color: var(--border); }
+
+    .cal-event {
+      margin-top: 12px;
+      padding: 10px;
+      background: var(--purple-100);
+      border-left: 3px solid var(--purple-600);
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    /* Financial row */
+    .fin-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .fin-row:last-child { border-bottom: none; }
+    .fin-desc { font-size: 14px; }
+    .fin-os { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+    .fin-amount { font-size: 16px; font-weight: 700; }
+
+    /* Footer */
+    footer {
+      width: 100%;
+      max-width: 480px;
+      padding: 10px 16px;
+      text-align: center;
+      font-size: 11px;
+      color: #9CA3AF;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+
+    /* Screen visibility */
+    .screen { display: none; }
+    .screen.active { display: flex; flex-direction: column; flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- Progress bar -->
+<div class="progress-bar">
+  <span class="progress-label" id="progress-label">Tela 1 de 7</span>
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill" style="width: 14.28%"></div>
+  </div>
+</div>
+
+<div class="app-frame">
+
+  <!-- TELA 1: Lista de Clientes -->
+  <div class="screen active" id="screen-1">
+    <div class="header">
+      <span class="header-logo">Orcivo</span>
+    </div>
+    <div class="content">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-size:20px; font-weight:700;">Clientes</div>
+          <div style="font-size:13px; color:var(--ink-2); margin-top:2px;">3 cadastrados</div>
+        </div>
+        <button class="btn" style="width:auto; padding:10px 16px; font-size:14px;" onclick="goTo(2)">+ Novo cliente</button>
+      </div>
+      <div class="card" style="padding:0 16px;">
+        <div class="client-item" onclick="goTo(2)">
+          <div class="client-avatar">J</div>
+          <div class="client-info">
+            <div class="client-name">João da Silva</div>
+            <div class="client-meta">Rua das Flores, 123 — São Paulo/SP</div>
+            <div class="client-meta">Último contato: 19/05/2026</div>
+          </div>
+          <span class="chevron">›</span>
+        </div>
+        <div class="client-item">
+          <div class="client-avatar">M</div>
+          <div class="client-info">
+            <div class="client-name">Maria Aparecida</div>
+            <div class="client-meta">Av. Brasil, 450 — Guarulhos/SP</div>
+            <div class="client-meta">Último contato: 15/05/2026</div>
+          </div>
+          <span class="chevron">›</span>
+        </div>
+        <div class="client-item">
+          <div class="client-avatar">C</div>
+          <div class="client-info">
+            <div class="client-name">Carlos Mendes</div>
+            <div class="client-meta">Rua Ipê, 88 — Osasco/SP</div>
+            <div class="client-meta">Último contato: 10/05/2026</div>
+          </div>
+          <span class="chevron">›</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA 2: Criar Orçamento -->
+  <div class="screen" id="screen-2">
+    <div class="header">
+      <button class="header-back" onclick="goTo(1)">‹</button>
+      <span class="header-title">Novo Orçamento</span>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div class="card-title">Cliente</div>
+        <div class="form-group">
+          <div class="form-input" style="background:#F9FAFB; color:var(--ink-2);">João da Silva — Rua das Flores, 123</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Descrição do serviço</div>
+        <div class="form-group">
+          <div class="form-input" style="background:#F9FAFB;">Instalação de portão deslizante com motor e câmeras</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Itens</div>
+        <div class="line-item">
+          <div>
+            <div class="line-desc">Portão deslizante + motor</div>
+            <div style="font-size:12px; color:var(--ink-2);">1 un</div>
+          </div>
+          <div class="line-val">R$850,00</div>
+        </div>
+        <div class="line-item">
+          <div>
+            <div class="line-desc">Instalação</div>
+            <div style="font-size:12px; color:var(--ink-2);">1 un</div>
+          </div>
+          <div class="line-val">R$200,00</div>
+        </div>
+        <div class="total-row">
+          <span class="total-label">Total</span>
+          <span class="total-val">R$1.050,00</span>
+        </div>
+      </div>
+      <button class="btn" onclick="goTo(3)">Gerar prévia do orçamento →</button>
+    </div>
+  </div>
+
+  <!-- TELA 3: Preview do PDF -->
+  <div class="screen" id="screen-3">
+    <div class="header">
+      <button class="header-back" onclick="goTo(2)">‹</button>
+      <span class="header-title">Prévia do Orçamento</span>
+    </div>
+    <div class="content">
+      <div class="pdf-preview">
+        <div class="pdf-header">
+          <div class="pdf-company">Portões &amp; Câmeras Ltda</div>
+          <div class="pdf-cnpj">CNPJ 12.345.678/0001-90</div>
+        </div>
+        <div class="pdf-body">
+          <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+            <div>
+              <div class="pdf-section-title">Orçamento</div>
+              <div style="font-size:20px; font-weight:700; color:var(--purple-600);">#ORC-2026-042</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:12px; color:var(--ink-2);">Emitido em</div>
+              <div style="font-size:14px; font-weight:600;">21/05/2026</div>
+              <div style="font-size:12px; color:var(--ink-2); margin-top:4px;">Válido até</div>
+              <div style="font-size:14px; font-weight:600;">28/05/2026</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <div class="pdf-section-title">Cliente</div>
+            <div style="font-size:14px; font-weight:500;">João da Silva</div>
+            <div style="font-size:13px; color:var(--ink-2);">Rua das Flores, 123 — São Paulo/SP</div>
+          </div>
+
+          <div class="pdf-section-title">Serviços e materiais</div>
+          <div class="line-item">
+            <span class="line-desc">Portão deslizante + motor</span>
+            <span class="line-val">R$850,00</span>
+          </div>
+          <div class="line-item">
+            <span class="line-desc">Instalação</span>
+            <span class="line-val">R$200,00</span>
+          </div>
+          <div class="total-row">
+            <span class="total-label">Total</span>
+            <span class="total-val">R$1.050,00</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn" onclick="goTo(4)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        Enviar via WhatsApp
+      </button>
+    </div>
+  </div>
+
+  <!-- TELA 4: Aguardando Aprovação -->
+  <div class="screen" id="screen-4">
+    <div class="header">
+      <button class="header-back" onclick="goTo(3)">‹</button>
+      <span class="header-title">Status do Orçamento</span>
+    </div>
+    <div class="content">
+      <div class="card" style="text-align:center; padding:32px 16px;">
+        <div style="font-size:48px; margin-bottom:16px;">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;display:block;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div style="font-size:18px; font-weight:700; margin-bottom:8px;">Aguardando aprovação</div>
+        <div style="font-size:14px; color:var(--ink-2); margin-bottom:16px;">Orçamento #ORC-2026-042 enviado ao cliente via WhatsApp</div>
+        <span class="badge badge-warning">Enviado em 21/05/2026 às 14h32</span>
+      </div>
+      <div class="card">
+        <div class="card-title">Orçamento</div>
+        <div class="line-item"><span>Cliente</span><span style="font-weight:500;">João da Silva</span></div>
+        <div class="line-item"><span>Total</span><span style="font-weight:700; color:var(--purple-600);">R$1.050,00</span></div>
+        <div class="line-item"><span>Validade</span><span>28/05/2026</span></div>
+      </div>
+      <button class="btn" onclick="goTo(5)">Simular: cliente aprovou →</button>
+    </div>
+  </div>
+
+  <!-- TELA 5: OS Gerada -->
+  <div class="screen" id="screen-5">
+    <div class="header">
+      <button class="header-back" onclick="goTo(4)">‹</button>
+      <span class="header-title">Ordem de Serviço</span>
+    </div>
+    <div class="content">
+      <div class="card" style="text-align:center; padding:24px 16px;">
+        <div style="margin-bottom:12px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;display:block;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div style="font-size:18px; font-weight:700; margin-bottom:6px;">Orçamento aprovado!</div>
+        <div style="font-size:14px; color:var(--ink-2);">Ordem de Serviço criada automaticamente</div>
+      </div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+          <div>
+            <div style="font-size:20px; font-weight:700; color:var(--purple-600);">OS #001</div>
+            <div style="font-size:13px; color:var(--ink-2);">Gerada em 21/05/2026</div>
+          </div>
+          <span class="badge badge-purple">Agendada</span>
+        </div>
+        <div class="line-item"><span>Cliente</span><span style="font-weight:500;">João da Silva</span></div>
+        <div class="line-item"><span>Endereço</span><span style="font-size:13px;">Rua das Flores, 123</span></div>
+        <div class="line-item"><span>Serviço</span><span style="font-size:13px; text-align:right; max-width:180px;">Portão deslizante + instalação</span></div>
+        <div class="line-item"><span>Data agendada</span><span style="font-weight:500;">22/05/2026</span></div>
+        <div class="line-item"><span>Valor</span><span style="font-weight:700; color:var(--purple-600);">R$1.050,00</span></div>
+      </div>
+      <button class="btn" onclick="goTo(6)">Ver na agenda →</button>
+    </div>
+  </div>
+
+  <!-- TELA 6: Agenda -->
+  <div class="screen" id="screen-6">
+    <div class="header">
+      <button class="header-back" onclick="goTo(5)">‹</button>
+      <span class="header-title">Agenda</span>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <span style="font-size:16px; font-weight:600;">Maio 2026</span>
+          <div style="display:flex; gap:8px;">
+            <button style="background:var(--purple-100); border:none; border-radius:4px; color:var(--purple-600); padding:4px 10px; font-family:inherit; cursor:pointer;">‹</button>
+            <button style="background:var(--purple-100); border:none; border-radius:4px; color:var(--purple-600); padding:4px 10px; font-family:inherit; cursor:pointer;">›</button>
+          </div>
+        </div>
+        <div class="cal-grid">
+          <div class="cal-day-label">Dom</div>
+          <div class="cal-day-label">Seg</div>
+          <div class="cal-day-label">Ter</div>
+          <div class="cal-day-label">Qua</div>
+          <div class="cal-day-label">Qui</div>
+          <div class="cal-day-label">Sex</div>
+          <div class="cal-day-label">Sáb</div>
+          <!-- Week starting Sun 18 -->
+          <div class="cal-day inactive">18</div>
+          <div class="cal-day inactive">19</div>
+          <div class="cal-day inactive">20</div>
+          <div class="cal-day today">21</div>
+          <div class="cal-day has-event">22</div>
+          <div class="cal-day">23</div>
+          <div class="cal-day">24</div>
+          <div class="cal-day">25</div>
+          <div class="cal-day">26</div>
+          <div class="cal-day">27</div>
+          <div class="cal-day">28</div>
+          <div class="cal-day">29</div>
+          <div class="cal-day">30</div>
+          <div class="cal-day">31</div>
+        </div>
+        <div class="cal-event">
+          <div style="font-weight:600; margin-bottom:2px;">OS #001 — João da Silva</div>
+          <div style="color:var(--ink-2);">Portão deslizante + instalação · R$1.050,00</div>
+        </div>
+      </div>
+      <button class="btn" onclick="goTo(7)">Ver financeiro →</button>
+    </div>
+  </div>
+
+  <!-- TELA 7: Financeiro -->
+  <div class="screen" id="screen-7">
+    <div class="header">
+      <button class="header-back" onclick="goTo(6)">‹</button>
+      <span class="header-title">Financeiro</span>
+    </div>
+    <div class="content">
+      <div class="card" style="background:var(--purple-600); border:none; color:#fff;">
+        <div style="font-size:13px; opacity:0.8; margin-bottom:4px;">A receber em maio/2026</div>
+        <div style="font-size:32px; font-weight:700;">R$1.050,00</div>
+        <div style="font-size:13px; opacity:0.8; margin-top:4px;">1 OS em aberto</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recebimentos pendentes</div>
+        <div class="fin-row">
+          <div>
+            <div class="fin-desc">João da Silva</div>
+            <div class="fin-os">OS #001 · Portão deslizante · 22/05/2026</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="fin-amount" style="color:var(--purple-600);">R$1.050,00</div>
+            <span class="badge badge-warning" style="font-size:11px; margin-top:4px;">Pendente</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recebidos este mês</div>
+        <div class="fin-row">
+          <div>
+            <div class="fin-desc">Carlos Mendes</div>
+            <div class="fin-os">OS #000 · Câmeras · 10/05/2026</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="fin-amount" style="color:var(--success);">R$480,00</div>
+            <span class="badge badge-success" style="font-size:11px; margin-top:4px;">Recebido</span>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px; background:var(--purple-100); border-radius:var(--radius); text-align:center;">
+        <div style="font-size:13px; color:var(--purple-600); font-weight:600;">Plano atual: Orcivo Mais</div>
+        <div style="font-size:12px; color:var(--ink-2); margin-top:2px;">Clientes, orçamentos, OS e financeiro com uso ampliado</div>
+        <div style="font-size:11px; color:var(--ink-2); margin-top:4px;">uso justo aplicado</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>Demo para entrevista — não representa o produto final</footer>
+
+<script>
+  var currentScreen = 1;
+  var totalScreens = 7;
+
+  function goTo(n) {
+    var screens = document.querySelectorAll('.screen');
+    screens.forEach(function(s) { s.classList.remove('active'); });
+    var target = document.getElementById('screen-' + n);
+    if (target) {
+      target.classList.add('active');
+      currentScreen = n;
+      updateProgress();
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function updateProgress() {
+    document.getElementById('progress-label').textContent = 'Tela ' + currentScreen + ' de ' + totalScreens;
+    var pct = (currentScreen / totalScreens * 100).toFixed(2) + '%';
+    document.getElementById('progress-fill').style.width = pct;
+  }
+</script>
+
+</body>
+</html>
