@@ -1,0 +1,14 @@
+{
+  "name": "@orcivo/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "echo 'Mobile placeholder lint OK'",
+    "typecheck": "echo 'Mobile placeholder typecheck OK'",
+    "build": "echo 'Mobile placeholder build OK (EAS handles real builds)'"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

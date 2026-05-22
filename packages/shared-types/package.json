@@ -1,0 +1,15 @@
+{
+  "name": "@orcivo/shared-types",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'shared-types placeholder build OK'",
+    "lint": "echo 'shared-types placeholder lint OK'",
+    "typecheck": "echo 'shared-types placeholder typecheck OK'"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

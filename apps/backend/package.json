@@ -1,0 +1,12 @@
+{
+  "name": "@orcivo/backend",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Backend placeholder build OK'",
+    "lint": "echo 'Backend placeholder lint OK'",
+    "typecheck": "echo 'Backend placeholder typecheck OK'",
+    "test": "echo 'No tests yet'",
+    "dev": "echo 'Backend dev placeholder'"
+  }
+}

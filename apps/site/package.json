@@ -1,0 +1,11 @@
+{
+  "name": "@orcivo/site",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Site placeholder build OK'",
+    "lint": "echo 'Site placeholder lint OK'",
+    "typecheck": "echo 'Site placeholder typecheck OK'",
+    "dev": "echo 'Site dev placeholder'"
+  }
+}

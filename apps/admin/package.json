@@ -1,0 +1,11 @@
+{
+  "name": "@orcivo/admin",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Admin placeholder build OK'",
+    "lint": "echo 'Admin placeholder lint OK'",
+    "typecheck": "echo 'Admin placeholder typecheck OK'",
+    "dev": "echo 'Admin dev placeholder'"
+  }
+}

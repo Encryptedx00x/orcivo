@@ -1,0 +1,11 @@
+{
+  "name": "@orcivo/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Web placeholder build OK'",
+    "lint": "echo 'Web placeholder lint OK'",
+    "typecheck": "echo 'Web placeholder typecheck OK'",
+    "dev": "echo 'Web dev placeholder'"
+  }
+}
