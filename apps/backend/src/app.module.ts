@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
+import { CompanyModule } from './company/company.module';
+import { CustomerModule } from './customer/customer.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -16,6 +18,8 @@ import { RedisModule } from './redis/redis.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     HealthModule,
     AuthModule,
+    CompanyModule,
+    CustomerModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
