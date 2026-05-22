@@ -29,15 +29,24 @@
 
 ### STACK — Stack core deployada
 
-- [ ] **STACK-01**: DNS com registros A configurados para: api, app, admin, www, status, errors, analytics, storage
-- [ ] **STACK-02**: `docker-compose.yml` com PostgreSQL 16, Redis 7, MinIO e Caddy
-- [ ] **STACK-03**: Volumes persistentes em `/mnt/data` com backup automático configurado
-- [ ] **STACK-04**: Caddyfile com reverse proxy e HTTPS automático via Let's Encrypt
-- [ ] **STACK-05**: PostgreSQL acessível e respondendo a conexão local
-- [ ] **STACK-06**: Redis respondendo a `PING`
-- [ ] **STACK-07**: MinIO acessível via console e API
-- [ ] **STACK-08**: HTTPS válido e certificado em todos os subdomínios configurados
-- [ ] **STACK-09**: Credenciais armazenadas em vault seguro fora da VPS (não no repositório)
+- [x] **STACK-01
+**: DNS com registros A configurados para: api, app, admin, www, status, errors, analytics, storage
+- [x] **STACK-02
+**: `docker-compose.yml` com PostgreSQL 16, Redis 7, MinIO e Caddy
+- [x] **STACK-03
+**: Volumes persistentes em `/mnt/data` com backup automático configurado
+- [x] **STACK-04
+**: Caddyfile com reverse proxy e HTTPS automático via Let's Encrypt
+- [x] **STACK-05
+**: PostgreSQL acessível e respondendo a conexão local
+- [x] **STACK-06
+**: Redis respondendo a `PING`
+- [x] **STACK-07
+**: MinIO acessível via console e API
+- [x] **STACK-08
+**: HTTPS válido e certificado em todos os subdomínios configurados
+- [x] **STACK-09
+**: Credenciais armazenadas em vault seguro fora da VPS (não no repositório)
 
 ### MONOREPO — Estrutura do repositório
 
