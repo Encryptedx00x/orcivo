@@ -165,13 +165,19 @@ Leia sempre:
 
 ## Autonomia
 
-Execute sozinho decisões Nível A.
+**Nível A:** Execute sozinho.
 
-Consulte GPT Decision Agent para decisões Nível B:
+**Nível B — GPT OBRIGATÓRIO (não opcional):**
+1. Criar `.decision/QUESTION.md` com contexto, opções, critérios
+2. Rodar: `node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md`
+3. `requires_user=false` → seguir recomendação sem perguntar ao usuário
+4. `requires_user=true` → escalar para Nível C
 
-node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
+Exemplos de Nível B: escolha de lib gratuita, estratégia de implementação, ordem de execução, discuss vs plan, erro com múltiplas correções, dúvida de arquitetura interna.
 
-Peça aprovação do usuário somente para decisões Nível C.
+Não é Nível B: criar plano/summary GSD, lint, typecheck, test, leitura de arquivo, criação de arquivo previsto no plano, correção óbvia de 1 linha.
+
+**Nível C:** Perguntar ao usuário — custo, deploy, DNS, secrets, billing, fiscal, LGPD, mudança de stack, perda de dados, comando destrutivo.
 
 ## Nível C
 

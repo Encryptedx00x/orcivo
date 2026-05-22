@@ -15,13 +15,20 @@ docs/GPT_DECISION_BRIDGE.md
 
 ## Autonomy
 
-Follow `docs/AUTONOMY_POLICY.md`.
+Follow `docs/AUTONOMY_POLICY.md` and `docs/DECISION_MATRIX.md`.
 
-Execute low-risk tasks without asking.
+**Level A:** Execute alone — boilerplate, lint, typecheck, test, docs, GSD plans, obvious UAT fixes.
 
-Consult GPT Decision Agent for medium-risk decisions.
+**Level B — GPT MANDATORY:** Create `.decision/QUESTION.md` and run:
+```
+node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
+```
+If `requires_user=false` → follow the recommendation, do NOT ask the user.
+If `requires_user=true` → escalate to Level C.
 
-Ask the user for high-risk decisions.
+Level B situations: library choice, implementation strategy, execution order, internal architecture decision, phase planning strategy (discuss vs plan), ambiguous error fix.
+
+**Level C:** Ask the user directly — cost, deploy, DNS, secrets, billing, LGPD, stack change, data loss, destructive command.
 
 ## Git and GitHub
 

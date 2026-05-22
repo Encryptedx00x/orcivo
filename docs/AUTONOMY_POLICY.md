@@ -41,17 +41,37 @@ Pode executar sem pedir confirmação:
 - pequenos refactors sem mudança de API;
 - adicionar testes de comportamento já definido.
 
-### Nível B — consultar GPT Decision Agent
+### Nível B — obrigatoriamente consultar GPT Decision Agent
 
-Consultar GPT, sem necessariamente chamar o usuário:
-- escolha entre duas libs equivalentes;
-- pequena mudança de estrutura de pasta;
-- dúvida de implementação entre 2 caminhos;
+**Obrigatório:** criar `.decision/QUESTION.md` e rodar:
+```
+node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
+```
+
+Se `requires_user=false` → seguir a recomendação do GPT sem perguntar ao usuário.
+Se `requires_user=true` → escalar para Nível C (perguntar ao usuário).
+
+Situações que são Nível B:
+- escolha entre duas libs gratuitas equivalentes;
+- dúvida de implementação interna entre 2 caminhos;
 - conflito leve entre docs;
-- decisão de UI dentro do design;
-- falha de teste com múltiplas correções;
-- dúvida sobre ordem de tasks;
-- ajuste GSD sem alterar escopo.
+- erro com mais de uma correção possível;
+- dúvida sobre ordem de execução de tasks ou planos;
+- dúvida de estratégia de implementação interna;
+- decisão de arquitetura interna que não muda a stack;
+- plano de fase grande (discuss-phase vs plan direto);
+- dúvida se deve pesquisar ou não antes de planejar;
+- ajuste de GSD sem alterar escopo.
+
+O que NÃO é Nível B (não precisa chamar GPT):
+- criar plano/checkpoint/summary/contexto GSD;
+- git status, diff, add, commit;
+- lint, typecheck, test;
+- leitura de arquivos;
+- criação de arquivos já planejados no PLAN.md;
+- correções óbvias de UAT (bug de 1 linha com causa clara);
+- "Research first" quando a fase introduz arquitetura nova (executar diretamente);
+- "Skip research" quando a fase é CRUD repetitivo de domínio (executar diretamente).
 
 ### Nível C — pedir aprovação do usuário
 
@@ -188,16 +208,17 @@ Antes de commit:
 - buscar termos proibidos
 - rodar lint/typecheck/test quando existir
 
-## 7. Quando consultar GPT
+## 7. Quando consultar GPT (Nível B — obrigatório)
 
-Consultar GPT quando:
-- houver dúvida técnica moderada;
-- a decisão estiver entre Nível B e C;
-- GSD solicitar escolha repetidamente;
-- houver conflito entre docs;
-- Claude estiver inseguro;
-- uma alternativa puder gerar retrabalho;
-- antes de mudar plano da fase.
+O GPT Decision Agent é obrigatório para toda decisão Nível B.
+NÃO é opcional. NÃO perguntar ao usuário antes de consultar o GPT.
+
+Fluxo:
+1. Identificar que a situação é Nível B
+2. Criar `.decision/QUESTION.md` com contexto, opções e critérios
+3. Rodar `node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md`
+4. Se `requires_user=false` → executar a recomendação
+5. Se `requires_user=true` → escalar para o usuário (Nível C)
 
 Formato obrigatório da pergunta:
 
