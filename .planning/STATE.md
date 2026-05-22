@@ -1,16 +1,25 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: P0.1 completo — aguardando entrevistas de campo para D0.1
+last_updated: "2026-05-22T00:00:00.000Z"
+---
+
 # Orcivo — STATE.md
 
 ## Estado atual
 
 **Fase ativa:** 0 — Validação e Fundação
-**Status:** Planejada — aguardando aprovação para iniciar execução
-**Data:** 2026-05-21
+**Status:** P0.1 completo — aguardando entrevistas de campo para D0.1
+**Data:** 2026-05-22
+**Plano atual:** P0.2
 
 ## Deliverables da Fase 0
 
 | Deliverable | Status | Critério de pronto |
 |---|---|---|
-| D0.1 — Validação com técnicos | Não iniciado | 3+ técnicos confirmariam pagar Orcivo Mais |
+| D0.1 — Validação com técnicos | Artefatos prontos — aguardando entrevistas | 3+ técnicos confirmariam pagar Orcivo Mais |
 | D0.2 — VPS segura | Não iniciado | SSH por chave, firewall ativo, Docker instalado |
 | D0.3 — Stack core deployada | Não iniciado | Postgres, Redis, MinIO, Caddy com HTTPS |
 | D0.4 — Monorepo e CI | Não iniciado | CI verde em push para main |
@@ -32,12 +41,14 @@ Nenhum bloqueio ativo.
 
 ## Próximos passos
 
-1. Usuário aprova este plano
-2. `/gsd-plan-phase 0` para criar planos detalhados de execução
-3. Execução deliverable a deliverable, começando por D0.1
+1. Conduzir 5 entrevistas usando `docs/validation/roteiro-entrevista.md` e o demo HTML
+2. Registrar cada entrevista em `docs/validation/registros/entrevista-0X.md`
+3. Preencher `docs/validation/sintese.md` e tomar decisão GO/NO-GO
+4. Se GO: executar P0.2 (fundação técnica — VPS, stack core, monorepo)
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
+| 2026-05-22 | P0.1 executado — kit de validação criado (roteiro, demo, template, síntese) |
