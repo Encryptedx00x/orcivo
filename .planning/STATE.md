@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: P0.3 completo — stack core Docker Compose pronta para deploy na VPS
-last_updated: "2026-05-21T00:00:00.000Z"
+status: P0.5 completo — hello world NestJS + Expo + Next.js implementado localmente
+last_updated: "2026-05-22T11:36:41Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Orcivo — STATE.md
@@ -17,9 +17,9 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 0 — Validação e Fundação
-**Status:** P0.3 completo — stack core Docker Compose pronta para deploy na VPS
-**Data:** 2026-05-21
-**Plano atual:** P0.5
+**Status:** P0.5 completo — todos os 5 planos da Fase 0 executados
+**Data:** 2026-05-22
+**Plano atual:** — (Fase 0 concluída — aguardando ações humanas: deploy VPS, EAS Build, entrevistas)
 
 ## Deliverables da Fase 0
 
@@ -29,7 +29,7 @@ progress:
 | D0.2 — VPS segura | Artefatos prontos — aguardando execução na VPS | SSH por chave, firewall ativo, Docker instalado |
 | D0.3 — Stack core deployada | Artefatos prontos — aguardando execução na VPS | Postgres, Redis, MinIO, Caddy com HTTPS |
 | D0.4 — Monorepo e CI | Completo | CI verde em push para main |
-| D0.5 — Hello world | Não iniciado | health API + APK Android + web no ar |
+| D0.5 — Hello world | Código completo — aguardando deploy VPS + EAS Build | health API + APK Android + web no ar |
 
 ## Bloqueios
 
@@ -61,3 +61,4 @@ Nenhum bloqueio ativo.
 | 2026-05-21 | P0.4 executado — monorepo scaffold completo (pnpm, turbo, CI, 11 ADRs) |
 | 2026-05-21 | P0.2 executado — script vps-init.sh e runbook vps-setup.md criados |
 | 2026-05-21 | P0.3 executado — docker-compose.yml, Caddyfile, .env.example, backup script e runbook stack-setup.md criados |
+| 2026-05-22 | P0.5 executado — NestJS GET /health, Expo app shell, Next.js App Router, Dockerfiles, deploy runbook, PRODUCT.md, ARCHITECTURE.md |
