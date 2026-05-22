@@ -153,6 +153,7 @@ infra/          Docker Compose, scripts, Caddyfile
 | Telas operacionais | `/docs/OPERATIONS_UI_MISSING_SPECS.md` |
 | GSD Fase 0 | `.planning/ROADMAP.md` |
 | Molde arquitetural (Fase 1+) | `/docs/ARCHITECTURE-MOLD.md` |
+| Dev local (comandos, URLs, UAT) | `/docs/runbooks/local-dev.md` |
 
 # CLAUDE.md — Orcivo
 

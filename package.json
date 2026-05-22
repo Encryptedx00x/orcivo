@@ -12,16 +12,30 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\" --ignore-path .prettierignore",
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev:infra": "docker compose -f infra/docker-compose.dev.yml up -d && docker compose -f infra/docker-compose.dev.yml ps",
+    "dev:infra:down": "docker compose -f infra/docker-compose.dev.yml down",
+    "dev:backend": "pnpm --filter @orcivo/backend dev",
+    "dev:web": "pnpm --filter @orcivo/web dev",
+    "dev:mobile": "pnpm --filter @orcivo/mobile start",
+    "dev:mobile:android": "pnpm --filter @orcivo/mobile android",
+    "dev:mobile:ios": "pnpm --filter @orcivo/mobile ios",
+    "db:push": "prisma db push",
+    "db:push:test": "DATABASE_URL=$DATABASE_URL_TEST prisma db push --force-reset"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
+    "openai": "^6.39.0",
     "prettier": "^3.0.0",
+    "prisma": "5.22.0",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "dependencies": {
+    "@prisma/client": "5.22.0"
+  }
 }
