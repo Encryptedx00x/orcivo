@@ -81,6 +81,22 @@ services:
       timeout: 10s
       retries: 3
 
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    container_name: orcivo_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_URL: http://backend:3000
+    networks:
+      - orcivo_internal
+      - orcivo_public
+    depends_on:
+      backend:
+        condition: service_healthy
+
   caddy:
     image: caddy:2-alpine
     container_name: orcivo_caddy
