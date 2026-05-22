@@ -1,0 +1,61 @@
+# Caddyfile — Reverse proxy Orcivo
+# HTTPS automático via Let's Encrypt
+# Substituir seudominio.com.br pelo domínio real antes de executar
+
+{
+    email {$ACME_EMAIL}
+    # Logs estruturados
+    log {
+        output stderr
+        format json
+        level INFO
+    }
+}
+
+# API Backend (NestJS — porta 3000)
+api.{$DOMAIN} {
+    reverse_proxy backend:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output stderr
+        format json
+    }
+}
+
+# Web App (Next.js — porta 3001)
+app.{$DOMAIN} {
+    reverse_proxy web:3001
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+# MinIO Console (porta 9001)
+storage.{$DOMAIN} {
+    reverse_proxy minio:9001
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+}
+
+# MinIO API S3 (porta 9000)
+s3.{$DOMAIN} {
+    reverse_proxy minio:9000
+}
+
+# Redirect www → app
+www.{$DOMAIN} {
+    redir https://app.{$DOMAIN}{uri} permanent
+}
