@@ -23,6 +23,7 @@ must_haves:
     - "Detalhe da OS exibe fotos agrupadas por stage com upload via formulário"
     - "Todos os valores monetários exibidos com formatMoney() de shared-types"
     - "Loading/error/empty states com shadcn/ui Skeleton e Alert"
+    - "Upload de fotos usa Authorization Bearer header (não credentials:'include')"
   artifacts:
     - path: "apps/web/src/app/(dashboard)/catalogo/page.tsx"
       provides: "Página de lista do catálogo com tabela shadcn/ui"
@@ -36,7 +37,7 @@ must_haves:
   key_links:
     - from: "apps/web/src/app/(dashboard)/ordens-de-servico/[id]/page.tsx"
       to: "POST /work-orders/:id/photos"
-      via: "FormData upload via fetch"
+      via: "FormData upload via fetch com Authorization: Bearer header"
       pattern: "FormData"
     - from: "apps/web/src/lib/catalog.service.ts"
       to: "GET /catalog"
@@ -48,7 +49,7 @@ must_haves:
 Implementar as páginas web de Catálogo (lista + formulário) e Ordem de Serviço (lista + detalhe com upload de fotos), preenchendo os placeholders do sidebar da Fase 1.
 
 Purpose: D2.1 (catálogo web) e D2.5 (OS web). A web é a interface de gestão — o gestor/dono de empresa acompanha OS, atualiza status e faz upload de fotos via desktop.
-Output: 5 páginas Next.js com shadcn/ui; 2 services de API; tabelas com filtros básicos; upload de fotos via FormData.
+Output: 5 páginas Next.js com shadcn/ui; 2 services de API; tabelas com filtros básicos; upload de fotos via FormData com Authorization header.
 </objective>
 
 <execution_context>
@@ -79,7 +80,11 @@ Output: 5 páginas Next.js com shadcn/ui; 2 services de API; tabelas com filtros
 <!-- formatMoney de @orcivo/shared-types — instalar decimal.js se não estiver: -->
 <!-- pnpm --filter @orcivo/web add decimal.js@10.6.0 -->
 
-<!-- Upload de foto no web: input type="file" accept="image/*" → FormData → fetch POST /work-orders/:id/photos -->
+<!-- UPLOAD DE FOTO — REGRA CRÍTICA: -->
+<!-- NÃO usar credentials:'include' — só é válido para auth via cookie httpOnly -->
+<!-- A web usa Bearer token (JWT no header Authorization) -->
+<!-- Ler apps/web/src/lib/api.ts para entender como o token JWT é obtido/injetado -->
+<!-- uploadPhoto usa a mesma função acessora de token que apiFetch usa internamente -->
 <!-- Sem presigned URL — sempre via backend proxy (decisão D2-17) -->
 </interfaces>
 </context>
@@ -95,7 +100,7 @@ Output: 5 páginas Next.js com shadcn/ui; 2 services de API; tabelas com filtros
     apps/web/src/app/(dashboard)/catalogo/[id]/editar/page.tsx
   </files>
   <read_first>
-    - apps/web/src/lib/api.ts (padrão apiFetch a replicar)
+    - apps/web/src/lib/api.ts (padrão apiFetch a replicar — ler ANTES de criar services)
     - apps/web/src/app/(dashboard)/ (verificar estrutura de diretórios e layout)
     - apps/web/src/components/ ou apps/web/src/app/(dashboard)/clientes/page.tsx (se existir — padrão de tabela a seguir)
     - packages/shared-types/src/helpers/money.ts (formatMoney)
@@ -177,14 +182,25 @@ export const catalogService = {
     apps/web/src/app/(dashboard)/ordens-de-servico/[id]/page.tsx
   </files>
   <read_first>
-    - apps/web/src/lib/api.ts (padrão de apiFetch)
+    - apps/web/src/lib/api.ts (ler COMPLETO — identificar a função que obtém o token JWT e como Authorization é injetado; usar a mesma função em uploadPhoto)
     - apps/web/src/app/(dashboard)/catalogo/page.tsx (padrão de página recém-criado)
     - apps/web/src/lib/catalog.service.ts (padrão de service a replicar)
   </read_first>
   <action>
 **work-order.service.ts:**
+
+REGRA CRÍTICA para uploadPhoto:
+- NÃO usar `credentials: 'include'` — a web usa Bearer token (Authorization header), não cookie auth.
+- Ler apps/web/src/lib/api.ts para identificar a função acessora de token (ex: `getAuthToken()`, `getToken()`, ou leitura direta de localStorage/cookie) e usar a MESMA função.
+- Se o módulo `api.ts` expõe a função acessora, importá-la diretamente.
+- Se o token está em um store Zustand/Context, usar o mesmo mecanismo que as outras chamadas autenticadas usam.
+
 ```typescript
 import { apiFetch } from './api';
+// Importar a função acessora de token de api.ts após lê-la:
+// import { getAuthToken } from './api'; // ajustar conforme padrão encontrado em api.ts
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 export interface WorkOrderPhoto {
   id: string;
@@ -206,25 +222,40 @@ export interface WorkOrder {
   quote?: { id: string; number: number };
 }
 
+async function uploadPhoto(
+  workOrderId: string,
+  file: File,
+  stage: 'BEFORE' | 'DURING' | 'AFTER',
+  caption?: string,
+): Promise<WorkOrderPhoto> {
+  // Ler apps/web/src/lib/api.ts para identificar a função acessora de token
+  // e substituir getAuthToken() pelo padrão real do projeto.
+  // Exemplos comuns:
+  //   import { getAuthToken } from './api'; → const token = getAuthToken();
+  //   localStorage.getItem('token')         → const token = localStorage.getItem('token');
+  //   useAuthStore.getState().token         → const token = useAuthStore.getState().token;
+  const token = getAuthToken(); // substituir pelo padrão encontrado em api.ts
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('stage', stage);
+  if (caption) formData.append('caption', caption);
+
+  const res = await fetch(`${API_URL}/work-orders/${workOrderId}/photos`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export const workOrderService = {
   fetchAll: (page = 1) => apiFetch<{ data: WorkOrder[]; page: number }>(`/work-orders?page=${page}`),
   fetchOne: (id: string) => apiFetch<WorkOrder>(`/work-orders/${id}`),
   updateStatus: (id: string, status: string) =>
     apiFetch<WorkOrder>(`/work-orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  uploadPhoto: async (workOrderId: string, file: File, stage: string, caption?: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('stage', stage);
-    if (caption) formData.append('caption', caption);
-    // apiFetch com Content-Type não definido (browser define boundary automaticamente para multipart)
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/work-orders/${workOrderId}/photos`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData,
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<WorkOrderPhoto>;
-  },
+  uploadPhoto,
 };
 ```
 
@@ -250,7 +281,7 @@ export const workOrderService = {
 - Seção de fotos agrupadas por stage:
   - Tabs ou seções "Antes" / "Durante" / "Depois"
   - Grid de imagens (img tags com file_url)
-  - Por stage: botão "Upload de foto" → input file (accept="image/*") → FormData upload
+  - Por stage: botão "Upload de foto" → input file (accept="image/*") → FormData upload via workOrderService.uploadPhoto
   - Legenda/caption opcional por foto
   - Loading durante upload
 - Seção de informações: datas (agendado, início, fim), observações, vínculo com orçamento (link)
@@ -262,7 +293,10 @@ export const workOrderService = {
     - Build Next.js sem erros
     - Página /ordens-de-servico renderiza tabela com status colorido
     - Upload de foto via FormData (sem presigned URL)
-    - Authorization header incluído no fetch de fotos (via credentials: 'include' ou header manual)
+    - uploadPhoto function exists in work-order.service.ts
+    - apps/web/src/lib/work-order.service.ts NÃO contém `credentials:'include'`
+    - work-order.service.ts contém `Authorization: \`Bearer \${` ou `Authorization: 'Bearer '`
+    - work-order.service.ts contém `new FormData()`
     - Fotos agrupadas por stage na página de detalhe
     - Todos os textos em pt-BR
     - Ícones lucide-react only
@@ -276,23 +310,26 @@ export const workOrderService = {
 
 | Boundary | Description |
 |----------|-------------|
-| browser → POST /work-orders/:id/photos | Upload de arquivo via FormData; JWT via cookie httpOnly |
+| browser → POST /work-orders/:id/photos | Upload de arquivo via FormData; JWT via Authorization: Bearer header |
 
 ## STRIDE Threat Register
 
 | Threat ID | Category | Component | Disposition | Mitigation Plan |
 |-----------|----------|-----------|-------------|-----------------|
 | T-2A-26 | Tampering | input file type no browser | mitigate | accept="image/*" no input limita seleção; backend valida mimetype real independentemente |
-| T-2A-27 | Information Disclosure | Authorization header no fetch manual | mitigate | Usar credentials:'include' + cookie httpOnly; não expor JWT ao JavaScript do browser |
+| T-2A-27 | Information Disclosure | token JWT exposto ao JavaScript | mitigate | Ler como o token é armazenado no projeto (localStorage vs httpOnly cookie) e usar a abordagem mais segura disponível; documentar no SUMMARY |
 </threat_model>
 
 <verification>
 ```bash
 cd /c/Users/Encryptedx/Desktop/orcivo
 pnpm --filter @orcivo/web build
-grep -rn "parseFloat\|Number(" apps/web/src/lib/catalog.service.ts apps/web/src/app/'(dashboard)'/catalogo/ || echo "OK — sem float em money"
-grep -rn "formatMoney\|Decimal" apps/web/src/app/'(dashboard)'/catalogo/page.tsx
-grep -rn "pt-BR\|Pendente\|Concluída\|Cancelada" apps/web/src/app/'(dashboard)'/ordens-de-servico/ | head -5
+grep -rn "parseFloat\|Number(" apps/web/src/lib/catalog.service.ts || echo "OK — sem float em money"
+grep -rn "formatMoney\|Decimal" apps/web/src/app/\(dashboard\)/catalogo/page.tsx
+grep -rn "credentials.*include" apps/web/src/lib/work-order.service.ts && echo "ERRO: credentials:include encontrado" || echo "OK — sem credentials:include"
+grep -rn "Authorization\|Bearer\|apiFetch" apps/web/src/lib/work-order.service.ts | head -5
+grep -rn "new FormData" apps/web/src/lib/work-order.service.ts
+grep -rn "pt-BR\|Pendente\|Concluída\|Cancelada" apps/web/src/app/\(dashboard\)/ordens-de-servico/ | head -5
 ```
 </verification>
 
@@ -300,6 +337,8 @@ grep -rn "pt-BR\|Pendente\|Concluída\|Cancelada" apps/web/src/app/'(dashboard)'
 - `pnpm --filter @orcivo/web build` sem erros
 - unit_price exibido com formatMoney() (nunca parseFloat)
 - Upload de foto web via FormData (proxy do backend, não presigned URL)
+- apps/web/src/lib/work-order.service.ts NÃO contém `credentials:'include'`
+- uploadPhoto contém `Authorization: \`Bearer \${` e `new FormData()`
 - Status badges coloridos em pt-BR nas duas tabelas
 - Loading/empty/error states com shadcn/ui Skeleton e Alert
 - Ícones apenas lucide-react (sem emoji)

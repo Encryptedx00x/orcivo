@@ -31,8 +31,8 @@ must_haves:
     - "assertValidTransition exportado de shared-types e testável em isolamento"
   artifacts:
     - path: "prisma/schema.prisma"
-      provides: "Modelos CatalogItem, Quote, QuoteItem, QuoteApproval, WorkOrder, WorkOrderPhoto"
-      contains: "model CatalogItem"
+      provides: "Modelos CatalogItem, Quote, QuoteItem, QuoteApproval, WorkOrder, WorkOrderPhoto, AuditLog"
+      contains: "model AuditLog"
     - path: "packages/shared-types/src/quote/quote-status.enum.ts"
       provides: "QuoteStatus, assertValidTransition, VALID_TRANSITIONS"
       exports: ["QuoteStatus", "assertValidTransition"]
@@ -47,10 +47,10 @@ must_haves:
 ---
 
 <objective>
-Extensão do schema Prisma com os 6 novos modelos da Fase 2A e criação de todos os DTOs Zod em shared-types que os módulos backend, mobile e web consumirão.
+Extensão do schema Prisma com os 7 novos modelos da Fase 2A e criação de todos os DTOs Zod em shared-types que os módulos backend, mobile e web consumirão.
 
 Purpose: Esses artefatos são a fundação de todos os plans Wave 2+. Nada pode ser implementado antes do schema estar correto e dos DTOs estarem exportados.
-Output: Schema Prisma com CatalogItem/Quote/QuoteItem/QuoteApproval/WorkOrder/WorkOrderPhoto; DTOs Zod completos; helpers de money; state machine de Quote exportada.
+Output: Schema Prisma com CatalogItem/Quote/QuoteItem/QuoteApproval/WorkOrder/WorkOrderPhoto/AuditLog; DTOs Zod completos; helpers de money; state machine de Quote exportada.
 </objective>
 
 <execution_context>
@@ -101,11 +101,29 @@ Adicionar os seguintes modelos AO FINAL do schema.prisma existente (após o mode
    - QuoteApproval (quote_id @unique, approval_method ApprovalMethod, typed_name?, signature_image_url?, ip_address, user_agent, approved_at @default(now()); @@map("quote_approvals"))
    - WorkOrder (company_id, customer_id, quote_id? @unique, number Int, title, status WorkOrderStatus @default(PENDING), scheduled_at?, started_at?, finished_at?, notes?, assigned_to_user_id?, created_by_user_id; @@unique([company_id, number]), @@index([company_id]), @@index([company_id, status]), @@map("work_orders"))
    - WorkOrderPhoto (company_id, work_order_id, uploaded_by_user_id, photo_stage PhotoStage, file_url, caption?; @@index([work_order_id]), @@index([company_id]), @@map("work_order_photos"))
+   - AuditLog — adicionar ao schema (D2-14: audit trail de aprovações de orçamento):
+   ```prisma
+   model AuditLog {
+     id          String   @id @default(uuid())
+     company_id  String
+     actor_type  String   // "USER" | "SYSTEM"
+     action      String   // ex: "quote.approved"
+     entity_type String   // ex: "quote"
+     entity_id   String
+     metadata    Json?
+     created_at  DateTime @default(now())
+
+     @@index([company_id])
+     @@index([company_id, entity_type, entity_id])
+     @@map("audit_logs")
+   }
+   ```
 
 CRÍTICO:
 - NUNCA usar number/float para valores monetários — SEMPRE Decimal @db.Decimal(12,2)
 - NUNCA remover company_id de qualquer tabela de negócio
 - QuoteApproval NÃO tem company_id (acesso via Quote → company_id)
+- AuditLog tem company_id e NÃO é uma tabela de negócio principal, mas deve ter company_id para multi-tenancy
 - Verificar que `prisma validate` passa antes de finalizar
   </action>
   <verify>
@@ -113,9 +131,10 @@ CRÍTICO:
   </verify>
   <done>
     - `npx prisma validate` retorna sem erros
-    - Todos os 6 novos modelos presentes no arquivo
+    - Todos os 7 novos modelos presentes no arquivo (incluindo AuditLog)
     - Todo campo monetário usa Decimal @db.Decimal(12,2) ou Decimal @db.Decimal(10,3)
     - Toda tabela de negócio tem company_id com @@index([company_id])
+    - AuditLog tem @@map("audit_logs") e @@index([company_id])
   </done>
 </task>
 
@@ -376,18 +395,20 @@ npx prisma validate
 pnpm --filter @orcivo/shared-types build
 grep -r "@prisma/client\|@nestjs/\|from 'react'" packages/shared-types/src/ || echo "OK — sem imports proibidos"
 grep -r "Decimal" prisma/schema.prisma | grep -v "db.Decimal" | grep -v "//" | grep -E "Float|number" || echo "OK — sem float/number monetário"
+grep "model AuditLog" prisma/schema.prisma || echo "MISSING — AuditLog não encontrado"
 ```
 </verification>
 
 <success_criteria>
 - `npx prisma validate` — sem erros
 - `pnpm --filter @orcivo/shared-types build` — sem erros TypeScript
-- 6 novos modelos no schema (CatalogItem, Quote, QuoteItem, QuoteApproval, WorkOrder, WorkOrderPhoto)
+- 7 novos modelos no schema (CatalogItem, Quote, QuoteItem, QuoteApproval, WorkOrder, WorkOrderPhoto, AuditLog)
 - Todo campo monetário: `Decimal @db.Decimal(12,2)` ou `Decimal @db.Decimal(10,3)`
 - Toda tabela de negócio com company_id e @@index([company_id])
 - shared-types sem imports proibidos
 - assertValidTransition presente e exportado
 - formatMoney/multiplyDecimal/sumDecimal exportados de helpers/money
+- AuditLog model no schema com company_id, actor_type, action, entity_type, entity_id, metadata, created_at
 </success_criteria>
 
 <output>

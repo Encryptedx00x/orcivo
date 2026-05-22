@@ -20,6 +20,7 @@ must_haves:
     - "Botão 'Enviar via WhatsApp' abre wa.me com link de aprovação pré-formatado"
     - "Preços calculados com Decimal.js (nunca number/float)"
     - "Loading/error/empty states em todas as telas"
+    - "Todas as chamadas de API incluem header X-Client-Request-Id (D2-33 RequestIdempotency)"
   artifacts:
     - path: "apps/mobile/src/services/quote.service.ts"
       provides: "fetchQuotes, fetchQuote, createQuote, sendQuote"
@@ -45,7 +46,7 @@ must_haves:
 Implementar as telas mobile de Orçamento: lista de orçamentos com status, formulário de criação com seleção de itens do catálogo, e detalhe com envio (gera PDF no backend) e compartilhamento via WhatsApp.
 
 Purpose: D2.2 (orçamento mobile) e D2.3 (compartilhamento WhatsApp). O orçamento é o fluxo central do técnico: criar, enviar via WhatsApp e aguardar aprovação.
-Output: 3 telas mobile + 1 service de API; cálculo de preview de totais com Decimal.js; wa.me deep link.
+Output: 3 telas mobile + 1 service de API; cálculo de preview de totais com Decimal.js; wa.me deep link; X-Client-Request-Id em mutations.
 </objective>
 
 <execution_context>
@@ -79,6 +80,12 @@ Output: 3 telas mobile + 1 service de API; cálculo de preview de totais com Dec
 
 <!-- RESEARCH.md §"wa.me deep link" contém função buildWhatsAppLink() -->
 <!-- Para React Native: usar Linking.openURL(waUrl) de react-native -->
+
+<!-- D2-33 RequestIdempotency: X-Client-Request-Id OBRIGATÓRIO em todas as mutations -->
+<!-- AÇÃO OBRIGATÓRIA: ler apps/mobile/src/services/api.ts (ou core/api.ts) antes de criar services -->
+<!-- Verificar se o interceptor já adiciona X-Client-Request-Id -->
+<!-- Se não adicionar → adicionar interceptor antes de criar os services (ver P08 Task 1 read_first) -->
+<!-- O P08 já pode ter adicionado o interceptor — verificar SUMMARY de P08 antes de duplicar -->
 </interfaces>
 </context>
 
@@ -92,10 +99,17 @@ Output: 3 telas mobile + 1 service de API; cálculo de preview de totais com Dec
     apps/mobile/src/screens/QuoteDetailScreen.tsx
   </files>
   <read_first>
-    - apps/mobile/src/services/api.ts (padrão de service a replicar)
+    - apps/mobile/src/services/api.ts (verificar se existe e se tem interceptor X-Client-Request-Id)
+    - apps/mobile/src/core/api.ts (verificar se existe — caminho alternativo)
+    - .planning/phases/02-mvp-funcional/2A-P08-SUMMARY.md (confirmar se P08 já adicionou X-Client-Request-Id ao interceptor)
     - apps/mobile/src/services/catalog.service.ts (criado em P08 — padrão a seguir)
     - apps/mobile/src/screens/ (listar existentes — não sobrescrever)
     - packages/shared-types/src/helpers/money.ts (formatMoney, multiplyDecimal, sumDecimal)
+
+    AÇÃO OBRIGATÓRIA sobre X-Client-Request-Id (D2-33):
+    Se P08 já adicionou o interceptor → apenas confirmar e prosseguir.
+    Se P08 NÃO adicionou → adicionar agora ao arquivo api.ts antes de criar os services.
+    Resultado: apps/mobile/src/services/api.ts (ou core/api.ts) DEVE conter 'X-Client-Request-Id'.
   </read_first>
   <action>
 **quote.service.ts:**
@@ -187,6 +201,7 @@ export const quoteService = {
     - QuoteDetailScreen usa formatMoney() para exibir valores
     - wa.me link construído com phone do cliente e approvalUrl
     - Todos os textos de UI em pt-BR
+    - apps/mobile/src/services/api.ts (ou core/api.ts) CONTÉM 'X-Client-Request-Id' no interceptor
   </done>
 </task>
 
@@ -264,6 +279,7 @@ Design: seguir design system purple-600 #6D28D9. Ícones Lucide: Plus, Trash2, S
 | Boundary | Description |
 |----------|-------------|
 | mobile → wa.me | Deep link abre WhatsApp no device; approvalUrl contém token opaco (UUID) |
+| mobile → todas as mutations | X-Client-Request-Id obrigatório para idempotência (D2-33) |
 
 ## STRIDE Threat Register
 
@@ -280,6 +296,7 @@ pnpm --filter @orcivo/mobile typecheck
 grep -rn "parseFloat\|Number(" apps/mobile/src/screens/Quote* | grep -v "Number(page)" || echo "OK — sem float em money"
 grep -rn "multiplyDecimal\|sumDecimal\|formatMoney" apps/mobile/src/screens/QuoteCreateScreen.tsx
 grep -rn "wa\.me" apps/mobile/src/screens/QuoteDetailScreen.tsx
+grep -rn "X-Client-Request-Id" apps/mobile/src/services/api.ts apps/mobile/src/core/api.ts 2>/dev/null || echo "MISSING — interceptor não encontrado"
 ```
 </verification>
 
@@ -290,6 +307,7 @@ grep -rn "wa\.me" apps/mobile/src/screens/QuoteDetailScreen.tsx
 - wa.me link construído com phone do cliente (normalizado sem máscara) e approvalUrl
 - Todos os textos UI em pt-BR
 - Loading/error/empty states nas 3 telas
+- apps/mobile/src/services/api.ts (ou core/api.ts) contém 'X-Client-Request-Id' no interceptor de request
 </success_criteria>
 
 <output>

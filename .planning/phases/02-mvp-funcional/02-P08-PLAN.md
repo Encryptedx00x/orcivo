@@ -24,6 +24,7 @@ must_haves:
     - "WorkOrderPhotoScreen permite tirar/selecionar foto via expo-image-picker e enviar ao backend"
     - "Preços exibidos com formatMoney() de shared-types (nunca parseFloat)"
     - "Loading/error/empty states em todas as telas"
+    - "Todas as chamadas de API incluem header X-Client-Request-Id (D2-33 RequestIdempotency)"
   artifacts:
     - path: "apps/mobile/src/screens/CatalogScreen.tsx"
       provides: "Lista de itens do catálogo com FlatList"
@@ -49,7 +50,7 @@ must_haves:
 Implementar as telas mobile de Catálogo (lista + formulário) e Ordem de Serviço (lista + detalhe + upload de fotos), preenchendo os placeholders do shell da Fase 1.
 
 Purpose: D2.1 (catálogo mobile) e D2.5 (OS mobile). O catálogo é usado pelo técnico ao montar orçamentos. As fotos da OS são a documentação do serviço prestado — críticas para o técnico.
-Output: 5 telas mobile funcionais; 2 services de API; integração com expo-image-picker para upload.
+Output: 5 telas mobile funcionais; 2 services de API; integração com expo-image-picker para upload; X-Client-Request-Id em todas as mutations.
 </objective>
 
 <execution_context>
@@ -68,7 +69,12 @@ Output: 5 telas mobile funcionais; 2 services de API; integração com expo-imag
 <!-- apps/mobile/src/navigation/ — verificar navegação existente -->
 
 <!-- Padrão de API service existente (replicar): -->
-<!-- apps/mobile/src/services/api.ts — axios instance com interceptors JWT + X-Client-Request-Id -->
+<!-- IMPORTANTE: verificar AMBOS os caminhos antes de criar services: -->
+<!-- apps/mobile/src/services/api.ts — pode conter axios instance com interceptors JWT -->
+<!-- apps/mobile/src/core/api.ts — pode conter axios instance alternativa -->
+<!-- D2-33 RequireIdempotency: toda mutation (POST/PATCH/DELETE) DEVE incluir header X-Client-Request-Id -->
+<!-- Se o arquivo api.ts já tiver interceptor adicionando X-Client-Request-Id → documentar e reutilizar -->
+<!-- Se NÃO tiver → adicionar o interceptor ao arquivo api.ts antes de criar os services -->
 <!-- Verificar import de formatMoney de @orcivo/shared-types -->
 
 <!-- Design system: purple-600 #6D28D9, Inter, Lucide icons only, pt-BR -->
@@ -94,10 +100,24 @@ Output: 5 telas mobile funcionais; 2 services de API; integração com expo-imag
     apps/mobile/src/screens/CatalogItemFormScreen.tsx
   </files>
   <read_first>
-    - apps/mobile/src/services/api.ts (padrão de service a replicar)
+    - apps/mobile/src/services/api.ts (verificar se existe e se tem interceptor X-Client-Request-Id)
+    - apps/mobile/src/core/api.ts (verificar se existe — caminho alternativo do interceptor)
     - apps/mobile/src/screens/ (listar arquivos existentes antes de criar — não sobrescrever)
     - apps/mobile/src/navigation/ (verificar rotas existentes para Catálogo)
     - packages/shared-types/src/helpers/money.ts (formatMoney — usar para exibir preços)
+
+    AÇÃO OBRIGATÓRIA sobre X-Client-Request-Id (D2-33):
+    1. Ler apps/mobile/src/services/api.ts OU apps/mobile/src/core/api.ts (whichever exists)
+    2. Verificar se o interceptor de request já adiciona 'X-Client-Request-Id'
+    3. SE NÃO adiciona → adicionar interceptor ao arquivo api.ts:
+       ```typescript
+       import { randomUUID } from 'crypto'; // ou uuid lib
+       api.interceptors.request.use(config => {
+         config.headers['X-Client-Request-Id'] = randomUUID();
+         return config;
+       });
+       ```
+    4. SE JÁ adiciona → apenas documentar em comentário no service file criado
   </read_first>
   <action>
 Instalar dependências:
@@ -166,6 +186,7 @@ export const catalogService = {
     - Nenhum uso de parseFloat ou Number() em campos de preço — usar formatMoney de shared-types
     - Todos os textos de UI em pt-BR
     - Ícones Lucide only (sem emoji)
+    - apps/mobile/src/services/api.ts (ou core/api.ts) CONTÉM 'X-Client-Request-Id' no interceptor
   </done>
 </task>
 
@@ -178,7 +199,7 @@ export const catalogService = {
     apps/mobile/src/screens/WorkOrderPhotoScreen.tsx
   </files>
   <read_first>
-    - apps/mobile/src/services/api.ts (padrão de service)
+    - apps/mobile/src/services/api.ts (padrão de service — confirmar que X-Client-Request-Id está no interceptor)
     - apps/mobile/src/screens/ (verificar telas existentes)
     - .planning/phases/02-mvp-funcional/02-RESEARCH.md §"Pattern 7: Canvas de assinatura mobile → PNG → MinIO" (padrão de upload multipart)
     - apps/mobile/src/navigation/ (rotas existentes)
@@ -221,7 +242,6 @@ export const workOrderService = {
   },
   async uploadPhoto(workOrderId: string, fileUri: string, stage: string, caption?: string): Promise<WorkOrderPhoto> {
     // Ler arquivo como base64 via expo-file-system
-    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
     const mimeType = fileUri.endsWith('.png') ? 'image/png' : 'image/jpeg';
 
     const formData = new FormData();
@@ -233,6 +253,7 @@ export const workOrderService = {
     formData.append('stage', stage);
     if (caption) formData.append('caption', caption);
 
+    // Usar a instância api (que já inclui X-Client-Request-Id via interceptor)
     const { data } = await api.post(`/work-orders/${workOrderId}/photos`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -277,11 +298,12 @@ export const workOrderService = {
   </verify>
   <done>
     - Todos os arquivos compilam sem erros TypeScript
-    - work-order.service.ts usa expo-file-system para ler URI antes do upload
+    - work-order.service.ts usa instância api (com interceptor) para upload — não fetch direto com credentials:'include'
     - WorkOrderListScreen mostra badges de status coloridos em pt-BR
     - WorkOrderPhotoScreen pede permissão antes de abrir câmera/galeria
     - Textos UI todos em pt-BR ("Iniciar OS", "Concluir", "Cancelada", etc.)
     - Ícones Lucide only
+    - apps/mobile/src/services/api.ts (ou core/api.ts) CONTÉM 'X-Client-Request-Id' no interceptor de request
   </done>
 </task>
 
@@ -293,6 +315,7 @@ export const workOrderService = {
 | Boundary | Description |
 |----------|-------------|
 | mobile → POST /work-orders/:id/photos | Upload multipart; JWT no header; arquivo validado no backend |
+| mobile → todas as mutations | X-Client-Request-Id obrigatório para idempotência (D2-33) |
 
 ## STRIDE Threat Register
 
@@ -308,6 +331,7 @@ cd /c/Users/Encryptedx/Desktop/orcivo
 pnpm --filter @orcivo/mobile typecheck
 grep -rn "parseFloat\|Number(" apps/mobile/src/screens/Catalog* || echo "OK — sem float em money"
 grep -rn "formatMoney\|Decimal" apps/mobile/src/screens/Catalog*
+grep -rn "X-Client-Request-Id" apps/mobile/src/services/api.ts apps/mobile/src/core/api.ts 2>/dev/null || echo "MISSING — adicionar interceptor"
 grep -rn "pt-BR\|pt_BR" apps/mobile/src/screens/ | head -5 || grep -rn "Serviço\|Produto\|Cancelar\|Concluir" apps/mobile/src/screens/ | head -5
 ```
 </verification>
@@ -320,6 +344,7 @@ grep -rn "pt-BR\|pt_BR" apps/mobile/src/screens/ | head -5 || grep -rn "Serviço
 - Todas as strings de UI em pt-BR
 - Ícones apenas Lucide (sem emoji, sem custom icons)
 - Loading/error/empty states em todas as 5 telas
+- apps/mobile/src/services/api.ts (ou core/api.ts) contém 'X-Client-Request-Id' no interceptor de request
 </success_criteria>
 
 <output>

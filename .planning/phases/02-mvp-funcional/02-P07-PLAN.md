@@ -8,9 +8,10 @@ files_modified:
   - apps/backend/src/quote/quote-pdf.service.ts
   - apps/backend/src/quote/quote-pdf.service.spec.ts
   - apps/backend/src/quote/quote.service.ts
-  - apps/backend/src/quote/quote.controller.ts
+  - apps/backend/src/quote/quote-public.controller.ts
   - apps/backend/src/quote/quote.module.ts
   - apps/backend/tsconfig.json
+  - packages/shared-types/src/quote/quote-approval.dto.ts
 autonomous: true
 requirements: ["D2.3", "D2.4"]
 
@@ -20,8 +21,10 @@ must_haves:
     - "PDF contém: logo da empresa, número do orçamento, itens, subtotal, desconto, total, chave Pix, observações"
     - "PDF do plano LIVRE tem marca d'água discreta com texto 'Orcivo Livre'"
     - "POST /quotes/public/:token/approve cria QuoteApproval + muda status para APPROVED + cria WorkOrder automaticamente"
+    - "approve() registra AuditLog com action='quote.approved', entity_type='quote' dentro do $transaction"
     - "Aprovação dupla retorna 409 (idempotência via $transaction com count check)"
     - "DRAWN_SIGNATURE: base64 PNG decodificado e salvo no MinIO como signature_image_url"
+    - "quote-pdf.service.tsx NÃO contém parseFloat() — usa new Decimal() para comparações numéricas"
   artifacts:
     - path: "apps/backend/src/quote/quote-pdf.service.ts"
       provides: "generate(quote, company): Promise<Buffer> usando @react-pdf/renderer"
@@ -38,13 +41,17 @@ must_haves:
       to: "WorkOrderService.create"
       via: "método approve() após QuoteApproval criado"
       pattern: "workOrderService\\.create"
+    - from: "apps/backend/src/quote/quote.service.ts"
+      to: "prisma.auditLog.create"
+      via: "método approve() dentro do $transaction"
+      pattern: "auditLog\\.create"
 ---
 
 <objective>
-Implementar a geração de PDF com @react-pdf/renderer (com marca d'água para plano LIVRE) e o fluxo completo de aprovação pública: POST /quotes/public/:token/approve cria QuoteApproval, atualiza status para APPROVED, e cria WorkOrder automaticamente com idempotência.
+Implementar a geração de PDF com @react-pdf/renderer (com marca d'água para plano LIVRE) e o fluxo completo de aprovação pública: POST /quotes/public/:token/approve cria QuoteApproval, registra AuditLog, atualiza status para APPROVED, e cria WorkOrder automaticamente com idempotência.
 
-Purpose: D2.3 (PDF) e D2.4 (aprovação pública) são os deliverables mais complexos da Fase 2A. O PDF precisa estar gerado quando o quote é enviado (status SENT). A aprovação é o momento de monetização — é crítico que seja idempotente e rastreável.
-Output: QuotePdfService; método send() atualizado; endpoint POST /quotes/public/:token/approve; spec do PDF service.
+Purpose: D2.3 (PDF) e D2.4 (aprovação pública) são os deliverables mais complexos da Fase 2A. O PDF precisa estar gerado quando o quote é enviado (status SENT). A aprovação é o momento de monetização — é crítico que seja idempotente e rastreável via AuditLog (D2-14).
+Output: QuotePdfService; método send() atualizado; endpoint POST /quotes/public/:token/approve com AuditLog; spec do PDF service.
 </objective>
 
 <execution_context>
@@ -82,6 +89,20 @@ Output: QuotePdfService; método send() atualizado; endpoint POST /quotes/public
 <!-- Signature: DRAWN_SIGNATURE envia base64 PNG no body como 'signature' (string) -->
 <!-- Backend decodifica: buffer = Buffer.from(base64.replace("data:image/png;base64,",""), "base64") -->
 <!-- Salva em orcivo-photos/{company_id}/signatures/{uuid}.png -->
+
+<!-- CAMPOS OBRIGATÓRIOS de getByApprovalToken() (garantidos pelo P05): -->
+<!-- quote.company_id — obrigatório para AuditLog.create() e WorkOrder.create() -->
+<!-- quote.created_by_user_id — obrigatório para WorkOrder.create() -->
+<!-- quote.number — obrigatório para título da OS -->
+<!-- quote.status — verificado antes de aprovar -->
+<!-- quote.customer.id — obrigatório para WorkOrder.create() -->
+<!-- quote.customer.phone — para WhatsApp (retornado pelo P05) -->
+<!-- Se getByApprovalToken() não retornar esses campos → runtime undefined → approve() falha -->
+<!-- P05 garante todos esses campos via select explícito — confirmar SUMMARY de P05 antes de codificar -->
+
+<!-- REGRA ABSOLUTA: NUNCA usar parseFloat() em campos monetários -->
+<!-- Para comparação: new Decimal(quote.discount_value).greaterThan(0) -->
+<!-- NÃO: parseFloat(quote.discount_value) > 0 -->
 </interfaces>
 </context>
 
@@ -104,6 +125,7 @@ Output: QuotePdfService; método send() atualizado; endpoint POST /quotes/public
     - Test 1: generate() com company.plan_code='LIVRE' → buffer não vazio + PDF contém texto "Orcivo Livre"
     - Test 2: generate() com company.plan_code='SOLO' → buffer não vazio + sem texto "Orcivo Livre"
     - Test 3: generate() com itens → renderToBuffer chamado (mock) com Document component
+    - Test 4: generate() com discount_value='10.00' → usa new Decimal('10.00').greaterThan(0) para exibir desconto (sem parseFloat)
   </behavior>
   <action>
 **Configuração TypeScript:**
@@ -118,8 +140,14 @@ pnpm --filter @orcivo/backend add -D @types/react
 ```
 
 **apps/backend/src/quote/quote-pdf.service.tsx** (extensão .tsx obrigatória para JSX):
+
+CRÍTICO: NÃO usar parseFloat() em nenhuma comparação de campos monetários.
+Use `new Decimal(value).greaterThan(0)` em vez de `parseFloat(value) > 0`.
+Adicionar `import Decimal from 'decimal.js';` no topo do arquivo.
+
 ```tsx
 import React from 'react';
+import Decimal from 'decimal.js';
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
 import { Injectable } from '@nestjs/common';
 
@@ -174,6 +202,8 @@ export class QuotePdfService {
   async generate(quote: QuoteData, company: CompanyData): Promise<Buffer> {
     const showWatermark = company.plan_code === 'LIVRE';
     const location = [company.city, company.state].filter(Boolean).join(' — ');
+    // NUNCA usar parseFloat — usar new Decimal() para todas as comparações numéricas em campos monetários
+    const hasDiscount = new Decimal(quote.discount_value).greaterThan(0);
 
     const doc = (
       <Document>
@@ -220,7 +250,7 @@ export class QuotePdfService {
               <Text style={styles.totalsLabel}>Subtotal</Text>
               <Text style={styles.totalsValue}>R$ {quote.subtotal}</Text>
             </View>
-            {parseFloat(quote.discount_value) > 0 && (
+            {hasDiscount && (
               <View style={styles.totalsRow}>
                 <Text style={styles.totalsLabel}>
                   Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
@@ -272,6 +302,11 @@ jest.mock('@react-pdf/renderer', () => ({
   StyleSheet: { create: (s: any) => s },
 }));
 ```
+
+ACCEPTANCE CRITERIA OBRIGATÓRIO:
+- `grep "parseFloat" apps/backend/src/quote/quote-pdf.service.tsx` deve retornar vazio (sem parseFloat)
+- `grep "new Decimal" apps/backend/src/quote/quote-pdf.service.tsx` deve encontrar ao menos 1 match
+- `grep "import Decimal" apps/backend/src/quote/quote-pdf.service.tsx` deve encontrar 1 match
   </action>
   <verify>
     <automated>cd /c/Users/Encryptedx/Desktop/orcivo && pnpm --filter @orcivo/backend test --testPathPattern=quote-pdf 2>&1 | tail -20</automated>
@@ -282,29 +317,34 @@ jest.mock('@react-pdf/renderer', () => ({
     - quote-pdf.service.tsx compila sem erros
     - Marca d'água presente apenas quando plan_code === 'LIVRE'
     - Texto da marca d'água é "Orcivo Livre" (não "FREE")
+    - quote-pdf.service.tsx NÃO contém "parseFloat" (grep deve retornar vazio)
+    - quote-pdf.service.tsx contém "new Decimal(" e "import Decimal from 'decimal.js'"
   </done>
 </task>
 
 <task type="auto" tdd="true">
-  <name>Task 2: Atualizar send() + implementar approve() com idempotência</name>
+  <name>Task 2: Atualizar send() + implementar approve() com AuditLog + idempotência</name>
   <files>
     apps/backend/src/quote/quote.service.ts,
-    apps/backend/src/quote/quote.controller.ts,
-    apps/backend/src/quote/quote.module.ts
+    apps/backend/src/quote/quote-public.controller.ts,
+    apps/backend/src/quote/quote.module.ts,
+    packages/shared-types/src/quote/quote-approval.dto.ts
   </files>
   <read_first>
     - apps/backend/src/quote/quote.service.ts (ler COMPLETO — atualizar send(), adicionar approve())
-    - apps/backend/src/quote/quote.controller.ts (ler COMPLETO — adicionar POST public/:token/approve)
+    - apps/backend/src/quote/quote-public.controller.ts (ler COMPLETO — adicionar POST :token/approve)
     - apps/backend/src/quote/quote.module.ts (ler — adicionar QuotePdfService e WorkOrderModule import)
     - .planning/phases/02-mvp-funcional/02-RESEARCH.md §"Pitfall 2: Aprovação dupla"
     - .planning/phases/02-mvp-funcional/02-RESEARCH.md §"Pattern 7: Canvas de assinatura mobile → PNG → MinIO"
     - apps/backend/src/work-order/work-order.service.ts (interface do create — verificar assinatura)
+    - .planning/phases/02-mvp-funcional/2A-P05-SUMMARY.md (confirmar campos retornados por getByApprovalToken)
   </read_first>
   <behavior>
-    - Test 1: approve() com token válido, status SENT → cria QuoteApproval + muda status APPROVED + cria WorkOrder
+    - Test 1: approve() com token válido, status SENT → cria QuoteApproval + muda status APPROVED + cria WorkOrder + registra AuditLog
     - Test 2: approve() chamado 2x com mesmo token → segundo retorna 409 ConflictException
     - Test 3: approve() com TYPED_NAME sem typed_name → BadRequestException (validação do schema)
     - Test 4: approve() com DRAWN_SIGNATURE → salva signature_image_url no MinIO
+    - Test 5: AuditLog criado com action='quote.approved', entity_type='quote', entity_id=quote.id, company_id=quote.company_id
   </behavior>
   <action>
 **Atualizar quote.service.ts:**
@@ -333,10 +373,12 @@ async send(id: string, companyId: string) {
 }
 ```
 
-3. Adicionar método `approve()`:
+3. Adicionar método `approve()` — com AuditLog.create() DENTRO do $transaction (D2-14):
 ```typescript
 async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
   const quote = await this.getByApprovalToken(token);
+  // quote garantidamente tem: id, company_id, created_by_user_id, number, status, customer.id
+  // (garantido pelo select explícito em getByApprovalToken() — P05)
 
   // Idempotência via $transaction com count check (Pitfall 2 do RESEARCH.md)
   const result = await this.prisma.$transaction(async (tx) => {
@@ -345,6 +387,23 @@ async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent:
       data: { status: 'APPROVED' },
     });
     if (updated.count === 0) return null; // já aprovado ou não é SENT
+
+    // Registrar AuditLog dentro da mesma transaction (D2-14)
+    await tx.auditLog.create({
+      data: {
+        company_id: quote.company_id,
+        actor_type: 'SYSTEM',
+        action: 'quote.approved',
+        entity_type: 'quote',
+        entity_id: quote.id,
+        metadata: {
+          approval_method: dto.approval_method,
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        },
+      },
+    });
+
     return updated;
   });
 
@@ -374,7 +433,7 @@ async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent:
   // Criar WorkOrder automaticamente (D2-14)
   const woTitle = quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`;
   await this.workOrderService.create(
-    { customer_id: quote.customer_id, title: woTitle },
+    { customer_id: quote.customer.id, title: woTitle },
     quote.company_id,
     quote.created_by_user_id,
     quote.id, // quoteId
@@ -384,19 +443,34 @@ async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent:
 }
 ```
 
-**Atualizar quote.controller.ts** — adicionar endpoint:
+**Atualizar quote-public.controller.ts** — adicionar endpoint POST:
 ```typescript
-@Post('public/:token/approve')
-@Public()
-@HttpCode(200)
-async approve(
-  @Param('token') token: string,
-  @Body(new ZodValidationPipe(ApproveQuoteSchema)) body: unknown,
-  @Req() req: Request,
-) {
-  const ipAddress = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
-  const userAgent = req.headers['user-agent'] ?? '';
-  return this.quoteService.approve(token, body as never, ipAddress, userAgent);
+import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { ApproveQuoteSchema } from '@orcivo/shared-types';
+import { QuoteService } from './quote.service';
+import { Request } from 'express';
+
+@Controller('quotes/public')
+export class QuotePublicController {
+  constructor(private readonly quoteService: QuoteService) {}
+
+  @Get(':token')
+  getPublicQuote(@Param('token') token: string) {
+    return this.quoteService.getByApprovalToken(token);
+  }
+
+  @Post(':token/approve')
+  @HttpCode(200)
+  async approve(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(ApproveQuoteSchema)) body: unknown,
+    @Req() req: Request,
+  ) {
+    const ipAddress = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+    const userAgent = req.headers['user-agent'] ?? '';
+    return this.quoteService.approve(token, body as never, ipAddress, userAgent);
+  }
 }
 ```
 
@@ -410,18 +484,30 @@ providers: [QuoteService, QuoteExpiryProcessor, QuotePdfService],
 ApproveQuoteSchema já importado de shared-types. Adicionar campo `signature` opcional ao schema:
 Atualizar `packages/shared-types/src/quote/quote-approval.dto.ts` para adicionar:
 ```typescript
-signature: z.string().optional(), // base64 PNG para DRAWN_SIGNATURE
+signature: z.string().max(2_000_000).optional(), // base64 PNG para DRAWN_SIGNATURE (limite 2MB)
 ```
+
+**IMPORTANTE — rebuild de shared-types após alterar quote-approval.dto.ts:**
+Após editar packages/shared-types/src/quote/quote-approval.dto.ts, executar:
+```bash
+pnpm --filter @orcivo/shared-types build
+```
+O backend depende do dist compilado de shared-types. Sem o rebuild, os testes falharão com imports desatualizados.
   </action>
   <verify>
-    <automated>cd /c/Users/Encryptedx/Desktop/orcivo && pnpm --filter @orcivo/backend test --testPathPattern="quote.service|quote-pdf" 2>&1 | tail -20</automated>
+    <automated>cd /c/Users/Encryptedx/Desktop/orcivo && pnpm --filter @orcivo/shared-types build && pnpm --filter @orcivo/backend test --testPathPattern="quote.service|quote-pdf" 2>&1 | tail -20</automated>
   </verify>
   <done>
-    - Todos os testes passam (incluindo idempotência, TYPED_NAME validation, DRAWN_SIGNATURE)
+    - Todos os testes passam (incluindo idempotência, TYPED_NAME validation, DRAWN_SIGNATURE, AuditLog)
     - send() salva pdf_url no banco após upload para MinIO
     - approve() usa $transaction com updateMany + count check para idempotência
+    - approve() cria AuditLog com action='quote.approved' DENTRO do $transaction
+    - quote-pdf.service.tsx NÃO contém parseFloat (grep retorna vazio)
+    - quote-pdf.service.tsx contém "new Decimal(" e "import Decimal from 'decimal.js'"
     - WorkOrder criada automaticamente após aprovação
     - Backend compila sem erros
+    - approve() usa quote.company_id e quote.created_by_user_id (vindos de getByApprovalToken() P05)
+    - packages/shared-types/dist/index.js existe após build (pnpm --filter @orcivo/shared-types build exits 0)
   </done>
 </task>
 
@@ -432,8 +518,8 @@ signature: z.string().optional(), // base64 PNG para DRAWN_SIGNATURE
 
 | Boundary | Description |
 |----------|-------------|
-| público → POST /quotes/public/:token/approve | Sem autenticação; ip_address e user_agent registrados como evidência de aprovação |
-| base64 PNG → MinIO | Dados binários vindos do cliente; tamanho não explicitamente limitado na assinatura |
+| público → POST /quotes/public/:token/approve | Sem autenticação; ip_address e user_agent registrados como evidência de aprovação; AuditLog como trail imutável |
+| base64 PNG → MinIO | Dados binários vindos do cliente; tamanho limitado a 2MB no schema Zod |
 
 ## STRIDE Threat Register
 
@@ -441,28 +527,35 @@ signature: z.string().optional(), // base64 PNG para DRAWN_SIGNATURE
 |-----------|----------|-----------|-------------|-----------------|
 | T-2A-18 | Tampering | aprovação dupla (double-submit) | mitigate | $transaction com updateMany({ where: { status: 'SENT' } }) + count === 0 → 409; sem race condition |
 | T-2A-19 | Spoofing | ip_address manipulado via X-Forwarded-For | accept | MVP sem reverse proxy configurado; Fase 3 configurará trust proxy no NestJS |
-| T-2A-20 | Denial of Service | base64 PNG gigante no DRAWN_SIGNATURE | mitigate | Adicionar limite de 2MB ao campo signature no schema Zod: `z.string().max(2_000_000)` |
+| T-2A-20 | Denial of Service | base64 PNG gigante no DRAWN_SIGNATURE | mitigate | `z.string().max(2_000_000)` no campo signature do ApproveQuoteSchema |
 | T-2A-21 | Information Disclosure | pdf_url acessível sem autenticação | accept | URL do MinIO requer knowledge da URL exata (UUIDs); não há listagem pública de PDFs |
 </threat_model>
 
 <verification>
 ```bash
 cd /c/Users/Encryptedx/Desktop/orcivo
+pnpm --filter @orcivo/shared-types build
 pnpm --filter @orcivo/backend test --testPathPattern="quote.service|quote-pdf"
 pnpm --filter @orcivo/backend build
-grep -n "ConflictException\|updateMany.*count" apps/backend/src/quote/quote.service.ts
-grep -n "workOrderService\\.create" apps/backend/src/quote/quote.service.ts
-grep -n "pdf_url\|approval_token" apps/backend/src/quote/quote.service.ts
+grep -n "parseFloat" apps/backend/src/quote/quote-pdf.service.tsx && echo "ERRO: parseFloat encontrado" || echo "OK — sem parseFloat"
+grep -n "new Decimal\|import Decimal" apps/backend/src/quote/quote-pdf.service.tsx
+grep -n "auditLog\.create\|AuditLog" apps/backend/src/quote/quote.service.ts
+grep -n "ConflictException\|updateMany.*count\|\$transaction" apps/backend/src/quote/quote.service.ts
+grep -n "workOrderService\.create" apps/backend/src/quote/quote.service.ts
 ```
 </verification>
 
 <success_criteria>
 - Todos os testes de quote.service e quote-pdf.service passam
 - approve() retorna 409 se chamado duas vezes com mesmo token
+- approve() cria AuditLog dentro do $transaction (action='quote.approved', entity_type='quote')
 - WorkOrder criada automaticamente após aprovação (com quote_id vinculado)
 - pdf_url salvo no banco após send()
 - Marca d'água "Orcivo Livre" presente no PDF apenas para plano LIVRE
+- quote-pdf.service.tsx NÃO contém parseFloat()
+- quote-pdf.service.tsx contém `new Decimal(` e `import Decimal from 'decimal.js'`
 - Backend compila sem erros TypeScript
+- pnpm --filter @orcivo/shared-types build exits 0 (packages/shared-types/dist/index.js existe)
 </success_criteria>
 
 <output>
