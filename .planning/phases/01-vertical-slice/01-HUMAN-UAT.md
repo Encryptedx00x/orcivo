@@ -13,15 +13,18 @@ Ver guia completo em `docs/runbooks/local-dev.md`.
 **Ordem rápida:**
 
 ```bash
+# Pré-requisito (1x ou após alterar DTOs)
+pnpm --filter @orcivo/shared-types build
+
 # Terminal 0 (infra)
 pnpm dev:infra
 npx prisma db push
 
-# Terminal 1 (backend)
+# Terminal 1 (backend) — compila shared-types antes de iniciar
 pnpm dev:backend
 # → http://localhost:3000/health deve retornar {"status":"ok"}
 
-# Terminal 2 (web)
+# Terminal 2 (web) — compila shared-types antes de iniciar
 pnpm dev:web
 # → http://localhost:3001
 

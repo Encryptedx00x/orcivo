@@ -21,6 +21,9 @@ git clone <repo>
 cd orcivo
 pnpm install
 
+# Compilar shared-types (OBRIGATÓRIO antes de qualquer app)
+pnpm --filter @orcivo/shared-types build
+
 # Backend: copiar .env
 cp apps/backend/.env.example apps/backend/.env
 # Editar apps/backend/.env se quiser senhas customizadas
@@ -31,6 +34,11 @@ cp apps/web/.env.local.example apps/web/.env.local
 # Mobile: copiar .env
 cp apps/mobile/.env.example apps/mobile/.env
 ```
+
+> **Por que compilar shared-types?** O backend, web e mobile importam `@orcivo/shared-types`
+> via `dist/index.js` (CommonJS). Sem o build, Node não encontra o módulo em runtime.
+> Os scripts `dev:backend`, `dev:web` e `dev:mobile` compilam shared-types automaticamente
+> antes de iniciar — mas na primeira vez é bom fazer manualmente para verificar erros.
 
 ---
 
