@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtSignupGuard } from './guards/jwt-signup.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 
 @Controller('auth')
@@ -33,7 +34,7 @@ export class AuthController {
     return this.authService.signupUser(body as never);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtSignupGuard)
   @Post('signup/company')
   signupCompany(
     @CurrentUser() user: { userId: string },
