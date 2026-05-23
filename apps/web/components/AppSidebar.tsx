@@ -8,7 +8,7 @@ const NAV = [
   { label: 'Clientes', href: '/clientes', icon: Users },
   { label: 'Catálogo', href: '/catalogo', icon: Package },
   { label: 'Orçamentos', href: '/orcamentos', icon: FileText },
-  { label: 'Ordens de Serviço', href: '/ordens', icon: ClipboardList },
+  { label: 'Ordens de Serviço', href: '/ordens-de-servico', icon: ClipboardList },
   { label: 'Agenda', href: '/agenda', icon: Calendar },
   { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
   { label: 'Documentos', href: '/documentos', icon: FolderOpen },
