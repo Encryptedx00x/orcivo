@@ -2,11 +2,13 @@ import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/commo
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ApproveQuoteSchema } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
+import { Public } from '../auth/decorators/public.decorator';
 import { Request } from 'express';
 
 // AVISO: Este controller e intencionalmente publico — sem JwtAuthGuard, sem TenantGuard.
 // TenantGuard lanca ForbiddenException se request.user for undefined, mesmo com @Public().
 // A separacao em controller dedicado e a solucao correta (conforme nota de interfaces do plano).
+@Public()
 @Controller('quotes/public')
 export class QuotePublicController {
   constructor(private readonly quoteService: QuoteService) {}
