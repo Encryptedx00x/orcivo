@@ -15,7 +15,7 @@ export default function NovoClientePage(): JSX.Element {
     const parsed = CustomerCreateSchema.safeParse(payload);
     if (!parsed.success) { setError(parsed.error.issues.map(i => i.message).join(', ')); return; }
     setLoading(true);
-    const res = await fetch(`${process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3000'}/customers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed.data), credentials: 'include' });
+    const res = await fetch('/api/customers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parsed.data) });
     if (!res.ok) { setError('Erro ao salvar cliente.'); setLoading(false); return; }
     router.push('/clientes'); router.refresh();
   };
