@@ -218,6 +218,7 @@ export class QuoteService {
     return this.prisma.quote.update({
       where: { id },
       data: { status: 'CANCELLED', notes: reason },
+      include: { items: true, customer: true, approval: true },
     });
   }
 
