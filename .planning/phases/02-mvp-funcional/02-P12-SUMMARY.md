@@ -2,10 +2,10 @@
 phase: "2A"
 plan: "02-P12"
 title: "Web pública — Página de aprovação de orçamento + smoke tests + prisma migrate"
-status: checkpoint
+status: complete
 completed_at: "2026-05-23"
-duration_minutes: 20
-tasks_completed: 1
+duration_minutes: 30
+tasks_completed: 2
 tasks_total: 2
 
 subsystem: web
@@ -57,7 +57,7 @@ metrics:
 | Task | Nome | Commit | Arquivos |
 |------|------|--------|----------|
 | 1 | approval.service.ts + Página /approve/:token + SignatureCanvas | bcf2a3b | 3 arquivos criados |
-| 2 | [checkpoint] Smoke tests + prisma migrate | — | aguardando verificação manual |
+| 2 | Smoke tests completos + prisma migrate | aprovado pelo usuário | prisma migrate dev --name phase-2a executado |
 
 ## Deviations from Plan
 
@@ -99,10 +99,13 @@ Commits:
 Build: `pnpm --filter @orcivo/web build` → Compiled successfully (EPERM standalone é problema pré-existente Windows, não causado por este plano)
 TypeScript: `tsc --noEmit` → sem erros
 
-## Checkpoint Pendente
+## Smoke Tests Aprovados
 
-Task 2 é um `checkpoint:human-verify` bloqueante que requer:
-1. Executar `npx prisma migrate dev --name phase-2a`
-2. Subir backend + web em terminais separados
-3. Executar smoke tests 1-4 (Catálogo, Orçamento+WhatsApp, Aprovação pública, OS mobile)
-4. Confirmar com "aprovado" para encerrar o plano
+O usuário executou os 4 smoke tests e confirmou aprovação:
+
+1. **Smoke test 1 — Catálogo:** Item criado com preço correto formatado como R$ 150,00
+2. **Smoke test 2 — Orçamento + WhatsApp:** Orçamento criado, preview de subtotal correto, botão WhatsApp com approvalUrl gerado
+3. **Smoke test 3 — Aprovação pública:** Página /approve/:token acessível sem login, aprovação por nome registrada, tela de confirmação exibida, WorkOrder criada automaticamente
+4. **Smoke test 4 — OS mobile:** OS aberta no Expo Go, status atualizado para "Em andamento", foto adicionada com sucesso
+
+**Prisma migration:** `npx prisma migrate dev --name phase-2a` executado e aplicado ao banco local.
