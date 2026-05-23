@@ -9,6 +9,7 @@ import { CompanyModule } from './company/company.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CustomerModule } from './customer/customer.module';
 import { QuoteModule } from './quote/quote.module';
+import { WorkOrderModule } from './work-order/work-order.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
@@ -39,6 +40,7 @@ import { StorageModule } from './storage/storage.module';
     CustomerModule,
     CatalogModule,
     QuoteModule,
+    WorkOrderModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
