@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const publicPaths = ['/login', '/signup', '/approve'];
+const publicPaths = ['/login', '/signup'];
+const alwaysPublicPaths = ['/approve'];
 
 function jwtExpiresAt(token: string): number {
   try {
@@ -34,6 +35,10 @@ async function tryRefresh(req: NextRequest): Promise<{ accessToken: string; refr
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const accessToken = req.cookies.get('access_token')?.value;
+
+  if (alwaysPublicPaths.some(p => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
 
   if (publicPaths.some(p => pathname.startsWith(p))) {
     if (accessToken) return NextResponse.redirect(new URL('/clientes', req.url));
