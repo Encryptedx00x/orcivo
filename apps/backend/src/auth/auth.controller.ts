@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Headers,
   HttpCode,
   Post,
   Req,
@@ -21,7 +22,6 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { JwtSignupGuard } from './guards/jwt-signup.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 
 @Controller('auth')
@@ -34,13 +34,14 @@ export class AuthController {
     return this.authService.signupUser(body as never);
   }
 
-  @UseGuards(JwtSignupGuard)
+  @Public()
   @Post('signup/company')
   signupCompany(
-    @CurrentUser() user: { userId: string },
+    @Headers('authorization') auth: string | undefined,
     @Body(new ZodValidationPipe(SignupStep2Schema)) body: unknown,
   ) {
-    return this.authService.signupCompany(user.userId, body as never);
+    const userId = this.authService.verifySignupToken(auth);
+    return this.authService.signupCompany(userId, body as never);
   }
 
   @Public()

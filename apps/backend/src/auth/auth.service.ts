@@ -38,6 +38,19 @@ export class AuthService {
     return { user, access_token };
   }
 
+  verifySignupToken(bearer: string | undefined): string {
+    if (!bearer) throw new UnauthorizedException();
+    const token = bearer.startsWith('Bearer ') ? bearer.slice(7) : bearer;
+    try {
+      const payload = this.jwt.verify<{ sub: string }>(token, {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      });
+      return payload.sub;
+    } catch {
+      throw new UnauthorizedException();
+    }
+  }
+
   async signupCompany(userId: string, dto: SignupStep2Dto): Promise<LoginResponseDto> {
     const [company] = await this.prisma.$transaction([
       this.prisma.company.create({
