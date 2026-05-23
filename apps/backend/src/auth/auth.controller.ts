@@ -8,7 +8,11 @@ import {
 } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import {
+  ForgotPasswordDto,
+  ForgotPasswordSchema,
   LoginSchema,
+  ResetPasswordDto,
+  ResetPasswordSchema,
   SignupStep1Schema,
   SignupStep2Schema,
 } from '@orcivo/shared-types';
@@ -52,6 +56,20 @@ export class AuthController {
   @Post('refresh')
   refresh(@Req() req: { user: { userId: string; refreshToken: string } }) {
     return this.authService.refresh(req.user.userId, req.user.refreshToken);
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post('forgot-password')
+  forgotPassword(@Body(new ZodValidationPipe(ForgotPasswordSchema)) body: unknown) {
+    return this.authService.forgotPassword(body as ForgotPasswordDto);
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post('reset-password')
+  resetPassword(@Body(new ZodValidationPipe(ResetPasswordSchema)) body: unknown) {
+    return this.authService.resetPassword(body as ResetPasswordDto);
   }
 
   @UseGuards(JwtAuthGuard)
