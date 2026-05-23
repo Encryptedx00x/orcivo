@@ -141,6 +141,7 @@ export class QuoteService {
     const updated = await this.prisma.quote.update({
       where: { id },
       data: { status: 'SENT', approval_token: token, pdf_url: pdfUrl },
+      include: { items: true, customer: true, approval: true },
     });
 
     // Agendar job de expiracao se valid_until definido
