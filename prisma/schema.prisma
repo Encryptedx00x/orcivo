@@ -23,6 +23,9 @@ model User {
   company_members    CompanyMember[]
   refresh_tokens     RefreshToken[]
   assigned_customers Customer[]      @relation("AssignedTo")
+  work_orders_assigned WorkOrder[]   @relation("WorkOrderAssignedTo")
+  work_orders_created  WorkOrder[]   @relation("WorkOrderCreatedBy")
+  work_order_photos    WorkOrderPhoto[] @relation("WorkOrderPhotoUploadedBy")
 
   @@map("users")
 }
@@ -45,8 +48,11 @@ model Company {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  members   CompanyMember[]
-  customers Customer[]
+  members       CompanyMember[]
+  customers     Customer[]
+  catalog_items CatalogItem[]
+  quotes        Quote[]
+  work_orders   WorkOrder[]
 
   @@map("companies")
 }
@@ -111,6 +117,9 @@ model Customer {
   company     Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
   assigned_to User?   @relation("AssignedTo", fields: [assigned_to_user_id], references: [id])
 
+  quotes      Quote[]
+  work_orders WorkOrder[]
+
   @@index([company_id])
   @@index([company_id, name])
   @@map("customers")
@@ -135,4 +144,201 @@ model RefreshToken {
 
   @@index([user_id])
   @@map("refresh_tokens")
+}
+
+// ─── Catálogo ─────────────────────────────────────────────────────────────────
+
+enum CatalogItemType {
+  SERVICE
+  PRODUCT
+}
+
+model CatalogItem {
+  id          String          @id @default(uuid())
+  company_id  String
+  name        String
+  description String?
+  type        CatalogItemType
+  unit_price  Decimal         @db.Decimal(12, 2)
+  unit        String?
+  is_active   Boolean         @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company     Company       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  quote_items QuoteItem[]
+
+  @@index([company_id])
+  @@index([company_id, is_active])
+  @@map("catalog_items")
+}
+
+// ─── Orçamento ────────────────────────────────────────────────────────────────
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum ApprovalMethod {
+  APPROVE_BUTTON
+  TYPED_NAME
+  DRAWN_SIGNATURE
+}
+
+model Quote {
+  id              String       @id @default(uuid())
+  company_id      String
+  customer_id     String
+  number          Int
+  title           String?
+  notes           String?
+  status          QuoteStatus  @default(DRAFT)
+  valid_until     DateTime?
+  discount_type   DiscountType @default(PERCENT)
+  discount_value  Decimal      @db.Decimal(12, 2) @default(0)
+  subtotal        Decimal      @db.Decimal(12, 2) @default(0)
+  total           Decimal      @db.Decimal(12, 2) @default(0)
+  pdf_url         String?
+  approval_token  String?      @unique
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company      Company        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customer_id], references: [id])
+  items        QuoteItem[]
+  approval     QuoteApproval?
+  work_order   WorkOrder?
+
+  @@unique([company_id, number])
+  @@index([company_id])
+  @@index([approval_token])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id             String   @id @default(uuid())
+  quote_id       String
+  catalog_item_id String?
+  description    String
+  quantity       Decimal  @db.Decimal(10, 3)
+  unit_price     Decimal  @db.Decimal(12, 2)
+  total          Decimal  @db.Decimal(12, 2)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  quote        Quote       @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+  catalog_item CatalogItem? @relation(fields: [catalog_item_id], references: [id])
+
+  @@index([quote_id])
+  @@map("quote_items")
+}
+
+model QuoteApproval {
+  id                  String         @id @default(uuid())
+  quote_id            String         @unique
+  approval_method     ApprovalMethod
+  typed_name          String?
+  signature_image_url String?
+  ip_address          String
+  user_agent          String
+  approved_at         DateTime       @default(now())
+
+  quote Quote @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+
+  @@map("quote_approvals")
+}
+
+// ─── Ordem de Serviço ─────────────────────────────────────────────────────────
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum PhotoStage {
+  BEFORE
+  DURING
+  AFTER
+}
+
+model WorkOrder {
+  id                  String          @id @default(uuid())
+  company_id          String
+  customer_id         String
+  quote_id            String?         @unique
+  number              Int
+  title               String
+  status              WorkOrderStatus @default(PENDING)
+  scheduled_at        DateTime?
+  started_at          DateTime?
+  finished_at         DateTime?
+  notes               String?
+  assigned_to_user_id String?
+  created_by_user_id  String
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  company          Company            @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer         Customer           @relation(fields: [customer_id], references: [id])
+  quote            Quote?             @relation(fields: [quote_id], references: [id])
+  assigned_to      User?              @relation("WorkOrderAssignedTo", fields: [assigned_to_user_id], references: [id])
+  created_by       User               @relation("WorkOrderCreatedBy", fields: [created_by_user_id], references: [id])
+  photos           WorkOrderPhoto[]
+
+  @@unique([company_id, number])
+  @@index([company_id])
+  @@index([company_id, status])
+  @@map("work_orders")
+}
+
+model WorkOrderPhoto {
+  id                  String     @id @default(uuid())
+  company_id          String
+  work_order_id       String
+  uploaded_by_user_id String
+  photo_stage         PhotoStage
+  file_url            String
+  caption             String?
+
+  created_at DateTime @default(now())
+
+  work_order   WorkOrder @relation(fields: [work_order_id], references: [id], onDelete: Cascade)
+  uploaded_by  User      @relation("WorkOrderPhotoUploadedBy", fields: [uploaded_by_user_id], references: [id])
+
+  @@index([work_order_id])
+  @@index([company_id])
+  @@map("work_order_photos")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  company_id  String
+  actor_type  String
+  action      String
+  entity_type String
+  entity_id   String
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  @@index([company_id])
+  @@index([company_id, entity_type, entity_id])
+  @@map("audit_logs")
 }
