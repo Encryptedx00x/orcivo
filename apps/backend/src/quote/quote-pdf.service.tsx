@@ -87,10 +87,24 @@ interface CompanyData {
 @Injectable()
 export class QuotePdfService {
   async generate(quote: QuoteData, company: CompanyData): Promise<Buffer> {
+    // Prisma retorna campos Decimal como objetos — converter para string antes do JSX
+    const q: QuoteData = {
+      ...quote,
+      subtotal: quote.subtotal.toString(),
+      discount_value: quote.discount_value.toString(),
+      total: quote.total.toString(),
+      items: quote.items.map(item => ({
+        ...item,
+        quantity: item.quantity.toString(),
+        unit_price: item.unit_price.toString(),
+        total: item.total.toString(),
+      })),
+    };
+
     const showWatermark = company.plan_code === 'LIVRE';
     const location = [company.city, company.state].filter(Boolean).join(' — ');
     // NUNCA usar parseFloat — usar new Decimal() para todas as comparações numéricas em campos monetários
-    const hasDiscount = new Decimal(quote.discount_value).greaterThan(0);
+    const hasDiscount = new Decimal(q.discount_value).greaterThan(0);
 
     const doc = (
       <Document>
@@ -111,13 +125,13 @@ export class QuotePdfService {
               )}
             </View>
             <View>
-              <Text style={styles.quoteTitle}>Orçamento #{quote.number}</Text>
-              {quote.title && (
-                <Text style={{ fontSize: 10, color: '#666' }}>{quote.title}</Text>
+              <Text style={styles.quoteTitle}>Orçamento #{q.number}</Text>
+              {q.title && (
+                <Text style={{ fontSize: 10, color: '#666' }}>{q.title}</Text>
               )}
-              {quote.valid_until && (
+              {q.valid_until && (
                 <Text style={{ fontSize: 9, color: '#999', marginTop: 4 }}>
-                  Válido até: {new Date(quote.valid_until).toLocaleDateString('pt-BR')}
+                  Válido até: {new Date(q.valid_until).toLocaleDateString('pt-BR')}
                 </Text>
               )}
             </View>
@@ -130,7 +144,7 @@ export class QuotePdfService {
               <Text style={styles.col_price}>Preço unit.</Text>
               <Text style={styles.col_total}>Total</Text>
             </View>
-            {quote.items.map((item, i) => (
+            {q.items.map((item, i) => (
               <View key={i} style={styles.tableRow}>
                 <Text style={styles.col_desc}>{item.description}</Text>
                 <Text style={styles.col_qty}>{item.quantity}</Text>
@@ -143,25 +157,25 @@ export class QuotePdfService {
           <View style={[styles.section, { alignItems: 'flex-end' }]}>
             <View style={styles.totalsRow}>
               <Text style={styles.totalsLabel}>Subtotal</Text>
-              <Text style={styles.totalsValue}>R$ {quote.subtotal}</Text>
+              <Text style={styles.totalsValue}>R$ {q.subtotal}</Text>
             </View>
             {hasDiscount && (
               <View style={styles.totalsRow}>
                 <Text style={styles.totalsLabel}>
                   Desconto{' '}
-                  {quote.discount_type === 'PERCENT'
-                    ? `(${quote.discount_value}%)`
+                  {q.discount_type === 'PERCENT'
+                    ? `(${q.discount_value}%)`
                     : ''}
                 </Text>
                 <Text style={styles.totalsValue}>
-                  - R$ {quote.discount_value}
+                  - R$ {q.discount_value}
                 </Text>
               </View>
             )}
             <View style={[styles.totalsRow, { marginTop: 4 }]}>
               <Text style={[styles.totalsLabel, styles.totalFinal]}>Total</Text>
               <Text style={[styles.totalsValue, styles.totalFinal]}>
-                R$ {quote.total}
+                R$ {q.total}
               </Text>
             </View>
           </View>
@@ -174,14 +188,14 @@ export class QuotePdfService {
             </View>
           )}
 
-          {quote.notes && (
+          {q.notes && (
             <View style={styles.section}>
               <Text
                 style={{ fontSize: 9, color: '#666', fontWeight: 'bold', marginBottom: 4 }}
               >
                 Observações:
               </Text>
-              <Text style={{ fontSize: 9, color: '#444' }}>{quote.notes}</Text>
+              <Text style={{ fontSize: 9, color: '#444' }}>{q.notes}</Text>
             </View>
           )}
 

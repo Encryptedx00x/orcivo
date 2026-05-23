@@ -46,8 +46,23 @@ export class QuoteService {
     };
   }
 
+  private async nextQuoteNumber(companyId: string): Promise<number> {
+    const key = `quote:seq:${companyId}`;
+    // Se a chave não existir no Redis, inicializa a partir do max do banco
+    const current = await this.redis.get(key);
+    if (current === null) {
+      const max = await this.prisma.quote.aggregate({
+        where: { company_id: companyId },
+        _max: { number: true },
+      });
+      const seed = max._max.number ?? 0;
+      await this.redis.set(key, String(seed));
+    }
+    return this.redis.incr(key);
+  }
+
   async create(dto: QuoteCreateDto, companyId: string, userId: string) {
-    const number = await this.redis.incr(`quote:seq:${companyId}`);
+    const number = await this.nextQuoteNumber(companyId);
     const { itemTotals, subtotal, total } = this.computeTotals(
       dto.items,
       dto.discount_type ?? 'PERCENT',
