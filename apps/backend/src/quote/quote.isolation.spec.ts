@@ -1,3 +1,14 @@
+// Mock @react-pdf/renderer — ESM module incompativel com Jest CommonJS transform
+jest.mock('@react-pdf/renderer', () => ({
+  renderToBuffer: jest.fn().mockResolvedValue(Buffer.from('PDF_CONTENT')),
+  Document: ({ children }: any) => children,
+  Page: ({ children }: any) => children,
+  View: ({ children }: any) => children,
+  Text: ({ children }: any) => children,
+  Image: () => null,
+  StyleSheet: { create: (s: any) => s },
+}));
+
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { cleanupDatabase, getTestApp } from '../../test/setup';

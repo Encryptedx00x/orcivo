@@ -1,12 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import Decimal from 'decimal.js';
-import { QuoteCreateDto, assertValidTransition } from '@orcivo/shared-types';
+import { ApproveQuoteDto, QuoteCreateDto, assertValidTransition } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../storage/storage.service';
+import { WorkOrderService } from '../work-order/work-order.service';
+import { QuotePdfService } from './quote-pdf.service';
 
 @Injectable()
 export class QuoteService {
@@ -15,6 +18,9 @@ export class QuoteService {
     private readonly redis: RedisService,
     private readonly config: ConfigService,
     @InjectQueue('quote-expiry') private readonly expiryQueue: Queue,
+    private readonly storage: StorageService,
+    private readonly workOrderService: WorkOrderService,
+    private readonly pdfService: QuotePdfService,
   ) {}
 
   private computeTotals(
@@ -104,8 +110,14 @@ export class QuoteService {
     try {
       assertValidTransition(quote.status as never, 'SENT');
     } catch {
-      throw new BadRequestException(`Transição inválida: ${quote.status} → SENT`);
+      throw new BadRequestException(`Transicao invalida: ${quote.status} -> SENT`);
     }
+
+    // Gerar PDF e salvar no MinIO
+    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    const pdfBuffer = await this.pdfService.generate(quote as never, company as never);
+    const pdfObjectName = `${companyId}/quotes/${id}.pdf`;
+    const pdfUrl = await this.storage.uploadBuffer('orcivo-pdfs', pdfObjectName, pdfBuffer, 'application/pdf');
 
     const token = crypto.randomUUID();
     const ttl = 7 * 24 * 60 * 60; // 7 dias em segundos = 604800
@@ -113,10 +125,10 @@ export class QuoteService {
 
     const updated = await this.prisma.quote.update({
       where: { id },
-      data: { status: 'SENT', approval_token: token },
+      data: { status: 'SENT', approval_token: token, pdf_url: pdfUrl },
     });
 
-    // Agendar job de expiração se valid_until definido
+    // Agendar job de expiracao se valid_until definido
     if (updated.valid_until) {
       const delay = updated.valid_until.getTime() - Date.now();
       if (delay > 0) {
@@ -125,7 +137,74 @@ export class QuoteService {
     }
 
     const approvalUrl = `${this.config.get('APP_WEB_URL', 'http://localhost:3000')}/approve/${token}`;
-    return { ...updated, approvalUrl };
+    return { ...updated, approvalUrl, pdf_url: pdfUrl };
+  }
+
+  async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
+    const quote = await this.getByApprovalToken(token);
+    // quote garantidamente tem: id, company_id, created_by_user_id, number, status, customer.id
+    // (garantido pelo select explicito em getByApprovalToken() — P05)
+
+    // Idempotencia via $transaction com count check (Pitfall 2 do RESEARCH.md)
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.updateMany({
+        where: { id: quote.id, status: 'SENT' }, // so atualiza se ainda SENT
+        data: { status: 'APPROVED' },
+      });
+      if (updated.count === 0) return null; // ja aprovado ou nao e SENT
+
+      // Registrar AuditLog dentro da mesma transaction (D2-14)
+      await tx.auditLog.create({
+        data: {
+          company_id: quote.company_id,
+          actor_type: 'SYSTEM',
+          action: 'quote.approved',
+          entity_type: 'quote',
+          entity_id: quote.id,
+          metadata: {
+            approval_method: dto.approval_method,
+            ip_address: ipAddress,
+            user_agent: userAgent,
+          },
+        },
+      });
+
+      return updated;
+    });
+
+    if (!result) throw new ConflictException('Orcamento ja foi processado');
+
+    // Processar assinatura se DRAWN_SIGNATURE
+    let signatureUrl: string | undefined;
+    if (dto.approval_method === 'DRAWN_SIGNATURE' && dto.signature) {
+      const base64 = (dto.signature as string).replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64, 'base64');
+      const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.png`;
+      signatureUrl = await this.storage.uploadBuffer('orcivo-photos', objectName, buffer, 'image/png');
+    }
+
+    // Registrar QuoteApproval
+    await this.prisma.quoteApproval.create({
+      data: {
+        quote_id: quote.id,
+        approval_method: dto.approval_method,
+        typed_name: dto.typed_name,
+        signature_image_url: signatureUrl,
+        ip_address: ipAddress,
+        user_agent: userAgent ?? '',
+      },
+    });
+
+    // Criar WorkOrder automaticamente (D2-14)
+    const woTitle = quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`;
+    await this.workOrderService.create(
+      { customer_id: quote.customer.id, title: woTitle },
+      quote.company_id,
+      quote.created_by_user_id!,
+      quote.id,
+    );
+
+    return { status: 'APPROVED' };
   }
 
   async cancel(id: string, companyId: string, reason?: string) {
