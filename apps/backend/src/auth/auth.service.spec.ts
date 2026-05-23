@@ -18,7 +18,7 @@ const mockPrisma = {
 };
 
 const mockRedis = {
-  set: jest.fn(),
+  setex: jest.fn(),
   get: jest.fn(),
   del: jest.fn(),
 };
@@ -64,22 +64,21 @@ describe('AuthService — forgotPassword / resetPassword', () => {
         service.forgotPassword({ email: 'naoexiste@exemplo.com' }),
       ).resolves.toBeUndefined();
 
-      expect(mockRedis.set).not.toHaveBeenCalled();
+      expect(mockRedis.setex).not.toHaveBeenCalled();
       expect(mockMail.send).not.toHaveBeenCalled();
     });
 
     it('Test 2: e-mail existente — armazena token no Redis com TTL 900 e envia e-mail', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-123', email: 'user@exemplo.com' });
-      mockRedis.set.mockResolvedValue('OK');
+      mockRedis.setex.mockResolvedValue('OK');
       mockMail.send.mockResolvedValue(undefined);
 
       await service.forgotPassword({ email: 'user@exemplo.com' });
 
-      expect(mockRedis.set).toHaveBeenCalledWith(
+      expect(mockRedis.setex).toHaveBeenCalledWith(
         expect.stringMatching(/^pwd:reset:[0-9a-f-]{36}$/),
-        'user-123',
-        'EX',
         900,
+        'user-123',
       );
       expect(mockMail.send).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { SignupStep1Dto, SignupStep2Dto, LoginDto, LoginResponseDto } from '@orcivo/shared-types';
+import { ForgotPasswordDto, ResetPasswordDto, SignupStep1Dto, SignupStep2Dto, LoginDto, LoginResponseDto } from '@orcivo/shared-types';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
@@ -14,6 +15,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly redis: RedisService,
+    private readonly mail: MailService,
   ) {}
 
   async signupUser(dto: SignupStep1Dto) {
@@ -107,6 +109,33 @@ export class AuthService {
       select: { email: true },
     });
     return this.issueTokens(userId, user.email);
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    // Sempre retorna void — não revelar se e-mail existe (ASVS V2)
+    if (!user) return;
+
+    const token = crypto.randomUUID();
+    await this.redis.setex(`pwd:reset:${token}`, 900, user.id); // 15 min
+
+    const baseUrl = this.config.get('APP_WEB_URL', 'http://localhost:3000');
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    await this.mail.send({
+      to: dto.email,
+      subject: 'Redefinir senha — Orcivo',
+      html: `<p>Clique no link para redefinir sua senha (válido por 15 minutos):</p><p><a href="${resetUrl}">${resetUrl}</a></p>`,
+    });
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const redisKey = `pwd:reset:${dto.token}`;
+    const userId = await this.redis.get(redisKey);
+    if (!userId) throw new BadRequestException('Token inválido ou expirado');
+
+    const hash = await argon2.hash(dto.new_password);
+    await this.prisma.user.update({ where: { id: userId }, data: { password_hash: hash } });
+    await this.redis.del(redisKey); // invalidar token após uso único
   }
 
   async logout(userId: string) {
