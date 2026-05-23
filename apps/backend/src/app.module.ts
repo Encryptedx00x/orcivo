@@ -7,6 +7,7 @@ import { CompanyModule } from './company/company.module';
 import { CustomerModule } from './customer/customer.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { HealthModule } from './health/health.module';
+import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 
@@ -17,6 +18,7 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     HealthModule,
+    MailModule,
     AuthModule,
     CompanyModule,
     CustomerModule,
