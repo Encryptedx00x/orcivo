@@ -2,20 +2,38 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { EmBreveScreen } from '../screens/placeholders/EmBreveScreen';
+import { CatalogScreen } from '../screens/CatalogScreen';
+import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
+import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
+import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
+import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 
 const Stack = createNativeStackNavigator();
 
 const MAIS_ITEMS = [
-  'Ordens de Serviço', 'Catálogo', 'Financeiro', 'Documentos',
-  'Conta', 'Configurações', 'Usuários e permissões', 'Plano e assinatura', 'Ajuda',
+  { label: 'Ordens de Serviço', screen: 'WorkOrderList' },
+  { label: 'Catálogo', screen: 'Catalog' },
+  { label: 'Financeiro', screen: 'EmBreve' },
+  { label: 'Documentos', screen: 'EmBreve' },
+  { label: 'Conta', screen: 'EmBreve' },
+  { label: 'Configurações', screen: 'EmBreve' },
+  { label: 'Usuários e permissões', screen: 'EmBreve' },
+  { label: 'Plano e assinatura', screen: 'EmBreve' },
+  { label: 'Ajuda', screen: 'EmBreve' },
 ];
 
 function MaisMenuScreen({ navigation }: { navigation: any }) {
   return (
     <View style={styles.container}>
       {MAIS_ITEMS.map(item => (
-        <TouchableOpacity key={item} style={styles.row} onPress={() => navigation.navigate('EmBreve', { title: item })}>
-          <Text style={styles.label}>{item}</Text>
+        <TouchableOpacity
+          key={item.label}
+          style={styles.row}
+          onPress={() =>
+            navigation.navigate(item.screen, item.screen === 'EmBreve' ? { title: item.label } : undefined)
+          }
+        >
+          <Text style={styles.label}>{item.label}</Text>
           <Text style={styles.arrow}>›</Text>
         </TouchableOpacity>
       ))}
@@ -28,6 +46,19 @@ export function MaisStack() {
     <Stack.Navigator screenOptions={{ headerTintColor: '#6D28D9' }}>
       <Stack.Screen name="MaisMenu" component={MaisMenuScreen} options={{ title: 'Mais' }} />
       <Stack.Screen name="EmBreve" component={EmBreveScreen} options={({ route }: any) => ({ title: route.params?.title ?? 'Em breve' })} />
+
+      {/* Catálogo */}
+      <Stack.Screen name="Catalog" component={CatalogScreen} options={{ title: 'Catálogo' }} />
+      <Stack.Screen
+        name="CatalogItemForm"
+        component={CatalogItemFormScreen}
+        options={({ route }: any) => ({ title: route.params?.item ? 'Editar item' : 'Novo item' })}
+      />
+
+      {/* Ordens de Serviço */}
+      <Stack.Screen name="WorkOrderList" component={WorkOrderListScreen} options={{ title: 'Ordens de Serviço' }} />
+      <Stack.Screen name="WorkOrderDetail" component={WorkOrderDetailScreen} options={{ title: 'Detalhes da OS' }} />
+      <Stack.Screen name="WorkOrderPhoto" component={WorkOrderPhotoScreen} options={{ title: 'Adicionar foto' }} />
     </Stack.Navigator>
   );
 }
