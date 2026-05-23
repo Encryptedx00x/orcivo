@@ -1,2 +1,2 @@
 import { redirect } from 'next/navigation';
-export default function AppRoot() { redirect('/clientes'); }
+export default function AppRoot(): never { redirect('/clientes'); }

@@ -13,7 +13,7 @@ async function getHealth(): Promise<{ status: string; timestamp: string } | null
   }
 }
 
-export default async function Home() {
+export default async function Home(): Promise<JSX.Element> {
   const health = await getHealth();
 
   return (

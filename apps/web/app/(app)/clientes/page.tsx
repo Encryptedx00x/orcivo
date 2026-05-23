@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 interface Customer { id: string; name: string; phone: string | null; }
 
-export default async function ClientesPage() {
+export default async function ClientesPage(): Promise<JSX.Element> {
   let customers: Customer[] = [];
   try {
     const data = await apiFetch<{ data: Customer[] }>('/customers');

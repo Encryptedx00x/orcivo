@@ -15,7 +15,7 @@ const NAV = [
   { label: 'Configurações', href: '/configuracoes', icon: Settings },
 ];
 
-export function AppSidebar() {
+export function AppSidebar(): JSX.Element {
   const pathname = usePathname();
   return (
     <aside style={{ width: 260, minHeight: '100vh', borderRight: '1px solid #E5E7EB', backgroundColor: '#FFFFFF', padding: '24px 0' }}>

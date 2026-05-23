@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Para técnicos que constroem negócios',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
     <html lang="pt-BR">
       <body className="bg-white text-[#0A0A0F] antialiased">{children}</body>

@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 
-export function TopBar({ companyName }: { companyName?: string }) {
+export function TopBar({ companyName }: { companyName?: string }): JSX.Element {
   const router = useRouter();
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });

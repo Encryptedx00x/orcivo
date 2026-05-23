@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CustomerCreateSchema } from '@orcivo/shared-types';
 
-export default function NovoClientePage() {
+export default function NovoClientePage(): JSX.Element {
   const router = useRouter();
   const [form, setForm] = useState({ name: '', phone: '', email: '', city: '', state: '', notes: '' });
   const [error, setError] = useState('');
