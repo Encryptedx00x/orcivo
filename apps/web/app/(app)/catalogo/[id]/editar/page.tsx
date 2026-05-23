@@ -81,7 +81,6 @@ export default async function EditarCatalogoPage({ params }: Props): Promise<JSX
 
           {/* Ativo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input type="hidden" name="is_active" value="false" />
             <input
               type="checkbox"
               id="is_active"

@@ -51,7 +51,6 @@ export default function NovoCatalogoPage(): JSX.Element {
 
           {/* Ativo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input type="hidden" name="is_active" value="false" />
             <input type="checkbox" id="is_active" name="is_active" value="true" defaultChecked style={{ width: 16, height: 16, accentColor: '#6D28D9', cursor: 'pointer' }} />
             <label htmlFor="is_active" style={{ fontSize: 14, color: '#374151', cursor: 'pointer' }}>Item ativo (visível para orçamentos)</label>
           </div>
