@@ -70,6 +70,12 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret-test
       REDIS_HOST: localhost
       REDIS_PORT: 6379
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: orcivo-test
 
     steps:
       - uses: actions/checkout@v4
