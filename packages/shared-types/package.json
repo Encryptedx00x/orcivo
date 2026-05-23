@@ -10,7 +10,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "lint": "echo 'shared-types lint OK'",
@@ -24,12 +26,18 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
+    "decimal.js": "10.6.0",
     "zod": "3.23.8"
   },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "roots": ["<rootDir>/src"],
-    "testPathIgnorePatterns": ["/node_modules/", "/dist/"]
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/"
+    ]
   }
 }
