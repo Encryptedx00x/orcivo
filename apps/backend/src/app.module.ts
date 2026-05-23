@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { CompanyModule } from './company/company.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { CustomerModule } from './customer/customer.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { HealthModule } from './health/health.module';
@@ -26,6 +27,7 @@ import { StorageModule } from './storage/storage.module';
     AuthModule,
     CompanyModule,
     CustomerModule,
+    CatalogModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
