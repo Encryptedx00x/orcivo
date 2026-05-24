@@ -218,6 +218,7 @@ export class QuoteService {
       quote.company_id,
       quote.created_by_user_id!,
       quote.id,
+      'IN_PROGRESS',
     );
 
     return { status: 'APPROVED' };

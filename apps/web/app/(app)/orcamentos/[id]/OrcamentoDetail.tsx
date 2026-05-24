@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageCircle, Download, X, Send } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
 import type { Quote } from '../../../../lib/quote.service';
 
@@ -166,7 +166,12 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               <span style={{ color: '#6B7280', fontSize: 14 }}>
                 Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
               </span>
-              <span style={{ color: '#DC2626' }}>- {formatMoney(quote.discount_value)}</span>
+              <span style={{ color: '#DC2626' }}>
+                -{' '}
+                {quote.discount_type === 'PERCENT'
+                  ? formatMoney(multiplyDecimal(quote.subtotal, String(parseFloat(quote.discount_value) / 100)))
+                  : formatMoney(quote.discount_value)}
+              </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
               <span style={{ fontWeight: 700, fontSize: 16 }}>Total</span>

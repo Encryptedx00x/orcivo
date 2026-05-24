@@ -19,7 +19,7 @@ export class WorkOrderService {
     private readonly redis: RedisService,
   ) {}
 
-  async create(dto: WorkOrderCreateDto, companyId: string, userId: string, quoteId?: string) {
+  async create(dto: WorkOrderCreateDto, companyId: string, userId: string, quoteId?: string, initialStatus: WorkOrderStatus = 'PENDING') {
     const number = await this.redis.incr(`work-order:seq:${companyId}`);
     return this.prisma.workOrder.create({
       data: {
@@ -29,9 +29,11 @@ export class WorkOrderService {
         number,
         title: dto.title,
         notes: dto.notes,
+        status: initialStatus,
         scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : undefined,
         assigned_to_user_id: dto.assigned_to_user_id,
         created_by_user_id: userId,
+        started_at: initialStatus === 'IN_PROGRESS' ? new Date() : undefined,
       },
     });
   }
