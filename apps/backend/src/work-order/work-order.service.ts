@@ -19,8 +19,21 @@ export class WorkOrderService {
     private readonly redis: RedisService,
   ) {}
 
+  private async nextWorkOrderNumber(companyId: string): Promise<number> {
+    const key = `work-order:seq:${companyId}`;
+    const current = await this.redis.get(key);
+    if (current === null) {
+      const max = await this.prisma.workOrder.aggregate({
+        where: { company_id: companyId },
+        _max: { number: true },
+      });
+      await this.redis.set(key, String(max._max.number ?? 0));
+    }
+    return this.redis.incr(key);
+  }
+
   async create(dto: WorkOrderCreateDto, companyId: string, userId: string, quoteId?: string, initialStatus: WorkOrderStatus = 'PENDING') {
-    const number = await this.redis.incr(`work-order:seq:${companyId}`);
+    const number = await this.nextWorkOrderNumber(companyId);
     return this.prisma.workOrder.create({
       data: {
         company_id: companyId,
