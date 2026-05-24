@@ -41,10 +41,11 @@ model Company {
   phone         String?
   city          String?
   state         String?
-  brand_color   String?
-  logo_url      String?
-  pix_key       String?
-  plan_code     PlanCode     @default(LIVRE)
+  brand_color                String?
+  logo_url                   String?
+  pix_key                    String?
+  plan_code                  PlanCode        @default(LIVRE)
+  allowed_approval_methods   ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE])
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

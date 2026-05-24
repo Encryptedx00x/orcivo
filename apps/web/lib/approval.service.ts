@@ -20,6 +20,7 @@ export interface PublicQuote {
   notes?: string;
   customer: { name: string; phone?: string };
   items: PublicQuoteItem[];
+  company: { trade_name: string; allowed_approval_methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[] };
 }
 
 export interface ApproveDto {

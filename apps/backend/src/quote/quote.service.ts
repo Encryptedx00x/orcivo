@@ -130,7 +130,10 @@ export class QuoteService {
 
     // Gerar PDF e salvar no MinIO
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
-    const pdfBuffer = await this.pdfService.generate(quote as never, company as never);
+    const pdfBuffer = await this.pdfService.generate(
+      { ...quote, customer_name: (quote as never as { customer: { name: string } }).customer?.name } as never,
+      company as never,
+    );
     const pdfObjectName = `${companyId}/quotes/${id}.pdf`;
     const pdfUrl = await this.storage.uploadBuffer('orcivo-pdfs', pdfObjectName, pdfBuffer, 'application/pdf');
 
@@ -254,6 +257,7 @@ export class QuoteService {
       discount_type: true,
       discount_value: true,
       subtotal: true,
+      notes: true,
       customer: { select: { id: true, name: true, phone: true } },
       items: {
         select: {
@@ -264,6 +268,7 @@ export class QuoteService {
           total: true,
         },
       },
+      company: { select: { trade_name: true, allowed_approval_methods: true } },
     };
 
     const quote = cachedId

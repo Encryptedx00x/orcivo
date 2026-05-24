@@ -38,6 +38,11 @@ const styles = StyleSheet.create({
   totalsLabel: { width: 120, fontSize: 10, color: '#666' },
   totalsValue: { width: 80, textAlign: 'right', fontSize: 10 },
   totalFinal: { fontSize: 12, fontWeight: 'bold', color: '#6D28D9' },
+  signatureSection: { marginTop: 40, flexDirection: 'row', justifyContent: 'space-between', gap: 24 },
+  signatureBox: { flex: 1 },
+  signatureLine: { borderTop: '1px solid #374151', marginTop: 48, marginBottom: 4 },
+  signatureLabel: { fontSize: 9, color: '#6B7280', textAlign: 'center' },
+  signatureImage: { maxWidth: 180, maxHeight: 60, objectFit: 'contain', marginBottom: 4 },
   watermark: {
     position: 'absolute',
     opacity: 0.12,
@@ -72,6 +77,13 @@ interface QuoteData {
     unit_price: string;
     total: string;
   }>;
+  customer_name?: string | null;
+  approval?: {
+    approval_method: string;
+    typed_name?: string | null;
+    signature_image_url?: string | null;
+    approved_at: Date;
+  } | null;
 }
 
 interface CompanyData {
@@ -198,6 +210,31 @@ export class QuotePdfService {
               <Text style={{ fontSize: 9, color: '#444' }}>{q.notes}</Text>
             </View>
           )}
+
+          {/* Área de assinatura */}
+          <View style={styles.signatureSection}>
+            {/* Empresa */}
+            <View style={styles.signatureBox}>
+              <View style={styles.signatureLine} />
+              <Text style={styles.signatureLabel}>{company.trade_name}</Text>
+            </View>
+            {/* Cliente — só aparece se tiver customer_name */}
+            {q.customer_name && (
+              <View style={styles.signatureBox}>
+                {q.approval?.approval_method === 'DRAWN_SIGNATURE' && q.approval.signature_image_url ? (
+                  <Image style={styles.signatureImage} src={q.approval.signature_image_url} />
+                ) : (
+                  <View style={styles.signatureLine} />
+                )}
+                <Text style={styles.signatureLabel}>
+                  {q.approval?.typed_name ?? q.customer_name}
+                  {q.approval?.approved_at
+                    ? ` — ${new Date(q.approval.approved_at).toLocaleDateString('pt-BR')}`
+                    : ''}
+                </Text>
+              </View>
+            )}
+          </View>
 
           <View style={styles.footer}>
             <Text>

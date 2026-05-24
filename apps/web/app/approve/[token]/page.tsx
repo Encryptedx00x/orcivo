@@ -27,6 +27,9 @@ export default function ApprovePage(): JSX.Element {
       .fetchPublicQuote(token)
       .then((q) => {
         setQuote(q);
+        if (q.company.allowed_approval_methods.length > 0) {
+          setActiveTab(q.company.allowed_approval_methods[0]);
+        }
         setPageState('show_quote');
       })
       .catch((e: Error) => {
@@ -189,11 +192,13 @@ export default function ApprovePage(): JSX.Element {
                 {/* Tabs */}
                 <div className="flex gap-2 border-b border-gray-200">
                   {(
+                    (
                     [
                       { key: 'APPROVE_BUTTON', label: 'Aprovação simples' },
                       { key: 'TYPED_NAME', label: 'Assinar com nome' },
                       { key: 'DRAWN_SIGNATURE', label: 'Assinar com desenho' },
                     ] as const
+                  ).filter(tab => quote.company.allowed_approval_methods.includes(tab.key))
                   ).map((tab) => (
                     <button
                       key={tab.key}
