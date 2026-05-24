@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, CheckCircle, XCircle, PlayCircle, Trash2 } from 'lucide-react';
 import type { WorkOrder, WorkOrderPhoto } from '../../../../lib/work-order.service';
 import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export function WorkOrderDetail({ initial }: Props): JSX.Element {
+  const router = useRouter();
   const [order, setOrder] = useState<WorkOrder>(initial);
   const [confirmAction, setConfirmAction] = useState<WorkOrder['status'] | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -67,6 +69,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
       } else {
         setOrder(prev => ({ ...prev, status: newStatus }));
         setConfirmAction(null);
+        router.refresh();
       }
     } finally {
       setStatusLoading(false);
