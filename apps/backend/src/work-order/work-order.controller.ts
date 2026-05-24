@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -89,5 +90,15 @@ export class WorkOrderController {
   @Get(':id/photos')
   getPhotos(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.photoService.getPhotos(id, req.companyId);
+  }
+
+  @Delete(':id/photos/:photoId')
+  @HttpCode(204)
+  deletePhoto(
+    @Param('id') id: string,
+    @Param('photoId') photoId: string,
+    @Req() req: TenantRequest,
+  ) {
+    return this.photoService.deletePhoto(photoId, id, req.companyId);
   }
 }

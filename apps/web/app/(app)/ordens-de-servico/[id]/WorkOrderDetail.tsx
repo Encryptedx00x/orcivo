@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Upload, CheckCircle, XCircle, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle, XCircle, PlayCircle, Trash2 } from 'lucide-react';
 import type { WorkOrder, WorkOrderPhoto } from '../../../../lib/work-order.service';
 import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { updateStatusAction } from '../actions';
@@ -54,6 +54,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
   const [statusLoading, setStatusLoading] = useState(false);
   const [uploadingStage, setUploadingStage] = useState<PhotoStage | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const fileInputRefs = useRef<Partial<Record<PhotoStage, HTMLInputElement | null>>>({});
 
   async function handleStatusChange(newStatus: WorkOrder['status']): Promise<void> {
@@ -86,6 +87,19 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
       setUploadingStage(null);
       const ref = fileInputRefs.current[stage];
       if (ref) ref.value = '';
+    }
+  }
+
+  async function handleDeletePhoto(photoId: string): Promise<void> {
+    setDeletingPhotoId(photoId);
+    try {
+      const res = await fetch(`/api/work-orders/${order.id}/photos/${photoId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro ao excluir foto');
+      setOrder(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoId) }));
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Erro ao excluir foto');
+    } finally {
+      setDeletingPhotoId(null);
     }
   }
 
@@ -225,12 +239,20 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
                     {photos.map(photo => (
-                      <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+                      <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', position: 'relative' }}>
                         <img
                           src={photo.file_url}
                           alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`}
                           style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
                         />
+                        <button
+                          onClick={() => { void handleDeletePhoto(photo.id); }}
+                          disabled={deletingPhotoId === photo.id}
+                          title="Excluir foto"
+                          style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: deletingPhotoId === photo.id ? 0.5 : 1 }}
+                        >
+                          <Trash2 size={13} color="#fff" />
+                        </button>
                         {photo.caption && (
                           <p style={{ fontSize: 12, color: '#6B7280', margin: 0, padding: '6px 8px', backgroundColor: '#F9FAFB' }}>{photo.caption}</p>
                         )}

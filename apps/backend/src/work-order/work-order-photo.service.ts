@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -57,5 +57,20 @@ export class WorkOrderPhotoService {
       where: { work_order_id: workOrderId, company_id: companyId },
       orderBy: [{ photo_stage: 'asc' }, { created_at: 'asc' }],
     });
+  }
+
+  async deletePhoto(photoId: string, workOrderId: string, companyId: string) {
+    const photo = await this.prisma.workOrderPhoto.findFirst({
+      where: { id: photoId, work_order_id: workOrderId, company_id: companyId },
+    });
+    if (!photo) throw new NotFoundException('Foto não encontrada');
+
+    // Remove objeto do MinIO antes de deletar o registro
+    const objectName = photo.file_url.split('/orcivo-photos/')[1];
+    if (objectName) {
+      await this.storage.deleteObject('orcivo-photos', objectName).catch(() => null);
+    }
+
+    await this.prisma.workOrderPhoto.delete({ where: { id: photoId } });
   }
 }
