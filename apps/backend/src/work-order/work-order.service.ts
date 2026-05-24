@@ -21,13 +21,14 @@ export class WorkOrderService {
 
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
     const key = `work-order:seq:${companyId}`;
-    const current = await this.redis.get(key);
-    if (current === null) {
-      const max = await this.prisma.workOrder.aggregate({
-        where: { company_id: companyId },
-        _max: { number: true },
-      });
-      await this.redis.set(key, String(max._max.number ?? 0));
+    const [current, maxResult] = await Promise.all([
+      this.redis.get(key),
+      this.prisma.workOrder.aggregate({ where: { company_id: companyId }, _max: { number: true } }),
+    ]);
+    const dbMax = maxResult._max.number ?? 0;
+    const redisVal = current !== null ? parseInt(current, 10) : 0;
+    if (redisVal < dbMax) {
+      await this.redis.set(key, String(dbMax));
     }
     return this.redis.incr(key);
   }
