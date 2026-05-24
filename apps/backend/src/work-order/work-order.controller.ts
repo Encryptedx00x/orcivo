@@ -23,7 +23,7 @@ import { WorkOrderService } from './work-order.service';
 
 interface TenantRequest {
   companyId: string;
-  user: { id: string };
+  user: { userId: string };
 }
 
 const VALID_STAGES = ['BEFORE', 'DURING', 'AFTER'] as const;
@@ -57,7 +57,7 @@ export class WorkOrderController {
     @Body(new ZodValidationPipe(WorkOrderCreateSchema)) body: unknown,
     @Req() req: TenantRequest,
   ) {
-    return this.workOrderService.create(body as never, req.companyId, req.user.id);
+    return this.workOrderService.create(body as never, req.companyId, req.user.userId);
   }
 
   @Patch(':id')
@@ -83,7 +83,7 @@ export class WorkOrderController {
     if (!VALID_STAGES.includes(stage as PhotoStage)) {
       throw new BadRequestException('stage inválido. Use: BEFORE, DURING ou AFTER');
     }
-    return this.photoService.uploadPhoto(id, req.companyId, req.user.id, file, stage as PhotoStage, caption);
+    return this.photoService.uploadPhoto(id, req.companyId, req.user.userId, file, stage as PhotoStage, caption);
   }
 
   @Get(':id/photos')
