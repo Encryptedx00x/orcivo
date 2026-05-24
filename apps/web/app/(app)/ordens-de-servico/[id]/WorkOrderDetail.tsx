@@ -28,10 +28,10 @@ function statusLabel(status: WorkOrder['status']): string {
 
 function statusBadgeStyle(status: WorkOrder['status']): React.CSSProperties {
   const styles: Record<WorkOrder['status'], React.CSSProperties> = {
-    PENDING: { backgroundColor: '#FEF3C7', color: '#92400E' },
-    IN_PROGRESS: { backgroundColor: '#DBEAFE', color: '#1E40AF' },
-    DONE: { backgroundColor: '#D1FAE5', color: '#065F46' },
-    CANCELLED: { backgroundColor: '#FEE2E2', color: '#991B1B' },
+    PENDING:     { backgroundColor: '#FEF3C7', color: '#92400E' },
+    IN_PROGRESS: { backgroundColor: '#FEF3C7', color: '#92400E' },
+    DONE:        { backgroundColor: '#D1FAE5', color: '#065F46' },
+    CANCELLED:   { backgroundColor: '#FEE2E2', color: '#991B1B' },
   };
   return { ...styles[status], display: 'inline-block', padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600 };
 }
@@ -113,27 +113,27 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Link href="/ordens-de-servico" style={{ color: '#6B7280', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontSize: 14 }}>
+        <Link href="/ordens-de-servico" style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontSize: 14 }}>
           <ArrowLeft size={16} /> Ordens de Serviço
         </Link>
-        <span style={{ color: '#D1D5DB' }}>/</span>
+        <span style={{ color: '#CBD5E1' }}>/</span>
         <span style={{ fontSize: 14, color: '#0A0A0F', fontWeight: 500 }}>OS #{order.number}</span>
       </div>
 
       {/* Header */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', padding: 24 }}>
+      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0A0A0F', margin: '0 0 6px' }}>
               OS #{order.number} — {order.title}
             </h1>
-            <p style={{ color: '#6B7280', fontSize: 14, margin: 0 }}>{order.customer.name}</p>
+            <p style={{ color: '#64748B', fontSize: 14, margin: 0 }}>{order.customer.name}</p>
           </div>
           <span style={statusBadgeStyle(order.status)}>{statusLabel(order.status)}</span>
         </div>
 
         {statusError && (
-          <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '8px 12px', color: '#DC2626', fontSize: 13, marginTop: 12 }}>
+          <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', color: '#DC2626', fontSize: 13, marginTop: 12 }}>
             {statusError}
           </div>
         )}
@@ -144,7 +144,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
             <button
               onClick={() => { void handleStatusChange('IN_PROGRESS'); }}
               disabled={statusLoading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#1D4ED8', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: statusLoading ? 'not-allowed' : 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#6D28D9', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: statusLoading ? 'not-allowed' : 'pointer' }}
             >
               <PlayCircle size={16} /> {statusLoading ? 'Atualizando...' : 'Iniciar OS'}
             </button>
@@ -155,22 +155,22 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
           <div style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {confirmAction === 'DONE' ? (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 14, color: '#374151' }}>Confirmar conclusão?</span>
-                <button onClick={() => { void handleStatusChange('DONE'); }} disabled={statusLoading} style={{ ...btnSmall, backgroundColor: '#065F46', color: '#fff' }}>Sim, concluir</button>
-                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' }}>Cancelar</button>
+                <span style={{ fontSize: 14, color: '#334155' }}>Confirmar conclusão?</span>
+                <button onClick={() => { void handleStatusChange('DONE'); }} disabled={statusLoading} style={{ ...btnSmall, backgroundColor: '#16A34A', color: '#fff' }}>Sim, concluir</button>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Cancelar</button>
               </div>
             ) : confirmAction === 'CANCELLED' ? (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 14, color: '#374151' }}>Confirmar cancelamento?</span>
+                <span style={{ fontSize: 14, color: '#334155' }}>Confirmar cancelamento?</span>
                 <button onClick={() => { void handleStatusChange('CANCELLED'); }} disabled={statusLoading} style={{ ...btnSmall, backgroundColor: '#991B1B', color: '#fff' }}>Sim, cancelar</button>
-                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB' }}>Voltar</button>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Voltar</button>
               </div>
             ) : (
               <>
-                <button onClick={() => setConfirmAction('DONE')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#065F46', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                <button onClick={() => setConfirmAction('DONE')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#16A34A', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                   <CheckCircle size={16} /> Concluir
                 </button>
-                <button onClick={() => setConfirmAction('CANCELLED')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: 8, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                <button onClick={() => setConfirmAction('CANCELLED')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
                   <XCircle size={16} /> Cancelar OS
                 </button>
               </>
@@ -180,7 +180,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
       </div>
 
       {/* Informações */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', padding: 24 }}>
+      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0A0A0F', margin: '0 0 16px' }}>Informações</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           <div>
@@ -207,7 +207,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
       </div>
 
       {/* Fotos */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', padding: 24 }}>
+      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0A0A0F', margin: '0 0 16px' }}>Fotos</h2>
 
         {uploadError && (
@@ -222,7 +222,7 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
             return (
               <div key={stage}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: '#374151', margin: 0 }}>{STAGE_LABELS[stage]}</h3>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: '#334155', margin: 0 }}>{STAGE_LABELS[stage]}</h3>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: uploadingStage !== null ? 'not-allowed' : 'pointer', opacity: uploadingStage !== null ? 0.6 : 1 }}>
                     <Upload size={14} />
                     {uploadingStage === stage ? 'Enviando...' : 'Upload de foto'}
@@ -238,11 +238,11 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
                 </div>
 
                 {photos.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>Nenhuma foto adicionada.</p>
+                  <p style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }}>Nenhuma foto adicionada.</p>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
                     {photos.map(photo => (
-                      <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB', position: 'relative' }}>
+                      <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E2E8F0', position: 'relative' }}>
                         <img
                           src={photo.file_url}
                           alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`}
@@ -252,12 +252,12 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
                           onClick={() => { void handleDeletePhoto(photo.id); }}
                           disabled={deletingPhotoId === photo.id}
                           title="Excluir foto"
-                          style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: deletingPhotoId === photo.id ? 0.5 : 1 }}
+                          style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(10,10,15,0.6)', border: 'none', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: deletingPhotoId === photo.id ? 0.5 : 1 }}
                         >
                           <Trash2 size={13} color="#fff" />
                         </button>
                         {photo.caption && (
-                          <p style={{ fontSize: 12, color: '#6B7280', margin: 0, padding: '6px 8px', backgroundColor: '#F9FAFB' }}>{photo.caption}</p>
+                          <p style={{ fontSize: 12, color: '#64748B', margin: 0, padding: '6px 8px', backgroundColor: '#F8FAFC' }}>{photo.caption}</p>
                         )}
                       </div>
                     ))}
@@ -272,6 +272,6 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
   );
 }
 
-const btnSmall: React.CSSProperties = { border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer' };
-const infoLabel: React.CSSProperties = { fontSize: 12, color: '#6B7280', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' };
+const btnSmall: React.CSSProperties = { border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer' };
+const infoLabel: React.CSSProperties = { fontSize: 12, color: '#64748B', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' };
 const infoValue: React.CSSProperties = { fontSize: 14, color: '#0A0A0F', margin: 0 };

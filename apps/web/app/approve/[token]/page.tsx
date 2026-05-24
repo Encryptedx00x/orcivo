@@ -65,13 +65,16 @@ export default function ApprovePage(): JSX.Element {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ minHeight: '100vh', backgroundColor: '#FFFFFF' }}>
       {/* Header mínimo com logo */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
-        <span className="text-xl font-bold" style={{ color: '#6D28D9' }}>Orcivo</span>
+      <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E2E8F0', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #1a1a2e 0%, #6D28D9 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 7v5c0 5.25 3.4 10.15 8 11.35C16.6 22.15 20 17.25 20 12V7l-8-5z" fill="rgba(109,40,217,0.7)" stroke="#8B5CF6" strokeWidth="1.5"/><path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </div>
+        <span style={{ fontWeight: 700, fontSize: 17, color: '#0A0A0F', letterSpacing: '-0.01em' }}>Orcivo</span>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-8">
+      <main style={{ maxWidth: 672, margin: '0 auto', padding: '32px 16px' }}>
 
         {/* Loading */}
         {pageState === 'loading' && (
@@ -243,7 +246,7 @@ export default function ApprovePage(): JSX.Element {
                         value={typedName}
                         onChange={(e) => setTypedName(e.target.value)}
                         placeholder="Digite seu nome completo"
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
                       />
                     </div>
                     <button
@@ -289,12 +292,12 @@ export default function ApprovePage(): JSX.Element {
         {pageState === 'approved' && (
           <div className="text-center py-12 space-y-4">
             <CheckCircle size={64} className="mx-auto" style={{ color: '#16A34A' }} />
-            <h1 className="text-2xl font-bold text-gray-900">Orçamento aprovado!</h1>
-            <p className="text-gray-600 max-w-md mx-auto">
-              Sua aprovação foi registrada com sucesso. Em breve nossa equipe entrará em contato.
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0A0A0F', margin: '0 auto' }}>Orçamento aprovado.</h1>
+            <p style={{ color: '#64748B', maxWidth: 420, margin: '0 auto' }}>
+              Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em contato.
             </p>
-            <p className="text-sm text-gray-500 max-w-md mx-auto">
-              Uma ordem de serviço foi gerada automaticamente e nosso técnico será notificado.
+            <p style={{ fontSize: 14, color: '#94A3B8', maxWidth: 420, margin: '0 auto' }}>
+              Uma ordem de serviço foi gerada automaticamente.
             </p>
           </div>
         )}

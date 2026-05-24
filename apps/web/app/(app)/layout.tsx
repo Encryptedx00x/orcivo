@@ -5,9 +5,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }): 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <AppSidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar />
-        <main style={{ flex: 1, padding: 24, backgroundColor: '#F9FAFB' }}>{children}</main>
+        <main style={{ flex: 1, padding: 32, backgroundColor: '#FFFFFF' }}>{children}</main>
       </div>
     </div>
   );

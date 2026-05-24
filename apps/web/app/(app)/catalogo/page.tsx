@@ -40,16 +40,19 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
 
       {/* Empty state */}
       {!error && items.length === 0 && (
-        <div style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '32px 16px', textAlign: 'center', color: '#6B7280' }}>
-          <Package size={40} style={{ margin: '0 auto 12px', color: '#D1D5DB' }} />
-          <p style={{ fontWeight: 600 }}>Nenhum item no catálogo.</p>
-          <p style={{ fontSize: 14 }}>Adicione o primeiro item para começar.</p>
+        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '48px 24px', textAlign: 'center' }}>
+          <Package size={40} style={{ margin: '0 auto 16px', color: '#94A3B8', display: 'block' }} />
+          <p style={{ fontWeight: 600, color: '#0A0A0F', marginBottom: 6 }}>Nenhum item no catálogo.</p>
+          <p style={{ fontSize: 14, color: '#64748B', marginBottom: 16 }}>Adicione serviços e produtos para usar nos orçamentos.</p>
+          <Link href="/catalogo/novo" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#6D28D9', color: '#fff', borderRadius: 10, padding: '8px 18px', textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>
+            <Plus size={16} /> Adicionar primeiro item
+          </Link>
         </div>
       )}
 
       {/* Table */}
       {!error && items.length > 0 && (
-        <div style={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
@@ -73,8 +76,8 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
                   <td style={td}>
                     <span style={{
                       display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                      backgroundColor: item.type === 'SERVICE' ? '#EDE9FE' : '#DBEAFE',
-                      color: item.type === 'SERVICE' ? '#6D28D9' : '#1D4ED8',
+                      backgroundColor: item.type === 'SERVICE' ? '#EDE9FE' : '#F1F5F9',
+                      color: item.type === 'SERVICE' ? '#6D28D9' : '#475569',
                     }}>
                       {item.type === 'SERVICE' ? 'Serviço' : 'Produto'}
                     </span>
