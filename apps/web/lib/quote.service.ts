@@ -11,8 +11,9 @@ export interface QuoteItem {
 }
 
 export interface QuoteApproval {
-  approval_method: string;
+  approval_method: 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
   typed_name?: string;
+  signature_image_url?: string;
   approved_at: string;
 }
 

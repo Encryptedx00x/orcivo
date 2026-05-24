@@ -281,10 +281,24 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               <span style={{ color: '#065F46', fontWeight: 600 }}>Aprovado</span>
             </div>
             {quote.approval && (
-              <p style={{ color: '#6B7280', fontSize: 14, marginTop: 8 }}>
-                Aprovado em: {new Date(quote.approval.approved_at).toLocaleDateString('pt-BR')}
-                {quote.approval.typed_name && ` por ${quote.approval.typed_name}`}
-              </p>
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <p style={{ color: '#6B7280', fontSize: 14, margin: 0 }}>
+                  Aprovado em {new Date(quote.approval.approved_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {quote.approval.typed_name && (
+                    <> · <span style={{ fontWeight: 600, color: '#374151' }}>{quote.approval.typed_name}</span></>
+                  )}
+                </p>
+                {quote.approval.signature_image_url && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, backgroundColor: '#F9FAFB', display: 'inline-block' }}>
+                    <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 6px' }}>Assinatura</p>
+                    <img
+                      src={quote.approval.signature_image_url}
+                      alt="Assinatura do cliente"
+                      style={{ maxWidth: 280, maxHeight: 120, display: 'block', objectFit: 'contain' }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
             {quote.pdf_url && (
               <div style={{ marginTop: 12 }}>
