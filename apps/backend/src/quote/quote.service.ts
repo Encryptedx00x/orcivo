@@ -214,6 +214,22 @@ export class QuoteService {
       },
     });
 
+    // Regenerar PDF com assinatura e sobrescrever o objeto MinIO
+    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: quote.company_id } });
+    const quoteForPdf = {
+      ...quote,
+      customer_name: quote.customer.name,
+      approval: {
+        approval_method: dto.approval_method,
+        typed_name: dto.typed_name ?? null,
+        signature_image_url: signatureUrl ?? null,
+      },
+    };
+    const pdfBuffer = await this.pdfService.generate(quoteForPdf as never, company as never);
+    const pdfObjectName = `${quote.company_id}/quotes/${quote.id}.pdf`;
+    const pdfUrl = await this.storage.uploadBuffer('orcivo-pdfs', pdfObjectName, pdfBuffer, 'application/pdf');
+    await this.prisma.quote.update({ where: { id: quote.id }, data: { pdf_url: pdfUrl } });
+
     // Criar WorkOrder automaticamente (D2-14)
     const woTitle = quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`;
     await this.workOrderService.create(
