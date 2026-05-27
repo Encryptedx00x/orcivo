@@ -37,9 +37,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const setSession = async (accessToken: string, refreshToken: string, u: AuthUser, c: AuthCompany) => {
+  const setSession = async (accessToken: string, refreshToken: string | undefined, u: AuthUser, c: AuthCompany) => {
     await SecureStore.setItemAsync('access_token', accessToken);
-    await SecureStore.setItemAsync('refresh_token', refreshToken);
+    if (refreshToken) await SecureStore.setItemAsync('refresh_token', refreshToken);
     await SecureStore.setItemAsync('user', JSON.stringify(u));
     await SecureStore.setItemAsync('company', JSON.stringify(c));
     setUser(u); setCompany(c); setIsAuthenticated(true);

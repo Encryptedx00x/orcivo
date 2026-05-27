@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import { API_URL } from '../config';
 
-const BASE_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3000';
+const BASE_URL = API_URL;
 
 async function getHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const token = await SecureStore.getItemAsync('access_token');

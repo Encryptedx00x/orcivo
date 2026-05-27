@@ -79,6 +79,7 @@ export class AuthService {
     const tokens = await this.issueTokens(userId, user.email);
     return {
       access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
       user,
       company: { id: company.id, trade_name: company.trade_name },
     };
@@ -103,6 +104,7 @@ export class AuthService {
     const tokens = await this.issueTokens(user.id, user.email);
     return {
       access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
       user: { id: user.id, name: user.name, email: user.email },
       company: membership.company,
     };

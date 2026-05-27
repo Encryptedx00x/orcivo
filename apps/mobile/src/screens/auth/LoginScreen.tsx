@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
+import { API_URL } from '../../config';
 
 export function LoginScreen({ navigation }: { navigation: any }) {
   const { login } = useAuth();
@@ -13,8 +14,12 @@ export function LoginScreen({ navigation }: { navigation: any }) {
     setLoading(true);
     try {
       await login(email, password);
-    } catch {
-      Alert.alert('Erro', 'E-mail ou senha inválidos.');
+    } catch (e: any) {
+      if (e?.status === 401) {
+        Alert.alert('Erro', 'E-mail ou senha inválidos.');
+      } else {
+        Alert.alert('Erro de conexão', `Não foi possível conectar ao servidor.\n\nURL: ${API_URL}\nDetalhe: ${e?.message ?? 'desconhecido'}`);
+      }
     } finally {
       setLoading(false);
     }

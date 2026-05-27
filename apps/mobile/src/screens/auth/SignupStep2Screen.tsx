@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SignupStep2Schema } from '@orcivo/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
+import { API_URL } from '../../config';
 import { api } from '../../services/api';
 
 export function SignupStep2Screen({ route }: { route: any }) {
@@ -20,16 +21,26 @@ export function SignupStep2Screen({ route }: { route: any }) {
     setLoading(true);
     try {
       // Temporariamente usar o access token do step 1 para autorizar step 2
-      const res = await fetch(`${process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3000'}/auth/signup/company`, {
+      const res = await fetch(`${API_URL}/auth/signup/company`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, 'X-Client-Request-Id': String(Date.now()) },
         body: JSON.stringify(parsed.data),
       });
-      if (!res.ok) throw new Error('Erro ao criar empresa');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw Object.assign(new Error('Erro ao criar empresa'), { data: err });
+      }
       const data = await res.json() as { access_token: string; refresh_token: string; user: any; company: any };
-      await setSession(data.access_token, data.refresh_token, data.user, data.company);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível criar a empresa. Tente novamente.');
+      // setSession separado do try/catch do fetch para não confundir erro de rede com erro de sessão
+      try {
+        await setSession(data.access_token, data.refresh_token, data.user, data.company);
+      } catch {
+        // Sessão falhou mas empresa foi criada — navegar para login
+        Alert.alert('Empresa criada!', 'Faça login para continuar.');
+      }
+      return;
+    } catch (e: any) {
+      Alert.alert('Erro', e?.data?.message ?? 'Não foi possível criar a empresa. Tente novamente.');
     } finally {
       setLoading(false);
     }
