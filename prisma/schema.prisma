@@ -55,6 +55,8 @@ model Company {
   catalog_items CatalogItem[]
   quotes        Quote[]
   work_orders   WorkOrder[]
+  subscription  Subscription?
+  invites       CompanyInvite[]
 
   @@map("companies")
 }
@@ -328,6 +330,123 @@ model WorkOrderPhoto {
   @@index([work_order_id])
   @@index([company_id])
   @@map("work_order_photos")
+}
+
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  BLOCKED
+  CANCELLED
+  EXPIRED
+}
+
+enum WebhookProvider {
+  ASAAS
+}
+
+enum WebhookEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  SKIPPED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  company_id           String             @unique
+  company              Company            @relation(fields: [company_id], references: [id])
+  plan_code            PlanCode
+  status               SubscriptionStatus @default(ACTIVE)
+  asaas_customer_id    String?
+  asaas_sub_id         String?
+  current_period_start DateTime?
+  current_period_end   DateTime?
+  grace_period_days    Int                @default(0)
+  blocked_at           DateTime?
+  past_due_at          DateTime?
+  cancelled_at         DateTime?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  payments SubscriptionPayment[]
+
+  @@map("subscriptions")
+}
+
+model SubscriptionPayment {
+  id               String       @id @default(uuid())
+  subscription_id  String
+  subscription     Subscription @relation(fields: [subscription_id], references: [id])
+  asaas_payment_id String?      @unique
+  amount           Decimal      @db.Decimal(12, 2)
+  status           String
+  due_date         DateTime?
+  paid_at          DateTime?
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@map("subscription_payments")
+}
+
+model WebhookEvent {
+  id               String             @id @default(uuid())
+  provider         WebhookProvider
+  event_id         String
+  event_type       String
+  idempotency_key  String             @unique
+  status           WebhookEventStatus @default(PENDING)
+  raw_payload_json Json
+  error_message    String?
+  processed_at     DateTime?
+  created_at       DateTime           @default(now())
+  updated_at       DateTime           @updatedAt
+
+  @@map("webhook_events")
+}
+
+model PlanLimit {
+  id                    String   @id @default(uuid())
+  plan_code             PlanCode @unique
+  customers_max         Int?
+  quotes_per_month      Int?
+  work_orders_per_month Int?
+  members_max           Int
+  has_logo              Boolean  @default(true)
+  pdf_watermark         Boolean  @default(false)
+  has_reports           Boolean  @default(false)
+  has_contracts         Boolean  @default(false)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  @@map("plan_limits")
+}
+
+model CompanyInvite {
+  id          String       @id @default(uuid())
+  company_id  String
+  company     Company      @relation(fields: [company_id], references: [id])
+  email       String
+  role        MemberRole   @default(TECNICO)
+  token       String       @unique @default(uuid())
+  status      InviteStatus @default(PENDING)
+  invited_by  String
+  expires_at  DateTime
+  accepted_at DateTime?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  @@index([token])
+  @@map("company_invites")
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
