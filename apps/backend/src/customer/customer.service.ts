@@ -1,12 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerCreateDto, CustomerListQueryDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 
 @Injectable()
 export class CustomerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly planLimitsService: PlanLimitsService,
+  ) {}
 
   async create(dto: CustomerCreateDto, companyId: string) {
+    await this.planLimitsService.enforceLimit(companyId, 'CUSTOMERS');
     return this.prisma.customer.create({
       data: {
         ...dto,

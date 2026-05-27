@@ -19,6 +19,7 @@ import { RedisModule } from './redis/redis.module';
 import { StorageModule } from './storage/storage.module';
 import { BillingModule } from './billing/billing.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { WebhookModule } from './webhook/webhook.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: SubscriptionStatusGuard },
   ],
 })
 export class AppModule {}
