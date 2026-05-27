@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 1 concluída com UAT aprovado — aguardando planejamento da Fase 2
-last_updated: "2026-05-24T03:09:12.918Z"
+status: Fase 2A concluída com verificação 12/12 — aguardando planejamento da Fase 3
+last_updated: "2026-05-27T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 27
-  completed_plans: 27
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 39
+  completed_plans: 39
   percent: 100
 ---
 
@@ -16,10 +16,22 @@ progress:
 
 ## Estado atual
 
-**Fase ativa:** 2 — MVP Funcional
-**Status:** Fase 1 concluída com UAT aprovado — aguardando planejamento da Fase 2
-**Data:** 2026-05-22
-**Próximo comando:** `/gsd-plan-phase 2A` — planejar Fase 2A (Catálogo, Orçamento, PDF, Aprovação, OS)
+**Fase ativa:** 3 — Monetização
+**Status:** Fase 2A concluída com verificação 12/12 — aguardando planejamento da Fase 3
+**Data:** 2026-05-27
+**Próximo comando:** `/gsd-plan-phase 3` — planejar Fase 3 (Asaas + checkout + limites + bloqueio escalonado)
+
+## Deliverables concluídos na Fase 2A
+
+| Deliverable | Status |
+|---|---|
+| D2.1 — Catálogo de serviços/produtos (mobile + web) | ✅ Completo |
+| D2.2 — Orçamento estruturado com máquina de estados (mobile + web) | ✅ Completo |
+| D2.3 — Geração de PDF + compartilhamento WhatsApp | ✅ Completo |
+| D2.4 — Aprovação por link público (3 métodos: botão, nome, assinatura) | ✅ Completo |
+| D2.5 — Ordem de Serviço com fotos BEFORE/DURING/AFTER (mobile + web) | ✅ Completo |
+| D2.6 — Reset de senha (forgot-password + reset-password) | ✅ Completo |
+| D2.7 — StorageService MinIO + MailService + PlanLimitsService scaffold | ✅ Completo |
 
 ## Deliverables concluídos na Fase 1
 

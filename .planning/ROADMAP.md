@@ -208,25 +208,53 @@ Plans:
 
 **Plans:** 12 plans em 7 waves
 
-**Status:** Em planejamento — 2026-05-22
+**Status:** ✅ Completa — 2026-05-24 (verificação 12/12)
 
 Plans:
-- [ ] 02-P01-PLAN.md — Schema Prisma + DTOs shared-types (Wave 1)
-- [ ] 02-P02-PLAN.md — Backend infra: StorageService + MailService + PlanLimitsService (Wave 2)
-- [ ] 02-P03-PLAN.md — Auth reset de senha: forgot-password + reset-password (Wave 2)
-- [ ] 02-P04-PLAN.md — Backend CatalogModule CRUD com isolation spec (Wave 3)
-- [ ] 02-P05-PLAN.md — Backend QuoteModule: CRUD + state machine + BullMQ + isolation spec (Wave 3)
-- [ ] 02-P06-PLAN.md — Backend WorkOrderModule: CRUD + upload fotos + isolation spec (Wave 3)
-- [ ] 02-P07-PLAN.md — PDF service + Approval flow: QuoteApproval + WorkOrder automática (Wave 4)
-- [ ] 02-P08-PLAN.md — Mobile: Catálogo + OS com upload de fotos (Wave 5)
-- [ ] 02-P09-PLAN.md — Mobile: Orçamentos + compartilhamento WhatsApp (Wave 5)
-- [ ] 02-P10-PLAN.md — Web: Catálogo + Ordem de Serviço (Wave 6)
-- [ ] 02-P11-PLAN.md — Web: Orçamentos + WhatsApp share (Wave 6)
-- [ ] 02-P12-PLAN.md — Página pública de aprovação + prisma migrate + smoke tests (Wave 7)
+- [x] 02-P01-PLAN.md — Schema Prisma + DTOs shared-types (Wave 1)
+- [x] 02-P02-PLAN.md — Backend infra: StorageService + MailService + PlanLimitsService (Wave 2)
+- [x] 02-P03-PLAN.md — Auth reset de senha: forgot-password + reset-password (Wave 2)
+- [x] 02-P04-PLAN.md — Backend CatalogModule CRUD com isolation spec (Wave 3)
+- [x] 02-P05-PLAN.md — Backend QuoteModule: CRUD + state machine + BullMQ + isolation spec (Wave 3)
+- [x] 02-P06-PLAN.md — Backend WorkOrderModule: CRUD + upload fotos + isolation spec (Wave 3)
+- [x] 02-P07-PLAN.md — PDF service + Approval flow: QuoteApproval + WorkOrder automática (Wave 4)
+- [x] 02-P08-PLAN.md — Mobile: Catálogo + OS com upload de fotos (Wave 5)
+- [x] 02-P09-PLAN.md — Mobile: Orçamentos + compartilhamento WhatsApp (Wave 5)
+- [x] 02-P10-PLAN.md — Web: Catálogo + Ordem de Serviço (Wave 6)
+- [x] 02-P11-PLAN.md — Web: Orçamentos + WhatsApp share (Wave 6)
+- [x] 02-P12-PLAN.md — Página pública de aprovação + prisma migrate + smoke tests (Wave 7)
 
 ---
 
-## Fases 2B-7 (alto nível — não planejar ainda)
+## Fase 3 — Monetização
+
+**Goal:** Asaas integrado, site público com checkout, limites de plano enforced, bloqueio escalonado por inadimplência.
+
+**Deliverables:**
+- D3.1 — Schema Prisma: Subscription, SubscriptionPayment, WebhookEvent, PlanLimit
+- D3.2 — BillingModule backend: Asaas API client, webhooks idempotentes (WebhookEvent), SubscriptionStatusGuard
+- D3.3 — PlanLimitsService completo: GET /me/plan-limits, enforce nos endpoints, bloqueio de criação por plano
+- D3.4 — Bloqueio escalonado: carência por plano, PAST_DUE → BLOCKED, banner no app/web, email
+- D3.5 — Site público (apps/site/): landing + pricing + checkout Asaas (Next.js)
+- D3.6 — Fluxo de upgrade/downgrade + convites de membros
+
+**Requirements cobertos:** §11, §12, §13, §14 do planejamento mestre
+
+**Regras críticas:**
+- Checkout 100% no site público (Next.js); sem botão de compra no mobile
+- Mensagem neutra no mobile: "Sua assinatura está inativa. Acesse o site para regularizar."
+- Inadimplente PODE logar/ver dados/exportar; NÃO PODE criar/modificar/emitir
+- Orcivo Livre sem cobrança via Asaas (não cria Subscription com gateway)
+- WebhookEvent obrigatório para todos os eventos Asaas (idempotência)
+- Limites vêm do backend via GET /me/plan-limits; nunca hardcoded no app
+
+**Duração estimada:** 4-6 semanas
+
+**Status:** Aguardando planejamento
+
+---
+
+## Fases 4-7 (alto nível — não planejar ainda)
 
 Ver `PROJECT.md` para descrição de cada fase.
 
