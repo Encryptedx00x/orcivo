@@ -250,7 +250,20 @@ Plans:
 
 **Duração estimada:** 4-6 semanas
 
-**Status:** Aguardando planejamento
+**Plans:** 9 plans em 5 waves
+
+**Status:** Planejada — 2026-05-27
+
+Plans:
+- [ ] 03-P01-PLAN.md — Schema Prisma: Subscription, SubscriptionPayment, WebhookEvent, PlanLimit (Wave 1)
+- [ ] 03-P02-PLAN.md — BillingModule + AsaasClient + SubscriptionService (Wave 2)
+- [ ] 03-P03-PLAN.md — WebhookModule + BullMQ worker + CronJob carência (Wave 2)
+- [ ] 03-P04-PLAN.md — PlanLimitsService completo + GET /me/plan-limits + enforce (Wave 3)
+- [ ] 03-P05-PLAN.md — SubscriptionStatusGuard + bloqueio escalonado (Wave 3)
+- [ ] 03-P06-PLAN.md — Site público apps/site/ — landing + pricing + checkout (Wave 4)
+- [ ] 03-P07-PLAN.md — Banner de inadimplência mobile + web (Wave 4)
+- [ ] 03-P08-PLAN.md — Convites de membros (InviteModule) (Wave 4)
+- [ ] 03-P09-PLAN.md — Prisma migrate + smoke tests + documentação (Wave 5)
 
 ---
 
