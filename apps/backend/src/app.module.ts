@@ -17,6 +17,8 @@ import { PlanLimitsModule } from './plan-limits/plan-limits.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { StorageModule } from './storage/storage.module';
+import { BillingModule } from './billing/billing.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { StorageModule } from './storage/storage.module';
     CatalogModule,
     QuoteModule,
     WorkOrderModule,
+    BillingModule,
+    WebhookModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
