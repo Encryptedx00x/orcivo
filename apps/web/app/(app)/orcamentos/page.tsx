@@ -13,11 +13,11 @@ const STATUS_LABEL: Record<Quote['status'], string> = {
 };
 
 const STATUS_STYLE: Record<Quote['status'], React.CSSProperties> = {
-  DRAFT:     { backgroundColor: '#F3F4F6', color: '#6B7280' },
+  DRAFT:     { backgroundColor: '#F3F4F6', color: '#64748B' },
   SENT:      { backgroundColor: '#FEF3C7', color: '#92400E' },
   APPROVED:  { backgroundColor: '#D1FAE5', color: '#065F46' },
   REJECTED:  { backgroundColor: '#FEE2E2', color: '#991B1B' },
-  CANCELLED: { backgroundColor: '#E5E7EB', color: '#374151' },
+  CANCELLED: { backgroundColor: '#E2E8F0', color: '#334155' },
   EXPIRED:   { backgroundColor: '#FFEDD5', color: '#9A3412' },
 };
 
@@ -40,9 +40,9 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
         <Link
           href="/orcamentos/novo"
           style={{
-            display: 'flex', alignItems: 'center', gap: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
             backgroundColor: '#6D28D9', color: '#fff',
-            borderRadius: 8, padding: '8px 18px',
+            borderRadius: 12, padding: '8px 18px',
             textDecoration: 'none', fontWeight: 600, fontSize: 14,
           }}
         >
@@ -54,7 +54,7 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
       {error && (
         <div style={{
           backgroundColor: '#FEF2F2', border: '1px solid #FECACA',
-          borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 16,
+          borderRadius: 12, padding: '12px 16px', color: '#DC2626', marginBottom: 16,
         }}>
           Erro ao carregar orçamentos. Tente novamente mais tarde.
         </div>
@@ -63,21 +63,34 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
       {/* Empty state */}
       {!error && quotes.length === 0 && (
         <div style={{
-          backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB',
-          borderRadius: 8, padding: '32px 16px', textAlign: 'center', color: '#6B7280',
+          backgroundColor: '#fff', border: '1px solid #E2E8F0',
+          borderRadius: 12, padding: '48px 24px', textAlign: 'center',
         }}>
-          <FileText size={40} style={{ margin: '0 auto 12px', color: '#D1D5DB' }} />
-          <p style={{ fontWeight: 600 }}>Nenhum orçamento ainda.</p>
-          <p style={{ fontSize: 14 }}>Crie o primeiro orçamento para começar.</p>
+          <FileText size={40} style={{ margin: '0 auto 12px', color: '#94A3B8', display: 'block' }} />
+          <p style={{ fontWeight: 600, fontSize: 15, color: '#0A0A0F', marginBottom: 6 }}>
+            Nenhum orçamento cadastrado ainda.
+          </p>
+          <p style={{ fontSize: 14, color: '#64748B', marginBottom: 16 }}>
+            Crie o primeiro orçamento para começar a atender seus clientes.
+          </p>
+          <Link
+            href="/orcamentos/novo"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              color: '#6D28D9', fontWeight: 600, fontSize: 14, textDecoration: 'none',
+            }}
+          >
+            <Plus size={14} /> Criar primeiro orçamento
+          </Link>
         </div>
       )}
 
       {/* Table */}
       {!error && quotes.length > 0 && (
-        <div style={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
+              <tr style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
                 <th style={th}>#</th>
                 <th style={th}>Título / Cliente</th>
                 <th style={th}>Status</th>
@@ -88,7 +101,12 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
             </thead>
             <tbody>
               {quotes.map((q) => (
-                <tr key={q.id} style={{ borderBottom: '1px solid #E5E7EB' }}>
+                <tr
+                  key={q.id}
+                  style={{ borderBottom: '1px solid #E2E8F0', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F8FAFC')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
                   <td style={td}>
                     <Link
                       href={`/orcamentos/${q.id}`}
@@ -100,7 +118,7 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
                   <td style={td}>
                     <span style={{ fontWeight: 500 }}>{q.title || q.customer.name}</span>
                     {q.title && (
-                      <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>
+                      <p style={{ fontSize: 12, color: '#64748B', margin: '2px 0 0' }}>
                         {q.customer.name}
                       </p>
                     )}
@@ -114,7 +132,7 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
                     </span>
                   </td>
                   <td style={td}>{formatMoney(q.total)}</td>
-                  <td style={td}>
+                  <td style={{ ...td, color: '#64748B' }}>
                     {q.created_at
                       ? new Date(q.created_at).toLocaleDateString('pt-BR')
                       : '—'}
@@ -138,8 +156,8 @@ export default async function OrcamentosPage(): Promise<JSX.Element> {
 }
 
 const th: React.CSSProperties = {
-  textAlign: 'left', padding: '12px 16px', fontSize: 13, color: '#6B7280', fontWeight: 600,
+  textAlign: 'left', padding: '12px 16px', fontSize: 13, color: '#64748B', fontWeight: 600,
 };
 const td: React.CSSProperties = {
-  padding: '12px 16px', fontSize: 14, color: '#0A0A0F',
+  padding: '13px 16px', fontSize: 14, color: '#0A0A0F',
 };

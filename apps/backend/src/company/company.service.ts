@@ -31,6 +31,35 @@ export class CompanyService {
     return company;
   }
 
+  async getDashboard(companyId: string) {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [quotesPending, workOrdersOpen, revenueResult] = await Promise.all([
+      this.prisma.quote.count({
+        where: { company_id: companyId, status: 'SENT' },
+      }),
+      this.prisma.workOrder.count({
+        where: { company_id: companyId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+      }),
+      this.prisma.quote.aggregate({
+        where: {
+          company_id: companyId,
+          status: 'APPROVED',
+          created_at: { gte: startOfMonth },
+        },
+        _sum: { total: true },
+      }),
+    ]);
+
+    return {
+      quotes_pending: quotesPending,
+      work_orders_open: workOrdersOpen,
+      revenue_month: revenueResult._sum.total?.toString() ?? '0.00',
+      next_appointment: null,
+    };
+  }
+
   async updateApprovalMethods(companyId: string, methods: ApprovalMethod[]) {
     return this.prisma.company.update({
       where: { id: companyId },

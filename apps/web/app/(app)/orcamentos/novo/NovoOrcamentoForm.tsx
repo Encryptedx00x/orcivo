@@ -134,7 +134,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
       {/* Catalog dialog */}
       {showCatalogDialog && (
         <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(10,10,15,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
         }}>
           <div style={{
@@ -153,7 +153,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
+                  <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
                     <th style={th}>Nome</th>
                     <th style={th}>Preço</th>
                     <th style={th}></th>
@@ -291,8 +291,8 @@ export default function NovoOrcamentoForm(): JSX.Element {
 
           {items.map((item, idx) => (
             <div key={idx} style={{
-              backgroundColor: '#F9FAFB', borderRadius: 8, padding: 12,
-              marginBottom: 8, border: '1px solid #E5E7EB',
+              backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12,
+              marginBottom: 8, border: '1px solid #E2E8F0',
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'end' }}>
                 <div>
@@ -392,20 +392,20 @@ export default function NovoOrcamentoForm(): JSX.Element {
   );
 }
 
-const th: React.CSSProperties = { textAlign: 'left', padding: '8px 12px', fontSize: 12, color: '#6B7280', fontWeight: 600 };
+const th: React.CSSProperties = { textAlign: 'left', padding: '8px 12px', fontSize: 12, color: '#64748B', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '8px 12px', fontSize: 13 };
-const card: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', padding: 20 };
+const card: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 20 };
 const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#0A0A0F' };
-const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 4 };
+const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 4 };
 const inputStyle: React.CSSProperties = {
-  width: '100%', border: '1px solid #D1D5DB', borderRadius: 6, padding: '8px 10px',
+  width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px',
   fontSize: 14, color: '#0A0A0F', outline: 'none', boxSizing: 'border-box',
 };
 const btnPrimary: React.CSSProperties = {
-  backgroundColor: '#6D28D9', color: '#fff', borderRadius: 8, padding: '10px 20px',
+  backgroundColor: '#6D28D9', color: '#fff', borderRadius: 12, padding: '10px 20px',
   fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer',
 };
 const btnSecondary: React.CSSProperties = {
-  backgroundColor: '#fff', color: '#374151', borderRadius: 8, padding: '10px 20px',
-  fontWeight: 600, fontSize: 14, border: '1px solid #D1D5DB', cursor: 'pointer',
+  backgroundColor: '#fff', color: '#334155', borderRadius: 12, padding: '10px 20px',
+  fontWeight: 600, fontSize: 14, border: '1px solid #E2E8F0', cursor: 'pointer',
 };

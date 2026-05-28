@@ -17,11 +17,11 @@ const STATUS_LABEL: Record<Quote['status'], string> = {
 };
 
 const STATUS_STYLE: Record<Quote['status'], React.CSSProperties> = {
-  DRAFT:     { backgroundColor: '#F3F4F6', color: '#6B7280' },
+  DRAFT:     { backgroundColor: '#F3F4F6', color: '#64748B' },
   SENT:      { backgroundColor: '#FEF3C7', color: '#92400E' },
   APPROVED:  { backgroundColor: '#D1FAE5', color: '#065F46' },
   REJECTED:  { backgroundColor: '#FEE2E2', color: '#991B1B' },
-  CANCELLED: { backgroundColor: '#E5E7EB', color: '#374151' },
+  CANCELLED: { backgroundColor: '#E5E7EB', color: '#334155' },
   EXPIRED:   { backgroundColor: '#FFEDD5', color: '#9A3412' },
 };
 
@@ -107,7 +107,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         </div>
         <button
           onClick={() => router.back()}
-          style={{ background: 'none', border: '1px solid #D1D5DB', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, color: '#374151' }}
+          style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, color: '#334155' }}
         >
           Voltar
         </button>
@@ -127,7 +127,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         <h2 style={sectionTitle}>Cliente</h2>
         <p style={{ fontWeight: 600, fontSize: 15 }}>{quote.customer.name}</p>
         {quote.customer.phone && (
-          <p style={{ color: '#6B7280', fontSize: 14, marginTop: 4 }}>{quote.customer.phone}</p>
+          <p style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{quote.customer.phone}</p>
         )}
       </div>
 
@@ -136,7 +136,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         <h2 style={sectionTitle}>Itens</h2>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
+            <tr style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
               <th style={th}>Descrição</th>
               <th style={{ ...th, textAlign: 'right' }}>Qtd</th>
               <th style={{ ...th, textAlign: 'right' }}>Preço unit.</th>
@@ -145,7 +145,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
           </thead>
           <tbody>
             {quote.items.map((item) => (
-              <tr key={item.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+              <tr key={item.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                 <td style={td}>{item.description}</td>
                 <td style={{ ...td, textAlign: 'right' }}>{item.quantity}</td>
                 <td style={{ ...td, textAlign: 'right' }}>{formatMoney(item.unit_price)}</td>
@@ -156,24 +156,24 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         </table>
 
         {/* Totals */}
-        <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 16, paddingTop: 16 }}>
+        <div style={{ borderTop: '1px solid #E2E8F0', marginTop: 16, paddingTop: 16 }}>
           <div style={{ maxWidth: 280, marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6B7280', fontSize: 14 }}>Subtotal</span>
+              <span style={{ color: '#64748B', fontSize: 14 }}>Subtotal</span>
               <span>{formatMoney(quote.subtotal)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6B7280', fontSize: 14 }}>
+              <span style={{ color: '#64748B', fontSize: 14 }}>
                 Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
               </span>
               <span style={{ color: '#DC2626' }}>
                 -{' '}
                 {quote.discount_type === 'PERCENT'
-                  ? formatMoney(multiplyDecimal(quote.subtotal, String(parseFloat(quote.discount_value) / 100)))
+                  ? formatMoney(multiplyDecimal(quote.subtotal, multiplyDecimal(quote.discount_value, '0.01')))
                   : formatMoney(quote.discount_value)}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
               <span style={{ fontWeight: 700, fontSize: 16 }}>Total</span>
               <span style={{ fontWeight: 700, fontSize: 18, color: '#6D28D9' }}>{formatMoney(quote.total)}</span>
             </div>
@@ -282,14 +282,14 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             </div>
             {quote.approval && (
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <p style={{ color: '#6B7280', fontSize: 14, margin: 0 }}>
+                <p style={{ color: '#64748B', fontSize: 14, margin: 0 }}>
                   Aprovado em {new Date(quote.approval.approved_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   {quote.approval.typed_name && (
-                    <> · <span style={{ fontWeight: 600, color: '#374151' }}>{quote.approval.typed_name}</span></>
+                    <> · <span style={{ fontWeight: 600, color: '#334155' }}>{quote.approval.typed_name}</span></>
                   )}
                 </p>
                 {quote.approval.signature_image_url && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, backgroundColor: '#F9FAFB', display: 'inline-block' }}>
+                  <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, padding: 12, backgroundColor: '#F9FAFB', display: 'inline-block' }}>
                     <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 6px' }}>Assinatura</p>
                     <img
                       src={quote.approval.signature_image_url}
@@ -314,7 +314,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         )}
 
         {['REJECTED', 'CANCELLED', 'EXPIRED'].includes(quote.status) && (
-          <p style={{ color: '#6B7280', fontSize: 14 }}>
+          <p style={{ color: '#64748B', fontSize: 14 }}>
             Este orçamento está {STATUS_LABEL[quote.status].toLowerCase()}.
           </p>
         )}
@@ -341,23 +341,23 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
       {/* Cancel dialog */}
       {showCancelDialog && (
         <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(10,10,15,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
         }}>
           <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 400, maxWidth: '90vw' }}>
             <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Cancelar orçamento</h3>
-            <p style={{ color: '#6B7280', fontSize: 14, marginBottom: 16 }}>
+            <p style={{ color: '#64748B', fontSize: 14, marginBottom: 16 }}>
               Tem certeza que deseja cancelar este orçamento? Esta ação não pode ser desfeita.
             </p>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Motivo (opcional)</label>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 4 }}>Motivo (opcional)</label>
               <input
                 type="text"
                 value={cancelReason}
                 onChange={e => setCancelReason(e.target.value)}
                 placeholder="Motivo do cancelamento"
                 style={{
-                  width: '100%', border: '1px solid #D1D5DB', borderRadius: 6,
+                  width: '100%', border: '1px solid #E2E8F0', borderRadius: 8,
                   padding: '8px 10px', fontSize: 14, boxSizing: 'border-box',
                 }}
               />
@@ -384,17 +384,17 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
   );
 }
 
-const th: React.CSSProperties = { textAlign: 'left', padding: '10px 12px', fontSize: 13, color: '#6B7280', fontWeight: 600 };
+const th: React.CSSProperties = { textAlign: 'left', padding: '10px 12px', fontSize: 13, color: '#64748B', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '10px 12px', fontSize: 14, color: '#0A0A0F' };
-const card: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 8, border: '1px solid #E5E7EB', padding: 20 };
+const card: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 20 };
 const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#0A0A0F' };
 const btnPrimary: React.CSSProperties = {
-  backgroundColor: '#6D28D9', color: '#fff', borderRadius: 8, padding: '10px 20px',
+  backgroundColor: '#6D28D9', color: '#fff', borderRadius: 12, padding: '10px 20px',
   fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer',
 };
 const btnSecondary: React.CSSProperties = {
-  backgroundColor: '#fff', color: '#374151', borderRadius: 8, padding: '10px 20px',
-  fontWeight: 600, fontSize: 14, border: '1px solid #D1D5DB', cursor: 'pointer',
+  backgroundColor: '#fff', color: '#334155', borderRadius: 12, padding: '10px 20px',
+  fontWeight: 600, fontSize: 14, border: '1px solid #E2E8F0', cursor: 'pointer',
 };
 const btnDanger: React.CSSProperties = {
   backgroundColor: '#FEE2E2', color: '#991B1B', borderRadius: 8, padding: '10px 20px',

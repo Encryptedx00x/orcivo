@@ -37,6 +37,11 @@ export class CompanyController {
     return this.planLimitsService.getLimits(req.companyId);
   }
 
+  @Get('me/dashboard')
+  getDashboard(@Req() req: TenantRequest) {
+    return this.companyService.getDashboard(req.companyId);
+  }
+
   @AllowPastDue()
   @Get('me/subscription-status')
   getSubscriptionStatus(@Req() req: TenantRequest) {
