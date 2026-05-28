@@ -1,0 +1,129 @@
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import { Plus, Package, Search, ChevronRight } from 'lucide-react';
+import { formatMoney } from '@orcivo/shared-types';
+import type { CatalogItem } from '../../../lib/catalog.service';
+
+function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {
+  const COLORS: Record<string, { background: string; color: string }> = {
+    slate:   { background: '#F1F5F9', color: '#334155' },
+    success: { background: '#DCFCE7', color: '#166534' },
+    brand:   { background: '#F5F3FF', color: '#4C1D95' },
+  };
+  const c = COLORS[k] ?? COLORS.slate;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, padding: '5px 9px', borderRadius: 9999, ...c }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+      {children}
+    </span>
+  );
+}
+
+const TYPE_LABEL: Record<string, string> = { SERVICE: 'Serviço', PRODUCT: 'Produto', LABOR: 'Mão de obra' };
+
+export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Element {
+  const [q, setQ] = useState('');
+  const [typeFilter, setTypeFilter] = useState('todos');
+  const [statusFilter, setStatusFilter] = useState('todos');
+
+  const filtered = items.filter(it => {
+    const matchQ = !q || it.name.toLowerCase().includes(q.toLowerCase());
+    const matchType = typeFilter === 'todos' || it.type === typeFilter;
+    const matchStatus = statusFilter === 'todos' || (statusFilter === 'active' ? it.is_active : !it.is_active);
+    return matchQ && matchType && matchStatus;
+  });
+
+  const activeCount = items.filter(i => i.is_active).length;
+  const inactiveCount = items.length - activeCount;
+
+  return (
+    <div>
+      <div className="ov-page-header">
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.015em', color: '#0A0A0F', margin: 0 }}>Catálogo</h1>
+          <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{activeCount} itens ativos · {inactiveCount} inativos</div>
+        </div>
+        <Link href="/catalogo/novo" className="ov-btn ov-btn-primary"><Plus size={16} />Novo item</Link>
+      </div>
+
+      {/* Filters */}
+      <div className="ov-card" style={{ padding: 14, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="ov-search" style={{ flex: 1 }}>
+          <Search size={16} color="#64748B" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar no catálogo…" />
+        </div>
+        <select
+          className="ov-input"
+          style={{ width: 160, height: 36 }}
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+        >
+          <option value="todos">Todos os tipos</option>
+          <option value="SERVICE">Serviço</option>
+          <option value="PRODUCT">Produto</option>
+        </select>
+        <select
+          className="ov-input"
+          style={{ width: 160, height: 36 }}
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+        >
+          <option value="todos">Ativos e inativos</option>
+          <option value="active">Somente ativos</option>
+          <option value="inactive">Somente inativos</option>
+        </select>
+      </div>
+
+      {/* Empty */}
+      {filtered.length === 0 && (
+        <div className="ov-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <Package size={40} style={{ margin: '0 auto 12px', color: '#94A3B8', display: 'block' }} />
+          <p style={{ fontWeight: 600, color: '#0A0A0F', margin: '0 0 6px' }}>Nenhum item encontrado.</p>
+          <p style={{ fontSize: 14, color: '#64748B', margin: '0 0 16px' }}>Ajuste os filtros ou adicione novos itens ao catálogo.</p>
+          <Link href="/catalogo/novo" className="ov-btn ov-btn-primary" style={{ display: 'inline-flex' }}>
+            <Plus size={16} />Adicionar item
+          </Link>
+        </div>
+      )}
+
+      {/* Table */}
+      {filtered.length > 0 && (
+        <div className="ov-card" style={{ overflow: 'hidden' }}>
+          <table className="ov-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Nome</th>
+                <th>Unidade</th>
+                <th style={{ textAlign: 'right' }}>Preço</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(item => (
+                <tr key={item.id}>
+                  <td><Pill k="brand">{TYPE_LABEL[item.type] ?? item.type}</Pill></td>
+                  <td style={{ fontWeight: 500, color: item.is_active ? '#0A0A0F' : '#64748B' }}>{item.name}</td>
+                  <td className="ov-muted">{item.unit ?? '—'}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>{formatMoney(item.unit_price)}</td>
+                  <td>
+                    {item.is_active
+                      ? <Pill k="success">Ativo</Pill>
+                      : <Pill k="slate">Inativo</Pill>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <Link href={`/catalogo/${item.id}/editar`} style={{ color: '#94A3B8', display: 'inline-flex' }}>
+                      <ChevronRight size={16} />
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
