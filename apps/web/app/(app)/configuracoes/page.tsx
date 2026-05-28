@@ -55,22 +55,22 @@ export default function ConfiguracoesPage(): JSX.Element {
   return (
     <div style={{ maxWidth: 560, padding: 32 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0A0A0F', marginBottom: 4 }}>Configurações</h1>
-      <p style={{ color: '#6B7280', fontSize: 14, marginBottom: 32 }}>Preferências da sua empresa.</p>
+      <p style={{ color: '#64748B', fontSize: 14, marginBottom: 32 }}>Preferências da sua empresa.</p>
 
       <section>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0A0A0F', marginBottom: 4 }}>Métodos de aprovação de orçamento</h2>
-        <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#64748B', fontSize: 13, marginBottom: 16 }}>
           Defina quais métodos o cliente pode usar para aprovar pelo link público.
         </p>
 
-        {loading ? <p style={{ color: '#9CA3AF', fontSize: 13 }}>Carregando...</p> : (
+        {loading ? <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando...</p> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {ALL_METHODS.map(m => (
-              <label key={m} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: `1.5px solid ${methods.includes(m) ? '#6D28D9' : '#E5E7EB'}`, borderRadius: 8, cursor: 'pointer', backgroundColor: methods.includes(m) ? '#F5F3FF' : '#fff' }}>
+              <label key={m} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: `1.5px solid ${methods.includes(m) ? '#6D28D9' : '#E2E8F0'}`, borderRadius: 12, cursor: 'pointer', backgroundColor: methods.includes(m) ? '#F5F3FF' : '#fff' }}>
                 <input type="checkbox" checked={methods.includes(m)} onChange={() => toggle(m)} style={{ marginTop: 2, accentColor: '#6D28D9', width: 16, height: 16 }} />
                 <div>
                   <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: '#0A0A0F' }}>{METHOD_LABELS[m].label}</p>
-                  <p style={{ margin: 0, fontSize: 12, color: '#6B7280' }}>{METHOD_LABELS[m].desc}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: '#64748B' }}>{METHOD_LABELS[m].desc}</p>
                 </div>
               </label>
             ))}
@@ -80,7 +80,7 @@ export default function ConfiguracoesPage(): JSX.Element {
         {error && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{error}</p>}
         {saved && <p style={{ color: '#065F46', fontSize: 13, marginTop: 10 }}>Salvo com sucesso.</p>}
 
-        <button onClick={save} disabled={saving || loading} style={{ marginTop: 20, padding: '10px 28px', backgroundColor: '#6D28D9', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+        <button onClick={save} disabled={saving || loading} style={{ marginTop: 20, padding: '10px 28px', backgroundColor: '#6D28D9', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
           {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </section>

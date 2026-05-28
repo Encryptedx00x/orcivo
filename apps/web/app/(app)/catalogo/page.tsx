@@ -23,7 +23,7 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             backgroundColor: '#6D28D9', color: '#fff',
-            borderRadius: 8, padding: '8px 18px',
+            borderRadius: 12, padding: '8px 18px',
             textDecoration: 'none', fontWeight: 600, fontSize: 14,
           }}
         >
@@ -33,7 +33,7 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
 
       {/* Error state */}
       {error && (
-        <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 16 }}>
+        <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '12px 16px', color: '#DC2626', marginBottom: 16 }}>
           Erro ao carregar catálogo. Tente novamente mais tarde.
         </div>
       )}
@@ -55,7 +55,7 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
         <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
+              <tr style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
                 <th style={th}>Nome</th>
                 <th style={th}>Tipo</th>
                 <th style={th}>Preço</th>
@@ -66,11 +66,11 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #E5E7EB' }}>
+                <tr key={item.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                   <td style={td}>
-                    <span style={{ fontWeight: 500 }}>{item.name}</span>
+                    <span style={{ fontWeight: 600 }}>{item.name}</span>
                     {item.description && (
-                      <p style={{ fontSize: 12, color: '#6B7280', margin: '2px 0 0' }}>{item.description}</p>
+                      <p style={{ fontSize: 12, color: '#64748B', margin: '2px 0 0' }}>{item.description}</p>
                     )}
                   </td>
                   <td style={td}>
@@ -88,7 +88,7 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
                     <span style={{
                       display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
                       backgroundColor: item.is_active ? '#D1FAE5' : '#F3F4F6',
-                      color: item.is_active ? '#065F46' : '#6B7280',
+                      color: item.is_active ? '#065F46' : '#64748B',
                     }}>
                       {item.is_active ? 'Ativo' : 'Inativo'}
                     </span>
@@ -96,7 +96,7 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
                   <td style={td}>
                     <Link
                       href={`/catalogo/${item.id}/editar`}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#6D28D9', textDecoration: 'none', fontSize: 13, fontWeight: 500 }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#6D28D9', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}
                     >
                       <Pencil size={14} /> Editar
                     </Link>
@@ -111,5 +111,5 @@ export default async function CatalogoPage(): Promise<JSX.Element> {
   );
 }
 
-const th: React.CSSProperties = { textAlign: 'left', padding: '12px 16px', fontSize: 13, color: '#6B7280', fontWeight: 600 };
+const th: React.CSSProperties = { textAlign: 'left', padding: '12px 16px', fontSize: 13, color: '#64748B', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '12px 16px', fontSize: 14, color: '#0A0A0F' };
