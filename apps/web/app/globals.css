@@ -209,3 +209,45 @@ body {
 .ov-money { font-variant-numeric: tabular-nums; font-weight: 600; }
 .ov-mono  { font-family: var(--font-mono); }
 .row-flex { display: flex; gap: 12px; align-items: center; }
+
+/* ─────────────────────────────────────────────────────────
+   Public quote page (approve/[token])
+   ───────────────────────────────────────────────────────── */
+.pub { background: var(--slate-50); font-family: var(--font-sans); color: var(--ink); min-height: 100vh; }
+.pub-bar { background: #fff; border-bottom: 1px solid var(--border-1); padding: 14px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 5; }
+.pub-bar .biz { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #0A0A0F, #6D28D9); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.pub-bar .biz-name { font-weight: 700; font-size: 15px; }
+.pub-bar .biz-sub { font-size: 12px; color: var(--fg-3); }
+.pub-bar .powered { font-size: 11px; color: var(--fg-3); margin-left: auto; }
+.pub-bar .powered strong { color: var(--ink); }
+.pub-body { max-width: 760px; margin: 0 auto; padding: 28px 20px 96px; }
+.pub-hero { background: linear-gradient(160deg, var(--purple-50), #fff); border: 1px solid var(--purple-200); border-radius: 18px; padding: 24px 26px; margin-bottom: 20px; display: flex; gap: 20px; align-items: center; }
+.pub-hero .ic { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #6D28D9, #4C1D95); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pub-hero h1 { font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 4px; }
+.pub-hero .sub { font-size: 14px; color: var(--fg-2); }
+.pub-meta-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--fg-3); margin-bottom: 16px; }
+.pub-meta-row span { display: flex; gap: 6px; align-items: center; }
+.pub-card { background: #fff; border: 1px solid var(--border-1); border-radius: 16px; padding: 22px 26px; margin-bottom: 16px; }
+.pub-card h2 { font-size: 12px; font-weight: 600; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 14px; }
+.pub-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
+.pub-kv .k { font-size: 12px; color: var(--fg-3); margin-bottom: 4px; }
+.pub-kv .v { font-size: 14px; font-weight: 500; color: var(--ink); }
+.pub-item { display: grid; grid-template-columns: 1fr 80px 110px; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border-2); }
+.pub-item:first-of-type { border-top: 0; padding-top: 0; }
+.pub-item .name { font-weight: 600; font-size: 15px; }
+.pub-item .desc { font-size: 13px; color: var(--fg-3); margin-top: 3px; line-height: 19px; }
+.pub-item .qty { font-size: 13px; color: var(--fg-3); text-align: right; align-self: center; font-variant-numeric: tabular-nums; }
+.pub-item .total { font-size: 15px; font-weight: 700; text-align: right; align-self: center; font-variant-numeric: tabular-nums; }
+.pub-totals { display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid var(--border-2); margin-top: 6px; }
+.pub-totals .row { display: flex; justify-content: space-between; font-size: 14px; color: var(--fg-2); }
+.pub-totals .grand { font-size: 22px; font-weight: 700; color: var(--ink); padding-top: 8px; margin-top: 4px; border-top: 1px solid var(--border-2); display: flex; justify-content: space-between; }
+.pub-totals .grand .v { color: var(--purple-700); }
+.pub-cta { position: sticky; bottom: 16px; z-index: 5; background: #fff; border: 1px solid var(--border-1); border-radius: 18px; box-shadow: 0 8px 32px rgba(10,10,15,0.12); padding: 16px 20px; display: flex; gap: 12px; align-items: center; max-width: 760px; margin: 0 auto; }
+.pub-cta .total-mini { flex: 1; min-width: 0; }
+.pub-cta .total-mini .k { font-size: 11px; color: var(--fg-3); text-transform: uppercase; font-weight: 600; letter-spacing: 0.06em; }
+.pub-cta .total-mini .v { font-size: 20px; font-weight: 700; color: var(--ink); }
+.pub-cta .actions { display: flex; gap: 8px; }
+.pub-cta .btn-reject { height: 46px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--border-1); background: #fff; color: var(--ink); font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
+.pub-cta .btn-accept { height: 46px; padding: 0 24px; border-radius: 12px; border: 0; background: var(--purple-600); color: #fff; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
+.pub-cta .btn-accept:hover { background: var(--purple-700); }
+.pub-cta .btn-accept:disabled { opacity: 0.6; cursor: not-allowed; }
