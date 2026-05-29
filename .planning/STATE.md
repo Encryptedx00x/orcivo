@@ -2,24 +2,56 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 2A concluída com verificação 12/12 — aguardando planejamento da Fase 3
-last_updated: "2026-05-27T00:00:00.000Z"
+status: in_progress
+last_updated: "2026-05-28T03:00:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 4
-  total_plans: 39
-  completed_plans: 39
-  percent: 100
+  completed_phases: 3
+  total_plans: 36
+  completed_plans: 27
+  percent: 75
 ---
 
 # Orcivo — STATE.md
 
 ## Estado atual
 
-**Fase ativa:** 3 — Monetização
-**Status:** Fase 2A concluída com verificação 12/12 — aguardando planejamento da Fase 3
-**Data:** 2026-05-27
-**Próximo comando:** `/gsd-plan-phase 3` — planejar Fase 3 (Asaas + checkout + limites + bloqueio escalonado)
+**Fase ativa:** 3 — Monetização (Waves 4-5 pendentes)
+**Status:** Design web fidelizado ao protótipo — todas as 16 telas cobertas
+**Data:** 2026-05-28
+**Próximo comando:** continuar Wave 4-5 da Fase 3 (`/gsd-execute-phase 3 --wave 4`)
+
+## Trabalho da sessão 2026-05-28 — Fidelidade visual web
+
+### Commits
+
+| Hash | Descrição |
+|---|---|
+| `e260182` | P0/P1: gap closure visual inicial (orcamentos, clientes, dashboard) |
+| `e90cd4a` | Novo cliente (form rico 2-col + right rail) + Cliente detalhe (aside + 6 abas) |
+| `05bfcc9` | Aprovação pública — pub-bar/pub-hero/pub-cta fiel ao protótipo; pub-* no globals.css |
+| `ec162e4` | Auth inputs 52px + botão 52px conforme auth.css do design system |
+
+### Cobertura de telas
+
+| Tela | Status |
+|---|---|
+| Login web | ✅ Fiel |
+| Signup web | ✅ Fiel |
+| Dashboard | ✅ Fiel |
+| Lista de orçamentos | ✅ Fiel |
+| Detalhe do orçamento | ✅ Fiel |
+| Novo orçamento | ✅ Fiel |
+| Lista de clientes | ✅ Fiel |
+| Novo cliente | ✅ Fiel (rich form 2-col + right rail) |
+| Detalhe do cliente | ✅ Criado (aside sticky + 6 abas) |
+| Catálogo | ✅ Fiel |
+| Ordens de serviço | ✅ Fiel |
+| Agenda | ✅ Fiel (calendar semanal) |
+| Financeiro | ✅ Fiel |
+| Documentos | ✅ Fiel |
+| Configurações | ✅ Fiel |
+| Aprovação pública | ✅ Fiel (pub-bar/hero/cta) |
 
 ## Deliverables concluídos na Fase 2A
 
@@ -42,35 +74,39 @@ progress:
 | D1.3 — Vertical slice Customer (mobile + web + CI) | ✅ Completo |
 | D1.4 — Documentação do molde arquitetural | ✅ Completo |
 
+## Fase 3 — Monetização (em andamento)
+
+Waves 1-3 concluídas. Pendentes:
+
+| Wave | Plano | Descrição |
+|---|---|---|
+| 4 | P06 | apps/site/ — landing page + pricing + checkout |
+| 4 | P07 | Banner de inadimplência (subscription guard) |
+| 5 | P08 | InviteModule — convite de equipe |
+| 5 | P09 | Migrations finais + smoke tests |
+
 ## Gap closures aplicados (pós-execução)
 
 | Gap | Fix |
 |---|---|
-| `@orcivo/shared-types` apontava para `src` em runtime | `main`/`types`/`exports` corrigidos para `dist`; `build: tsc` emite CommonJS |
+| `@orcivo/shared-types` apontava para `src` em runtime | `main`/`types`/`exports` corrigidos para `dist` |
 | `GET /health` retornava 401 | `@Public()` adicionado ao `HealthController` |
-| Scripts `dev:*` não garantiam build de shared-types | `dev:backend/web/mobile` compilam shared-types antes de iniciar |
+| Scripts `dev:*` não garantiam build de shared-types | compilam shared-types antes de iniciar |
+| `parseFloat` em `OrcamentoDetail` linha 172 | corrigido para `multiplyDecimal` |
+| WorkOrder status `OPEN` inexistente no schema | corrigido para `PENDING` |
 
 ## Bloqueios
 
 Nenhum bloqueio ativo.
-
-## Decisões tomadas na Fase 1
-
-- Signup em 2 etapas (user → company) — D-01
-- 2FA diferido para Fase 2+ — D-18, ADR-012
-- Reset de senha diferido para Fase 2 — D-19
-- 5 bottom tabs mobile — D-06
-- Sidebar web com 9 itens — D-07 a D-15
-- CustomerModule como módulo canônico — ver ARCHITECTURE-MOLD.md
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
-| 2026-05-22 | Fase 1 planejada — 7 planos (P01-P07), 6 waves |
-| 2026-05-22 | P01-P06 executados (schema, auth, company, customer, mobile shell, web shell) |
-| 2026-05-22 | P07 executado — CI com Postgres+Redis, isolamento real, ARCHITECTURE-MOLD.md |
+| 2026-05-22 | Fase 1 planejada e executada (P01-P07) |
 | 2026-05-22 | Gap closures: shared-types dist, @Public health, scripts dev:* |
-| 2026-05-22 | UAT aprovado — web e mobile subiram corretamente |
-| 2026-05-22 | Fase 0 executada — monorepo, CI, hello world, VPS scripts |
+| 2026-05-22 | UAT aprovado |
+| 2026-05-22 | Fase 0 executada — monorepo, CI, hello world |
+| 2026-05-27 | Fase 2A concluída — 12/12 deliverables verificados |
+| 2026-05-28 | Design web fidelizado: 16 telas cobertas; clientes/[id] criado; pub page refeita |
