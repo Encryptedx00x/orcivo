@@ -193,12 +193,12 @@ const lbl: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 6
 const inputWrap: React.CSSProperties = { position: 'relative', display: 'flex', alignItems: 'center' };
 const leadingIcon: React.CSSProperties = { position: 'absolute', left: 12, color: '#94A3B8', pointerEvents: 'none' };
 const inp: React.CSSProperties = {
-  display: 'block', width: '100%', border: '1px solid #E2E8F0', borderRadius: 12,
-  padding: '11px 12px 11px 42px', fontSize: 15, boxSizing: 'border-box',
-  outline: 'none', color: '#0A0A0F', backgroundColor: '#fff',
+  display: 'block', width: '100%', height: 52, border: '1px solid #E2E8F0', borderRadius: 12,
+  padding: '0 12px 0 44px', fontSize: 16, boxSizing: 'border-box',
+  outline: 'none', color: '#0A0A0F', backgroundColor: '#fff', fontFamily: 'inherit',
 };
 const btn: React.CSSProperties = {
   width: '100%', backgroundColor: '#6D28D9', color: '#fff', border: 'none',
-  borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  borderRadius: 12, height: 52, fontSize: 16, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
 };
 const errStyle: React.CSSProperties = { color: '#DC2626', fontSize: 13, marginBottom: 12 };
