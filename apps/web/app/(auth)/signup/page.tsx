@@ -76,7 +76,7 @@ export default function SignupPage(): JSX.Element {
 
       {step === 1 ? (
         <>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>Criar sua conta</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>Criar sua conta</h1>
           <p style={{ fontSize: 14, color: '#64748B', marginBottom: 24 }}>Em 1 minuto você já está fazendo seu primeiro orçamento.</p>
 
           <form onSubmit={handleStep1}>
@@ -147,7 +147,7 @@ export default function SignupPage(): JSX.Element {
         </>
       ) : (
         <>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>Dados da empresa</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>Dados da empresa</h1>
           <p style={{ fontSize: 14, color: '#64748B', marginBottom: 24 }}>Aparecem no PDF dos orçamentos enviados ao cliente.</p>
 
           <form onSubmit={handleStep2}>

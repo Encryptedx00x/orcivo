@@ -71,8 +71,8 @@ body {
   font-family: var(--font-sans);
   color: var(--ink);
   background: var(--slate-50);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 24px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -100,7 +100,7 @@ body {
 .ov-btn {
   font-family: var(--font-sans);
   font-weight: 600; font-size: 14px;
-  border-radius: 10px; padding: 0 16px; height: 38px;
+  border-radius: 10px; padding: 0 16px; height: 40px;
   border: 1px solid transparent; cursor: pointer;
   display: inline-flex; align-items: center; gap: 8px;
   transition: background var(--dur-fast) var(--ease-out);
@@ -117,19 +117,20 @@ body {
 .ov-btn-success { background: var(--success); color: #fff; }
 .ov-btn-danger  { background: var(--danger);  color: #fff; }
 .ov-btn:disabled, .ov-btn.disabled { opacity: .5; pointer-events: none; cursor: not-allowed; }
+.ov-btn-lg { height: 52px; font-size: 16px; border-radius: 12px; padding: 0 24px; }
 
 /* ── Input ── */
 .ov-input {
-  height: 40px; border: 1px solid var(--border-1); border-radius: 10px;
-  padding: 0 12px; font: 400 14px var(--font-sans); color: var(--ink);
+  height: 52px; border: 1px solid var(--border-1); border-radius: 12px;
+  padding: 0 16px; font: 400 16px var(--font-sans); color: var(--ink);
   background: #fff; width: 100%; outline: none;
   transition: border-color var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-fast) var(--ease-out);
 }
 .ov-input:focus { border-color: var(--purple-600); box-shadow: var(--shadow-focus); }
 .ov-textarea {
-  border: 1px solid var(--border-1); border-radius: 10px;
-  padding: 10px 12px; font: 400 14px var(--font-sans); color: var(--ink);
+  border: 1px solid var(--border-1); border-radius: 12px;
+  padding: 12px 16px; font: 400 16px var(--font-sans); color: var(--ink);
   background: #fff; width: 100%; outline: none; resize: vertical;
   transition: border-color var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-fast) var(--ease-out);

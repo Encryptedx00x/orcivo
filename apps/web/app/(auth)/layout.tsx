@@ -2,7 +2,7 @@ import { AuthArtPanel } from '../../components/AuthArtPanel';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '520px 1fr' }}>
       <AuthArtPanel
         headline="Orçamentos profissionais. Em minutos."
         sub="A plataforma feita para técnicos instaladores criarem orçamentos, organizarem serviços e atenderem melhor seus clientes pelo celular e pelo computador."
@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }):
       />
       <div style={{
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        alignItems: 'center', padding: '40px 32px', backgroundColor: '#FFFFFF',
+        alignItems: 'center', padding: '32px 48px', backgroundColor: '#FFFFFF',
         minHeight: '100vh',
       }}>
         <div />

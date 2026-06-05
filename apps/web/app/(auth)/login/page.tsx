@@ -36,7 +36,7 @@ export default function LoginPage(): JSX.Element {
         </span>
       </div>
 
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>
+      <h1 style={{ fontSize: 30, fontWeight: 700, color: '#0A0A0F', marginBottom: 4, letterSpacing: '-0.015em' }}>
         Entrar na sua conta
       </h1>
       <p style={{ fontSize: 14, color: '#64748B', marginBottom: 28 }}>Bom te ver de novo.</p>

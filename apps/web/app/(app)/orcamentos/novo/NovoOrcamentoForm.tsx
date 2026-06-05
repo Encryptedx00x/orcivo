@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Trash2, BookOpen, X } from 'lucide-react';
 import { multiplyDecimal, sumDecimal, formatMoney } from '@orcivo/shared-types';
 
 interface Customer { id: string; name: string; phone?: string | null; }
@@ -145,8 +145,8 @@ export default function NovoOrcamentoForm(): JSX.Element {
               <h3 style={{ fontWeight: 700, fontSize: 16 }}>Selecionar do catálogo</h3>
               <button
                 onClick={() => setShowCatalogDialog(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#6B7280' }}
-              >×</button>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', display: 'flex', alignItems: 'center' }}
+              ><X size={18} /></button>
             </div>
             {catalog.length === 0 ? (
               <p style={{ color: '#6B7280' }}>Nenhum item no catálogo.</p>
@@ -193,7 +193,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
         {error && (
           <div style={{
             backgroundColor: '#FEF2F2', border: '1px solid #FECACA',
-            borderRadius: 8, padding: '12px 16px', color: '#DC2626', marginBottom: 16,
+            borderRadius: 12, padding: '12px 16px', color: '#DC2626', marginBottom: 16,
           }}>
             {error}
           </div>
@@ -291,7 +291,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
 
           {items.map((item, idx) => (
             <div key={idx} style={{
-              backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12,
+              backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12,
               marginBottom: 8, border: '1px solid #E2E8F0',
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'end' }}>
@@ -398,7 +398,7 @@ const card: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 12, b
 const sectionTitle: React.CSSProperties = { fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#0A0A0F' };
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 4 };
 const inputStyle: React.CSSProperties = {
-  width: '100%', border: '1px solid #E2E8F0', borderRadius: 8, padding: '8px 10px',
+  width: '100%', border: '1px solid #E2E8F0', borderRadius: 12, padding: '8px 12px',
   fontSize: 14, color: '#0A0A0F', outline: 'none', boxSizing: 'border-box',
 };
 const btnPrimary: React.CSSProperties = {

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
@@ -7,23 +7,23 @@ const plans = [
   {
     name: 'Orcivo Livre',
     code: 'LIVRE',
-    monthly: 'Grátis',
-    yearly: 'Grátis',
+    monthly: 'GrÃ¡tis',
+    yearly: 'GrÃ¡tis',
     monthlyVal: null,
     yearlyVal: null,
-    features: ['5 clientes', '10 orçamentos/mês', 'Geração de PDF com marca d\'água', 'Suporte por e-mail'],
+    features: ['5 clientes', '10 orÃ§amentos/mÃªs', 'GeraÃ§Ã£o de PDF com marca d\'Ã¡gua', 'Suporte por e-mail'],
     highlight: false,
-    cta: 'Criar conta grátis',
+    cta: 'Criar conta grÃ¡tis',
     href: 'https://app.orcivo.com.br/signup',
   },
   {
     name: 'Orcivo Solo',
     code: 'SOLO',
-    monthly: 'R$9,90/mês',
+    monthly: 'R$9,90/mÃªs',
     yearly: 'R$79,90/ano',
     monthlyVal: 'SOLO_MONTHLY',
     yearlyVal: 'SOLO_YEARLY',
-    features: ['50 clientes', '50 orçamentos/mês', 'PDF sem marca d\'água', 'Logo própria no PDF', 'Suporte prioritário'],
+    features: ['50 clientes', '50 orÃ§amentos/mÃªs', 'PDF sem marca d\'Ã¡gua', 'Logo prÃ³pria no PDF', 'Suporte prioritÃ¡rio'],
     highlight: false,
     cta: 'Assinar agora',
     href: null,
@@ -31,11 +31,11 @@ const plans = [
   {
     name: 'Orcivo Mais',
     code: 'MAIS',
-    monthly: 'R$19,90/mês',
+    monthly: 'R$19,90/mÃªs',
     yearly: 'R$199,90/ano',
     monthlyVal: 'MAIS_MONTHLY',
     yearlyVal: 'MAIS_YEARLY',
-    features: ['200 clientes', '200 orçamentos/mês', 'Relatórios financeiros', 'Até 3 membros na equipe', 'Suporte prioritário'],
+    features: ['200 clientes', '200 orÃ§amentos/mÃªs', 'RelatÃ³rios financeiros', 'AtÃ© 3 membros na equipe', 'Suporte prioritÃ¡rio'],
     highlight: true,
     cta: 'Assinar agora',
     href: null,
@@ -43,11 +43,11 @@ const plans = [
   {
     name: 'Orcivo Equipe',
     code: 'EQUIPE',
-    monthly: 'R$39,90/mês',
+    monthly: 'R$39,90/mÃªs',
     yearly: 'R$399,90/ano',
     monthlyVal: 'EQUIPE_MONTHLY',
     yearlyVal: 'EQUIPE_YEARLY',
-    features: ['Uso amplo de clientes', 'Uso amplo de orçamentos', 'Contratos digitais', 'Até 10 membros', 'Suporte VIP'],
+    features: ['Uso amplo de clientes', 'Uso amplo de orÃ§amentos', 'Contratos digitais', 'AtÃ© 10 membros', 'Suporte VIP'],
     highlight: false,
     cta: 'Assinar agora',
     href: null,
@@ -60,7 +60,7 @@ export default function PlanosPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Nav */}
-      <header className="border-b border-gray-100">
+      <header className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="text-xl font-bold text-primary-600">Orcivo</Link>
           <Link href="https://app.orcivo.com.br/login" className="text-sm font-medium text-primary-600">Entrar</Link>
@@ -69,20 +69,20 @@ export default function PlanosPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Planos e preços</h1>
-          <p className="text-xl text-gray-600 mb-8">Comece grátis. Faça upgrade quando precisar.</p>
+          <h1 className="text-4xl font-bold text-slate-900 mb-4">Planos e preÃ§os</h1>
+          <p className="text-xl text-slate-600 mb-8">Comece grÃ¡tis. FaÃ§a upgrade quando precisar.</p>
 
           {/* Toggle ciclo */}
-          <div className="inline-flex bg-gray-100 rounded-lg p-1">
+          <div className="inline-flex bg-slate-100 rounded-lg p-1">
             <button
               onClick={() => setCycle('monthly')}
-              className={`px-5 py-2 text-sm font-medium rounded-md transition-colors ${cycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
+              className={`px-5 py-2 text-sm font-medium rounded-md transition-colors ${cycle === 'monthly' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
             >
               Mensal
             </button>
             <button
               onClick={() => setCycle('yearly')}
-              className={`px-5 py-2 text-sm font-medium rounded-md transition-colors ${cycle === 'yearly' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
+              className={`px-5 py-2 text-sm font-medium rounded-md transition-colors ${cycle === 'yearly' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
             >
               Anual <span className="text-green-600 text-xs font-semibold ml-1">-30%</span>
             </button>
@@ -98,18 +98,18 @@ export default function PlanosPage() {
             return (
               <div
                 key={plan.code}
-                className={`rounded-2xl border p-6 flex flex-col ${plan.highlight ? 'border-primary-600 shadow-lg shadow-primary-100 relative' : 'border-gray-200'}`}
+                className={`rounded-2xl border p-6 flex flex-col ${plan.highlight ? 'border-primary-600 shadow-lg shadow-primary-100 relative' : 'border-slate-200'}`}
               >
                 {plan.highlight && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-600 text-white text-xs font-bold px-3 py-1 rounded-full">
                     Mais popular
                   </div>
                 )}
-                <h2 className="text-lg font-bold text-gray-900 mb-1">{plan.name}</h2>
+                <h2 className="text-lg font-bold text-slate-900 mb-1">{plan.name}</h2>
                 <p className="text-2xl font-bold text-primary-600 mb-6">{price}</p>
                 <ul className="space-y-3 flex-1 mb-8">
                   {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <li key={f} className="flex items-start gap-2 text-sm text-slate-700">
                       <Check size={16} className="text-primary-600 mt-0.5 flex-shrink-0" />
                       {f}
                     </li>
@@ -128,15 +128,16 @@ export default function PlanosPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 py-8 px-6 mt-8">
+      <footer className="border-t border-slate-100 py-8 px-6 mt-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-gray-500">© 2026 Orcivo</span>
+          <span className="text-sm text-slate-500">Â© 2026 Orcivo</span>
           <nav className="flex gap-6">
-            <Link href="/termos" className="text-sm text-gray-500 hover:text-gray-900">Termos de Uso</Link>
-            <Link href="/privacidade" className="text-sm text-gray-500 hover:text-gray-900">Privacidade</Link>
+            <Link href="/termos" className="text-sm text-slate-500 hover:text-slate-900">Termos de Uso</Link>
+            <Link href="/privacidade" className="text-sm text-slate-500 hover:text-slate-900">Privacidade</Link>
           </nav>
         </div>
       </footer>
     </div>
   );
 }
+

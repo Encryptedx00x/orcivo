@@ -1,16 +1,16 @@
-'use client';
+﻿'use client';
 import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
 
 const PLAN_LABELS: Record<string, string> = {
-  SOLO_MONTHLY: 'Orcivo Solo — Mensal — R$9,90/mês',
-  SOLO_YEARLY:  'Orcivo Solo — Anual — R$79,90/ano',
-  MAIS_MONTHLY: 'Orcivo Mais — Mensal — R$19,90/mês',
-  MAIS_YEARLY:  'Orcivo Mais — Anual — R$199,90/ano',
-  EQUIPE_MONTHLY: 'Orcivo Equipe — Mensal — R$39,90/mês',
-  EQUIPE_YEARLY:  'Orcivo Equipe — Anual — R$399,90/ano',
+  SOLO_MONTHLY: 'Orcivo Solo â€” Mensal â€” R$9,90/mÃªs',
+  SOLO_YEARLY:  'Orcivo Solo â€” Anual â€” R$79,90/ano',
+  MAIS_MONTHLY: 'Orcivo Mais â€” Mensal â€” R$19,90/mÃªs',
+  MAIS_YEARLY:  'Orcivo Mais â€” Anual â€” R$199,90/ano',
+  EQUIPE_MONTHLY: 'Orcivo Equipe â€” Mensal â€” R$39,90/mÃªs',
+  EQUIPE_YEARLY:  'Orcivo Equipe â€” Anual â€” R$399,90/ano',
 };
 
 function CheckoutContent() {
@@ -49,12 +49,12 @@ function CheckoutContent() {
   return (
     <div className="max-w-md mx-auto py-16 px-6">
       <Link href="/planos" className="text-sm text-primary-600 hover:underline mb-8 inline-block">
-        ← Voltar aos planos
+        â† Voltar aos planos
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Finalizar assinatura</h1>
-      <div className="bg-gray-50 rounded-xl p-4 mb-8 border border-gray-200">
-        <p className="text-sm text-gray-500 mb-1">Plano selecionado</p>
-        <p className="font-semibold text-gray-900">{planLabel || 'Selecione um plano'}</p>
+      <h1 className="text-2xl font-bold text-slate-900 mb-2">Finalizar assinatura</h1>
+      <div className="bg-slate-50 rounded-xl p-4 mb-8 border border-slate-200">
+        <p className="text-sm text-slate-500 mb-1">Plano selecionado</p>
+        <p className="font-semibold text-slate-900">{planLabel || 'Selecione um plano'}</p>
       </div>
 
       {error && (
@@ -76,10 +76,10 @@ function CheckoutContent() {
           disabled={loading || !plan}
           className="w-full py-3 border border-primary-600 text-primary-600 font-semibold rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
         >
-          {loading ? 'Aguarde...' : 'Pagar com Cartão'}
+          {loading ? 'Aguarde...' : 'Pagar com CartÃ£o'}
         </button>
       </div>
-      <p className="text-xs text-gray-500 mt-6 text-center">Pagamento processado com segurança via Asaas.</p>
+      <p className="text-xs text-slate-500 mt-6 text-center">Pagamento processado com seguranÃ§a via Asaas.</p>
     </div>
   );
 }
@@ -87,14 +87,15 @@ function CheckoutContent() {
 export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-100">
+      <header className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <Link href="/" className="text-xl font-bold text-primary-600">Orcivo</Link>
         </div>
       </header>
-      <Suspense fallback={<div className="py-16 text-center text-gray-500">Carregando...</div>}>
+      <Suspense fallback={<div className="py-16 text-center text-slate-500">Carregando...</div>}>
         <CheckoutContent />
       </Suspense>
     </div>
   );
 }
+
