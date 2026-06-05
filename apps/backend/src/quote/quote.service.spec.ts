@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
+import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 
 const mockTx = {
   quote: { updateMany: jest.fn() },
@@ -91,6 +92,7 @@ describe('QuoteService', () => {
         { provide: StorageService, useValue: mockStorage },
         { provide: WorkOrderService, useValue: mockWorkOrderService },
         { provide: QuotePdfService, useValue: mockPdfService },
+        { provide: PlanLimitsService, useValue: { enforceLimit: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);
