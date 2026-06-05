@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, ChevronRight } from 'lucide-react';
+import { Plus, ChevronRight, Pencil } from 'lucide-react';
 
 interface Customer {
   id: string;
@@ -102,14 +102,20 @@ export function ClienteDetail({ customer, quotes }: { customer: Customer; quotes
             >
               <Plus size={16} /> Orçamento
             </Link>
+            <Link
+              href={`/clientes/${customer.id}/editar`}
+              style={{ ...actionBtn, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}
+            >
+              <Pencil size={15} /> Editar
+            </Link>
+            <Link
+              href={`/ordens-de-servico/novo?client_id=${customer.id}`}
+              style={{ ...actionBtn, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}
+            >
+              Nova OS
+            </Link>
             <button style={{ ...actionBtn, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>
               WhatsApp
-            </button>
-            <button style={{ ...actionBtn, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>
-              Ligar
-            </button>
-            <button style={{ ...actionBtn, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>
-              Agendar
             </button>
           </div>
 
