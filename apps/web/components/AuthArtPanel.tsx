@@ -10,73 +10,89 @@ export function AuthArtPanel({ headline, sub, testimonialQuote, testimonialWho, 
   const initials = testimonialWho.split(' ').map(w => w[0]).slice(0, 2).join('');
   return (
     <div style={{
-      backgroundColor: '#0A0A0F',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'space-between',
-      padding: '40px 48px',
-      minHeight: '100vh',
+      background: 'linear-gradient(155deg, #4C1D95 0%, #6D28D9 45%, #0A0A0F 100%)',
       position: 'relative',
       overflow: 'hidden',
+      padding: 48,
+      color: '#fff',
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100vh',
     }}>
-      {/* Subtle grid texture */}
+      {/* Grid texture com mask radial */}
       <div style={{
-        position: 'absolute', inset: 0, opacity: 0.04,
-        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,1) 39px, rgba(255,255,255,1) 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,1) 39px, rgba(255,255,255,1) 40px)',
+        position: 'absolute', inset: 0, opacity: 0.18,
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)',
+        backgroundSize: '56px 56px',
+        WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 30%, transparent 75%)',
+        maskImage: 'radial-gradient(circle at 50% 50%, #000 30%, transparent 75%)',
         pointerEvents: 'none',
       }} />
 
+      {/* Radial glows */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: 'radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18) 0%, transparent 40%), radial-gradient(circle at 80% 80%, rgba(167,139,250,0.32) 0%, transparent 50%)',
+      }} />
+
       {/* Logo mark */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #6D28D9 100%)',
-          border: '1px solid rgba(109,40,217,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L4 7v5c0 5.25 3.4 10.15 8 11.35C16.6 22.15 20 17.25 20 12V7l-8-5z" fill="rgba(109,40,217,0.8)" stroke="#8B5CF6" strokeWidth="1.5"/>
-            <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-        <span style={{ fontWeight: 700, fontSize: 18, color: '#FFFFFF', letterSpacing: '-0.01em' }}>Orcivo</span>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: 'rgba(255,255,255,0.1)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255,255,255,0.18)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative', zIndex: 1,
+      }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L4 7v5c0 5.25 3.4 10.15 8 11.35C16.6 22.15 20 17.25 20 12V7l-8-5z" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5"/>
+          <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </div>
 
-      {/* Main content */}
-      <div style={{ position: 'relative' }}>
+      {/* Words + depoimento — margin-top: auto empurra para baixo */}
+      <div style={{ marginTop: 'auto', position: 'relative', zIndex: 1 }}>
         <h2 style={{
-          fontSize: 32, fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.02em',
-          color: '#FFFFFF', margin: '0 0 16px',
+          fontSize: 38, lineHeight: '46px', fontWeight: 700,
+          letterSpacing: '-0.02em', maxWidth: 380,
+          margin: '0 0 12px', color: '#fff',
         }}>
           {headline}
         </h2>
-        <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, margin: 0, maxWidth: 340 }}>
+        <p style={{
+          fontSize: 16, lineHeight: '24px',
+          color: 'rgba(255,255,255,0.78)',
+          maxWidth: 360, margin: 0,
+        }}>
           {sub}
         </p>
-      </div>
 
-      {/* Testimonial */}
-      <div style={{
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 16, padding: '20px 24px', position: 'relative',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            backgroundColor: '#6D28D9', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, fontSize: 13, color: '#FFFFFF', flexShrink: 0,
-          }}>
-            {initials}
+        {/* Depoimento */}
+        <div style={{
+          marginTop: 32, padding: 18, borderRadius: 14,
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          backdropFilter: 'blur(6px)',
+          maxWidth: 420,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 600, fontSize: 13, flexShrink: 0,
+            }}>
+              {initials}
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{testimonialWho}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{testimonialRole}</div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 13, color: '#FFFFFF' }}>{testimonialWho}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{testimonialRole}</div>
-          </div>
+          <p style={{ fontSize: 14, lineHeight: '22px', color: 'rgba(255,255,255,0.92)', margin: 0 }}>
+            "{testimonialQuote}"
+          </p>
         </div>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55, margin: 0, fontStyle: 'italic' }}>
-          "{testimonialQuote}"
-        </p>
       </div>
     </div>
   );
