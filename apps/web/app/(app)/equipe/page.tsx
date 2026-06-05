@@ -205,6 +205,33 @@ export default function EquipePage(): JSX.Element {
         </div>
       )}
 
+      {/* ── Permissões por função ───────────────────────────────────── */}
+      <h3 style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '24px 0 12px' }}>
+        Permissões — Função: Técnico
+      </h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>
+        {([
+          ['Clientes',           [['Ver clientes atribuídos', true], ['Criar e editar clientes', false], ['Excluir clientes', false]]],
+          ['Orçamentos',         [['Criar orçamentos', true], ['Editar orçamentos', true], ['Aprovar / rejeitar', false]]],
+          ['Ordens de Serviço',  [['Executar OS atribuídas', true], ['Atribuir técnicos', false], ['Cancelar OS', false]]],
+          ['Financeiro',         [['Apenas leitura', true], ['Registrar recebimentos', false], ['Editar lançamentos', false]]],
+          ['Catálogo',           [['Ver catálogo', true], ['Criar e editar itens', false]]],
+          ['Administração',      [['Convidar usuários', false], ['Alterar plano', false], ['Configurações da empresa', false]]],
+        ] as [string, [string, boolean][]][]).map(([title, perms], i) => (
+          <div key={i} className="ov-card ov-card-body">
+            <div style={{ fontWeight: 600, fontSize: 14, color: T.ink, marginBottom: 10 }}>{title}</div>
+            {perms.map(([name, on], j) => (
+              <div key={j} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: j < perms.length - 1 ? `1px solid ${T.border2}` : 'none' }}>
+                <span style={{ fontSize: 13, color: T.fg2 }}>{name}</span>
+                <div style={{ width: 36, height: 22, borderRadius: 11, background: on ? T.purple600 : '#CBD5E1', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 3, left: on ? 17 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 120ms' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
       {/* ── Invite modal ─────────────────────────────────────────────── */}
       {showModal && (
         <div style={{

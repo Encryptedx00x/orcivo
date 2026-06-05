@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Building2, Image, QrCode, Users, CreditCard, Shield, Bell, FileOutput } from 'lucide-react';
+import { Building2, Image, QrCode, Users, CreditCard, CheckSquare, Shield, Bell, FileOutput } from 'lucide-react';
 
 type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
 
@@ -18,7 +18,7 @@ const TABS = [
   { id: 'pix',       label: 'Chave Pix',          icon: QrCode },
   { id: 'users',     label: 'Usuários',            icon: Users },
   { id: 'plano',     label: 'Plano e assinatura',  icon: CreditCard },
-  { id: 'aprovacao', label: 'Aprovação',           icon: CreditCard },
+  { id: 'aprovacao', label: 'Aprovação',           icon: CheckSquare },
   { id: 'seg',       label: 'Segurança',           icon: Shield },
   { id: 'notif',     label: 'Notificações',        icon: Bell },
   { id: 'exp',       label: 'Exportação',          icon: FileOutput },

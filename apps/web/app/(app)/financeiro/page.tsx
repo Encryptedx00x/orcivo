@@ -226,6 +226,9 @@ export default function FinanceiroPage(): JSX.Element {
             <option value="cartão">Cartão</option>
             <option value="dinheiro">Dinheiro</option>
           </select>
+          <select className="ov-input" style={{ width: 180, height: 38, fontSize: 14 }}>
+            <option>Todos os clientes</option>
+          </select>
         </div>
 
         {/* table — inline styles matching styles.css .table spec exactly */}
