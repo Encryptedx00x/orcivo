@@ -1,6 +1,24 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2 } from 'lucide-react';
+import { UserPlus, Trash2, Users } from 'lucide-react';
+
+// ── Token aliases ─────────────────────────────────────────────────────
+const T = {
+  ink:       '#0A0A0F',
+  fg2:       '#334155',
+  fg3:       '#64748B',
+  border1:   '#E2E8F0',
+  border2:   '#F1F5F9',
+  purple600: '#6D28D9',
+  purple50:  '#F5F3FF',
+  purple800: '#4C1D95',
+  slate100:  '#F1F5F9',
+  slate50:   '#F8FAFC',
+  danger:    '#DC2626',
+  dangerBg:  '#FEE2E2',
+  successBg: '#DCFCE7',
+  success:   '#16A34A',
+};
 
 interface Member {
   id: string;
@@ -13,6 +31,26 @@ interface PendingInvite {
   email: string;
   role: string;
   expires_at: string;
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN:   'Admin',
+  TECNICO: 'Técnico',
+  OWNER:   'Proprietário',
+};
+
+function RolePill({ role }: { role: string }) {
+  const isAdmin = role === 'ADMIN' || role === 'OWNER';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: 11, fontWeight: 600, padding: '4px 9px', borderRadius: 9999,
+      background: isAdmin ? T.purple50 : T.slate100,
+      color: isAdmin ? T.purple800 : T.fg2,
+    }}>
+      {ROLE_LABEL[role] ?? role}
+    </span>
+  );
 }
 
 export default function EquipePage(): JSX.Element {
@@ -33,7 +71,7 @@ export default function EquipePage(): JSX.Element {
     setInvites(Array.isArray(invitesRes) ? invitesRes : []);
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { void loadData(); }, []);
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -47,13 +85,13 @@ export default function EquipePage(): JSX.Element {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message ?? 'Erro ao enviar convite.');
+        throw new Error((data as { message?: string }).message ?? 'Erro ao enviar convite.');
       }
       setShowModal(false);
       setInviteEmail('');
       await loadData();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro inesperado.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado.');
     } finally {
       setLoading(false);
     }
@@ -65,100 +103,173 @@ export default function EquipePage(): JSX.Element {
   }
 
   return (
-    <div className="max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Equipe</h1>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <UserPlus size={16} />
-          Convidar
+    <div className="ov-page" style={{ maxWidth: 900 }}>
+
+      {/* ── Page header ─────────────────────────────────────────────── */}
+      <div className="ov-page-header">
+        <div>
+          <h1 style={{ fontSize: 24, lineHeight: '32px', fontWeight: 700, letterSpacing: '-0.015em', color: T.ink, margin: 0 }}>
+            Equipe
+          </h1>
+          <div style={{ color: T.fg3, fontSize: 14, marginTop: 4 }}>
+            {members.length} membro{members.length !== 1 ? 's' : ''} · {invites.length} convite{invites.length !== 1 ? 's' : ''} pendente{invites.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <button className="ov-btn ov-btn-primary" style={{ gap: 8 }} onClick={() => setShowModal(true)}>
+          <UserPlus size={16} />Convidar membro
         </button>
       </div>
 
-      {/* Membros */}
-      <div className="bg-white rounded-xl border border-gray-200 mb-6">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Membros ({members.length})</h2>
+      {/* ── Members ─────────────────────────────────────────────────── */}
+      <div className="ov-card" style={{ overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border2}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
+            Membros ativos <span style={{ fontSize: 13, fontWeight: 400, color: T.fg3 }}>({members.length})</span>
+          </h3>
         </div>
+
         {members.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-500 text-center">Nenhum membro encontrado.</p>
+          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <Users size={40} style={{ margin: '0 auto 12px', color: '#CBD5E1', display: 'block' }} />
+            <p style={{ fontWeight: 600, fontSize: 15, color: T.ink, margin: '0 0 6px' }}>Nenhum membro ainda.</p>
+            <p style={{ fontSize: 14, color: T.fg3, margin: 0 }}>Convide técnicos e admins para colaborar na plataforma.</p>
+          </div>
         ) : (
-          <ul className="divide-y divide-gray-100">
-            {members.map(m => (
-              <li key={m.id} className="px-6 py-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{m.user.name}</p>
-                  <p className="text-sm text-gray-500">{m.user.email}</p>
-                </div>
-                <span className="text-xs font-medium bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{m.role}</span>
-              </li>
-            ))}
-          </ul>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, background: '#fff' }}>
+            <thead>
+              <tr>
+                {['Nome', 'Email', 'Função', ''].map(h => (
+                  <th key={h} style={{
+                    textAlign: 'left', padding: '10px 18px',
+                    background: T.slate50, color: T.fg3,
+                    fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em',
+                    borderBottom: `1px solid ${T.border1}`,
+                  }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m, i) => (
+                <tr key={m.id}>
+                  <td style={{ padding: '12px 18px', fontWeight: 600, color: T.ink, fontSize: 14, borderBottom: i < members.length - 1 ? `1px solid ${T.border2}` : 0 }}>
+                    {m.user.name}
+                  </td>
+                  <td style={{ padding: '12px 18px', fontSize: 13, color: T.fg3, fontFamily: 'var(--font-mono)', borderBottom: i < members.length - 1 ? `1px solid ${T.border2}` : 0 }}>
+                    {m.user.email}
+                  </td>
+                  <td style={{ padding: '12px 18px', borderBottom: i < members.length - 1 ? `1px solid ${T.border2}` : 0 }}>
+                    <RolePill role={m.role} />
+                  </td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', borderBottom: i < members.length - 1 ? `1px solid ${T.border2}` : 0 }}>
+                    {/* future: remove member */}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {/* Convites pendentes */}
+      {/* ── Pending invites ─────────────────────────────────────────── */}
       {invites.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Convites pendentes ({invites.length})</h2>
+        <div className="ov-card" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border2}` }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
+              Convites pendentes <span style={{ fontSize: 13, fontWeight: 400, color: T.fg3 }}>({invites.length})</span>
+            </h3>
           </div>
-          <ul className="divide-y divide-gray-100">
-            {invites.map(inv => (
-              <li key={inv.id} className="px-6 py-4 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{inv.email}</p>
-                  <p className="text-xs text-gray-500">Expira {new Date(inv.expires_at).toLocaleDateString('pt-BR')}</p>
+          {invites.map((inv, i) => (
+            <div key={inv.id} style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              padding: '12px 18px',
+              borderBottom: i < invites.length - 1 ? `1px solid ${T.border2}` : 0,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: T.ink }}>{inv.email}</div>
+                <div style={{ fontSize: 12, color: T.fg3 }}>
+                  Expira {new Date(inv.expires_at).toLocaleDateString('pt-BR')}
                 </div>
-                <button onClick={() => handleRevoke(inv.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 size={16} />
-                </button>
-              </li>
-            ))}
-          </ul>
+              </div>
+              <RolePill role={inv.role} />
+              <button
+                onClick={() => { void handleRevoke(inv.id); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', display: 'flex', padding: 4 }}
+                title="Revogar convite"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Modal convidar */}
+      {/* ── Invite modal ─────────────────────────────────────────────── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Convidar membro</h2>
-            {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-            <form onSubmit={handleInvite} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(10,10,15,.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: 28,
+            width: '100%', maxWidth: 400,
+            boxShadow: '0 8px 32px rgba(0,0,0,.18)',
+          }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: T.ink, margin: '0 0 20px' }}>Convidar membro</h2>
+
+            {error && (
+              <div style={{ background: T.dangerBg, border: `1px solid #FECACA`, borderRadius: 8, padding: '10px 14px', color: T.danger, fontSize: 13, marginBottom: 16 }}>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={e => { void handleInvite(e); }}>
+              <div style={{ marginBottom: 14 }}>
+                <label className="ov-label">E-mail</label>
                 <input
                   type="email"
                   required
                   value={inviteEmail}
                   onChange={e => setInviteEmail(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                  placeholder="email@exemplo.com"
+                  className="ov-input"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
+              <div style={{ marginBottom: 20 }}>
+                <label className="ov-label">Função</label>
                 <select
                   value={inviteRole}
                   onChange={e => setInviteRole(e.target.value as 'TECNICO' | 'ADMIN')}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+                  className="ov-input"
                 >
                   <option value="TECNICO">Técnico</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
-                <button type="submit" disabled={loading} className="flex-1 py-3 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 disabled:opacity-50">
-                  {loading ? 'Enviando...' : 'Enviar convite'}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="ov-btn ov-btn-outline"
+                  style={{ flex: 1 }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="ov-btn ov-btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  {loading ? 'Enviando…' : 'Enviar convite'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 }

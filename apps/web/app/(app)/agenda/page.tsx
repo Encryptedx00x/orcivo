@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
 const HOURS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
 
@@ -16,6 +16,15 @@ function getWeekDays(base: Date): Date[] {
 }
 
 const DAY_SHORT = ['seg','ter','qua','qui','sex','sáb','dom'];
+
+// Static events: { weekDay 0-6, hourIdx (0=08:00), title, tag, color }
+const EVENTS = [
+  { d: 0, h: 1, title: 'Visita CFTV', tag: 'OS #312',   color: '#6D28D9', span: 1 },
+  { d: 0, h: 6, title: 'Orç. presencial', tag: 'ORÇ #248', color: '#D97706', span: 1 },
+  { d: 2, h: 2, title: 'Instalação portão', tag: 'OS #318', color: '#6D28D9', span: 2 },
+  { d: 3, h: 4, title: 'Reunião equipe', tag: 'Interno', color: '#64748B', span: 1 },
+  { d: 4, h: 1, title: 'Manutenção preventiva', tag: 'OS #305', color: '#16A34A', span: 2 },
+];
 
 export default function AgendaPage(): JSX.Element {
   const [base, setBase] = useState(new Date());
@@ -59,18 +68,29 @@ export default function AgendaPage(): JSX.Element {
         {HOURS.map((h, hi) => (
           <div key={hi} style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', borderBottom: '1px solid #F1F5F9', minHeight: 48 }}>
             <div style={{ padding: '6px 8px', fontSize: 11, color: '#94A3B8', fontFamily: 'JetBrains Mono, monospace' }}>{h}</div>
-            {days.map((_, di) => (
-              <div key={di} style={{ borderLeft: '1px solid #F1F5F9', padding: 4 }} />
-            ))}
+            {days.map((_, di) => {
+              const evt = EVENTS.find(e => e.d === di && e.h === hi);
+              return (
+                <div key={di} style={{ borderLeft: '1px solid #F1F5F9', padding: 4, position: 'relative' }}>
+                  {evt && (
+                    <div style={{
+                      padding: '6px 8px', borderRadius: 8,
+                      background: '#F5F3FF',
+                      borderLeft: `3px solid ${evt.color}`,
+                      height: 48 * evt.span - 8,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#0A0A0F', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{evt.title}</div>
+                      <div style={{ fontSize: 11, color: '#64748B' }}>{evt.tag}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </div>
 
-      {/* Empty note */}
-      <div style={{ textAlign: 'center', padding: '24px', color: '#94A3B8', fontSize: 13 }}>
-        <Calendar size={32} style={{ margin: '0 auto 8px', display: 'block', color: '#CBD5E1' }} />
-        Nenhum compromisso agendado nesta semana.
-      </div>
     </div>
   );
 }

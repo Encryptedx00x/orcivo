@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ClipboardList, Search, ChevronRight } from 'lucide-react';
+import { ClipboardList, Search, ChevronRight, Plus } from 'lucide-react';
 import type { WorkOrder } from '../../../lib/work-order.service';
 
 const SM: Record<WorkOrder['status'], [string, string]> = {
@@ -45,6 +45,11 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.015em', color: '#0A0A0F', margin: 0 }}>Ordens de Serviço</h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{activeCount} ativas · {orders.length} no total</div>
+        </div>
+        <div>
+          <Link href="/ordens-de-servico/novo" className="ov-btn ov-btn-primary" style={{ gap: 8, textDecoration: 'none' }}>
+            <Plus size={16} />Nova OS
+          </Link>
         </div>
       </div>
 
@@ -95,9 +100,9 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
                     </Link>
                   </td>
                   <td style={{ fontWeight: 500 }}>{order.customer?.name ?? '—'}</td>
-                  <td className="ov-muted">{order.title ?? '—'}</td>
+                  <td className="muted">{order.title ?? '—'}</td>
                   <td><Pill k={SM[order.status]?.[0] ?? 'slate'}>{SM[order.status]?.[1] ?? order.status}</Pill></td>
-                  <td className="ov-muted" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
+                  <td className="muted" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
                     {order.scheduled_at ? new Date(order.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                   </td>
                   <td style={{ textAlign: 'right' }}>

@@ -106,7 +106,7 @@ export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Elemen
                 <tr key={item.id}>
                   <td><Pill k="brand">{TYPE_LABEL[item.type] ?? item.type}</Pill></td>
                   <td style={{ fontWeight: 500, color: item.is_active ? '#0A0A0F' : '#64748B' }}>{item.name}</td>
-                  <td className="ov-muted">{item.unit ?? '—'}</td>
+                  <td className="muted">{item.unit ?? '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>{formatMoney(item.unit_price)}</td>
                   <td>
                     {item.is_active

@@ -106,8 +106,8 @@ export function OrcamentosContent({ quotes }: { quotes: Quote[] }): JSX.Element 
                   <td><span style={{ fontWeight: 600 }}>{q.customer.name}</span></td>
                   <td><Pill k={STATUS_BADGE[q.status]}>{STATUS_LABEL[q.status]}</Pill></td>
                   <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>{formatMoney(q.total)}</td>
-                  <td className="ov-muted">{q.valid_until ? new Date(q.valid_until).toLocaleDateString('pt-BR') : '—'}</td>
-                  <td className="ov-muted">{q.created_at ? new Date(q.created_at).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="muted">{q.valid_until ? new Date(q.valid_until).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="muted">{q.created_at ? new Date(q.created_at).toLocaleDateString('pt-BR') : '—'}</td>
                   <td style={{ textAlign: 'right' }}>
                     <Link href={`/orcamentos/${q.id}`} style={{ color: '#94A3B8', display: 'inline-flex' }}><ChevronRight size={16} /></Link>
                   </td>
