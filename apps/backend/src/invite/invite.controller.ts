@@ -1,0 +1,31 @@
+import { Controller, Post, Get, Delete, Param, Body, Req } from '@nestjs/common';
+import { InviteService } from './invite.service';
+import { TenantRequest } from '../common/interfaces/tenant-request.interface';
+import { Public } from '../auth/decorators/public.decorator';
+
+@Controller('invites')
+export class InviteController {
+  constructor(private readonly inviteService: InviteService) {}
+
+  @Post()
+  create(@Req() req: TenantRequest, @Body() body: { email: string; role?: 'ADMIN' | 'TECNICO' }) {
+    return this.inviteService.create(req.companyId, req.user.userId, body.email, body.role ?? 'TECNICO');
+  }
+
+  @Get()
+  list(@Req() req: TenantRequest) {
+    return this.inviteService.list(req.companyId);
+  }
+
+  @Delete(':id')
+  revoke(@Req() req: TenantRequest, @Param('id') id: string) {
+    return this.inviteService.revoke(req.companyId, id);
+  }
+
+  @Public()
+  @Post('accept')
+  accept(@Body() body: { token: string; name?: string; password?: string }, @Req() req: TenantRequest) {
+    const userId = (req as any).user?.userId;
+    return this.inviteService.accept(body.token, userId, body.name, body.password);
+  }
+}

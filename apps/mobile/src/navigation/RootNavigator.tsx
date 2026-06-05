@@ -5,6 +5,7 @@ import { enableScreens } from 'react-native-screens';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthStack } from './AuthStack';
 import { AppTabs } from './AppTabs';
+import { SubscriptionBanner } from '../components/SubscriptionBanner';
 
 enableScreens();
 
@@ -13,7 +14,12 @@ export function RootNavigator() {
   if (isLoading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color="#6D28D9" size="large" /></View>;
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppTabs /> : <AuthStack />}
+      {isAuthenticated ? (
+        <View style={{ flex: 1 }}>
+          <SubscriptionBanner />
+          <AppTabs />
+        </View>
+      ) : <AuthStack />}
     </NavigationContainer>
   );
 }

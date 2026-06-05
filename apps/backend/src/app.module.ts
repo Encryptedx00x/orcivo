@@ -19,6 +19,7 @@ import { RedisModule } from './redis/redis.module';
 import { StorageModule } from './storage/storage.module';
 import { BillingModule } from './billing/billing.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { InviteModule } from './invite/invite.module';
 import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
 
 @Module({
@@ -46,6 +47,7 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     WorkOrderModule,
     BillingModule,
     WebhookModule,
+    InviteModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
