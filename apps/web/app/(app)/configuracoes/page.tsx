@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Building2, Image, CreditCard, Shield, Bell, FileOutput } from 'lucide-react';
+import Link from 'next/link';
+import { Building2, Image, QrCode, Users, CreditCard, Shield, Bell, FileOutput } from 'lucide-react';
 
 type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
 
@@ -14,6 +15,9 @@ const ALL_METHODS: Method[] = ['APPROVE_BUTTON', 'TYPED_NAME', 'DRAWN_SIGNATURE'
 const TABS = [
   { id: 'empresa',   label: 'Empresa',           icon: Building2 },
   { id: 'visual',    label: 'Identidade visual',  icon: Image },
+  { id: 'pix',       label: 'Chave Pix',          icon: QrCode },
+  { id: 'users',     label: 'Usuários',            icon: Users },
+  { id: 'plano',     label: 'Plano e assinatura',  icon: CreditCard },
   { id: 'aprovacao', label: 'Aprovação',           icon: CreditCard },
   { id: 'seg',       label: 'Segurança',           icon: Shield },
   { id: 'notif',     label: 'Notificações',        icon: Bell },
@@ -105,6 +109,56 @@ export default function ConfiguracoesPage(): JSX.Element {
                 <button className="ov-btn ov-btn-outline">Cancelar</button>
                 <button className="ov-btn ov-btn-primary">Salvar alterações</button>
               </div>
+            </div>
+          )}
+
+          {tab === 'pix' && (
+            <div className="ov-card ov-card-body" style={{ padding: 24 }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Chave Pix</h3>
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>Inserida automaticamente nos recibos enviados ao cliente.</div>
+              <div style={{ display: 'grid', gap: 16, maxWidth: 520 }}>
+                <div>
+                  <label className="ov-label">Tipo de chave</label>
+                  <select className="ov-input">
+                    <option>CNPJ</option>
+                    <option>CPF</option>
+                    <option>Email</option>
+                    <option>Telefone</option>
+                    <option>Aleatória</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="ov-label">Chave</label>
+                  <input className="ov-input" placeholder="Ex.: 12.345.678/0001-90" />
+                </div>
+                <div>
+                  <label className="ov-label">Nome do recebedor</label>
+                  <input className="ov-input" placeholder="Ex.: Ribeiro Serviços LTDA" />
+                </div>
+              </div>
+              <div style={{ marginTop: 24 }}>
+                <button className="ov-btn ov-btn-primary">Salvar chave</button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'users' && (
+            <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
+              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>Usuários e permissões</div>
+              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Gerencie usuários, funções e permissões da sua equipe.</div>
+              <Link href="/equipe" className="ov-btn ov-btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+                Ir para Equipe →
+              </Link>
+            </div>
+          )}
+
+          {tab === 'plano' && (
+            <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
+              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>Plano e assinatura</div>
+              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Gerencie seu plano, pagamentos e uso da plataforma.</div>
+              <Link href="/plano" className="ov-btn ov-btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+                Gerenciar assinatura →
+              </Link>
             </div>
           )}
 

@@ -32,7 +32,7 @@ export function TopBar({ companyName }: { companyName?: string }): JSX.Element {
       {/* Right actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button style={{
-          background: 'none', border: '1px solid #E2E8F0', borderRadius: 10,
+          background: 'none', border: 'none', borderRadius: 10,
           width: 40, height: 40, cursor: 'pointer', color: '#64748B',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
@@ -57,7 +57,7 @@ export function TopBar({ companyName }: { companyName?: string }): JSX.Element {
         <button
           onClick={handleLogout}
           style={{
-            background: 'none', border: '1px solid #E2E8F0', borderRadius: 10,
+            background: 'none', border: 'none', borderRadius: 10,
             width: 40, height: 40, cursor: 'pointer', color: '#64748B',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, CheckCircle, XCircle, PlayCircle, Trash2 } from 'lucide-react';
+import { ChevronRight, Upload, CheckCircle, XCircle, PlayCircle, Trash2, Phone, MessageCircle, Plus } from 'lucide-react';
 import type { WorkOrder, WorkOrderPhoto } from '../../../../lib/work-order.service';
 import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { updateStatusAction } from '../actions';
@@ -16,37 +16,34 @@ const STAGE_LABELS: Record<PhotoStage, string> = {
   AFTER: 'Depois',
 };
 
-function statusLabel(status: WorkOrder['status']): string {
-  const map: Record<WorkOrder['status'], string> = {
-    PENDING: 'Pendente',
-    IN_PROGRESS: 'Em andamento',
-    DONE: 'Concluída',
-    CANCELLED: 'Cancelada',
-  };
-  return map[status];
+const STATUS_MAP: Record<WorkOrder['status'], { label: string; bg: string; color: string }> = {
+  PENDING:     { label: 'Pendente',      bg: '#FEF3C7', color: '#92400E' },
+  IN_PROGRESS: { label: 'Em execução',   bg: '#FEF3C7', color: '#92400E' },
+  DONE:        { label: 'Finalizada',    bg: '#DCFCE7', color: '#166534' },
+  CANCELLED:   { label: 'Cancelada',     bg: '#FEE2E2', color: '#991B1B' },
+};
+
+function Pill({ status }: { status: WorkOrder['status'] }) {
+  const s = STATUS_MAP[status];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, padding: '5px 10px', borderRadius: 9999, background: s.bg, color: s.color }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', flexShrink: 0 }} />
+      {s.label}
+    </span>
+  );
 }
 
-function statusBadgeStyle(status: WorkOrder['status']): React.CSSProperties {
-  const styles: Record<WorkOrder['status'], React.CSSProperties> = {
-    PENDING:     { backgroundColor: '#FEF3C7', color: '#92400E' },
-    IN_PROGRESS: { backgroundColor: '#FEF3C7', color: '#92400E' },
-    DONE:        { backgroundColor: '#D1FAE5', color: '#065F46' },
-    CANCELLED:   { backgroundColor: '#FEE2E2', color: '#991B1B' },
-  };
-  return { ...styles[status], display: 'inline-block', padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600 };
-}
-
-function formatDate(iso?: string): string {
+function formatDate(iso?: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-interface Props {
-  initial: WorkOrder;
+function formatDateShort(iso?: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
+
+interface Props { initial: WorkOrder }
 
 export function WorkOrderDetail({ initial }: Props): JSX.Element {
   const router = useRouter();
@@ -64,16 +61,9 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
     setStatusLoading(true);
     try {
       const result = await updateStatusAction(order.id, newStatus);
-      if (result.error) {
-        setStatusError(result.error);
-      } else {
-        setOrder(prev => ({ ...prev, status: newStatus }));
-        setConfirmAction(null);
-        router.refresh();
-      }
-    } finally {
-      setStatusLoading(false);
-    }
+      if (result.error) { setStatusError(result.error); }
+      else { setOrder(prev => ({ ...prev, status: newStatus })); setConfirmAction(null); router.refresh(); }
+    } finally { setStatusLoading(false); }
   }
 
   async function handleFileChange(stage: PhotoStage, e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -101,177 +91,231 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
       setOrder(prev => ({ ...prev, photos: prev.photos.filter(p => p.id !== photoId) }));
     } catch (err: unknown) {
       setUploadError(err instanceof Error ? err.message : 'Erro ao excluir foto');
-    } finally {
-      setDeletingPhotoId(null);
-    }
+    } finally { setDeletingPhotoId(null); }
   }
 
   const photosByStage = (stage: PhotoStage): WorkOrderPhoto[] =>
     order.photos.filter(p => p.photo_stage === stage);
 
+  const totalVal = order.total ? Number(order.total) : 0;
+  const fmtMoney = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ padding: '0 0 40px' }}>
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Link href="/ordens-de-servico" style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontSize: 14 }}>
-          <ArrowLeft size={16} /> Ordens de Serviço
-        </Link>
-        <span style={{ color: '#CBD5E1' }}>/</span>
-        <span style={{ fontSize: 14, color: '#0A0A0F', fontWeight: 500 }}>OS #{order.number}</span>
+      <div style={{ height: 48, background: '#fff', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', padding: '0 24px', gap: 6, fontSize: 13, color: '#64748B' }}>
+        <Link href="/ordens-de-servico" style={{ color: '#64748B', textDecoration: 'none' }}>Ordens de Serviço</Link>
+        <ChevronRight size={14} />
+        <span style={{ color: '#0A0A0F', fontWeight: 600 }}>OS #{order.number}</span>
       </div>
 
-      {/* Header */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+      {/* Page header */}
+      <div style={{ padding: '20px 24px 0', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0A0A0F', margin: '0 0 6px' }}>
-              OS #{order.number} — {order.title}
-            </h1>
-            <p style={{ color: '#64748B', fontSize: 14, margin: 0 }}>{order.customer.name}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0A0A0F', margin: 0, letterSpacing: '-0.01em' }}>
+                OS #{order.number} · {order.title}
+              </h1>
+              <Pill status={order.status} />
+            </div>
+            <div style={{ fontSize: 13, color: '#64748B' }}>
+              {order.technician ? `Técnico: ${order.technician.name}` : 'Sem técnico atribuído'}
+              {order.started_at ? ` · Iniciada ${formatDateShort(order.started_at)}` : ''}
+            </div>
           </div>
-          <span style={statusBadgeStyle(order.status)}>{statusLabel(order.status)}</span>
-        </div>
-
-        {statusError && (
-          <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', color: '#DC2626', fontSize: 13, marginTop: 12 }}>
-            {statusError}
-          </div>
-        )}
-
-        {/* Status actions */}
-        {order.status === 'PENDING' && (
-          <div style={{ marginTop: 20 }}>
-            <button
-              onClick={() => { void handleStatusChange('IN_PROGRESS'); }}
-              disabled={statusLoading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#6D28D9', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: statusLoading ? 'not-allowed' : 'pointer' }}
-            >
-              <PlayCircle size={16} /> {statusLoading ? 'Atualizando...' : 'Iniciar OS'}
-            </button>
-          </div>
-        )}
-
-        {order.status === 'IN_PROGRESS' && (
-          <div style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {confirmAction === 'DONE' ? (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 14, color: '#334155' }}>Confirmar conclusão?</span>
-                <button onClick={() => { void handleStatusChange('DONE'); }} disabled={statusLoading} style={{ ...btnSmall, backgroundColor: '#16A34A', color: '#fff' }}>Sim, concluir</button>
-                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Cancelar</button>
-              </div>
-            ) : confirmAction === 'CANCELLED' ? (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 14, color: '#334155' }}>Confirmar cancelamento?</span>
-                <button onClick={() => { void handleStatusChange('CANCELLED'); }} disabled={statusLoading} style={{ ...btnSmall, backgroundColor: '#991B1B', color: '#fff' }}>Sim, cancelar</button>
-                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, backgroundColor: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Voltar</button>
-              </div>
-            ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {order.status === 'PENDING' && (
+              <button
+                onClick={() => { void handleStatusChange('IN_PROGRESS'); }}
+                disabled={statusLoading}
+                style={{ ...btnPrimary, background: '#6D28D9' }}
+              >
+                <PlayCircle size={15} /> {statusLoading ? 'Atualizando…' : 'Iniciar OS'}
+              </button>
+            )}
+            {order.status === 'IN_PROGRESS' && !confirmAction && (
               <>
-                <button onClick={() => setConfirmAction('DONE')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#16A34A', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                  <CheckCircle size={16} /> Concluir
+                <button onClick={() => setConfirmAction('DONE')} style={{ ...btnPrimary, background: '#16A34A' }}>
+                  <CheckCircle size={15} /> Finalizar OS
                 </button>
-                <button onClick={() => setConfirmAction('CANCELLED')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: 10, padding: '9px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-                  <XCircle size={16} /> Cancelar OS
+                <button onClick={() => setConfirmAction('CANCELLED')} style={{ ...btnOutline, color: '#991B1B', borderColor: '#FECACA' }}>
+                  <XCircle size={15} /> Cancelar OS
                 </button>
               </>
             )}
-          </div>
-        )}
-      </div>
-
-      {/* Informações */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0A0A0F', margin: '0 0 16px' }}>Informações</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-          <div>
-            <p style={infoLabel}>Agendado para</p>
-            <p style={infoValue}>{formatDate(order.scheduled_at)}</p>
-          </div>
-          <div>
-            <p style={infoLabel}>Iniciado em</p>
-            <p style={infoValue}>{formatDate(order.started_at)}</p>
-          </div>
-          <div>
-            <p style={infoLabel}>Concluído em</p>
-            <p style={infoValue}>{formatDate(order.finished_at)}</p>
-          </div>
-          {order.quote && (
-            <div>
-              <p style={infoLabel}>Orçamento vinculado</p>
-              <Link href={`/orcamentos/${order.quote.id}`} style={{ ...infoValue, color: '#6D28D9', textDecoration: 'none' }}>
-                #{order.quote.number}
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Fotos */}
-      <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0A0A0F', margin: '0 0 16px' }}>Fotos</h2>
-
-        {uploadError && (
-          <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#DC2626', fontSize: 13, marginBottom: 16 }}>
-            {uploadError}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map(stage => {
-            const photos = photosByStage(stage);
-            return (
-              <div key={stage}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: '#334155', margin: 0 }}>{STAGE_LABELS[stage]}</h3>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: uploadingStage !== null ? 'not-allowed' : 'pointer', opacity: uploadingStage !== null ? 0.6 : 1 }}>
-                    <Upload size={14} />
-                    {uploadingStage === stage ? 'Enviando...' : 'Upload de foto'}
-                    <input
-                      ref={el => { fileInputRefs.current[stage] = el; }}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      disabled={uploadingStage !== null}
-                      onChange={e => { void handleFileChange(stage, e); }}
-                    />
-                  </label>
-                </div>
-
-                {photos.length === 0 ? (
-                  <p style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }}>Nenhuma foto adicionada.</p>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                    {photos.map(photo => (
-                      <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E2E8F0', position: 'relative' }}>
-                        <img
-                          src={photo.file_url}
-                          alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`}
-                          style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
-                        />
-                        <button
-                          onClick={() => { void handleDeletePhoto(photo.id); }}
-                          disabled={deletingPhotoId === photo.id}
-                          title="Excluir foto"
-                          style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(10,10,15,0.6)', border: 'none', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: deletingPhotoId === photo.id ? 0.5 : 1 }}
-                        >
-                          <Trash2 size={13} color="#fff" />
-                        </button>
-                        {photo.caption && (
-                          <p style={{ fontSize: 12, color: '#64748B', margin: 0, padding: '6px 8px', backgroundColor: '#F8FAFC' }}>{photo.caption}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {confirmAction === 'DONE' && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#334155' }}>Confirmar conclusão?</span>
+                <button onClick={() => { void handleStatusChange('DONE'); }} disabled={statusLoading} style={{ ...btnSmall, background: '#16A34A', color: '#fff' }}>Sim, concluir</button>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Cancelar</button>
               </div>
-            );
-          })}
+            )}
+            {confirmAction === 'CANCELLED' && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: '#334155' }}>Confirmar cancelamento?</span>
+                <button onClick={() => { void handleStatusChange('CANCELLED'); }} disabled={statusLoading} style={{ ...btnSmall, background: '#991B1B', color: '#fff' }}>Sim, cancelar</button>
+                <button onClick={() => setConfirmAction(null)} style={{ ...btnSmall, background: '#fff', color: '#334155', border: '1px solid #E2E8F0' }}>Voltar</button>
+              </div>
+            )}
+          </div>
+        </div>
+        {statusError && (
+          <div style={{ marginTop: 10, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', color: '#DC2626', fontSize: 13 }}>
+            {statusError}
+          </div>
+        )}
+      </div>
+
+      {/* 2-column layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, padding: '0 24px' }}>
+        {/* LEFT */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Informações */}
+          <div style={card}>
+            <div style={cardHeader}><h3 style={cardTitle}>Informações</h3></div>
+            <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+              <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
+              <KV label="Iniciada em" value={formatDate(order.started_at)} />
+              <KV label="Concluída em" value={formatDate(order.finished_at)} />
+              {order.quote && (
+                <div>
+                  <div style={kvLabel}>Orçamento vinculado</div>
+                  <Link href={`/orcamentos/${order.quote.id}`} style={{ fontSize: 14, color: '#6D28D9', fontWeight: 600, textDecoration: 'none' }}>
+                    #{order.quote.number}
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Fotos */}
+          <div style={card}>
+            <div style={cardHeader}><h3 style={cardTitle}>Fotos</h3></div>
+            <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {uploadError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', color: '#DC2626', fontSize: 13 }}>
+                  {uploadError}
+                </div>
+              )}
+              {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map(stage => {
+                const photos = photosByStage(stage);
+                return (
+                  <div key={stage}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{STAGE_LABELS[stage]}</span>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: uploadingStage !== null ? 'not-allowed' : 'pointer', opacity: uploadingStage !== null ? 0.6 : 1 }}>
+                        <Upload size={13} />
+                        {uploadingStage === stage ? 'Enviando…' : 'Adicionar'}
+                        <input ref={el => { fileInputRefs.current[stage] = el; }} type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingStage !== null} onChange={e => { void handleFileChange(stage, e); }} />
+                      </label>
+                    </div>
+                    {photos.length === 0 ? (
+                      <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Nenhuma foto adicionada.</p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                        {photos.map(photo => (
+                          <div key={photo.id} style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid #E2E8F0', position: 'relative', aspectRatio: '1' }}>
+                            <img src={photo.file_url} alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            <button onClick={() => { void handleDeletePhoto(photo.id); }} disabled={deletingPhotoId === photo.id} title="Excluir" style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(10,10,15,0.6)', border: 'none', borderRadius: 5, padding: '3px 4px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: deletingPhotoId === photo.id ? 0.5 : 1 }}>
+                              <Trash2 size={12} color="#fff" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Cliente */}
+          <div style={card}>
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>Cliente</div>
+              <div style={{ fontWeight: 600, fontSize: 15, color: '#0A0A0F', marginBottom: 2 }}>{order.customer.name}</div>
+              <Link href={`/clientes/${order.customer.id}`} style={{ fontSize: 12, color: '#6D28D9', fontWeight: 500, textDecoration: 'none' }}>
+                Ver perfil →
+              </Link>
+              <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                <button style={{ ...btnContactSmall, flex: 1 }}>
+                  <Phone size={12} /> Ligar
+                </button>
+                <button style={{ ...btnContactSmall, flex: 1, color: '#16A34A' }}>
+                  <MessageCircle size={12} /> WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Financeiro */}
+          <div style={card}>
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Financeiro</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+                <span style={{ color: '#64748B' }}>Total da OS</span>
+                <span style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{totalVal > 0 ? fmtMoney(totalVal) : '—'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
+                <span style={{ color: '#64748B' }}>Recebido</span>
+                <span style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace', color: '#16A34A' }}>—</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 14, borderTop: '1px solid #F1F5F9', paddingTop: 8 }}>
+                <span>Pendente</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{totalVal > 0 ? fmtMoney(totalVal) : '—'}</span>
+              </div>
+              <button style={{ ...btnPrimary, width: '100%', marginTop: 12, justifyContent: 'center' }}>
+                <Plus size={14} /> Registrar recebimento
+              </button>
+            </div>
+          </div>
+
+          {/* Histórico */}
+          <div style={card}>
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 10 }}>Histórico</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {[
+                  order.finished_at && [formatDateShort(order.finished_at), 'OS finalizada'],
+                  order.started_at && [formatDateShort(order.started_at), 'Execução iniciada'],
+                  order.scheduled_at && [formatDateShort(order.scheduled_at), 'Agendada'],
+                  ['—', 'OS criada'],
+                ].filter(Boolean).map((entry, i) => {
+                  const [t, e] = entry as [string, string];
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 10, padding: '6px 0', fontSize: 13, borderBottom: '1px solid #F8FAFC' }}>
+                      <span style={{ width: 60, color: '#94A3B8', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{t}</span>
+                      <span style={{ flex: 1, color: '#334155' }}>{e}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const btnSmall: React.CSSProperties = { border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer' };
-const infoLabel: React.CSSProperties = { fontSize: 12, color: '#64748B', margin: '0 0 2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' };
-const infoValue: React.CSSProperties = { fontSize: 14, color: '#0A0A0F', margin: 0 };
+function KV({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={kvLabel}>{label}</div>
+      <div style={{ fontSize: 14, color: '#0A0A0F', fontWeight: 500 }}>{value}</div>
+    </div>
+  );
+}
+
+const card: React.CSSProperties = { background: '#fff', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' };
+const cardHeader: React.CSSProperties = { padding: '12px 18px', borderBottom: '1px solid #F1F5F9' };
+const cardTitle: React.CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600, color: '#0A0A0F' };
+const kvLabel: React.CSSProperties = { fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 };
+const btnPrimary: React.CSSProperties = { height: 36, padding: '0 14px', borderRadius: 9, fontSize: 13, fontWeight: 600, background: '#6D28D9', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 };
+const btnOutline: React.CSSProperties = { height: 36, padding: '0 14px', borderRadius: 9, fontSize: 13, fontWeight: 600, background: '#fff', color: '#334155', border: '1px solid #E2E8F0', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 };
+const btnSmall: React.CSSProperties = { border: 'none', borderRadius: 8, padding: '6px 14px', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' };
+const btnContactSmall: React.CSSProperties = { height: 32, borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#fff', color: '#334155', border: '1px solid #E2E8F0', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 };
