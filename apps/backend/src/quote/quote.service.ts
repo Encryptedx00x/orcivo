@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
+import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 
 @Injectable()
 export class QuoteService {
@@ -21,6 +22,7 @@ export class QuoteService {
     private readonly storage: StorageService,
     private readonly workOrderService: WorkOrderService,
     private readonly pdfService: QuotePdfService,
+    private readonly planLimitsService: PlanLimitsService,
   ) {}
 
   private computeTotals(
@@ -62,6 +64,7 @@ export class QuoteService {
   }
 
   async create(dto: QuoteCreateDto, companyId: string, userId: string) {
+    await this.planLimitsService.enforceLimit(companyId, 'QUOTES_MONTH');
     const number = await this.nextQuoteNumber(companyId);
     const { itemTotals, subtotal, total } = this.computeTotals(
       dto.items,

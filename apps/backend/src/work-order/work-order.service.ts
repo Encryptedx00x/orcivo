@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { WorkOrderCreateDto, WorkOrderUpdateDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
@@ -17,6 +18,7 @@ export class WorkOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly planLimitsService: PlanLimitsService,
   ) {}
 
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
@@ -34,6 +36,7 @@ export class WorkOrderService {
   }
 
   async create(dto: WorkOrderCreateDto, companyId: string, userId: string, quoteId?: string, initialStatus: WorkOrderStatus = 'PENDING') {
+    await this.planLimitsService.enforceLimit(companyId, 'WORK_ORDERS_MONTH');
     const number = await this.nextWorkOrderNumber(companyId);
     return this.prisma.workOrder.create({
       data: {
