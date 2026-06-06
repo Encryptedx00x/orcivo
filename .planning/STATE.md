@@ -2,58 +2,65 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 3 concluída — Monetização completa (9/9 planos executados)
-last_updated: "2026-06-05T18:57:42.106Z"
+status: MVP completo — Fases 0-3 concluídas; web UI fidelizada (2026-06-05)
+last_updated: "2026-06-05T00:00:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 36
-  completed_plans: 27
-  percent: 75
+  completed_plans: 36
+  percent: 100
 ---
 
 # Orcivo — STATE.md
 
 ## Estado atual
 
-**Fase ativa:** — (todas as fases do milestone concluídas)
-**Status:** Fase 3 concluída — Monetização completa (9/9 planos executados)
-**Data:** 2026-06-04
-**Próximo:** Fase 4 — Orcivo Mais/Equipe (planejamento futuro)
-**Data:** 2026-05-28
-**Próximo comando:** continuar Wave 4-5 da Fase 3 (`/gsd-execute-phase 3 --wave 4`)
+**Fase ativa:** Pós-Fase 3 — polish e preparação para Fase 4
+**Status:** MVP monetizável completo. Web UI 100% fidelizada ao design system.
+**Data:** 2026-06-05
+**Próximo:** Fase 4 — Orcivo Mais/Equipe (`/gsd-plan-phase 4`)
 
-## Trabalho da sessão 2026-05-28 — Fidelidade visual web
-
-### Commits
-
-| Hash | Descrição |
-|---|---|
-| `e260182` | P0/P1: gap closure visual inicial (orcamentos, clientes, dashboard) |
-| `e90cd4a` | Novo cliente (form rico 2-col + right rail) + Cliente detalhe (aside + 6 abas) |
-| `05bfcc9` | Aprovação pública — pub-bar/pub-hero/pub-cta fiel ao protótipo; pub-* no globals.css |
-| `ec162e4` | Auth inputs 52px + botão 52px conforme auth.css do design system |
-
-### Cobertura de telas
+## Cobertura de telas — Web (auditada 2026-06-05)
 
 | Tela | Status |
 |---|---|
 | Login web | ✅ Fiel |
 | Signup web | ✅ Fiel |
-| Dashboard | ✅ Fiel |
+| Dashboard | ✅ Fiel (KPIs, agenda, ações rápidas, atividades) |
 | Lista de orçamentos | ✅ Fiel |
 | Detalhe do orçamento | ✅ Fiel |
-| Novo orçamento | ✅ Fiel |
+| Novo orçamento (stepper 5 etapas) | ✅ Fiel |
 | Lista de clientes | ✅ Fiel |
-| Novo cliente | ✅ Fiel (rich form 2-col + right rail) |
-| Detalhe do cliente | ✅ Criado (aside sticky + 6 abas) |
+| Novo cliente | ✅ Fiel (form 2-col + right rail) |
+| Detalhe do cliente | ✅ Fiel (aside + 6 abas + botões Editar/Nova OS) |
+| Editar cliente | ✅ Fiel (form PATCH + preview ao vivo) |
 | Catálogo | ✅ Fiel |
-| Ordens de serviço | ✅ Fiel |
+| Novo item catálogo | ✅ Fiel |
+| Ordens de Serviço (lista) | ✅ Fiel (colunas Técnico/Finalizada/Total + 4 filtros) |
+| Nova OS | ✅ Fiel |
+| Detalhe da OS | ✅ Fiel (grid 2-col, painel dir: cliente/financeiro/histórico) |
 | Agenda | ✅ Fiel (calendar semanal) |
-| Financeiro | ✅ Fiel |
-| Documentos | ✅ Fiel |
-| Configurações | ✅ Fiel |
+| Financeiro | ✅ Fiel (KPIs + gráfico barras + tabela 4 filtros) |
+| Documentos | ✅ Fiel (5 tabs incl. Contratos + thumb PDF + ações) |
+| Equipe | ✅ Fiel (tabela + convites + seção permissões por função) |
+| Configurações | ✅ Fiel (9 tabs: empresa/visual/pix/usuários/plano/aprovação/seg/notif/exp) |
+| Plano e assinatura | ✅ Criada (card gradient + histórico + comparativo 4 planos) |
 | Aprovação pública | ✅ Fiel (pub-bar/hero/cta) |
+| Sidebar | ✅ Fiel (checkmark 32px, active purple-800, font-mono, footer) |
+| TopBar | ✅ Fiel (iconbtns sem borda) |
+| AuthArtPanel | ✅ Fiel (gradient 155deg + grid + glows + glass logo) |
+
+## Commits da sessão 2026-06-05
+
+| Hash | Descrição |
+|---|---|
+| `9f4c4dc` | feat(web): nova OS — form criação com seleção de cliente e agendamento |
+| `37635cd` | feat(web): editar cliente — form PATCH com pré-carga |
+| `788a063` | fix(web): AuthArtPanel — gradiente fiel ao design |
+| `501b899` | fix(web): sidebar — checkmark icon, active purple-800, font-mono, footer |
+| `164bd46` | fix(web): topbar iconbtns, OS colunas+filtros, OS detail painel direito, config tabs, docs contratos+ações |
+| `b8486f7` | feat(web): plano page; equipe permissões; financeiro filtro clientes; config ícone |
 
 ## Deliverables concluídos na Fase 2A
 
