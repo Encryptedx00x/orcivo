@@ -1,16 +1,16 @@
-﻿'use client';
+'use client';
 import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
 
 const PLAN_LABELS: Record<string, string> = {
-  SOLO_MONTHLY: 'Orcivo Solo â€” Mensal â€” R$9,90/mÃªs',
-  SOLO_YEARLY:  'Orcivo Solo â€” Anual â€” R$79,90/ano',
-  MAIS_MONTHLY: 'Orcivo Mais â€” Mensal â€” R$19,90/mÃªs',
-  MAIS_YEARLY:  'Orcivo Mais â€” Anual â€” R$199,90/ano',
-  EQUIPE_MONTHLY: 'Orcivo Equipe â€” Mensal â€” R$39,90/mÃªs',
-  EQUIPE_YEARLY:  'Orcivo Equipe â€” Anual â€” R$399,90/ano',
+  SOLO_MONTHLY:   'Orcivo Solo — Mensal — R$9,90/mês',
+  SOLO_YEARLY:    'Orcivo Solo — Anual — R$79,90/ano',
+  MAIS_MONTHLY:   'Orcivo Mais — Mensal — R$19,90/mês',
+  MAIS_YEARLY:    'Orcivo Mais — Anual — R$199,90/ano',
+  EQUIPE_MONTHLY: 'Orcivo Equipe — Mensal — R$39,90/mês',
+  EQUIPE_YEARLY:  'Orcivo Equipe — Anual — R$399,90/ano',
 };
 
 function CheckoutContent() {
@@ -36,7 +36,7 @@ function CheckoutContent() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message ?? 'Erro ao processar pagamento.');
+        throw new Error((data as { message?: string }).message ?? 'Erro ao processar pagamento.');
       }
       router.push('/checkout/success');
     } catch (e: unknown) {
@@ -49,7 +49,7 @@ function CheckoutContent() {
   return (
     <div className="max-w-md mx-auto py-16 px-6">
       <Link href="/planos" className="text-sm text-primary-600 hover:underline mb-8 inline-block">
-        â† Voltar aos planos
+        ← Voltar aos planos
       </Link>
       <h1 className="text-2xl font-bold text-slate-900 mb-2">Finalizar assinatura</h1>
       <div className="bg-slate-50 rounded-xl p-4 mb-8 border border-slate-200">
@@ -76,10 +76,10 @@ function CheckoutContent() {
           disabled={loading || !plan}
           className="w-full py-3 border border-primary-600 text-primary-600 font-semibold rounded-lg hover:bg-primary-50 disabled:opacity-50 transition-colors"
         >
-          {loading ? 'Aguarde...' : 'Pagar com CartÃ£o'}
+          {loading ? 'Aguarde...' : 'Pagar com Cartão'}
         </button>
       </div>
-      <p className="text-xs text-slate-500 mt-6 text-center">Pagamento processado com seguranÃ§a via Asaas.</p>
+      <p className="text-xs text-slate-500 mt-6 text-center">Pagamento processado com segurança via Asaas.</p>
     </div>
   );
 }
@@ -98,4 +98,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-

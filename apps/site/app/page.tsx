@@ -1,4 +1,4 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 import { Zap, FileText, MessageCircle } from 'lucide-react';
 
 export default function HomePage() {
@@ -19,18 +19,18 @@ export default function HomePage() {
       <section className="flex-1 flex items-center justify-center py-24 px-6 text-center bg-gradient-to-b from-primary-50 to-white">
         <div className="max-w-2xl">
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 leading-tight mb-6">
-            GestÃ£o para<br />
-            <span className="text-primary-600">tÃ©cnicos instaladores</span>
+            Gestão para<br />
+            <span className="text-primary-600">técnicos instaladores</span>
           </h1>
           <p className="text-xl text-slate-600 mb-10">
-            OrÃ§amentos, OS, PDF e aprovaÃ§Ã£o pelo WhatsApp â€” tudo no celular.
+            Orçamentos, OS, PDF e aprovação pelo WhatsApp — tudo no celular.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="https://app.orcivo.com.br/signup"
               className="px-8 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
             >
-              Criar conta grÃ¡tis
+              Criar conta grátis
             </Link>
             <Link
               href="/planos"
@@ -42,7 +42,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* BenefÃ­cios */}
+      {/* Benefícios */}
       <section className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center text-slate-900 mb-12">Por que o Orcivo?</h2>
@@ -51,22 +51,22 @@ export default function HomePage() {
               <div className="inline-flex p-3 bg-primary-100 rounded-xl mb-4">
                 <Zap className="text-primary-600" size={24} />
               </div>
-              <h3 className="text-lg font-semibold mb-2">OrÃ§amento em 2 minutos</h3>
-              <p className="text-slate-600">Monte orÃ§amentos profissionais direto do celular, sem precisar de computador.</p>
+              <h3 className="text-lg font-semibold mb-2">Orçamento em 2 minutos</h3>
+              <p className="text-slate-600">Monte orçamentos profissionais direto do celular, sem precisar de computador.</p>
             </div>
             <div className="text-center p-6">
               <div className="inline-flex p-3 bg-primary-100 rounded-xl mb-4">
                 <FileText className="text-primary-600" size={24} />
               </div>
               <h3 className="text-lg font-semibold mb-2">PDF com sua logo</h3>
-              <p className="text-slate-600">Gere PDFs com a identidade visual da sua empresa de forma automÃ¡tica.</p>
+              <p className="text-slate-600">Gere PDFs com a identidade visual da sua empresa de forma automática.</p>
             </div>
             <div className="text-center p-6">
               <div className="inline-flex p-3 bg-primary-100 rounded-xl mb-4">
                 <MessageCircle className="text-primary-600" size={24} />
               </div>
-              <h3 className="text-lg font-semibold mb-2">AprovaÃ§Ã£o pelo WhatsApp</h3>
-              <p className="text-slate-600">Envie o orÃ§amento e receba aprovaÃ§Ã£o do cliente sem sair do aplicativo.</p>
+              <h3 className="text-lg font-semibold mb-2">Aprovação pelo WhatsApp</h3>
+              <p className="text-slate-600">Envie o orçamento e receba aprovação do cliente sem sair do aplicativo.</p>
             </div>
           </div>
         </div>
@@ -78,9 +78,9 @@ export default function HomePage() {
           <h2 className="text-3xl font-bold text-slate-900 mb-12">Como funciona</h2>
           <div className="space-y-8">
             {[
-              { step: 1, text: 'Cadastre seus serviÃ§os e produtos no catÃ¡logo' },
-              { step: 2, text: 'Monte o orÃ§amento no celular em minutos' },
-              { step: 3, text: 'Envie pelo WhatsApp e receba a aprovaÃ§Ã£o do cliente' },
+              { step: 1, text: 'Cadastre seus serviços e produtos no catálogo' },
+              { step: 2, text: 'Monte o orçamento no celular em minutos' },
+              { step: 3, text: 'Envie pelo WhatsApp e receba a aprovação do cliente' },
             ].map(({ step, text }) => (
               <div key={step} className="flex items-center gap-6 text-left">
                 <div className="w-12 h-12 flex-shrink-0 bg-primary-600 text-white rounded-full flex items-center justify-center font-bold text-lg">
@@ -95,7 +95,7 @@ export default function HomePage() {
 
       {/* CTA final */}
       <section className="py-20 px-6 bg-primary-600 text-white text-center">
-        <h2 className="text-3xl font-bold mb-4">Comece grÃ¡tis. Sem cartÃ£o de crÃ©dito.</h2>
+        <h2 className="text-3xl font-bold mb-4">Comece grátis. Sem cartão de crédito.</h2>
         <p className="text-primary-100 mb-8">Crie sua conta agora e comece a usar o Orcivo Livre.</p>
         <Link
           href="https://app.orcivo.com.br/signup"
@@ -108,7 +108,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-slate-100 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-slate-500">Â© 2026 Orcivo</span>
+          <span className="text-sm text-slate-500">© 2026 Orcivo</span>
           <nav className="flex gap-6">
             <Link href="/planos" className="text-sm text-slate-500 hover:text-slate-900">Planos</Link>
             <Link href="/termos" className="text-sm text-slate-500 hover:text-slate-900">Termos de Uso</Link>
@@ -119,4 +119,3 @@ export default function HomePage() {
     </div>
   );
 }
-

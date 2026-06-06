@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
@@ -7,23 +7,23 @@ const plans = [
   {
     name: 'Orcivo Livre',
     code: 'LIVRE',
-    monthly: 'GrÃ¡tis',
-    yearly: 'GrÃ¡tis',
+    monthly: 'Grátis',
+    yearly: 'Grátis',
     monthlyVal: null,
     yearlyVal: null,
-    features: ['5 clientes', '10 orÃ§amentos/mÃªs', 'GeraÃ§Ã£o de PDF com marca d\'Ã¡gua', 'Suporte por e-mail'],
+    features: ['5 clientes', '10 orçamentos/mês', 'PDF com marca d\'água', 'Suporte por e-mail'],
     highlight: false,
-    cta: 'Criar conta grÃ¡tis',
+    cta: 'Criar conta grátis',
     href: 'https://app.orcivo.com.br/signup',
   },
   {
     name: 'Orcivo Solo',
     code: 'SOLO',
-    monthly: 'R$9,90/mÃªs',
+    monthly: 'R$9,90/mês',
     yearly: 'R$79,90/ano',
     monthlyVal: 'SOLO_MONTHLY',
     yearlyVal: 'SOLO_YEARLY',
-    features: ['50 clientes', '50 orÃ§amentos/mÃªs', 'PDF sem marca d\'Ã¡gua', 'Logo prÃ³pria no PDF', 'Suporte prioritÃ¡rio'],
+    features: ['50 clientes', '50 orçamentos/mês', 'PDF sem marca d\'água', 'Logo própria no PDF', 'Suporte prioritário'],
     highlight: false,
     cta: 'Assinar agora',
     href: null,
@@ -31,11 +31,11 @@ const plans = [
   {
     name: 'Orcivo Mais',
     code: 'MAIS',
-    monthly: 'R$19,90/mÃªs',
+    monthly: 'R$19,90/mês',
     yearly: 'R$199,90/ano',
     monthlyVal: 'MAIS_MONTHLY',
     yearlyVal: 'MAIS_YEARLY',
-    features: ['200 clientes', '200 orÃ§amentos/mÃªs', 'RelatÃ³rios financeiros', 'AtÃ© 3 membros na equipe', 'Suporte prioritÃ¡rio'],
+    features: ['200 clientes', '200 orçamentos/mês', 'Relatórios financeiros', 'Até 3 membros na equipe', 'Suporte prioritário'],
     highlight: true,
     cta: 'Assinar agora',
     href: null,
@@ -43,11 +43,11 @@ const plans = [
   {
     name: 'Orcivo Equipe',
     code: 'EQUIPE',
-    monthly: 'R$39,90/mÃªs',
+    monthly: 'R$39,90/mês',
     yearly: 'R$399,90/ano',
     monthlyVal: 'EQUIPE_MONTHLY',
     yearlyVal: 'EQUIPE_YEARLY',
-    features: ['Uso amplo de clientes', 'Uso amplo de orÃ§amentos', 'Contratos digitais', 'AtÃ© 10 membros', 'Suporte VIP'],
+    features: ['Uso amplo de clientes', 'Uso amplo de orçamentos', 'Contratos digitais', 'Até 10 membros', 'Suporte VIP'],
     highlight: false,
     cta: 'Assinar agora',
     href: null,
@@ -69,8 +69,8 @@ export default function PlanosPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-slate-900 mb-4">Planos e preÃ§os</h1>
-          <p className="text-xl text-slate-600 mb-8">Comece grÃ¡tis. FaÃ§a upgrade quando precisar.</p>
+          <h1 className="text-4xl font-bold text-slate-900 mb-4">Planos e preços</h1>
+          <p className="text-xl text-slate-600 mb-8">Comece grátis. Faça upgrade quando precisar.</p>
 
           {/* Toggle ciclo */}
           <div className="inline-flex bg-slate-100 rounded-lg p-1">
@@ -130,7 +130,7 @@ export default function PlanosPage() {
       {/* Footer */}
       <footer className="border-t border-slate-100 py-8 px-6 mt-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-slate-500">Â© 2026 Orcivo</span>
+          <span className="text-sm text-slate-500">© 2026 Orcivo</span>
           <nav className="flex gap-6">
             <Link href="/termos" className="text-sm text-slate-500 hover:text-slate-900">Termos de Uso</Link>
             <Link href="/privacidade" className="text-sm text-slate-500 hover:text-slate-900">Privacidade</Link>
@@ -140,4 +140,3 @@ export default function PlanosPage() {
     </div>
   );
 }
-

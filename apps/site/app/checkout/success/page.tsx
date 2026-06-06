@@ -1,4 +1,4 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 
 export default function CheckoutSuccessPage() {
   return (
@@ -10,7 +10,7 @@ export default function CheckoutSuccessPage() {
           </svg>
         </div>
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Pagamento recebido!</h1>
-        <p className="text-slate-600 mb-8">Sua assinatura estÃ¡ sendo ativada. Em instantes vocÃª terÃ¡ acesso completo ao Orcivo.</p>
+        <p className="text-slate-600 mb-8">Sua assinatura está sendo ativada. Em instantes você terá acesso completo ao Orcivo.</p>
         <Link
           href="https://app.orcivo.com.br"
           className="inline-block px-8 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
@@ -21,4 +21,3 @@ export default function CheckoutSuccessPage() {
     </div>
   );
 }
-
