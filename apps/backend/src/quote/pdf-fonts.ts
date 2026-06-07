@@ -10,6 +10,8 @@ let registered = false;
 
 export function registerPdfFonts(): void {
   if (registered) return;
+  // Em testes, @react-pdf/renderer é mockado parcialmente (sem Font) — não quebrar.
+  if (!Font || typeof Font.register !== 'function') return;
   registered = true;
 
   const fontsDir = join(__dirname, 'fonts');
