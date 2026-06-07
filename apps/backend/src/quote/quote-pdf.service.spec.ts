@@ -6,7 +6,13 @@ jest.mock('@react-pdf/renderer', () => ({
   View: ({ children }: any) => children,
   Text: ({ children }: any) => children,
   Image: () => null,
+  Svg: ({ children }: any) => children,
+  Defs: ({ children }: any) => children,
+  LinearGradient: ({ children }: any) => children,
+  Stop: () => null,
+  Rect: () => null,
   StyleSheet: { create: (s: any) => s },
+  Font: { register: jest.fn(), registerHyphenationCallback: jest.fn() },
 }));
 
 import { QuotePdfService } from './quote-pdf.service';

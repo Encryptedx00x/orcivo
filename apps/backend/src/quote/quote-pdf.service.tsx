@@ -4,92 +4,147 @@ import {
   Image,
   Page,
   StyleSheet,
+  Svg,
+  Defs,
+  LinearGradient,
+  Stop,
+  Rect,
   Text,
   View,
   renderToBuffer,
 } from '@react-pdf/renderer';
 import { Injectable } from '@nestjs/common';
+import { formatMoney } from '@orcivo/shared-types';
+import { registerPdfFonts } from './pdf-fonts';
 
-// ── Design tokens (espelham docs/design-handoff colors_and_type.css) ──
+registerPdfFonts();
+
+// ── Tokens (espelham docs/handoff/tokens.json — nunca inventar valores) ──
 const C = {
   ink: '#0A0A0F',
-  fg2: '#334155',
-  fg3: '#64748B',
-  border: '#E2E8F0',
-  border2: '#F1F5F9',
+  fg2: '#334155', // slate-700
+  fg3: '#64748B', // slate-500
+  fg4: '#94A3B8', // slate-400
+  border1: '#E2E8F0', // slate-200
+  border2: '#F1F5F9', // slate-100
   slate50: '#F8FAFC',
-  purple600: '#6D28D9',
   purple50: '#F5F3FF',
-  purple100: '#EDE9FE',
+  purple600: '#6D28D9',
+  purple700: '#5B21B6',
   purple800: '#4C1D95',
+  successBg: '#DCFCE7',
+  successFg: '#166534',
+  warningBg: '#FEF3C7',
+  warningFg: '#92400E',
+  dangerBg: '#FEE2E2',
+  dangerFg: '#991B1B',
+  infoBg: '#E0F2FE',
+  infoFg: '#075985',
+  slate100: '#F1F5F9',
   white: '#FFFFFF',
 };
+const SANS = 'Inter';
+const MONO = 'JetBrainsMono';
 
 const styles = StyleSheet.create({
-  page: { paddingTop: 0, paddingBottom: 48, paddingHorizontal: 0, fontFamily: 'Helvetica', fontSize: 10, color: C.ink, lineHeight: 1.45 },
-  body: { paddingHorizontal: 40 },
+  page: {
+    paddingTop: 40,
+    paddingBottom: 56,
+    paddingHorizontal: 40,
+    fontFamily: SANS,
+    fontSize: 10,
+    fontWeight: 400,
+    color: C.ink,
+    lineHeight: 1.5,
+  },
 
-  // Faixa superior de marca
-  topBar: { height: 6, backgroundColor: C.purple600, width: '100%' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 28, marginBottom: 22 },
-  logo: { width: 96, height: 40, objectFit: 'contain', marginBottom: 6 },
-  companyName: { fontSize: 15, fontFamily: 'Helvetica-Bold', color: C.ink },
-  companyInfo: { fontSize: 9, color: C.fg3, marginTop: 2 },
+  // ── Cabeçalho ──
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  brandRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  brandTile: { width: 38, height: 38 },
+  brandLetter: { position: 'absolute', top: 0, left: 0, width: 38, height: 38, textAlign: 'center', color: C.white, fontFamily: SANS, fontWeight: 700, fontSize: 19, lineHeight: 38 / 19 },
+  logo: { width: 110, height: 40, objectFit: 'contain' },
+  companyName: { fontSize: 13, fontFamily: SANS, fontWeight: 600, color: C.ink, letterSpacing: -0.1 },
+  companyInfo: { fontSize: 9, color: C.fg3, marginTop: 1 },
 
-  // Cartão do número do orçamento
-  quoteCard: { backgroundColor: C.purple50, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, minWidth: 170 },
-  quoteEyebrow: { fontSize: 8, color: C.purple800, letterSpacing: 1.2, fontFamily: 'Helvetica-Bold' },
-  quoteNumber: { fontSize: 20, fontFamily: 'Helvetica-Bold', color: C.purple800, marginTop: 2 },
-  quoteMeta: { fontSize: 9, color: C.fg2, marginTop: 6 },
-  quoteMetaStrong: { fontFamily: 'Helvetica-Bold', color: C.ink },
+  headRight: { alignItems: 'flex-end' },
+  eyebrow: { fontFamily: MONO, fontWeight: 500, fontSize: 9, color: C.fg3, letterSpacing: 1.4, textTransform: 'uppercase' },
+  quoteNumber: { fontFamily: MONO, fontWeight: 600, fontSize: 22, color: C.ink, marginTop: 2, letterSpacing: -0.3 },
 
-  // Bloco "Para o cliente"
-  toBlock: { marginBottom: 18 },
-  label: { fontSize: 8, color: C.fg3, letterSpacing: 1, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', marginBottom: 3 },
-  customerName: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: C.ink },
+  divider: { borderBottomWidth: 1, borderBottomColor: C.border1, marginTop: 18, marginBottom: 16 },
+  docTitle: { fontSize: 15, fontFamily: SANS, fontWeight: 600, color: C.ink, letterSpacing: -0.2, marginBottom: 14 },
 
-  // Tabela de itens
-  tableHeader: { flexDirection: 'row', backgroundColor: C.slate50, paddingVertical: 7, paddingHorizontal: 10, borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottom: `1px solid ${C.border}` },
-  th: { fontSize: 8, color: C.fg3, letterSpacing: 0.6, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
-  tableRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10, borderBottom: `1px solid ${C.border2}` },
-  col_desc: { flex: 3.2, fontSize: 10, color: C.ink },
-  col_qty: { flex: 1, textAlign: 'right', fontSize: 10, color: C.fg2 },
-  col_price: { flex: 1.2, textAlign: 'right', fontSize: 10, color: C.fg2 },
-  col_total: { flex: 1.2, textAlign: 'right', fontSize: 10, color: C.ink, fontFamily: 'Helvetica-Bold' },
+  // ── Partes (PARA / status / datas) ──
+  parties: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  label: { fontFamily: MONO, fontWeight: 500, fontSize: 8, color: C.fg3, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  customerName: { fontSize: 13, fontFamily: SANS, fontWeight: 600, color: C.ink },
+  metaLine: { fontFamily: MONO, fontSize: 9, color: C.fg3, marginTop: 4 },
+  metaStrong: { color: C.ink, fontFamily: MONO, fontWeight: 500 },
 
-  // Caixa de totais
+  // ── Badge ──
+  badge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 9, borderRadius: 9999 },
+  badgeDot: { width: 5, height: 5, borderRadius: 9999, marginRight: 6 },
+  badgeText: { fontSize: 9, fontFamily: SANS, fontWeight: 600 },
+
+  // ── Tabela de itens ──
+  tHeadRow: { flexDirection: 'row', backgroundColor: C.slate50, borderTopLeftRadius: 10, borderTopRightRadius: 10, borderWidth: 1, borderColor: C.border1, paddingVertical: 8, paddingHorizontal: 12 },
+  th: { fontFamily: SANS, fontWeight: 500, fontSize: 8, color: C.fg3, letterSpacing: 0.5, textTransform: 'uppercase' },
+  tRow: { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 12, borderBottomWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.border2 },
+  tRowLast: { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
+  cDesc: { flex: 3.3 },
+  cQty: { flex: 1, textAlign: 'right' },
+  cPrice: { flex: 1.3, textAlign: 'right' },
+  cTotal: { flex: 1.3, textAlign: 'right' },
+  cellText: { fontSize: 10, color: C.ink },
+  cellMuted: { fontSize: 10, color: C.fg2 },
+  cellMono: { fontFamily: MONO, fontSize: 9.5, color: C.fg2 },
+  cellMoney: { fontFamily: MONO, fontWeight: 600, fontSize: 9.5, color: C.ink },
+
+  // ── Totais ──
   totalsWrap: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
-  totalsBox: { width: 230, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden' },
-  totalsRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, paddingHorizontal: 14 },
-  totalsLabel: { fontSize: 9, color: C.fg3 },
-  totalsValue: { fontSize: 9, color: C.fg2 },
-  totalFinalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 14, backgroundColor: C.purple50, borderTop: `1px solid ${C.border}` },
-  totalFinalLabel: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: C.purple800 },
-  totalFinalValue: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: C.purple800 },
+  totalsBox: { width: 250, borderWidth: 1, borderColor: C.border1, borderRadius: 12, overflow: 'hidden' },
+  tLine: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, paddingHorizontal: 14 },
+  tLineLabel: { fontSize: 10, color: C.fg3 },
+  tLineValue: { fontFamily: MONO, fontWeight: 500, fontSize: 10, color: C.fg2 },
+  tTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 14, backgroundColor: C.purple50, borderTopWidth: 1, borderTopColor: C.border1 },
+  tTotalLabel: { fontSize: 11, fontFamily: SANS, fontWeight: 600, color: C.purple800 },
+  tTotalValue: { fontFamily: MONO, fontWeight: 600, fontSize: 14, color: C.purple700, letterSpacing: -0.2 },
 
-  // Pix
-  pixBox: { marginTop: 18, backgroundColor: C.slate50, borderRadius: 6, padding: 12, border: `1px solid ${C.border}` },
+  // ── Pix / observações ──
+  infoCard: { marginTop: 18, borderWidth: 1, borderColor: C.border1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14 },
+  pixKey: { fontFamily: MONO, fontSize: 11, color: C.ink, marginTop: 2 },
+  notesText: { fontSize: 10, color: C.fg2, marginTop: 4, lineHeight: 1.55 },
 
-  // Observações
-  section: { marginTop: 18 },
-  notesText: { fontSize: 9, color: C.fg2, marginTop: 4 },
+  // ── Assinaturas ──
+  signSection: { marginTop: 46, flexDirection: 'row', justifyContent: 'space-between', gap: 32 },
+  signBox: { flex: 1 },
+  signLine: { borderTopWidth: 1, borderTopColor: C.fg2, marginTop: 42, marginBottom: 5 },
+  signLabel: { fontSize: 9, color: C.fg3, textAlign: 'center' },
+  signSub: { fontSize: 8, color: C.fg4, textAlign: 'center', marginTop: 1, fontFamily: MONO },
+  signImage: { maxWidth: 170, maxHeight: 54, objectFit: 'contain', marginBottom: 4, alignSelf: 'center' },
 
-  // Assinaturas
-  signatureSection: { marginTop: 44, flexDirection: 'row', justifyContent: 'space-between', gap: 28 },
-  signatureBox: { flex: 1 },
-  signatureLine: { borderTop: `1px solid ${C.fg2}`, marginTop: 44, marginBottom: 5 },
-  signatureLabel: { fontSize: 9, color: C.fg3, textAlign: 'center' },
-  signatureImage: { maxWidth: 180, maxHeight: 56, objectFit: 'contain', marginBottom: 4 },
+  // ── Marca d'água (plano Livre) ──
+  watermark: { position: 'absolute', top: '42%', left: '14%', fontSize: 50, fontFamily: SANS, fontWeight: 700, color: C.purple600, opacity: 0.07, transform: 'rotate(-32deg)' },
 
-  watermark: { position: 'absolute', opacity: 0.10, fontSize: 46, top: '40%', left: '8%', transform: 'rotate(-45deg)', color: C.purple600, fontFamily: 'Helvetica-Bold' },
-
-  footer: { position: 'absolute', bottom: 22, left: 40, right: 40, paddingTop: 10, borderTop: `1px solid ${C.border}`, flexDirection: 'row', justifyContent: 'space-between' },
+  // ── Rodapé ──
+  footer: { position: 'absolute', bottom: 24, left: 40, right: 40, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   footerText: { fontSize: 8, color: C.fg3 },
-  footerBrand: { fontSize: 8, color: C.purple600, fontFamily: 'Helvetica-Bold' },
+  footerBrand: { fontSize: 8, color: C.purple600, fontFamily: SANS, fontWeight: 600 },
+  footerPage: { fontSize: 8, color: C.fg4, fontFamily: MONO },
 });
+
+const STATUS_BADGE: Record<string, { bg: string; fg: string; label: string }> = {
+  DRAFT: { bg: C.slate100, fg: C.fg2, label: 'Rascunho' },
+  SENT: { bg: C.infoBg, fg: C.infoFg, label: 'Enviado' },
+  APPROVED: { bg: C.successBg, fg: C.successFg, label: 'Aprovado' },
+  REJECTED: { bg: C.dangerBg, fg: C.dangerFg, label: 'Recusado' },
+  CANCELLED: { bg: C.slate100, fg: C.fg3, label: 'Cancelado' },
+  EXPIRED: { bg: C.warningBg, fg: C.warningFg, label: 'Expirado' },
+};
 
 interface QuoteData {
   number: number;
+  status?: string | null;
   title?: string | null;
   notes?: string | null;
   subtotal: string;
@@ -97,6 +152,7 @@ interface QuoteData {
   discount_value: string;
   total: string;
   valid_until?: Date | null;
+  created_at?: Date | null;
   items: Array<{
     description: string;
     quantity: string;
@@ -108,7 +164,7 @@ interface QuoteData {
     approval_method: string;
     typed_name?: string | null;
     signature_image_url?: string | null;
-    approved_at: Date;
+    approved_at?: Date | null;
   } | null;
 }
 
@@ -122,16 +178,31 @@ interface CompanyData {
   plan_code: string;
 }
 
+function fmtDate(d?: Date | null): string {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('pt-BR');
+}
+
+/** Quantidade sem zeros à direita: "4.000" → "4", "1.500" → "1,5". */
+function fmtQty(q: string): string {
+  try {
+    const n = new Decimal(q);
+    const s = n.toDecimalPlaces(3).toString();
+    return s.replace('.', ',');
+  } catch {
+    return q;
+  }
+}
+
 @Injectable()
 export class QuotePdfService {
   async generate(quote: QuoteData, company: CompanyData): Promise<Buffer> {
-    // Prisma retorna campos Decimal como objetos — converter para string antes do JSX
     const q: QuoteData = {
       ...quote,
       subtotal: quote.subtotal.toString(),
       discount_value: quote.discount_value.toString(),
       total: quote.total.toString(),
-      items: quote.items.map(item => ({
+      items: quote.items.map((item) => ({
         ...item,
         quantity: item.quantity.toString(),
         unit_price: item.unit_price.toString(),
@@ -140,140 +211,179 @@ export class QuotePdfService {
     };
 
     const showWatermark = company.plan_code === 'LIVRE';
-    const location = [company.city, company.state].filter(Boolean).join(' — ');
-    // NUNCA usar parseFloat — usar new Decimal() para todas as comparações numéricas em campos monetários
+    const location = [company.city, company.state].filter(Boolean).join(' · ');
     const hasDiscount = new Decimal(q.discount_value).greaterThan(0);
+    const badge = q.status ? STATUS_BADGE[q.status] : undefined;
+    const initial = (company.trade_name?.trim()?.[0] ?? 'O').toUpperCase();
 
     const doc = (
-      <Document>
+      <Document
+        title={`Orçamento #${q.number}`}
+        author={company.trade_name}
+        creator="Orcivo"
+        producer="Orcivo"
+      >
         <Page size="A4" style={styles.page}>
-          <View style={styles.topBar} fixed />
-          {showWatermark && <Text style={styles.watermark} fixed>Orcivo Livre</Text>}
+          {showWatermark && (
+            <Text style={styles.watermark} fixed>
+              Orcivo Livre
+            </Text>
+          )}
 
-          <View style={styles.body}>
-            {/* Cabeçalho: empresa à esquerda, cartão do orçamento à direita */}
-            <View style={styles.header}>
-              <View>
-                {company.logo_url && (
-                  <Image style={styles.logo} src={company.logo_url} />
-                )}
-                <Text style={styles.companyName}>{company.trade_name}</Text>
-                {company.phone && (
-                  <Text style={styles.companyInfo}>{company.phone}</Text>
-                )}
-                {location && (
-                  <Text style={styles.companyInfo}>{location}</Text>
-                )}
-              </View>
-              <View style={styles.quoteCard}>
-                <Text style={styles.quoteEyebrow}>ORÇAMENTO</Text>
-                <Text style={styles.quoteNumber}>#{q.number}</Text>
-                {q.title && (
-                  <Text style={[styles.quoteMeta, { marginTop: 4 }]}>{q.title}</Text>
-                )}
-                {q.valid_until && (
-                  <Text style={styles.quoteMeta}>
-                    Válido até{' '}
-                    <Text style={styles.quoteMetaStrong}>
-                      {new Date(q.valid_until).toLocaleDateString('pt-BR')}
-                    </Text>
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Para o cliente */}
-            {q.customer_name && (
-              <View style={styles.toBlock}>
-                <Text style={styles.label}>Para</Text>
-                <Text style={styles.customerName}>{q.customer_name}</Text>
-              </View>
-            )}
-
-            {/* Tabela de itens */}
-            <View>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.th, styles.col_desc]}>Descrição</Text>
-                <Text style={[styles.th, styles.col_qty]}>Qtd</Text>
-                <Text style={[styles.th, styles.col_price]}>Preço unit.</Text>
-                <Text style={[styles.th, styles.col_total]}>Total</Text>
-              </View>
-              {q.items.map((item, i) => (
-                <View key={i} style={styles.tableRow}>
-                  <Text style={styles.col_desc}>{item.description}</Text>
-                  <Text style={styles.col_qty}>{item.quantity}</Text>
-                  <Text style={styles.col_price}>R$ {item.unit_price}</Text>
-                  <Text style={styles.col_total}>R$ {item.total}</Text>
+          {/* ── Cabeçalho ── */}
+          <View style={styles.header}>
+            <View style={styles.brandRow}>
+              {company.logo_url ? (
+                <Image style={styles.logo} src={company.logo_url} />
+              ) : (
+                <View style={styles.brandTile}>
+                  <Svg width={38} height={38}>
+                    <Defs>
+                      <LinearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+                        <Stop offset="0" stopColor={C.ink} />
+                        <Stop offset="1" stopColor={C.purple600} />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x={0} y={0} width={38} height={38} rx={10} fill="url(#brand)" />
+                  </Svg>
+                  <Text style={styles.brandLetter}>{initial}</Text>
                 </View>
-              ))}
-            </View>
-
-            {/* Totais */}
-            <View style={styles.totalsWrap}>
-              <View style={styles.totalsBox}>
-                <View style={styles.totalsRow}>
-                  <Text style={styles.totalsLabel}>Subtotal</Text>
-                  <Text style={styles.totalsValue}>R$ {q.subtotal}</Text>
-                </View>
-                {hasDiscount && (
-                  <View style={styles.totalsRow}>
-                    <Text style={styles.totalsLabel}>
-                      Desconto{' '}
-                      {q.discount_type === 'PERCENT' ? `(${q.discount_value}%)` : ''}
-                    </Text>
-                    <Text style={styles.totalsValue}>- R$ {q.discount_value}</Text>
-                  </View>
-                )}
-                <View style={styles.totalFinalRow}>
-                  <Text style={styles.totalFinalLabel}>Total</Text>
-                  <Text style={styles.totalFinalValue}>R$ {q.total}</Text>
-                </View>
-              </View>
-            </View>
-
-            {company.pix_key && (
-              <View style={styles.pixBox}>
-                <Text style={styles.label}>Pagamento via Pix</Text>
-                <Text style={{ fontSize: 10, color: C.ink, marginTop: 2 }}>{company.pix_key}</Text>
-              </View>
-            )}
-
-            {q.notes && (
-              <View style={styles.section}>
-                <Text style={styles.label}>Observações</Text>
-                <Text style={styles.notesText}>{q.notes}</Text>
-              </View>
-            )}
-
-            {/* Área de assinatura */}
-            <View style={styles.signatureSection}>
-              <View style={styles.signatureBox}>
-                <View style={styles.signatureLine} />
-                <Text style={styles.signatureLabel}>{company.trade_name}</Text>
-              </View>
-              {q.customer_name && (
-                <View style={styles.signatureBox}>
-                  {q.approval?.approval_method === 'DRAWN_SIGNATURE' && q.approval.signature_image_url ? (
-                    <Image style={styles.signatureImage} src={q.approval.signature_image_url} />
-                  ) : (
-                    <View style={styles.signatureLine} />
-                  )}
-                  <Text style={styles.signatureLabel}>
-                    {q.approval?.typed_name ?? q.customer_name}
-                    {q.approval?.approved_at
-                      ? ` — ${new Date(q.approval.approved_at).toLocaleDateString('pt-BR')}`
-                      : ''}
-                  </Text>
+              )}
+              {!company.logo_url && (
+                <View>
+                  <Text style={styles.companyName}>{company.trade_name}</Text>
+                  {company.phone ? <Text style={styles.companyInfo}>{company.phone}</Text> : null}
+                  {location ? <Text style={styles.companyInfo}>{location}</Text> : null}
                 </View>
               )}
             </View>
+
+            <View style={styles.headRight}>
+              <Text style={styles.eyebrow}>Orçamento</Text>
+              <Text style={styles.quoteNumber}>#{q.number}</Text>
+            </View>
           </View>
 
+          <View style={styles.divider} />
+
+          {q.title ? <Text style={styles.docTitle}>{q.title}</Text> : null}
+
+          {/* ── Partes ── */}
+          <View style={styles.parties}>
+            <View>
+              <Text style={styles.label}>Para</Text>
+              <Text style={styles.customerName}>{q.customer_name ?? '—'}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              {badge && (
+                <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                  <View style={[styles.badgeDot, { backgroundColor: badge.fg }]} />
+                  <Text style={[styles.badgeText, { color: badge.fg }]}>{badge.label}</Text>
+                </View>
+              )}
+              {q.created_at ? (
+                <Text style={styles.metaLine}>
+                  Emitido em <Text style={styles.metaStrong}>{fmtDate(q.created_at)}</Text>
+                </Text>
+              ) : null}
+              {q.valid_until ? (
+                <Text style={styles.metaLine}>
+                  Válido até <Text style={styles.metaStrong}>{fmtDate(q.valid_until)}</Text>
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* ── Tabela de itens ── */}
+          <View>
+            <View style={styles.tHeadRow}>
+              <Text style={[styles.th, styles.cDesc]}>Descrição</Text>
+              <Text style={[styles.th, styles.cQty]}>Qtd</Text>
+              <Text style={[styles.th, styles.cPrice]}>Preço un.</Text>
+              <Text style={[styles.th, styles.cTotal]}>Total</Text>
+            </View>
+            {q.items.map((item, i) => {
+              const last = i === q.items.length - 1;
+              return (
+                <View key={i} style={[styles.tRow, last ? styles.tRowLast : {}]} wrap={false}>
+                  <Text style={[styles.cellText, styles.cDesc]}>{item.description}</Text>
+                  <Text style={[styles.cellMono, styles.cQty]}>{fmtQty(item.quantity)}</Text>
+                  <Text style={[styles.cellMono, styles.cPrice]}>{formatMoney(item.unit_price)}</Text>
+                  <Text style={[styles.cellMoney, styles.cTotal]}>{formatMoney(item.total)}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* ── Totais ── */}
+          <View style={styles.totalsWrap}>
+            <View style={styles.totalsBox}>
+              <View style={styles.tLine}>
+                <Text style={styles.tLineLabel}>Subtotal</Text>
+                <Text style={styles.tLineValue}>{formatMoney(q.subtotal)}</Text>
+              </View>
+              {hasDiscount && (
+                <View style={styles.tLine}>
+                  <Text style={styles.tLineLabel}>
+                    Desconto{q.discount_type === 'PERCENT' ? ` (${q.discount_value}%)` : ''}
+                  </Text>
+                  <Text style={styles.tLineValue}>− {formatMoney(q.discount_value)}</Text>
+                </View>
+              )}
+              <View style={styles.tTotal}>
+                <Text style={styles.tTotalLabel}>Total</Text>
+                <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* ── Pix ── */}
+          {company.pix_key ? (
+            <View style={styles.infoCard} wrap={false}>
+              <Text style={styles.label}>Pagamento via Pix</Text>
+              <Text style={styles.pixKey}>{company.pix_key}</Text>
+            </View>
+          ) : null}
+
+          {/* ── Observações ── */}
+          {q.notes ? (
+            <View style={[styles.infoCard, { backgroundColor: C.slate50 }]} wrap={false}>
+              <Text style={styles.label}>Observações</Text>
+              <Text style={styles.notesText}>{q.notes}</Text>
+            </View>
+          ) : null}
+
+          {/* ── Assinaturas ── */}
+          <View style={styles.signSection} wrap={false}>
+            <View style={styles.signBox}>
+              <View style={styles.signLine} />
+              <Text style={styles.signLabel}>{company.trade_name}</Text>
+              <Text style={styles.signSub}>Responsável</Text>
+            </View>
+            {q.customer_name ? (
+              <View style={styles.signBox}>
+                {q.approval?.approval_method === 'DRAWN_SIGNATURE' && q.approval.signature_image_url ? (
+                  <Image style={styles.signImage} src={q.approval.signature_image_url} />
+                ) : (
+                  <View style={styles.signLine} />
+                )}
+                <Text style={styles.signLabel}>{q.approval?.typed_name ?? q.customer_name}</Text>
+                <Text style={styles.signSub}>
+                  {q.approval?.approved_at ? `Aprovado em ${fmtDate(q.approval.approved_at)}` : 'Cliente'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* ── Rodapé ── */}
           <View style={styles.footer} fixed>
             <Text style={styles.footerText}>
               Gerado por <Text style={styles.footerBrand}>Orcivo</Text> — gestão para técnicos instaladores
             </Text>
-            <Text style={styles.footerText} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+            <Text
+              style={styles.footerPage}
+              render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`}
+            />
           </View>
         </Page>
       </Document>
