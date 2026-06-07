@@ -123,6 +123,22 @@ export class QuoteService {
     return quote;
   }
 
+  /** Gera o PDF do orçamento sob demanda (sem alterar o status). */
+  async generatePdf(id: string, companyId: string): Promise<Buffer> {
+    const quote = await this.findOne(id, companyId);
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+    });
+    return this.pdfService.generate(
+      {
+        ...quote,
+        customer_name: (quote as never as { customer: { name: string } })
+          .customer?.name,
+      } as never,
+      company as never,
+    );
+  }
+
   async send(id: string, companyId: string) {
     const quote = await this.findOne(id, companyId);
     try {

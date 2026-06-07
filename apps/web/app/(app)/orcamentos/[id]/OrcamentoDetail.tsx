@@ -105,12 +105,20 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             {STATUS_LABEL[quote.status]}
           </span>
         </div>
-        <button
-          onClick={() => router.back()}
-          style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, color: '#334155' }}
-        >
-          Voltar
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, color: '#334155' }}
+          >
+            <Download size={15} /> Baixar PDF
+          </button>
+          <button
+            onClick={() => router.back()}
+            style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, color: '#334155' }}
+          >
+            Voltar
+          </button>
+        </div>
       </div>
 
       {error && (

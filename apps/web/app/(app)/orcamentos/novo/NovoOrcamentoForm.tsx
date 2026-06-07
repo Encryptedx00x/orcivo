@@ -99,8 +99,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [terms, setTerms] = useState('Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.');
   const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
-    { description: 'Visita técnica', quantity: '1.000', unit_price: '180.00' },
-    { description: 'Instalação câmera CFTV 4MP', quantity: '4.000', unit_price: '320.00' },
+    { description: '', quantity: '1.000', unit_price: '0.00' },
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -141,13 +140,15 @@ export default function NovoOrcamentoForm(): JSX.Element {
     } catch { return subtotal; }
   })();
 
-  // ── Submit ───────────────────────────────────────────────────────
-  async function handleSubmit() {
+  // ── Validation gate — não permite gerar/salvar sem cliente e itens ──
+  const validItems = items.filter(it => it.description.trim() && Number(it.quantity) > 0);
+  const canSave = !!customerId && validItems.length > 0;
+
+  // ── Persistência: cria o rascunho e devolve o id (ou null em erro) ──
+  async function saveDraft(): Promise<string | null> {
     setError('');
-    if (!customerId) { setError('Selecione um cliente.'); setStep(0); return; }
-    if (items.length === 0) { setError('Adicione pelo menos um item.'); setStep(1); return; }
-    const invalid = items.find(it => !it.description || !it.quantity || !it.unit_price);
-    if (invalid) { setError('Preencha todos os campos dos itens.'); setStep(1); return; }
+    if (!customerId) { setError('Selecione um cliente para continuar.'); setStep(0); return null; }
+    if (validItems.length === 0) { setError('Adicione pelo menos um item com descrição e quantidade.'); setStep(1); return null; }
 
     setLoading(true);
     try {
@@ -157,10 +158,11 @@ export default function NovoOrcamentoForm(): JSX.Element {
         body: JSON.stringify({
           customer_id: customerId,
           title: title || undefined,
+          notes: terms || undefined,
           valid_until: validUntil ? new Date(validUntil).toISOString() : undefined,
           discount_type: discountType,
           discount_value: discountValue || '0',
-          items: items.map(it => ({
+          items: validItems.map(it => ({
             catalog_item_id: it.catalog_item_id,
             description: it.description,
             quantity: it.quantity,
@@ -173,12 +175,31 @@ export default function NovoOrcamentoForm(): JSX.Element {
         throw new Error((err as { message?: string }).message ?? 'Erro ao criar orçamento.');
       }
       const created = await res.json();
-      router.push(`/orcamentos/${(created as { id: string }).id}`);
+      return (created as { id: string }).id;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar orçamento.');
+      return null;
     } finally {
       setLoading(false);
     }
+  }
+
+  // ── Ações: salvam o rascunho e então executam (PDF / detalhe) ───────
+  async function handleSave() {
+    const id = await saveDraft();
+    if (id) router.push(`/orcamentos/${id}`);
+  }
+  async function handlePdf() {
+    const id = await saveDraft();
+    if (!id) return;
+    window.open(`/api/quotes/${id}/pdf`, '_blank', 'noopener,noreferrer');
+    router.push(`/orcamentos/${id}`);
+  }
+  async function handleWhatsApp() {
+    // O link de aprovação só existe após o envio — salva e leva ao detalhe,
+    // onde o fluxo de envio + compartilhamento funciona corretamente.
+    const id = await saveDraft();
+    if (id) router.push(`/orcamentos/${id}?compartilhar=1`);
   }
 
   const selectedCustomer = customers.find(c => c.id === customerId);
@@ -496,8 +517,24 @@ export default function NovoOrcamentoForm(): JSX.Element {
           <div style={{ color: T.fg3, fontSize: 14, marginTop: 2 }}>Rascunho · não enviado</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="ov-btn ov-btn-outline">Salvar rascunho</button>
-          <button className="ov-btn ov-btn-outline" style={{ gap: 8 }}>
+          <button
+            type="button"
+            className="ov-btn ov-btn-outline"
+            disabled={loading || !canSave}
+            onClick={() => { void handleSave(); }}
+            title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
+            style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
+          >
+            Salvar rascunho
+          </button>
+          <button
+            type="button"
+            className="ov-btn ov-btn-outline"
+            style={{ gap: 8, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
+            disabled={loading || !canSave}
+            onClick={() => { void handlePdf(); }}
+            title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
+          >
             <FileText size={16} />Gerar PDF
           </button>
         </div>
@@ -535,12 +572,13 @@ export default function NovoOrcamentoForm(): JSX.Element {
               <button
                 type="button"
                 className="ov-btn ov-btn-primary"
-                disabled={loading}
-                onClick={() => { void handleSubmit(); }}
-                style={{ gap: 8 }}
+                disabled={loading || !canSave}
+                onClick={() => { void handleSave(); }}
+                title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
+                style={{ gap: 8, opacity: canSave ? 1 : 0.6, cursor: canSave ? 'pointer' : 'not-allowed' }}
               >
                 <Check size={16} />
-                {loading ? 'Enviando…' : 'Enviar orçamento'}
+                {loading ? 'Salvando…' : 'Salvar e revisar'}
               </button>
             )}
           </div>
@@ -577,13 +615,32 @@ export default function NovoOrcamentoForm(): JSX.Element {
               Ações rápidas
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="ov-btn ov-btn-outline" style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <button
+                type="button"
+                className="ov-btn ov-btn-outline"
+                style={{ justifyContent: 'flex-start', gap: 8, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
+                disabled={loading || !canSave}
+                onClick={() => { void handleWhatsApp(); }}
+                title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
+              >
                 <Share2 size={14} />Compartilhar no WhatsApp
               </button>
-              <button className="ov-btn ov-btn-outline" style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <button
+                type="button"
+                className="ov-btn ov-btn-outline"
+                style={{ justifyContent: 'flex-start', gap: 8, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
+                disabled={loading || !canSave}
+                onClick={() => { void handlePdf(); }}
+                title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
+              >
                 <FileText size={14} />Baixar PDF
               </button>
             </div>
+            {!canSave && (
+              <p style={{ fontSize: 12, color: T.fg3, marginTop: 10, marginBottom: 0 }}>
+                Selecione um cliente e adicione ao menos um item para liberar as ações.
+              </p>
+            )}
           </div>
 
         </div>

@@ -2,12 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -42,6 +44,17 @@ export class QuoteController {
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.quoteService.findOne(id, req.companyId);
+  }
+
+  @Get(':id/pdf')
+  @Header('Content-Type', 'application/pdf')
+  @Header('Content-Disposition', 'inline; filename="orcamento.pdf"')
+  async pdf(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+  ): Promise<StreamableFile> {
+    const buffer = await this.quoteService.generatePdf(id, req.companyId);
+    return new StreamableFile(buffer);
   }
 
   @Post()
