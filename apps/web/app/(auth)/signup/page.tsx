@@ -131,9 +131,9 @@ export default function SignupPage(): JSX.Element {
               />
               <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>
                 Concordo com os{' '}
-                <span style={{ color: '#6D28D9', textDecoration: 'underline', cursor: 'pointer' }}>Termos de uso</span>{' '}
+                <a href="https://orcivo.com.br/termos" target="_blank" rel="noopener noreferrer" style={{ color: '#6D28D9', textDecoration: 'underline' }}>Termos de uso</a>{' '}
                 e a{' '}
-                <span style={{ color: '#6D28D9', textDecoration: 'underline', cursor: 'pointer' }}>Política de privacidade</span>.
+                <a href="https://orcivo.com.br/privacidade" target="_blank" rel="noopener noreferrer" style={{ color: '#6D28D9', textDecoration: 'underline' }}>Política de privacidade</a>.
               </span>
             </label>
 
