@@ -1,5 +1,41 @@
 # Auditoria — Funcional, Mock e Design (2026-06-07)
 
+---
+
+## ✅ Atualização — desenvolvimento concluído (2026-06-07, tarde)
+
+Tudo que estava como mock/faltando foi **desenvolvido**. Restou apenas validação manual de UI (checklist no fim desta seção).
+
+**Backend novo (módulos reais, multi-tenant, Decimal para dinheiro):**
+- **Recebimentos** (`Payment`): `GET/POST /payments`, `PATCH /payments/:id/settle`, `DELETE`.
+- **Compromissos** (`Appointment`): `GET/POST /appointments` (filtro por período), `DELETE`.
+- **Dashboard**: `GET /dashboard/summary` (agrega clientes, orçamentos, OS, recebimentos, compromissos e atividades).
+- **Histórico de plano**: `GET /billing/payments`.
+- **Membros**: `GET /company/members` (não existia — corrigia lista vazia da Equipe).
+- **Fix**: `BillingController` sem `TenantGuard` dava `500` → corrigido.
+
+**Web ligado a dados reais:**
+- **Dashboard**: KPIs/agenda/atividades reais; nome, empresa e plano reais.
+- **Financeiro**: lista recebimentos reais + modal "Registrar recebimento" + ação "Receber"; gráfico/KPIs derivados.
+- **Agenda**: compromissos reais por semana + modal "Novo compromisso".
+- **Plano**: assinatura e histórico reais; **preços alinhados ao site**; removido **"ilimitado"** (compliance).
+- **Equipe**: matriz de permissões honesta (somente leitura) + lista de membros funcionando.
+
+**Verificação automática:** smoke E2E (signup→cliente→payment→appointment→dashboard→billing→members) todos `200/201`; 9 suites de teste verdes (34 testes); typecheck limpo nos 3 apps.
+
+### Checklist de validação MANUAL (novos fluxos)
+Subir backend + web. Em cada um, confira que **não há mais dados fake** (Marcos Pereira, OS #311, R$ 89,90 etc.):
+- [ ] **Dashboard** abre com seu nome/empresa/plano reais; KPIs refletem seus dados; sem compromissos → "Nenhum compromisso para hoje".
+- [ ] **Financeiro** → "Registrar recebimento" (cliente, valor, método) → aparece na tabela; "Receber" muda status para Recebido; KPIs/gráfico atualizam.
+- [ ] **Agenda** → "Novo compromisso" (título, data, hora) → aparece na grade na semana correta; navegação de semana recarrega.
+- [ ] **Plano** mostra seu plano real (Livre para conta nova), histórico vazio honesto, preços R$ 9,90 / 19,90 / 39,90, sem "ilimitado".
+- [ ] **Equipe** lista membros reais; permissões aparecem como ✓/— (somente leitura).
+
+> Pendência conhecida (fora do escopo deste ciclo): **checkout de mudança de plano** depende da integração de pagamento (Asaas) e billing real — botões "Mudar para X" ainda não disparam cobrança.
+
+---
+
+
 Revisão crítica do estado atual contra o handoff (`docs/handoff`, `docs/ui_kits`,
 `docs/screens`). Cobre: testes automatizados, inventário de mock, fidelidade de
 design e um plano de testes manual.
