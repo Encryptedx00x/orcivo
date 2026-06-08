@@ -3,7 +3,8 @@ import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
 interface SafeParseResult {
   success: boolean;
   data?: unknown;
-  error?: { issues: Array<{ path: (string | number)[]; message: string }> };
+  // path aceita PropertyKey[] para compatibilizar Zod v3 (shared-types) e v4 (schemas locais)
+  error?: { issues: Array<{ path: PropertyKey[]; message: string }> };
 }
 
 interface ZodLike {

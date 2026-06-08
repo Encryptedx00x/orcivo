@@ -20,6 +20,9 @@ import { StorageModule } from './storage/storage.module';
 import { BillingModule } from './billing/billing.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { InviteModule } from './invite/invite.module';
+import { PaymentModule } from './payment/payment.module';
+import { AppointmentModule } from './appointment/appointment.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
 
 @Module({
@@ -48,6 +51,9 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     BillingModule,
     WebhookModule,
     InviteModule,
+    PaymentModule,
+    AppointmentModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -57,6 +57,8 @@ model Company {
   work_orders   WorkOrder[]
   subscription  Subscription?
   invites       CompanyInvite[]
+  payments      Payment[]
+  appointments  Appointment[]
 
   @@map("companies")
 }
@@ -121,8 +123,10 @@ model Customer {
   company     Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
   assigned_to User?   @relation("AssignedTo", fields: [assigned_to_user_id], references: [id])
 
-  quotes      Quote[]
-  work_orders WorkOrder[]
+  quotes       Quote[]
+  work_orders  WorkOrder[]
+  payments     Payment[]
+  appointments Appointment[]
 
   @@index([company_id])
   @@index([company_id, name])
@@ -464,4 +468,79 @@ model AuditLog {
   @@index([company_id])
   @@index([company_id, entity_type, entity_id])
   @@map("audit_logs")
+}
+
+// ─── Recebimentos (financeiro) ────────────────────────────────────────────────
+
+enum PaymentMethod {
+  PIX
+  BOLETO
+  CARTAO
+  DINHEIRO
+  TRANSFERENCIA
+  OUTRO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  PARTIAL
+  CANCELLED
+}
+
+model Payment {
+  id            String         @id @default(uuid())
+  company_id    String
+  customer_id   String
+  work_order_id String?
+  quote_id      String?
+  description   String?
+  amount        Decimal        @db.Decimal(12, 2)
+  method        PaymentMethod?
+  status        PaymentStatus  @default(PENDING)
+  due_date      DateTime?
+  paid_at       DateTime?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  company  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customer_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, status])
+  @@map("payments")
+}
+
+// ─── Compromissos (agenda) ────────────────────────────────────────────────────
+
+enum AppointmentType {
+  VISITA
+  INSTALACAO
+  ORCAMENTO
+  MANUTENCAO
+  REUNIAO
+  OUTRO
+}
+
+model Appointment {
+  id                 String          @id @default(uuid())
+  company_id         String
+  customer_id        String?
+  work_order_id      String?
+  title              String
+  type               AppointmentType @default(OUTRO)
+  notes              String?
+  starts_at          DateTime
+  ends_at            DateTime?
+  created_by_user_id String
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+
+  company  Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customer_id], references: [id])
+
+  @@index([company_id])
+  @@index([company_id, starts_at])
+  @@map("appointments")
 }
