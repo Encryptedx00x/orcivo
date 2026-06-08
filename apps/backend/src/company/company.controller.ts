@@ -24,6 +24,11 @@ export class CompanyController {
     return this.companyService.findCurrent(req.companyId);
   }
 
+  @Get('members')
+  getMembers(@Req() req: TenantRequest) {
+    return this.companyService.getMembers(req.companyId);
+  }
+
   @Patch('approval-methods')
   updateApprovalMethods(
     @Req() req: TenantRequest,

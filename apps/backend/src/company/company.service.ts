@@ -60,6 +60,19 @@ export class CompanyService {
     };
   }
 
+  async getMembers(companyId: string) {
+    const members = await this.prisma.companyMember.findMany({
+      where: { company_id: companyId, active: true },
+      orderBy: { created_at: 'asc' },
+      select: {
+        id: true,
+        role: true,
+        user: { select: { name: true, email: true } },
+      },
+    });
+    return members;
+  }
+
   async updateApprovalMethods(companyId: string, methods: ApprovalMethod[]) {
     return this.prisma.company.update({
       where: { id: companyId },

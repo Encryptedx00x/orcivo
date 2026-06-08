@@ -48,6 +48,28 @@ export class SubscriptionService {
     return { status: sub.status, plan_code: sub.plan_code };
   }
 
+  async getPayments(companyId: string) {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { company_id: companyId },
+      select: { id: true },
+    });
+    if (!sub) return { data: [] };
+    const data = await this.prisma.subscriptionPayment.findMany({
+      where: { subscription_id: sub.id },
+      orderBy: { created_at: 'desc' },
+      take: 24,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        due_date: true,
+        paid_at: true,
+        created_at: true,
+      },
+    });
+    return { data };
+  }
+
   async getSubscriptionStatus(companyId: string) {
     const sub = await this.prisma.subscription.findUnique({
       where: { company_id: companyId },
