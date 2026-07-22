@@ -125,7 +125,7 @@ export class SubscriptionService {
     });
 
     const owner = company.members[0]?.user;
-    let sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
+    const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
 
     let asaasCustomerId = sub?.asaas_customer_id ?? null;
     if (!asaasCustomerId) {

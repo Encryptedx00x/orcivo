@@ -11,12 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { catalogService, CatalogItem } from '../services/catalog.service';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { catalogService } from '../services/catalog.service';
+import type { MaisStackParamList } from '../navigation/MaisStack';
 
-interface Props {
-  navigation: any;
-  route: { params?: { item?: CatalogItem } };
-}
+type Props = NativeStackScreenProps<MaisStackParamList, 'CatalogItemForm'>;
 
 type ItemType = 'SERVICE' | 'PRODUCT';
 
@@ -67,10 +66,11 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
         await catalogService.createItem({ ...dto, is_active: true });
       }
       navigation.goBack();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = (err ?? {}) as { data?: { message?: string } };
       Alert.alert(
         'Erro',
-        err?.data?.message ?? 'Não foi possível salvar o item. Tente novamente.',
+        error.data?.message ?? 'Não foi possível salvar o item. Tente novamente.',
       );
     } finally {
       setSubmitting(false);

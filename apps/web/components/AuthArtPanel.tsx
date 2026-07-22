@@ -90,7 +90,7 @@ export function AuthArtPanel({ headline, sub, testimonialQuote, testimonialWho, 
             </div>
           </div>
           <p style={{ fontSize: 14, lineHeight: '22px', color: 'rgba(255,255,255,0.92)', margin: 0 }}>
-            "{testimonialQuote}"
+            &quot;{testimonialQuote}&quot;
           </p>
         </div>
       </div>

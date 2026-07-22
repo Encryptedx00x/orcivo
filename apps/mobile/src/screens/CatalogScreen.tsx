@@ -9,11 +9,11 @@ import {
 } from 'react-native';
 import { Package, Plus, Wrench } from 'lucide-react-native';
 import { formatMoney } from '@orcivo/shared-types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService, CatalogItem } from '../services/catalog.service';
+import type { MaisStackParamList } from '../navigation/MaisStack';
 
-interface Props {
-  navigation: any;
-}
+type Props = NativeStackScreenProps<MaisStackParamList, 'Catalog'>;
 
 export function CatalogScreen({ navigation }: Props) {
   const [items, setItems] = useState<CatalogItem[]>([]);

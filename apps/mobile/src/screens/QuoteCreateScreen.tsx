@@ -17,13 +17,13 @@ import {
 } from 'react-native';
 import { Pencil, Plus, ShoppingBag, Trash2, X } from 'lucide-react-native';
 import { formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService, CatalogItem } from '../services/catalog.service';
 import { quoteService, QuoteCreateDto } from '../services/quote.service';
 import { api } from '../services/api';
+import type { QuotesStackParamList } from '../navigation/AppTabs';
 
-interface Props {
-  navigation: any;
-}
+type Props = NativeStackScreenProps<QuotesStackParamList, 'QuoteCreate'>;
 
 interface Customer {
   id: string;
@@ -178,8 +178,9 @@ export function QuoteCreateScreen({ navigation }: Props) {
       };
       const created = await quoteService.createQuote(dto);
       navigation.replace('QuoteDetail', { id: created.id });
-    } catch (err: any) {
-      const msg = err?.data?.message ?? 'Não foi possível criar o orçamento.';
+    } catch (err: unknown) {
+      const error = (err ?? {}) as { data?: { message?: string | string[] } };
+      const msg = error.data?.message ?? 'Não foi possível criar o orçamento.';
       Alert.alert('Erro', typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);

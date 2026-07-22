@@ -24,8 +24,11 @@ export class InviteController {
 
   @Public()
   @Post('accept')
-  accept(@Body() body: { token: string; name?: string; password?: string }, @Req() req: TenantRequest) {
-    const userId = (req as any).user?.userId;
+  accept(
+    @Body() body: { token: string; name?: string; password?: string },
+    @Req() req: { user?: { userId: string } },
+  ) {
+    const userId = req.user?.userId;
     return this.inviteService.accept(body.token, userId, body.name, body.password);
   }
 }

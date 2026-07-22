@@ -4,7 +4,13 @@ import { LoginScreen } from '../screens/auth/LoginScreen';
 import { SignupStep1Screen } from '../screens/auth/SignupStep1Screen';
 import { SignupStep2Screen } from '../screens/auth/SignupStep2Screen';
 
-const Stack = createNativeStackNavigator();
+export type AuthStackParamList = {
+  Login: undefined;
+  SignupStep1: undefined;
+  SignupStep2: { userId: string; accessToken: string };
+};
+
+const Stack = createNativeStackNavigator<AuthStackParamList>();
 
 export function AuthStack() {
   return (

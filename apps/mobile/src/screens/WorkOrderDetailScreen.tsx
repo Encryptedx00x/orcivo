@@ -10,12 +10,11 @@ import {
   View,
 } from 'react-native';
 import { Camera, CheckCircle, XCircle } from 'lucide-react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder, WorkOrderPhoto } from '../services/work-order.service';
+import type { MaisStackParamList } from '../navigation/MaisStack';
 
-interface Props {
-  navigation: any;
-  route: any;
-}
+type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderDetail'>;
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';

@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SignupStep2Schema } from '@orcivo/shared-types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
+import type { AuthCompany, AuthUser } from '../../contexts/AuthContext';
 import { API_URL } from '../../config';
-import { api } from '../../services/api';
+import type { AuthStackParamList } from '../../navigation/AuthStack';
 
-export function SignupStep2Screen({ route }: { route: any }) {
+type Props = NativeStackScreenProps<AuthStackParamList, 'SignupStep2'>;
+
+export function SignupStep2Screen({ route }: Props) {
   const { setSession } = useAuth();
-  const { accessToken } = route.params as { userId: string; accessToken: string };
+  const { accessToken } = route.params;
   const [form, setForm] = useState({ trade_name: '', document_type: '', document: '', phone: '', city: '', state: '', brand_color: '', pix_key: '' });
   const [loading, setLoading] = useState(false);
 
@@ -30,7 +34,12 @@ export function SignupStep2Screen({ route }: { route: any }) {
         const err = await res.json().catch(() => ({}));
         throw Object.assign(new Error('Erro ao criar empresa'), { data: err });
       }
-      const data = await res.json() as { access_token: string; refresh_token: string; user: any; company: any };
+      const data = await res.json() as {
+        access_token: string;
+        refresh_token: string;
+        user: AuthUser;
+        company: AuthCompany;
+      };
       // setSession separado do try/catch do fetch para não confundir erro de rede com erro de sessão
       try {
         await setSession(data.access_token, data.refresh_token, data.user, data.company);
@@ -39,8 +48,9 @@ export function SignupStep2Screen({ route }: { route: any }) {
         Alert.alert('Empresa criada!', 'Faça login para continuar.');
       }
       return;
-    } catch (e: any) {
-      Alert.alert('Erro', e?.data?.message ?? 'Não foi possível criar a empresa. Tente novamente.');
+    } catch (e: unknown) {
+      const error = (e ?? {}) as { data?: { message?: string } };
+      Alert.alert('Erro', error.data?.message ?? 'Não foi possível criar a empresa. Tente novamente.');
     } finally {
       setLoading(false);
     }

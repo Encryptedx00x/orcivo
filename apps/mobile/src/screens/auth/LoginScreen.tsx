@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { API_URL } from '../../config';
+import type { AuthStackParamList } from '../../navigation/AuthStack';
 
-export function LoginScreen({ navigation }: { navigation: any }) {
+type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
+
+export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,11 +18,12 @@ export function LoginScreen({ navigation }: { navigation: any }) {
     setLoading(true);
     try {
       await login(email, password);
-    } catch (e: any) {
-      if (e?.status === 401) {
+    } catch (e: unknown) {
+      const error = (e ?? {}) as { status?: number; message?: string };
+      if (error.status === 401) {
         Alert.alert('Erro', 'E-mail ou senha inválidos.');
       } else {
-        Alert.alert('Erro de conexão', `Não foi possível conectar ao servidor.\n\nURL: ${API_URL}\nDetalhe: ${e?.message ?? 'desconhecido'}`);
+        Alert.alert('Erro de conexão', `Não foi possível conectar ao servidor.\n\nURL: ${API_URL}\nDetalhe: ${error.message ?? 'desconhecido'}`);
       }
     } finally {
       setLoading(false);

@@ -2,8 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../services/api';
 
-interface AuthUser { id: string; name: string; email: string; }
-interface AuthCompany { id: string; trade_name: string; }
+export interface AuthUser { id: string; name: string; email: string; }
+export interface AuthCompany { id: string; trade_name: string; }
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;

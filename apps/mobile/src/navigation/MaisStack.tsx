@@ -7,10 +7,32 @@ import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
 import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
+import type { CatalogItem } from '../services/catalog.service';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-const Stack = createNativeStackNavigator();
+export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
-const MAIS_ITEMS = [
+export type MaisStackParamList = {
+  MaisMenu: undefined;
+  EmBreve: { title: string };
+  Catalog: undefined;
+  CatalogItemForm: { item?: CatalogItem } | undefined;
+  WorkOrderList: undefined;
+  WorkOrderDetail: { id: string };
+  WorkOrderPhoto: {
+    workOrderId: string;
+    stage?: WorkOrderPhotoStage;
+    onPhotoUploaded: () => void;
+  };
+};
+
+const Stack = createNativeStackNavigator<MaisStackParamList>();
+
+type MaisMenuItem =
+  | { label: string; screen: 'WorkOrderList' | 'Catalog' }
+  | { label: string; screen: 'EmBreve' };
+
+const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Ordens de Serviço', screen: 'WorkOrderList' },
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'EmBreve' },
@@ -22,16 +44,22 @@ const MAIS_ITEMS = [
   { label: 'Ajuda', screen: 'EmBreve' },
 ];
 
-function MaisMenuScreen({ navigation }: { navigation: any }) {
+type MaisMenuProps = NativeStackScreenProps<MaisStackParamList, 'MaisMenu'>;
+
+function MaisMenuScreen({ navigation }: MaisMenuProps) {
   return (
     <View style={styles.container}>
       {MAIS_ITEMS.map(item => (
         <TouchableOpacity
           key={item.label}
           style={styles.row}
-          onPress={() =>
-            navigation.navigate(item.screen, item.screen === 'EmBreve' ? { title: item.label } : undefined)
-          }
+          onPress={() => {
+            if (item.screen === 'EmBreve') {
+              navigation.navigate('EmBreve', { title: item.label });
+              return;
+            }
+            navigation.navigate(item.screen);
+          }}
         >
           <Text style={styles.label}>{item.label}</Text>
           <Text style={styles.arrow}>›</Text>
@@ -45,14 +73,14 @@ export function MaisStack() {
   return (
     <Stack.Navigator screenOptions={{ headerTintColor: '#6D28D9' }}>
       <Stack.Screen name="MaisMenu" component={MaisMenuScreen} options={{ title: 'Mais' }} />
-      <Stack.Screen name="EmBreve" component={EmBreveScreen} options={({ route }: any) => ({ title: route.params?.title ?? 'Em breve' })} />
+      <Stack.Screen name="EmBreve" component={EmBreveScreen} options={({ route }) => ({ title: route.params.title ?? 'Em breve' })} />
 
       {/* Catálogo */}
       <Stack.Screen name="Catalog" component={CatalogScreen} options={{ title: 'Catálogo' }} />
       <Stack.Screen
         name="CatalogItemForm"
         component={CatalogItemFormScreen}
-        options={({ route }: any) => ({ title: route.params?.item ? 'Editar item' : 'Novo item' })}
+        options={({ route }) => ({ title: route.params?.item ? 'Editar item' : 'Novo item' })}
       />
 
       {/* Ordens de Serviço */}

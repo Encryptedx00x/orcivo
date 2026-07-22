@@ -8,11 +8,11 @@ import {
   View,
 } from 'react-native';
 import { CheckCircle, ClipboardList, Clock } from 'lucide-react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder } from '../services/work-order.service';
+import type { MaisStackParamList } from '../navigation/MaisStack';
 
-interface Props {
-  navigation: any;
-}
+type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderList'>;
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 

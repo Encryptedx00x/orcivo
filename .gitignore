@@ -5,7 +5,9 @@ node_modules/
 # Build outputs
 dist/
 build/
+.deploy/
 .next/
+/apps/site/next-env.d.ts
 out/
 .expo/
 .expo-shared/
@@ -22,6 +24,7 @@ yarn-debug.log*
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # OS / editor
 .DS_Store

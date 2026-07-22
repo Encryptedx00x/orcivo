@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { SignupStep1Schema } from '@orcivo/shared-types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
+import type { AuthStackParamList } from '../../navigation/AuthStack';
 
-export function SignupStep1Screen({ navigation }: { navigation: any }) {
+type Props = NativeStackScreenProps<AuthStackParamList, 'SignupStep1'>;
+
+export function SignupStep1Screen({ navigation }: Props) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', accepted_terms: false });
   const [loading, setLoading] = useState(false);
 
@@ -17,8 +21,9 @@ export function SignupStep1Screen({ navigation }: { navigation: any }) {
     try {
       const res = await api.post<{ access_token: string; user: { id: string } }>('/auth/signup/user', parsed.data);
       navigation.navigate('SignupStep2', { userId: res.user.id, accessToken: res.access_token });
-    } catch (e: any) {
-      Alert.alert('Erro', e?.data?.message ?? 'Não foi possível criar a conta.');
+    } catch (e: unknown) {
+      const error = (e ?? {}) as { data?: { message?: string } };
+      Alert.alert('Erro', error.data?.message ?? 'Não foi possível criar a conta.');
     } finally {
       setLoading(false);
     }

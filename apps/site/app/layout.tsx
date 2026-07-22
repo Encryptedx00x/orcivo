@@ -1,8 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = localFont({
+  src: [
+    { path: '../../backend/src/quote/fonts/Inter-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../../backend/src/quote/fonts/Inter-Medium.ttf', weight: '500', style: 'normal' },
+    { path: '../../backend/src/quote/fonts/Inter-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../../backend/src/quote/fonts/Inter-Bold.ttf', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Orcivo — Gestão para técnicos instaladores',
@@ -17,7 +26,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.variable}>{children}</body>
     </html>
   );
 }

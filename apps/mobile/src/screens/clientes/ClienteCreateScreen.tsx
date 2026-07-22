@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { CustomerCreateSchema } from '@orcivo/shared-types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
+import type { ClientesStackParamList } from '../../navigation/AppTabs';
 
-export function ClienteCreateScreen({ navigation }: { navigation: any }) {
+type Props = NativeStackScreenProps<ClientesStackParamList, 'ClienteCreate'>;
+
+export function ClienteCreateScreen({ navigation }: Props) {
   const [form, setForm] = useState({ name: '', phone: '', email: '', city: '', state: '', notes: '' });
   const [loading, setLoading] = useState(false);
 

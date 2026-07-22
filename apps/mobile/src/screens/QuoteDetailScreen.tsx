@@ -10,13 +10,12 @@ import {
   View,
 } from 'react-native';
 import { CheckCircle, Clock, FileText, MessageCircle, XCircle } from 'lucide-react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { formatMoney } from '@orcivo/shared-types';
+import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 
-interface Props {
-  route: { params: { id: string } };
-  navigation: any;
-}
+type Props = NativeStackScreenProps<QuotesStackParamList, 'QuoteDetail'>;
 
 const STATUS_LABEL: Record<QuoteStatus, string> = {
   DRAFT: 'Rascunho',

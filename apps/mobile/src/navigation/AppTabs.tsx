@@ -12,8 +12,21 @@ import { QuoteCreateScreen } from '../screens/QuoteCreateScreen';
 import { MaisStack } from './MaisStack';
 
 const Tab = createBottomTabNavigator();
-const ClientesStack = createNativeStackNavigator();
-const QuotesStack = createNativeStackNavigator();
+
+export type ClientesStackParamList = {
+  ClientesList: undefined;
+  ClienteCreate: undefined;
+};
+
+const ClientesStack = createNativeStackNavigator<ClientesStackParamList>();
+
+export type QuotesStackParamList = {
+  QuotesList: undefined;
+  QuoteDetail: { id: string };
+  QuoteCreate: undefined;
+};
+
+const QuotesStack = createNativeStackNavigator<QuotesStackParamList>();
 
 function ClientesNavigator() {
   return (

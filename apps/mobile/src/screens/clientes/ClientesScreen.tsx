@@ -1,11 +1,15 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
+import type { ClientesStackParamList } from '../../navigation/AppTabs';
 
 interface Customer { id: string; name: string; phone: string | null; }
 
-export function ClientesScreen({ navigation }: { navigation: any }) {
+type Props = NativeStackScreenProps<ClientesStackParamList, 'ClientesList'>;
+
+export function ClientesScreen({ navigation }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 

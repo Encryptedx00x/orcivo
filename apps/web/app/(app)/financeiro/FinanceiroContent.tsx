@@ -141,7 +141,7 @@ export function FinanceiroContent({ entries, kpis, bars, monthLabel, customers }
         {!hasData ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '56px 16px', color: '#94A3B8' }}>
             <Inbox size={32} strokeWidth={1.5} />
-            <p style={{ fontSize: 14, margin: 0 }}>Nenhum recebimento ainda. Use "Registrar recebimento" para começar.</p>
+            <p style={{ fontSize: 14, margin: 0 }}>Nenhum recebimento ainda. Use &quot;Registrar recebimento&quot; para começar.</p>
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, background: '#fff' }}>

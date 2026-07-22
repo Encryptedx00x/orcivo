@@ -12,14 +12,13 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Image as ImageIcon, Upload } from 'lucide-react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService } from '../services/work-order.service';
+import type { MaisStackParamList } from '../navigation/MaisStack';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
-interface Props {
-  navigation: any;
-  route: any;
-}
+type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderPhoto'>;
 
 const STAGE_OPTIONS: { value: PhotoStage; label: string }[] = [
   { value: 'BEFORE', label: 'Antes' },
