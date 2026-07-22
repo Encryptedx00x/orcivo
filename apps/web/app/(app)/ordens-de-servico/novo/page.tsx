@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Calendar, User, Info, ChevronDown } from 'lucide-react';
@@ -13,7 +13,7 @@ interface CustomerOption {
   city: string | null;
 }
 
-export default function NovaOSPage(): JSX.Element {
+function NovaOSContent(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedClientId = searchParams.get('client_id') ?? '';
@@ -368,6 +368,25 @@ export default function NovaOSPage(): JSX.Element {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NovaOSPage(): JSX.Element {
+  return (
+    <Suspense
+      fallback={(
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          style={{ padding: '20px 32px', maxWidth: 900, color: '#64748B', fontSize: 14 }}
+        >
+          Carregando formulário...
+        </div>
+      )}
+    >
+      <NovaOSContent />
+    </Suspense>
   );
 }
 
