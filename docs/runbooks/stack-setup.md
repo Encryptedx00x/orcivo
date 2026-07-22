@@ -53,6 +53,8 @@ REDIS_PASSWORD=<senha_redis_aqui>
 MINIO_ROOT_USER=orcivo_admin
 MINIO_ROOT_PASSWORD=<senha_minio_12chars_aqui>
 DOMAIN=seudominio.com.br
+NEXT_PUBLIC_API_URL=https://api.seudominio.com.br
+NEXT_PUBLIC_WEB_URL=https://app.seudominio.com.br
 ACME_EMAIL=seu@email.com
 EOF
 chmod 600 /opt/orcivo/infra/.env

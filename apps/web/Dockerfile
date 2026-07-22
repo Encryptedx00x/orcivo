@@ -21,6 +21,12 @@ RUN mkdir -p apps/web/public
 
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @orcivo/shared-types build
+
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WEB_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WEB_URL=${NEXT_PUBLIC_WEB_URL}
+RUN test -n "$NEXT_PUBLIC_API_URL" && test -n "$NEXT_PUBLIC_WEB_URL"
 RUN pnpm --filter @orcivo/web build
 
 FROM node:20-alpine AS runtime

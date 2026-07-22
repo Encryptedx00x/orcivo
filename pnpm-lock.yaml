@@ -119,6 +119,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      zod:
+        specifier: 3.23.8
+        version: 3.23.8
     devDependencies:
       '@nestjs/cli':
         specifier: ^10.0.0
@@ -192,6 +195,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+    dependenciesMeta:
+      '@orcivo/shared-types':
+        injected: true
 
   apps/mobile:
     dependencies:

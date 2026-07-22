@@ -4,6 +4,20 @@
 
 ---
 
+## Imagens suportadas
+
+A topologia atual possui imagens versionadas para `backend` e `web`. O app
+`site` ainda não integra o Compose nem o Caddy e deve ser validado com o build
+local do workspace; a definição de Dockerfile, porta e rota do site permanece
+como gap de infraestrutura posterior.
+
+## Argumentos públicos do build web
+
+Defina `NEXT_PUBLIC_API_URL` e `NEXT_PUBLIC_WEB_URL` em `infra/.env` antes de
+construir a imagem. O Next.js incorpora essas URLs públicas no bundle durante o
+build; alterá-las somente no runtime não atualiza o cliente. Não use essas
+variáveis para secrets.
+
 ## Primeiro deploy
 
 ```bash

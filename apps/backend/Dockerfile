@@ -21,18 +21,22 @@ COPY apps/backend ./apps/backend
 COPY packages/shared-types ./packages/shared-types
 
 RUN pnpm --filter @orcivo/shared-types build
+RUN pnpm install --offline --frozen-lockfile --filter @orcivo/backend...
 RUN DATABASE_URL=postgresql://invalid:invalid@127.0.0.1:1/orcivo_generate_only \
   pnpm --filter @orcivo/backend exec prisma generate --schema ../../prisma/schema.prisma
 RUN pnpm --filter @orcivo/backend build
-RUN pnpm --filter @orcivo/backend deploy --prod .deploy/backend
-RUN mkdir -p /app/.deploy/backend/prisma \
-  && cp /app/prisma/schema.prisma /app/.deploy/backend/prisma/schema.prisma \
-  && DATABASE_URL=postgresql://invalid:invalid@127.0.0.1:1/orcivo_generate_only \
-    pnpm --filter @orcivo/backend exec prisma generate \
-      --schema /app/.deploy/backend/prisma/schema.prisma \
-  && rm -rf /app/.deploy/backend/prisma \
-  && cd /app/.deploy/backend \
-  && node -e "require('@prisma/client'); require('@orcivo/shared-types')"
+RUN pnpm --filter @orcivo/backend --prod deploy /app/.deploy/backend
+RUN root_client="$(readlink -f /app/apps/backend/node_modules/@prisma/client)" \
+  && deploy_client="$(readlink -f /app/.deploy/backend/node_modules/@prisma/client)" \
+  && root_generated="$(dirname "$(dirname "$root_client")")/.prisma" \
+  && deploy_generated="$(dirname "$(dirname "$deploy_client")")/.prisma" \
+  && test -f "$root_generated/client/default.js" \
+  && mkdir -p "$deploy_generated" \
+  && cp -a "$root_generated/." "$deploy_generated/" \
+  && cp -a /app/.deploy/backend /tmp/backend-runtime \
+  && cd /tmp/backend-runtime \
+  && node -e "const { PrismaClient } = require('@prisma/client'); new PrismaClient(); require('@orcivo/shared-types'); require('./dist/app.module.js')" \
+  && rm -rf /tmp/backend-runtime
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
