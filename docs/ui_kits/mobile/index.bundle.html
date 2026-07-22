@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Orcivo — Mobile UI Kit</title>
+<link rel="icon" href="../../assets/mark.svg">
+<link rel="stylesheet" href="../../colors_and_type.css">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { margin: 0; background: radial-gradient(1200px 600px at 50% 0%, #F5F3FF, #FFFFFF 60%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#F5F3FF">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#F5F3FF"/>
+    <rect x="420" y="100" width="360" height="600" rx="56" fill="#0B0B0F"/>
+    <rect x="440" y="120" width="320" height="560" rx="40" fill="#FFFFFF"/>
+    <rect x="540" y="148" width="120" height="22" rx="11" fill="#0B0B0F"/>
+    <g fill="#6D28D9">
+      <circle cx="600" cy="360" r="56"/>
+      <rect x="544" y="448" width="112" height="14" rx="7"/>
+      <rect x="560" y="478" width="80" height="10" rx="5" opacity="0.4"/>
+    </g>
+  </svg>
+</template>
+<div id="root"></div>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="Icons.jsx"></script>
+<script type="text/babel" src="Mobile.jsx"></script>
+<script type="text/babel">
+  const { useState } = React;
+  function Root() {
+    return (
+      <IOSDevice width={402} height={874} dark={false}>
+        <MobileApp/>
+      </IOSDevice>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cards</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 20px 22px; background: var(--slate-50); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: #fff; border: 1px solid var(--border-1); border-radius: 12px; padding: 14px 16px; }
+  .top  { display:flex; justify-content: space-between; align-items: flex-start; }
+  .name { font: 600 15px var(--font-sans); color: var(--ink); }
+  .meta { font: 400 13px var(--font-sans); color: var(--fg-3); margin-top: 4px; }
+  .b { font: 600 11px/1 var(--font-sans); padding: 5px 9px; border-radius: 9999px; }
+  .success { background: var(--success-bg); color: #166534; }
+  .warning { background: var(--warning-bg); color: #92400E; }
+  .money { font: 600 18px var(--font-mono); color: var(--ink); margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .foot  { font: 400 12px var(--font-sans); color: var(--fg-3); margin-top: 4px; }
+</style></head><body>
+  <div class="card">
+    <div class="top"><div><div class="name">Marcos Pereira</div><div class="meta">(11) 98123-4521 · São Paulo / SP</div></div></div>
+    <div class="foot" style="margin-top:10px">Último orçamento há 2 dias</div>
+  </div>
+  <div class="card">
+    <div class="top"><div><div class="name">Orçamento #248</div><div class="meta">Marcos Pereira · Validade 15/05</div></div>
+      <span class="b warning">Pendente</span></div>
+    <div class="money">R$ 1.480,00</div>
+  </div>
+  <div class="card">
+    <div class="top"><div><div class="name">OS #312</div><div class="meta">Instalação de câmera CFTV · Téc. João</div></div>
+      <span class="b success">Finalizada</span></div>
+    <div class="foot" style="margin-top:10px">Concluída ontem · Assinatura coletada</div>
+  </div>
+  <div class="card">
+    <div class="top"><div><div class="name">Recebido no mês</div><div class="meta">17 recebimentos · 2 vencidos</div></div></div>
+    <div class="money">R$ 12.480,00</div>
+  </div>
+</body></html>

@@ -1,0 +1,55 @@
+/* Orcivo Mobile UI Kit — content styles inside the iOS frame */
+.m-app { font-family: var(--font-sans); color: var(--ink); background: var(--slate-50); height: 100%; display: flex; flex-direction: column; position: relative; }
+.m-header { background: rgba(255,255,255,.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-2); padding: 66px 16px 10px; position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; }
+.m-header h1 { font-size: 22px; line-height: 28px; margin: 0; font-weight: 700; letter-spacing: -0.02em; flex: 1; }
+.m-header .iconbtn { width: 36px; height: 36px; display:flex; align-items:center; justify-content:center; border-radius: 10px; color: var(--slate-700); }
+
+.m-scroll { flex: 1; overflow-y: auto; padding: 14px 16px 96px; }
+.m-card { background: #fff; border: 1px solid var(--border-1); border-radius: 14px; padding: 14px 16px; }
+
+.m-metric { display: flex; flex-direction: column; gap: 4px; }
+.m-metric .lbl { font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 500; }
+.m-metric .val { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.m-metric .sub { font-size: 12px; color: var(--fg-3); }
+
+.m-tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 78px; background: rgba(255,255,255,.96); backdrop-filter: blur(16px); border-top: 1px solid var(--border-2); display: grid; grid-template-columns: repeat(5,1fr); padding: 6px 0 22px; z-index: 10; }
+.m-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--slate-500); font-size: 10.5px; font-weight: 500; cursor: pointer; }
+.m-tab.active { color: var(--purple-700); }
+.m-tab svg { color: currentColor; }
+
+.m-fab { position: absolute; right: 16px; bottom: 96px; height: 52px; padding: 0 18px; border-radius: 26px; background: var(--purple-600); color: #fff; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 8px 22px rgba(109,40,217,.35); z-index: 8; }
+
+.m-search { background: #fff; border: 1px solid var(--border-1); height: 42px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; gap: 8px; }
+.m-search input { flex: 1; border:0; outline:0; font-size: 15px; }
+
+.m-row { display: flex; align-items: center; gap: 10px; }
+.m-list-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-2); }
+.m-list-item:last-child { border-bottom: 0; }
+.m-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--purple-100); color: var(--purple-800); display:flex; align-items:center; justify-content:center; font-weight: 600; font-size: 14px; }
+
+.m-badge { font: 600 11px/1 var(--font-sans); padding: 4px 8px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 5px; }
+.m-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.b-slate{background:#F1F5F9;color:#334155}.b-warn{background:#FEF3C7;color:#92400E}.b-ok{background:#DCFCE7;color:#166534}.b-bad{background:#FEE2E2;color:#991B1B}.b-info{background:#E0F2FE;color:#075985}.b-brand{background:#F5F3FF;color:#4C1D95}
+
+.m-btn { height: 48px; border-radius: 12px; font-weight: 600; font-size: 15px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.m-btn-primary { background: var(--purple-600); color: #fff; }
+.m-btn-outline { background: #fff; color: var(--ink); border: 1px solid var(--border-1); }
+.m-btn-success { background: var(--success); color: #fff; }
+.m-btn-danger { background: var(--danger); color: #fff; }
+
+.m-money { font-variant-numeric: tabular-nums; font-weight: 700; }
+.m-section-title { font-size: 13px; font-weight: 600; color: var(--fg-2); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; }
+
+.m-input { height: 48px; border: 1px solid var(--border-1); border-radius: 12px; padding: 0 14px; font-size: 15px; background: #fff; width: 100%; }
+.m-input:focus { outline: none; border-color: var(--purple-600); box-shadow: var(--shadow-focus); }
+.m-label { font-size: 12px; color: var(--fg-2); font-weight: 500; margin-bottom: 6px; display: block; }
+
+.m-step-dots { display: flex; gap: 6px; justify-content: center; padding: 14px 0; }
+.m-step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate-200); }
+.m-step-dot.active { background: var(--purple-600); width: 22px; border-radius: 4px; }
+
+.m-back { font-size: 14px; color: var(--purple-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.m-quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.m-quick > div { background: #fff; border: 1px solid var(--border-1); border-radius: 12px; padding: 12px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.m-quick svg { color: var(--purple-700); }
+.m-quick span { font-size: 11.5px; font-weight: 600; color: var(--ink); }

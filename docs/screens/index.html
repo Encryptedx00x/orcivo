@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Orcivo — Screens · Lotes A · C · B · D</title>
+<link rel="icon" href="../assets/mark.svg">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #f0eee9; font-family: var(--font-sans); color: var(--ink); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 64px 32px 80px; }
+  .brand { display: flex; gap: 12px; align-items: center; margin-bottom: 28px; }
+  .brand-mark { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #0A0A0F, #6D28D9); display: flex; align-items: center; justify-content: center; }
+  h1 { font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .sub { font-size: 16px; color: var(--fg-3); margin: 0 0 36px; max-width: 580px; line-height: 24px; }
+
+  .lots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .lot { background: #fff; border: 1px solid var(--border-1); border-radius: 16px; padding: 22px 22px 18px; text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 12px; transition: transform .15s, box-shadow .15s, border-color .15s; }
+  .lot:hover { border-color: var(--purple-300); box-shadow: 0 8px 24px rgba(15,23,42,0.08); transform: translateY(-2px); }
+  .lot .tag { font-family: var(--font-mono); font-size: 11px; color: var(--purple-700); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .lot h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+  .lot .desc { font-size: 14px; color: var(--fg-2); line-height: 20px; margin: 0; }
+  .lot .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .lot .chip { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--slate-50); border: 1px solid var(--border-1); color: var(--fg-2); font-weight: 500; }
+  .lot .open { font-size: 13px; color: var(--purple-700); font-weight: 600; display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 8px; }
+
+  .ctx { margin-top: 32px; padding: 16px 18px; background: #fff; border-radius: 12px; border: 1px solid var(--border-1); font-size: 13px; color: var(--fg-2); line-height: 20px; }
+  .ctx strong { color: var(--ink); }
+  .legend { margin-top: 24px; font-size: 12px; color: var(--fg-3); display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend span { display: flex; gap: 6px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+        <path d="M16 4 L26 10 L26 22 L16 28 L6 22 L6 10 Z" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M16 12 L20 14 L20 18 L16 20 L12 18 L12 14 Z" fill="#fff"/>
+      </svg>
+    </div>
+    <div style="font-weight:700; font-size:17px;">Orcivo · Screens</div>
+  </div>
+
+  <h1>Quatro novos lotes prontos</h1>
+  <p class="sub">Auth & onboarding, estados do sistema, formulários e telas públicas — entregues como cards numa design canvas, com mobile (Android) e web lado a lado.</p>
+
+  <div class="lots">
+    <a class="lot" href="Lote A - Auth %26 Onboarding.html">
+      <span class="tag">Lote A</span>
+      <h2>Auth & Onboarding</h2>
+      <p class="desc">Login, Cadastro, Esqueci senha (com estado pós-envio), Selecionar empresa e Criar empresa — mobile e web.</p>
+      <div class="row">
+        <span class="chip">5 mobile</span>
+        <span class="chip">3 web</span>
+        <span class="chip">split layout dark</span>
+      </div>
+      <div class="open">Abrir lote →</div>
+    </a>
+
+    <a class="lot" href="Lote C - Estados do sistema.html">
+      <span class="tag">Lote C</span>
+      <h2>Estados do sistema</h2>
+      <p class="desc">Plano bloqueado (sheet + modal), Sem conexão, Permission denied, Edit lock e Skeletons (loading).</p>
+      <div class="row">
+        <span class="chip">5 mobile</span>
+        <span class="chip">5 web</span>
+        <span class="chip">overlays</span>
+      </div>
+      <div class="open">Abrir lote →</div>
+    </a>
+
+    <a class="lot" href="Lote B - Formularios e captura.html">
+      <span class="tag">Lote B</span>
+      <h2>Formulários e captura</h2>
+      <p class="desc">Novo cliente, Novo item de catálogo, Coletar assinatura horizontal, Fotos da OS · cliente detalhe com 6 abas no web.</p>
+      <div class="row">
+        <span class="chip">4 mobile</span>
+        <span class="chip">2 web</span>
+        <span class="chip">landscape</span>
+      </div>
+      <div class="open">Abrir lote →</div>
+    </a>
+
+    <a class="lot" href="Lote D - Paginas publicas.html">
+      <span class="tag">Lote D</span>
+      <h2>Páginas públicas</h2>
+      <p class="desc">Aprovação pública de orçamento (responsivo desktop ↔ mobile, com sucesso + Pix) e Preview de PDF de 2 páginas.</p>
+      <div class="row">
+        <span class="chip">1 mobile</span>
+        <span class="chip">3 web</span>
+        <span class="chip">PDF</span>
+      </div>
+      <div class="open">Abrir lote →</div>
+    </a>
+  </div>
+
+  <div class="ctx">
+    <strong>Sistema mantido:</strong> Orcivo · branco, preto, roxo <code style="font-family:var(--font-mono); font-size:12px;">#6D28D9</code> · Inter · Lucide · pt-BR · Android frame · sem cara de ERP pesado. Cada lote abre numa design canvas onde dá pra reordenar, focar, comentar e iterar.
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#6D28D9"></span> Primary purple</span>
+    <span><span class="dot" style="background:#16A34A"></span> Success</span>
+    <span><span class="dot" style="background:#D97706"></span> Warning</span>
+    <span><span class="dot" style="background:#DC2626"></span> Danger</span>
+    <span><span class="dot" style="background:#0A0A0F"></span> Ink</span>
+  </div>
+</div>
+</body>
+</html>

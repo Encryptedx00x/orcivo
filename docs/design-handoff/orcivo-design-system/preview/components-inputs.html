@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Inputs</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 22px 24px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 20px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  label { font: 500 12px/16px var(--font-sans); color: var(--fg-2); }
+  .input { height: 44px; border: 1px solid var(--border-1); border-radius: 12px; padding: 0 12px; font: 400 15px var(--font-sans); color: var(--ink); background: #fff; }
+  .input:focus { outline: none; border-color: var(--purple-600); box-shadow: var(--shadow-focus); }
+  .focused { border-color: var(--purple-600); box-shadow: var(--shadow-focus); }
+  .error { border-color: var(--danger); }
+  .help { font: 400 12px var(--font-sans); color: var(--fg-3); }
+  .err  { font: 500 12px var(--font-sans); color: var(--danger); }
+  .pre  { display: flex; align-items: center; border: 1px solid var(--border-1); border-radius: 12px; padding: 0 12px; height: 44px; }
+  .pre span { color: var(--fg-3); margin-right: 8px; font: 500 14px var(--font-mono); }
+  .pre input { border: 0; outline: 0; flex: 1; font: 600 15px var(--font-mono); color: var(--ink); }
+</style></head><body>
+  <div class="field"><label>Nome do cliente</label><input class="input" value="Marcos Pereira"></div>
+  <div class="field"><label>Telefone</label><input class="input focused" value="(11) 98123-4521"><div class="help">Formato com DDD</div></div>
+  <div class="field"><label>CPF / CNPJ</label><input class="input" placeholder="000.000.000-00"></div>
+  <div class="field"><label>Valor do serviço</label><div class="pre"><span>R$</span><input value="1.480,00"></div></div>
+  <div class="field"><label>E-mail</label><input class="input error" value="email-invalido"><div class="err">Digite um e-mail válido</div></div>
+  <div class="field"><label>Validade do orçamento</label><input class="input" value="15 dias"></div>
+</body></html>

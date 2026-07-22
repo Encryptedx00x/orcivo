@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Semantic colors</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 20px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cell { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; }
+  .pair { display: flex; }
+  .pair > div { flex: 1; height: 56px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px; }
+  .meta { padding: 8px 12px; background: #fff; }
+  .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .role { font-size: 11px; color: var(--fg-3); }
+</style></head><body>
+<div class="row">
+  <div class="cell">
+    <div class="pair"><div style="background:#16A34A;color:#fff">#16A34A</div><div style="background:#DCFCE7;color:#166534">#DCFCE7</div></div>
+    <div class="meta"><div class="name">Success</div><div class="role">Aprovado · Finalizada · Pago</div></div>
+  </div>
+  <div class="cell">
+    <div class="pair"><div style="background:#D97706;color:#fff">#D97706</div><div style="background:#FEF3C7;color:#92400E">#FEF3C7</div></div>
+    <div class="meta"><div class="name">Warning</div><div class="role">Pendente · Em execução</div></div>
+  </div>
+  <div class="cell">
+    <div class="pair"><div style="background:#DC2626;color:#fff">#DC2626</div><div style="background:#FEE2E2;color:#991B1B">#FEE2E2</div></div>
+    <div class="meta"><div class="name">Danger</div><div class="role">Rejeitado · Vencido · Cancelada</div></div>
+  </div>
+  <div class="cell">
+    <div class="pair"><div style="background:#0284C7;color:#fff">#0284C7</div><div style="background:#E0F2FE;color:#075985">#E0F2FE</div></div>
+    <div class="meta"><div class="name">Info</div><div class="role">Aberta · Parcial</div></div>
+  </div>
+</div>
+</body></html>

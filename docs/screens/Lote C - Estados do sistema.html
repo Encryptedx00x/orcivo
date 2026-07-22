@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Orcivo — Lote C · Estados do sistema</title>
+<link rel="icon" href="../assets/mark.svg">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="auth.css">
+<link rel="stylesheet" href="states.css">
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: #f0eee9; }
+  .auth-m { background: var(--slate-50); }
+  /* badge utility lifted from web kit (for inline use inside states) */
+  .badge { font: 600 11px/1 var(--font-sans); padding: 5px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 6px; }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.brand { background: var(--purple-50); color: var(--purple-800); }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root" data-screen-label="Lote C — Estados do sistema"></div>
+
+<script type="text/babel" src="../design-canvas.jsx"></script>
+<script type="text/babel" src="../android-frame.jsx"></script>
+<script type="text/babel" src="AuthIcons.jsx"></script>
+<script type="text/babel" src="States.jsx"></script>
+
+<script type="text/babel">
+  function Phone({ children }) {
+    return (
+      <AndroidDevice width={392} height={812} dark={false}>
+        {children}
+      </AndroidDevice>
+    );
+  }
+  function Web({ children }) {
+    return (
+      <div style={{width:"100%", height:"100%", borderRadius:14, overflow:"hidden", border:"1px solid #e5e2dd", background:"#fff"}}>
+        {children}
+      </div>
+    );
+  }
+
+  function Root() {
+    return (
+      <DesignCanvas>
+        <DCSection
+          id="plan-locked"
+          title="Plano bloqueado"
+          subtitle="Quando uma ação esbarra no limite do plano · upgrade contextual">
+          <DCArtboard id="m-plan-locked" label="Mobile · Sheet"  width={392} height={812}><Phone><MobPlanLocked/></Phone></DCArtboard>
+          <DCArtboard id="w-plan-locked" label="Web · Modal"     width={1180} height={760}><Web><WebPlanLocked/></Web></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="offline"
+          title="Sem conexão"
+          subtitle="App segue funcionando offline · sincroniza ao reconectar">
+          <DCArtboard id="m-offline" label="Mobile · Estado offline" width={392} height={812}><Phone><MobOffline/></Phone></DCArtboard>
+          <DCArtboard id="w-offline" label="Web · Banner + estado"   width={1180} height={760}><Web><WebOffline/></Web></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="denied"
+          title="Permission denied"
+          subtitle="Erro 403 · usuário sem permissão para a área">
+          <DCArtboard id="m-denied" label="Mobile · Acesso restrito"  width={392} height={812}><Phone><MobPermissionDenied/></Phone></DCArtboard>
+          <DCArtboard id="w-denied" label="Web · Modal sobre a área"  width={1180} height={760}><Web><WebPermissionDenied/></Web></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="edit-lock"
+          title="Edit lock"
+          subtitle="Outro usuário editando o mesmo recurso">
+          <DCArtboard id="m-lock" label="Mobile · Banner + preview"  width={392} height={812}><Phone><MobEditLock/></Phone></DCArtboard>
+          <DCArtboard id="w-lock" label="Web · Banner + editor"      width={1180} height={760}><Web><WebEditLock/></Web></DCArtboard>
+        </DCSection>
+
+        <DCSection
+          id="skeletons"
+          title="Skeletons"
+          subtitle="Loading states · shimmer suave, sem spinner roxo">
+          <DCArtboard id="m-sk" label="Mobile · Home skeleton"          width={392} height={812}><Phone><MobSkeleton/></Phone></DCArtboard>
+          <DCArtboard id="w-sk" label="Web · Dashboard + tabela skeleton" width={1180} height={760}><Web><WebSkeleton/></Web></DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+</script>
+</body>
+</html>

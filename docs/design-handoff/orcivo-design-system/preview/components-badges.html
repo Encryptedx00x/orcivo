@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Status badges</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 22px 24px; }
+  .group { margin-bottom: 14px; }
+  .lab { font: 500 11px var(--font-mono); color: var(--fg-3); text-transform: uppercase; letter-spacing:.06em; margin-bottom: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .b { font: 600 12px/1 var(--font-sans); padding: 6px 10px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .slate   { background: var(--slate-100);  color: var(--slate-700); }
+  .warning { background: var(--warning-bg); color: #92400E; }
+  .success { background: var(--success-bg); color: #166534; }
+  .danger  { background: var(--danger-bg);  color: #991B1B; }
+  .info    { background: var(--info-bg);    color: #075985; }
+  .primary { background: var(--purple-50);  color: var(--purple-800); }
+</style></head><body>
+  <div class="group"><div class="lab">Orçamento</div>
+    <div class="row">
+      <span class="b slate"><span class="dot"></span>Rascunho</span>
+      <span class="b warning"><span class="dot"></span>Pendente</span>
+      <span class="b success"><span class="dot"></span>Aprovado</span>
+      <span class="b danger"><span class="dot"></span>Rejeitado</span>
+      <span class="b slate"><span class="dot"></span>Expirado</span>
+    </div>
+  </div>
+  <div class="group"><div class="lab">Ordem de serviço</div>
+    <div class="row">
+      <span class="b info"><span class="dot"></span>Aberta</span>
+      <span class="b primary"><span class="dot"></span>Agendada</span>
+      <span class="b warning"><span class="dot"></span>Em execução</span>
+      <span class="b warning"><span class="dot"></span>Aguardando material</span>
+      <span class="b success"><span class="dot"></span>Finalizada</span>
+    </div>
+  </div>
+  <div class="group"><div class="lab">Pagamento</div>
+    <div class="row">
+      <span class="b warning"><span class="dot"></span>Pendente</span>
+      <span class="b success"><span class="dot"></span>Recebido</span>
+      <span class="b info"><span class="dot"></span>Parcial</span>
+      <span class="b danger"><span class="dot"></span>Vencido</span>
+    </div>
+  </div>
+</body></html>

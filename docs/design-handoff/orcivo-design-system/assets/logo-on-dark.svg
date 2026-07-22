@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" width="240" height="64">
+  <g transform="translate(8,8)">
+    <rect x="0" y="0" width="48" height="48" rx="14" fill="#FFFFFF"></rect>
+    <path d="M14 26 L22 33 L36 18" stroke="#0A0A0F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+  </g>
+  <g transform="translate(68,0)" font-family="Inter, system-ui, sans-serif" fill="#FFFFFF">
+    <text x="0" y="42" font-size="30" font-weight="700" letter-spacing="-0.02em">Orcivo</text>
+  </g>
+</svg>

@@ -1,0 +1,135 @@
+/* Orcivo — Forms / capture shared styles (Lote B) */
+
+/* Mobile signature canvas */
+.sig-stage {
+  position: relative; background: var(--ink); color: #fff;
+  height: 100%; width: 100%;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+.sig-instr {
+  position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.7);
+  font-size: 13px;
+}
+.sig-pad {
+  position: absolute; left: 32px; right: 32px; top: 72px; bottom: 130px;
+  background: #fff; border-radius: 16px;
+  overflow: hidden;
+}
+.sig-pad .canvas { position: absolute; left: 0; right: 0; top: 0; bottom: 56px; }
+.sig-pad .baseline { position: absolute; left: 32px; right: 32px; bottom: 38px; height: 1px; background: var(--slate-300); }
+.sig-pad .x-mark { position: absolute; left: 36px; bottom: 42px; font-family: var(--font-mono); font-size: 14px; color: var(--slate-400); }
+.sig-pad .who-label { position: absolute; left: 32px; right: 32px; bottom: 14px; display: flex; justify-content: space-between; align-items: baseline; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); }
+.sig-pad .who-label strong { color: var(--ink); font-weight: 600; letter-spacing: 0.04em; }
+.sig-footer {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 16px 20px 28px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.4));
+  display: flex; gap: 10px;
+}
+.sig-footer .clear {
+  flex: 0 0 auto; height: 48px; padding: 0 16px; border-radius: 12px;
+  background: rgba(255,255,255,0.1); color: #fff; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.16);
+  display: flex; align-items: center; gap: 6px;
+  font-family: inherit; font-size: 14px;
+}
+.sig-footer .confirm {
+  flex: 1; height: 48px; border-radius: 12px;
+  background: var(--purple-600); color: #fff; font-weight: 700;
+  border: 0; font-size: 15px; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+/* Photo grid for OS */
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.photo-tile {
+  aspect-ratio: 1 / 1; border-radius: 12px; overflow: hidden;
+  position: relative; background: var(--slate-200);
+}
+.photo-tile img,
+.photo-tile .ph {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  background:
+    repeating-linear-gradient(135deg, rgba(15,23,42,0.04) 0 8px, rgba(15,23,42,0.08) 8px 16px),
+    var(--slate-200);
+}
+.photo-tile .tag {
+  position: absolute; left: 6px; bottom: 6px; padding: 3px 7px;
+  background: rgba(10,10,15,0.75); color: #fff;
+  border-radius: 6px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.photo-tile .check {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--purple-600); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-tile.add {
+  background: transparent; border: 1.5px dashed var(--slate-300);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; color: var(--purple-700); font-weight: 600; font-size: 11px;
+}
+
+.cap-tabs { display: flex; gap: 0; margin-bottom: 12px; padding: 4px; background: var(--slate-100); border-radius: 12px; }
+.cap-tabs > div { flex: 1; padding: 9px 10px; text-align: center; font-size: 13px; font-weight: 600; color: var(--fg-2); border-radius: 8px; cursor: pointer; }
+.cap-tabs > div.active { background: #fff; color: var(--ink); box-shadow: var(--shadow-card); }
+.cap-tabs > div .count { display: inline-block; padding: 1px 6px; border-radius: 9999px; background: var(--slate-200); color: var(--fg-2); font-size: 10px; margin-left: 4px; }
+.cap-tabs > div.active .count { background: var(--purple-100); color: var(--purple-800); }
+
+/* Catalog item form helpers */
+.kpi-card {
+  border: 1px solid var(--border-1); border-radius: 12px; padding: 12px 14px;
+  background: var(--slate-50);
+}
+.kpi-card .k { font-size: 11px; color: var(--fg-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-card .v { font-size: 18px; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+
+/* Web customer detail tabs */
+.cust-shell { display: grid; grid-template-columns: 280px 1fr; gap: 20px; padding: 20px 24px; min-width: 0; }
+.cust-aside { background: #fff; border: 1px solid var(--border-1); border-radius: 14px; padding: 18px; align-self: start; position: sticky; top: 20px; }
+.cust-avatar { width: 72px; height: 72px; border-radius: 18px; background: var(--purple-100); color: var(--purple-800); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; margin-bottom: 14px; }
+
+.cust-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--border-1); margin-bottom: 16px;
+  overflow-x: auto; min-width: 0;
+}
+.cust-tabs .tab { padding: 12px 14px; font-size: 13px; font-weight: 500; color: var(--fg-3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cust-tabs .tab.active { color: var(--ink); border-bottom-color: var(--purple-600); font-weight: 600; }
+.cust-tabs .tab .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9px; background: var(--slate-100); color: var(--fg-2); font-size: 11px; font-weight: 600; }
+.cust-tabs .tab.active .count { background: var(--purple-100); color: var(--purple-800); }
+
+.section-h { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 12px; }
+.section-h h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.kv { display: flex; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border-2); font-size: 14px; }
+.kv:last-child { border-bottom: 0; }
+.kv .k { color: var(--fg-3); flex-shrink: 0; }
+.kv .v { color: var(--ink); font-weight: 500; text-align: right; }
+
+/* Compact icon button */
+.icbtn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border-1); background: #fff; color: var(--slate-700); display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: inherit; }
+.icbtn:hover { background: var(--slate-50); }
+
+/* Top app shell sidebar/topbar for embedded web screens */
+.app-shell {
+  display: grid; grid-template-columns: 220px 1fr;
+  width: 100%; height: 100%; background: var(--slate-50);
+  font-family: var(--font-sans); color: var(--ink);
+}
+.app-sb {
+  background: #fff; border-right: 1px solid var(--border-1);
+  padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.app-sb .brand { display: flex; gap: 10px; align-items: center; padding: 4px 8px 14px; }
+.app-sb .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg,#0A0A0F,#6D28D9); display: flex; align-items: center; justify-content: center; }
+.app-sb .brand-name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.app-sb .item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 9px; color: var(--slate-700); font-weight: 500; font-size: 13px; }
+.app-sb .item.active { background: var(--purple-50); color: var(--purple-800); }
+.app-sb .item.active svg { color: var(--purple-700); }
+.app-tb {
+  height: 56px; background: #fff; border-bottom: 1px solid var(--border-1);
+  display: flex; align-items: center; padding: 0 20px; gap: 14px;
+}
+.app-tb .crumb { font-size: 13px; color: var(--fg-3); }
+.app-tb .crumb strong { color: var(--ink); font-weight: 600; }

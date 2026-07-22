@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Buttons</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 22px 24px; display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); }
+  .btn { font: 600 14px/1 var(--font-sans); border-radius: 10px; padding: 10px 16px; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; height: 40px; }
+  .primary { background: var(--purple-600); color: #fff; }
+  .primary:hover { background: var(--purple-700); }
+  .secondary { background: var(--slate-100); color: var(--ink); }
+  .outline { background: #fff; color: var(--ink); border-color: var(--border-1); }
+  .ghost { background: transparent; color: var(--ink); }
+  .danger { background: var(--danger); color: #fff; }
+  .success { background: var(--success); color: #fff; }
+  .disabled { opacity: .5; pointer-events: none; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .lab { font: 500 11px var(--font-mono); color: var(--fg-3); text-transform: uppercase; letter-spacing:.06em; }
+  .sm { height: 32px; padding: 6px 12px; font-size: 13px; }
+  .lg { height: 48px; padding: 12px 20px; font-size: 16px; }
+</style></head><body>
+  <div><div class="lab">Primary · sizes</div>
+    <div class="row" style="margin-top:8px"><button class="btn primary sm">Novo orçamento</button><button class="btn primary">Novo orçamento</button><button class="btn primary lg">Novo orçamento</button></div>
+  </div>
+  <div><div class="lab">Variants</div>
+    <div class="row" style="margin-top:8px"><button class="btn primary">Primary</button><button class="btn secondary">Secondary</button><button class="btn outline">Outline</button><button class="btn ghost">Ghost</button></div>
+  </div>
+  <div><div class="lab">Intent + state</div>
+    <div class="row" style="margin-top:8px"><button class="btn success">Aprovar</button><button class="btn danger">Rejeitar</button><button class="btn primary disabled">Salvando…</button></div>
+  </div>
+</body></html>

@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Neutrals</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { padding: 20px; }
+  .row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .sw { border-radius: 10px; overflow: hidden; border: 1px solid var(--border-1); }
+  .sw .chip { height: 64px; }
+  .sw .meta { padding: 8px 10px; background: #fff; }
+  .sw .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .sw .hex  { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+</style></head><body>
+<div class="row" id="r"></div>
+<script>
+  const stops = [
+    ['50','#F8FAFC'],['100','#F1F5F9'],['200','#E2E8F0'],['300','#CBD5E1'],['400','#94A3B8'],['500','#64748B'],
+    ['600','#475569'],['700','#334155'],['800','#1E293B'],['900','#0F172A'],['950','#020617'],['White','#FFFFFF']
+  ];
+  document.getElementById('r').innerHTML = stops.map(([n,h])=>`
+    <div class="sw"><div class="chip" style="background:${h}"></div>
+    <div class="meta"><div class="name">${n==='White'?'White':'Slate '+n}</div><div class="hex">${h}</div></div></div>
+  `).join('');
+</script>
+</body></html>

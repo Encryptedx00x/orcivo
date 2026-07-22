@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Orcivo — Lote D · Print</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="auth.css">
+<link rel="stylesheet" href="public.css">
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: var(--font-sans); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .m-badge { font: 600 11px/1 var(--font-sans); padding: 4px 8px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 5px; }
+  .m-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .b-warn { background: #FEF3C7; color: #92400E; }
+  .b-ok   { background: #DCFCE7; color: #166534; }
+
+  .page { width: 297mm; height: 210mm; page-break-after: always; break-after: page; box-sizing: border-box; padding: 12mm 16mm 14mm; display: flex; flex-direction: column; background: #fff; position: relative; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 8mm; border-bottom: 1px solid var(--border-1); margin-bottom: 6mm; }
+  .page-header .tag { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--purple-700); font-weight: 600; }
+  .page-header h2 { font-size: 18px; margin: 2px 0 0; font-weight: 700; letter-spacing: -0.01em; }
+  .page-header .sub { font-size: 11px; color: var(--fg-3); margin-top: 4px; }
+  .page-header .right { text-align: right; font-size: 9px; color: var(--fg-3); }
+  .page-header .brand { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+  .page-header .brand-mark { width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg,#0A0A0F,#6D28D9); display: flex; align-items: center; justify-content: center; }
+  .page-header .brand-name { font-weight: 700; font-size: 12px; color: var(--ink); letter-spacing: -0.005em; }
+  .stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .scaler { transform-origin: center center; flex-shrink: 0; }
+  .frame-outer { border-radius: 14px; overflow: hidden; box-shadow: 0 8px 28px rgba(15,23,42,0.12); border: 1px solid var(--border-1); background: #fff; width: 100%; height: 100%; }
+  .page-foot { font-size: 9px; color: var(--fg-3); padding-top: 6mm; display: flex; justify-content: space-between; }
+  .page-foot .n { font-family: var(--font-mono); }
+
+  .cover { width: 297mm; height: 210mm; page-break-after: always; break-after: page; background: linear-gradient(155deg, #4C1D95 0%, #6D28D9 45%, #0A0A0F 100%); color: #fff; padding: 24mm; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .cover-grid { position: absolute; inset: 0; opacity: 0.18; background-image: linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 75%); }
+  .cover > * { position: relative; z-index: 1; }
+  .cover .brand { display: flex; gap: 12px; align-items: center; }
+  .cover .brand-mark { width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; }
+  .cover .brand-name { font-weight: 700; font-size: 18px; }
+  .cover .meta { margin-top: auto; }
+  .cover .tag { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: rgba(255,255,255,0.7); font-weight: 600; }
+  .cover h1 { font-size: 48px; line-height: 56px; font-weight: 700; letter-spacing: -0.02em; max-width: 600px; margin: 8px 0 12px; color: #fff !important; }
+  .cover .desc { font-size: 16px; line-height: 24px; max-width: 540px; color: rgba(255,255,255,0.85); margin: 0; }
+  .cover .index { margin-top: 28px; columns: 2; column-gap: 28px; font-size: 12px; color: rgba(255,255,255,0.7); }
+  .cover .index .row { padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.14); break-inside: avoid; display: flex; justify-content: space-between; gap: 10px; }
+  .cover .index .row strong { color: #fff; }
+  .cover .index .row .n { font-family: var(--font-mono); }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="../android-frame.jsx"></script>
+<script type="text/babel" src="AuthIcons.jsx"></script>
+<script type="text/babel" src="Public.jsx"></script>
+
+<script type="text/babel">
+  function pxFromMm(mm) { return mm * 96 / 25.4; }
+  const PAGE_W = pxFromMm(297) - pxFromMm(16)*2;
+  const PAGE_H = pxFromMm(210) - pxFromMm(12) - pxFromMm(14) - 100;
+
+  function Phone({ children }) {
+    return <AndroidDevice width={392} height={840} dark={false}>{children}</AndroidDevice>;
+  }
+  function Scaled({ w, h, children }) {
+    const s = Math.min(PAGE_W / w, PAGE_H / h, 1);
+    return (
+      <div className="stage">
+        <div className="scaler" style={{ width: w, height: h, transform: `scale(${s})` }}>{children}</div>
+      </div>
+    );
+  }
+  function Slide({ tag, title, sub, page, total, w, h, web, lote, children }) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <div>
+            <div className="tag">{tag}</div>
+            <h2>{title}</h2>
+            {sub && <div className="sub">{sub}</div>}
+          </div>
+          <div className="right">
+            <div className="brand">
+              <div className="brand-mark"><OrcivoGlyph size={11}/></div>
+              <div className="brand-name">Orcivo</div>
+            </div>
+            <div style={{marginTop:4}}>{lote}</div>
+          </div>
+        </div>
+        <Scaled w={w} h={h}>{web ? <div className="frame-outer">{children}</div> : children}</Scaled>
+        <div className="page-foot">
+          <span>Orcivo Design System · maio 2026</span>
+          <span className="n">{page} / {total}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const LOTE = "Lote D · Páginas públicas";
+
+  const SCREENS = [
+    { tag:"Web · 01", title:"Aprovação pública · desktop", sub:"Cliente final acessa via link · estado aguardando resposta", w:1120, h:1200, web:true, body:<WebPublicQuote/> },
+    { tag:"Mobile · 02", title:"Aprovação pública · mobile", sub:"Mesma URL · layout responsivo · CTA fixo no rodapé", w:392, h:840, body:<Phone><MobPublicQuote/></Phone> },
+    { tag:"Web · 03", title:"Aprovado · pagamento Pix", sub:"Estado pós-aprovação · QR Code + chave Pix copiável", w:1120, h:760, web:true, body:<WebPublicQuoteApproved/> },
+    { tag:"Web · 04", title:"Preview de PDF", sub:"2 páginas A4 · marca + Pix + assinatura · side panel", w:1280, h:1100, web:true, body:<WebPDFPreview/> },
+  ];
+
+  function Root() {
+    return (
+      <>
+        <div className="cover">
+          <div className="cover-grid"/>
+          <div className="brand">
+            <div className="brand-mark"><OrcivoGlyph size={22}/></div>
+            <div className="brand-name">Orcivo</div>
+          </div>
+          <div className="meta">
+            <div className="tag">Design Handoff · Lote D</div>
+            <h1>Páginas públicas</h1>
+            <p className="desc">Telas que o cliente final vê fora do app: aprovação pública de orçamento (responsiva, com estado de sucesso e Pix) e preview de PDF de duas páginas A4 com marca, Pix e área de assinatura.</p>
+            <div className="index">
+              {SCREENS.map((s, i) => (
+                <div key={i} className="row">
+                  <span><strong>{s.title}</strong> · {s.tag}</span>
+                  <span className="n">{String(i+2).padStart(2,"0")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {SCREENS.map((s, i) => (
+          <Slide key={i} tag={s.tag} title={s.title} sub={s.sub} page={i+2} total={SCREENS.length+1} w={s.w} h={s.h} web={s.web} lote={LOTE}>
+            {s.body}
+          </Slide>
+        ))}
+      </>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Root/>);
+
+  (async function() {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    setTimeout(() => window.print(), 700);
+  })();
+</script>
+</body>
+</html>
