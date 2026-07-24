@@ -1,6 +1,6 @@
 # Orcivo — ROADMAP.md
 
-> **Planejamento atual: apenas Fase 0.** Fases 1-7 estão mapeadas em alto nível. Cada fase será detalhada em seu próprio ciclo `/gsd-plan-phase` antes da execução.
+> **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00/Wave 0 está concluída; P01 é a próxima wave permitida. Fase 4 permanece bloqueada.
 
 ---
 
@@ -12,6 +12,7 @@
 | 1 | Vertical Slice | Provar arquitetura multi-tenant — Auth + Company + Customer (mobile + web + backend) | 2-3 semanas |
 | 2 | MVP Funcional | Catálogo, Orçamento, PDF, WhatsApp, OS, Agenda, Financeiro básico (mobile + web) | 12-14 semanas |
 | 3 | Monetização | Asaas + checkout + limites de plano + bloqueio escalonado | 4-6 semanas |
+| **03.1** | **Estabilização pós-Fase 3** | **Recuperar e verificar a baseline antes de qualquer expansão** | por waves |
 | 4 | Orcivo Mais/Equipe | Contratos, gráficos, busca avançada, admin master profissional | 6-8 semanas |
 | 5 | Estoque | Estoque, fotos de produto, código de barras (Orcivo Equipe) | 4-6 semanas |
 | 6 | Fiscal | NFS-e via PlugNotas | 4-6 semanas |
@@ -252,7 +253,10 @@ Plans:
 
 **Plans:** 9 plans em 5 waves
 
-**Status:** ✅ Completa — 2026-06-04
+**Status histórico registrado:** ✅ Completa — 2026-06-04
+
+**Reconciliação atual:** pendente em P11. O registro histórico e os checkboxes
+abaixo não substituem verification, summaries e UAT da fase 03.1.
 
 Plans:
 - [x] 03-P01-PLAN.md — Schema Prisma: Subscription, SubscriptionPayment, WebhookEvent, PlanLimit (Wave 1)
@@ -267,6 +271,42 @@ Plans:
 
 ---
 
+## Fase 03.1 — Estabilização pós-Fase 3
+
+**Goal:** tornar a baseline standalone, migrations, isolamento, storage,
+aprovação, auth, billing, contratos, qualidade e UAT reproduzíveis antes da Fase
+4.
+
+**Status:** **EM ANDAMENTO — 1/12 waves verificadas**
+
+**Estado de saída atual:**
+
+- P00/Wave 0: PASS;
+- P01: READY, ainda não iniciada;
+- `baseline_reproducible`: false;
+- UAT: 0/75;
+- Fase 4: bloqueada.
+
+Planos:
+
+- [x] 03.1-P00-PLAN.md — Recuperação do repositório (Wave 0)
+- [ ] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — READY)
+- [ ] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2)
+- [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3)
+- [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4)
+- [ ] 03.1-P05-PLAN.md — Auth e sessões (Wave 5)
+- [ ] 03.1-P06-PLAN.md — Billing e limites (Wave 6)
+- [ ] 03.1-P07-PLAN.md — Contratos funcionais (Wave 7)
+- [ ] 03.1-P08-PLAN.md — Baseline de qualidade (Wave 8)
+- [ ] 03.1-P09-PLAN.md — Preparação de UAT (Wave 9)
+- [ ] 03.1-P10-PLAN.md — Fidelidade visual (Wave 10)
+- [ ] 03.1-P11-PLAN.md — Reconciliação GSD (Wave 11)
+
+**Próximo gate:** executar P01 dentro do escopo do plano, usando somente banco
+efêmero protegido por guard. O closeout P00 não autorizou nem iniciou P01-T01.
+
+---
+
 ## Fases 4-7 (alto nível — não planejar ainda)
 
 Ver `PROJECT.md` para descrição de cada fase.
@@ -274,3 +314,4 @@ Ver `PROJECT.md` para descrição de cada fase.
 ---
 *Criado: 2026-05-21 — Fase 0 planejada*
 *Atualizado: 2026-05-22 — Fase 2A planejada (12 plans, 7 waves)*
+*Atualizado: 2026-07-23 — Fase 03.1 em andamento; P00 concluída*

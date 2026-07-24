@@ -2,26 +2,44 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: MVP completo — Fases 0-3 concluídas; web UI fidelizada (2026-06-05)
-last_updated: "2026-06-05T00:00:00.000Z"
+status: Fase 03.1 em andamento — P00/Wave 0 verificada; P01 pronta
+last_updated: "2026-07-23T00:00:00-03:00"
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 36
-  completed_plans: 36
-  percent: 100
+  active_phase: "03.1"
+  verified_waves: 1
+  total_waves: 12
+  percent: 8
+  historical_counts_status: pending_reconciliation_in_P11
 ---
 
 # Orcivo — STATE.md
 
 ## Estado atual
 
-**Fase ativa:** Pós-Fase 3 — polish e preparação para Fase 4
-**Status:** MVP monetizável completo. Web UI 100% fidelizada ao design system.
-**Data:** 2026-06-05
-**Próximo:** Fase 4 — Orcivo Mais/Equipe (`/gsd-plan-phase 4`)
+**Fase ativa:** 03.1 — Estabilização pós-Fase 3
+**Status:** `in_progress` — P00/Wave 0 PASS; `1/12` waves verificadas
+**Data:** 2026-07-23
+**Próximo:** 03.1-P01 — Migrations e reprodutibilidade
 
-## Cobertura de telas — Web (auditada 2026-06-05)
+P01 está liberada pela conclusão da P00, mas ainda não foi iniciada.
+`baseline_reproducible` permanece `false`, UAT permanece `0/75` e a Fase 4
+continua bloqueada.
+
+## Baseline Git atual
+
+| Item | Estado |
+|---|---|
+| Standalone | `main` em `c167cb7525fc7c75869ca8b0e9fa87135340162a`, 165 commits |
+| Remote | repositório privado; `origin/main` ahead/behind `0/0` |
+| Working tree | limpa; staged e untracked não ignorado em zero |
+| Git pai | detach local em `1449b648fcf6da14dc2d7ad082915ddccd578cf7` |
+| Recuperação | P00 complete; archive, backup e bundle preservados |
+
+## Snapshot histórico — cobertura Web auditada em 2026-06-05
+
+As seções históricas abaixo são preservadas como registro da época. Elas não
+substituem a verification da fase 03.1 e serão reconciliadas de forma ampla em
+P11.
 
 | Tela | Status |
 |---|---|
@@ -83,7 +101,7 @@ progress:
 | D1.3 — Vertical slice Customer (mobile + web + CI) | ✅ Completo |
 | D1.4 — Documentação do molde arquitetural | ✅ Completo |
 
-## Fase 3 — Monetização (em andamento)
+## Snapshot histórico — Fase 3 registrada como em andamento
 
 Waves 1-3 concluídas. Pendentes:
 
@@ -106,7 +124,11 @@ Waves 1-3 concluídas. Pendentes:
 
 ## Bloqueios
 
-Nenhum bloqueio ativo.
+- Migration-from-zero, upgrade versionado e integração segura ainda dependem de
+  P01.
+- Waves P01–P11 permanecem não verificadas.
+- Gate R e todos os 75 casos UAT permanecem pendentes.
+- Fase 4 não pode começar antes do encerramento da fase 03.1.
 
 ## Histórico
 
@@ -119,3 +141,4 @@ Nenhum bloqueio ativo.
 | 2026-05-22 | Fase 0 executada — monorepo, CI, hello world |
 | 2026-05-27 | Fase 2A concluída — 12/12 deliverables verificados |
 | 2026-05-28 | Design web fidelizado: 16 telas cobertas; clientes/[id] criado; pub page refeita |
+| 2026-07-23 | Recuperação encerrada: P00/Wave 0 PASS; standalone privado e Git pai destacado |
