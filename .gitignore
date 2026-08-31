@@ -60,6 +60,8 @@ ios/
 *.transcript.md
 *.prompt.md
 .claude.json
+skills-lock.json
+graphify-out/
 
 # Local secrets / credentials
 *.pem
