@@ -17,37 +17,37 @@ docs/GPT_DECISION_BRIDGE.md
 
 Follow `docs/AUTONOMY_POLICY.md` and `docs/DECISION_MATRIX.md`.
 
-**Level A:** Execute alone — boilerplate, lint, typecheck, test, docs, GSD plans, obvious UAT fixes.
+**Level A:** Execute alone — boilerplate, docs, tests, lint, typecheck, builds, refactors, bug fixes, internal architecture, library choice among equivalents, implementation order, ephemeral-DB migrations, local Docker, CI, commits, normal push, any reversible technical decision.
 
-**Level B — GPT MANDATORY:** Create `.decision/QUESTION.md` and run:
-```
-node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
-```
-If `requires_user=false` → follow the recommendation, do NOT ask the user.
-If `requires_user=true` → escalate to Level C.
+**Level B — Claude decides autonomously:** internal architecture decisions, technical tradeoffs, choice between valid approaches, data-modeling decisions, implementation strategy, research, requirements interpretation, planning, technical-scope decisions, problems with multiple valid solutions, library choice, execution order, phase planning strategy (discuss vs plan), ambiguous error fixes.
 
-Level B situations: library choice, implementation strategy, execution order, internal architecture decision, phase planning strategy (discuss vs plan), ambiguous error fix.
+Process: research when needed (existing code, official docs) → use Graphify/installed skills when they help → pick the simplest, most robust solution given the locked stack/design → record the decision (ADR or plan/summary note) when it's architecturally relevant → execute without asking the user.
 
-**Level C:** Ask the user directly — cost, deploy, DNS, secrets, billing, LGPD, stack change, data loss, destructive command.
+`tools/decision-consultant/consult-gpt.mjs` is available as an optional second opinion — never a required gate, and nothing here depends on `OPENAI_API_KEY` being set.
+
+**Level C:** Ask the user directly — stack change, new paid service, deploy, DNS, externally supplied secret/API key, billing, LGPD, data loss, destructive command, deliberate multi-tenant/money-handling strategy change, a decision that explicitly changes a business requirement, subjective visual judgment that can't be validated by tests/screenshots.
 
 ## Git and GitHub
 
 Repository is private and used for development/testing only.
 
 Auto-allowed (no confirmation needed):
+
 - git status, git diff, git add, git commit
-- git push to main/master and gsd/* branches
+- git push to main/master and gsd/\* branches
 - commits during GSD plan execution
 - push after each completed plan/deliverable
 - push after lint/typecheck/test fixes
 
 Pre-push checklist (automated):
+
 - no secrets or API keys in diff
 - no "Generated with Claude" or "Co-authored-by Claude"
 - no AI prompt/transcript/log files
 - run available validations when applicable
 
 Never without explicit user approval:
+
 - git push --force or --force-with-lease
 - git reset --hard or git clean -fd
 - delete remote branches
@@ -60,6 +60,7 @@ Never without explicit user approval:
 ## Safe read-only commands (auto-approve)
 
 The following are safe to run without confirmation:
+
 - ls, dir, cat, type, grep, findstr
 - node -e (inspection only)
 - pnpm lint, pnpm typecheck, pnpm test, pnpm turbo run
@@ -70,6 +71,7 @@ The following are safe to run without confirmation:
 ## No AI traces
 
 Do not add:
+
 - Generated with Claude
 - Co-authored-by Claude
 - AI-generated
@@ -86,12 +88,14 @@ Do not recreate the design system.
 ## Plans
 
 Visible plan names:
+
 - Orcivo Livre
 - Orcivo Solo
 - Orcivo Mais
 - Orcivo Equipe
 
 Do not use:
+
 - FREE
 - POP
 - PRO

@@ -1,10 +1,17 @@
 # GPT_DECISION_BRIDGE — Orcivo
 
-Especificação para usar OpenAI API como agente consultor de decisões durante o desenvolvimento com Claude Code/GSD.
+> **Status: ferramenta opcional.** O Claude é o Decision Agent do projeto para
+> Nível B (ver `docs/AUTONOMY_POLICY.md` §6-7 e `docs/DECISION_MATRIX.md`).
+> Este bridge continua funcional e pode ser usado como segunda opinião
+> pontual, mas não é mais um gate obrigatório e nada no projeto depende de
+> `OPENAI_API_KEY` estar configurada.
+
+Especificação para usar OpenAI API como agente consultor opcional de decisões durante o desenvolvimento com Claude Code/GSD.
 
 ## 1. Objetivo
 
 Permitir que o Claude Code execute com mais autonomia, chamando um agente GPT apenas quando houver:
+
 - dúvida técnica moderada;
 - conflito entre docs;
 - risco de retrabalho;
@@ -20,6 +27,7 @@ Permitir que o Claude Code execute com mais autonomia, chamando um agente GPT ap
 - não substitui o usuário em custo, deploy, billing, fiscal, LGPD ou stack.
 
 Ele apenas responde:
+
 - recomendo A/B/C;
 - por quê;
 - risco;
@@ -31,6 +39,7 @@ Ele apenas responde:
 Use modelo barato para decisões comuns e modelo forte apenas para decisões difíceis.
 
 Sugestão:
+
 - default: modelo mini/rápido disponível na sua conta;
 - hard: modelo reasoning/forte disponível na sua conta.
 
@@ -106,19 +115,16 @@ Responda sempre em JSON válido:
     "A": "opção A",
     "B": "opção B"
   },
-  "constraints": [
-    "não mudar stack",
-    "não gerar custo novo",
-    "seguir design",
-    "evitar retrabalho"
-  ],
+  "constraints": ["não mudar stack", "não gerar custo novo", "seguir design", "evitar retrabalho"],
   "notes": "observações do Claude"
 }
 ```
 
-## 6. Uso obrigatório no Claude Code (Nível B)
+## 6. Uso opcional no Claude Code (Nível B)
 
-Para toda decisão Nível B, o fluxo é obrigatório — não opcional:
+O Claude decide Nível B sozinho (pesquisa → evidência → decisão → registro
+quando relevante → execução, ver `docs/AUTONOMY_POLICY.md` §7). Este fluxo
+abaixo é uma segunda opinião opcional, não um passo obrigatório:
 
 ```bash
 # Criar pergunta

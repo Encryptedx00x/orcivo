@@ -5,6 +5,7 @@ Objetivo: permitir execução com alta autonomia no Claude Code/GSD, chamando o 
 ## 1. Princípio geral
 
 O agente executa sozinho quando a decisão:
+
 - está coberta pelo planejamento;
 - segue o design aprovado;
 - não muda stack;
@@ -16,6 +17,7 @@ O agente executa sozinho quando a decisão:
 - é reversível e testável.
 
 O agente para quando a decisão:
+
 - impacta arquitetura, segurança, LGPD, billing, fiscal, multi-tenancy ou money handling;
 - gera custo novo;
 - foge do design aprovado;
@@ -29,6 +31,7 @@ O agente para quando a decisão:
 ### Nível A — executar sozinho
 
 Pode executar sem pedir confirmação:
+
 - criar docs GSD e ADRs previstas;
 - criar estrutura de pastas prevista;
 - criar boilerplate do monorepo;
@@ -39,31 +42,50 @@ Pode executar sem pedir confirmação:
 - criar mocks;
 - ajustar copy conforme docs;
 - pequenos refactors sem mudança de API;
-- adicionar testes de comportamento já definido.
+- adicionar testes de comportamento já definido;
+- builds, migrations em DB efêmero, Docker local, CI;
+- commits e push normal (repo privado, pré-checks ok);
+- qualquer decisão técnica reversível.
 
-### Nível B — obrigatoriamente consultar GPT Decision Agent
+### Nível B — Claude decide autonomamente
 
-**Obrigatório:** criar `.decision/QUESTION.md` e rodar:
-```
-node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md
-```
+**O Claude é o próprio agente decisor de Nível B.** Não existe gate externo
+obrigatório: `tools/decision-consultant/consult-gpt.mjs` continua disponível
+como segunda opinião opcional (ver `docs/GPT_DECISION_BRIDGE.md`), mas o
+Claude não depende dele nem de `OPENAI_API_KEY` para decidir e seguir em
+frente.
 
-Se `requires_user=false` → seguir a recomendação do GPT sem perguntar ao usuário.
-Se `requires_user=true` → escalar para Nível C (perguntar ao usuário).
+Processo para Nível B:
+
+1. pesquisar quando necessário (código existente, documentação oficial);
+2. usar Graphify e as skills instaladas quando ajudarem a entender o
+   problema;
+3. formar evidência a partir do que já está resolvido em docs/planejamento;
+4. escolher a solução mais robusta e simples que atenda aos critérios do
+   projeto (stack travada, seguir design, evitar custo, evitar retrabalho,
+   preservar multi-tenancy);
+5. registrar a decisão (ADR ou nota no plano/summary) quando ela for
+   arquiteturalmente relevante;
+6. executar sem pedir aprovação humana.
 
 Situações que são Nível B:
-- escolha entre duas libs gratuitas equivalentes;
-- dúvida de implementação interna entre 2 caminhos;
+
+- decisões de arquitetura interna;
+- tradeoffs técnicos;
+- escolha entre abordagens/bibliotecas válidas;
+- decisões de modelagem de dados (sem mudar estratégia multi-tenant);
+- escolha de estratégia de implementação;
+- research, interpretação de requisitos técnicos ambíguos, planejamento;
+- decisões de escopo técnico;
+- problemas com múltiplas soluções possíveis;
 - conflito leve entre docs;
-- erro com mais de uma correção possível;
 - dúvida sobre ordem de execução de tasks ou planos;
-- dúvida de estratégia de implementação interna;
-- decisão de arquitetura interna que não muda a stack;
 - plano de fase grande (discuss-phase vs plan direto);
 - dúvida se deve pesquisar ou não antes de planejar;
 - ajuste de GSD sem alterar escopo.
 
-O que NÃO é Nível B (não precisa chamar GPT):
+O que NÃO é Nível B (Claude executa direto, sem pausa nem registro extra):
+
 - criar plano/checkpoint/summary/contexto GSD;
 - git status, diff, add, commit;
 - lint, typecheck, test;
@@ -76,6 +98,7 @@ O que NÃO é Nível B (não precisa chamar GPT):
 ### Nível C — pedir aprovação do usuário
 
 Parar e pedir aprovação:
+
 - mudar stack, banco, auth, plano comercial, design system;
 - adicionar dependência paga;
 - ativar serviço externo pago;
@@ -87,6 +110,8 @@ Parar e pedir aprovação:
 - alterar money handling;
 - alterar billing/fiscal;
 - remover teste obrigatório;
+- decisão que altere explicitamente um requisito de negócio;
+- decisão visual subjetiva que exija julgamento humano e não possa ser validada por teste/screenshot;
 - executar comando destrutivo;
 - `git push --force` / `--force-with-lease` / `git reset --hard` / `git clean -fd`;
 - deletar branch remota;
@@ -123,11 +148,13 @@ Parar e pedir aprovação:
 ## 4. Regras de design
 
 Seguir:
+
 - /docs/FRONTEND_DESIGN_MASTER.md
 - /docs/OPERATIONS_UI_MISSING_SPECS.md
 - /docs/design-handoff/orcivo-design-system/
 
 Obrigatório:
+
 - Orcivo;
 - white / black / purple;
 - primary --purple-600 #6D28D9;
@@ -137,6 +164,7 @@ Obrigatório:
 - visual limpo, profissional, sem cara de ERP pesado.
 
 Proibido:
+
 - recriar design system;
 - trocar paleta;
 - trocar fonte;
@@ -147,6 +175,7 @@ Proibido:
 - inventar nova marca.
 
 Planos visíveis:
+
 - Orcivo Livre
 - Orcivo Solo
 - Orcivo Mais
@@ -185,6 +214,7 @@ Planos visíveis:
 ## 6. Regras de autoria e commits
 
 Proibido inserir em código, commit, README ou comentários:
+
 - Generated with Claude
 - Co-authored-by Claude
 - AI-generated
@@ -194,6 +224,7 @@ Proibido inserir em código, commit, README ou comentários:
 Commits devem ser humanos, objetivos e técnicos.
 
 Exemplos:
+
 - chore: initialize monorepo
 - docs: add initial ADRs
 - infra: add local docker compose
@@ -203,41 +234,50 @@ Exemplos:
 - test: add initial health checks
 
 Antes de commit:
+
 - git status
 - git diff
 - buscar termos proibidos
 - rodar lint/typecheck/test quando existir
 
-## 7. Quando consultar GPT (Nível B — obrigatório)
+## 7. Como decidir Nível B (Claude é o agente decisor)
 
-O GPT Decision Agent é obrigatório para toda decisão Nível B.
-NÃO é opcional. NÃO perguntar ao usuário antes de consultar o GPT.
+Não há gate externo obrigatório para Nível B. O Claude decide sozinho, com
+base em pesquisa e evidência, e não pergunta ao usuário antes de decidir.
 
 Fluxo:
-1. Identificar que a situação é Nível B
-2. Criar `.decision/QUESTION.md` com contexto, opções e critérios
-3. Rodar `node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md`
-4. Se `requires_user=false` → executar a recomendação
-5. Se `requires_user=true` → escalar para o usuário (Nível C)
 
-Formato obrigatório da pergunta:
+1. Identificar que a situação é Nível B.
+2. Pesquisar quando necessário: código existente, documentação oficial,
+   Graphify, skills instaladas.
+3. Formar evidência e escolher a opção mais simples e robusta dentro dos
+   critérios do projeto (stack travada, design, custo, retrabalho,
+   multi-tenancy).
+4. Registrar a decisão quando ela for arquiteturalmente relevante — ADR em
+   `docs/decisions/` ou nota no `SUMMARY.md`/`CONTEXT.md` do plano corrente.
+5. Executar sem pedir aprovação humana.
+
+`tools/decision-consultant/consult-gpt.mjs` continua disponível como segunda
+opinião opcional (não substitui o julgamento do Claude nem é passo
+obrigatório) — ver `docs/GPT_DECISION_BRIDGE.md`. Nada nesta política depende
+de `OPENAI_API_KEY` estar configurada.
+
+Modelo de registro para decisões B relevantes:
 
 ```text
-Contexto:
-[resumo]
+Decisão:
+[o que foi decidido]
 
 Fase:
 [Fase 0/Fase 1/etc]
 
-Decisão necessária:
-[pergunta objetiva]
+Motivo:
+[evidência/pesquisa que embasou a escolha]
 
-Opções:
-A) ...
-B) ...
-C) ...
+Alternativas consideradas:
+[se houver]
 
-Critérios:
+Critérios aplicados:
 - manter stack travada;
 - seguir design;
 - evitar custo;
@@ -245,16 +285,16 @@ Critérios:
 - manter segurança;
 - preservar multi-tenancy.
 
-Resposta esperada:
-- decisão recomendada;
-- justificativa;
-- risco;
-- próximos passos.
+Reversível:
+[sim/não]
 ```
 
-## 8. Quando chamar o usuário mesmo após GPT
+## 8. Quando chamar o usuário mesmo tendo decidido Nível B
 
-Pedir aprovação do usuário quando envolver:
+Uma decisão Nível B resolvida pelo Claude nunca vira Nível C por si só. Mas
+se a execução dessa decisão esbarrar em algum destes pontos, pare e peça
+aprovação do usuário:
+
 - dinheiro/custo novo;
 - deploy externo;
 - publicação;

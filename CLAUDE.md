@@ -24,6 +24,7 @@ SaaS B2B para técnicos instaladores brasileiros. Dual-surface: mobile (técnico
 ### Nomenclatura de planos
 
 Usar **sempre**:
+
 - `Orcivo Livre`
 - `Orcivo Solo`
 - `Orcivo Mais`
@@ -60,6 +61,7 @@ Usar **sempre**:
 **Repositório privado — apenas desenvolvimento/testes.**
 
 Permitido automaticamente:
+
 - `git status`, `git diff`, `git add`, `git commit`
 - `git push` para `main`/`master` e branches GSD (`gsd/*`)
 - commits pequenos durante execução de planos GSD
@@ -67,6 +69,7 @@ Permitido automaticamente:
 - push após correções de lint/typecheck/test
 
 Condições obrigatórias antes de qualquer push:
+
 - diff não contém secrets, tokens ou API keys
 - diff não contém "Generated with Claude" ou "Co-authored-by Claude"
 - diff não contém prompts, transcripts ou logs de IA
@@ -139,25 +142,26 @@ infra/          Docker Compose, scripts, Caddyfile
 
 ## Referências rápidas
 
-| Tema | Arquivo |
-|---|---|
-| Stack e arquitetura | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §3-4 |
-| Modelo de domínio | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §5 |
-| Auth | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §8 |
-| Planos e limites | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §11-13 |
-| Design system | `/docs/design-handoff/orcivo-design-system/README.md` |
-| Tokens CSS | `/docs/design-handoff/orcivo-design-system/colors_and_type.css` |
-| UI Kit web | `/docs/design-handoff/orcivo-design-system/ui_kits/web/` |
-| UI Kit mobile | `/docs/design-handoff/orcivo-design-system/ui_kits/mobile/` |
-| Screen specs | `/docs/FRONTEND_DESIGN_MASTER.md` §4 (mobile) §5 (web) |
-| Telas operacionais | `/docs/OPERATIONS_UI_MISSING_SPECS.md` |
-| GSD Fase 0 | `.planning/ROADMAP.md` |
-| Molde arquitetural (Fase 1+) | `/docs/ARCHITECTURE-MOLD.md` |
-| Dev local (comandos, URLs, UAT) | `/docs/runbooks/local-dev.md` |
+| Tema                            | Arquivo                                                            |
+| ------------------------------- | ------------------------------------------------------------------ |
+| Stack e arquitetura             | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §3-4   |
+| Modelo de domínio               | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §5     |
+| Auth                            | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §8     |
+| Planos e limites                | `/docs/PLANEJAMENTO_FINAL_V3_1_ORCIVO_PLANOS_ATUALIZADO.md` §11-13 |
+| Design system                   | `/docs/design-handoff/orcivo-design-system/README.md`              |
+| Tokens CSS                      | `/docs/design-handoff/orcivo-design-system/colors_and_type.css`    |
+| UI Kit web                      | `/docs/design-handoff/orcivo-design-system/ui_kits/web/`           |
+| UI Kit mobile                   | `/docs/design-handoff/orcivo-design-system/ui_kits/mobile/`        |
+| Screen specs                    | `/docs/FRONTEND_DESIGN_MASTER.md` §4 (mobile) §5 (web)             |
+| Telas operacionais              | `/docs/OPERATIONS_UI_MISSING_SPECS.md`                             |
+| GSD Fase 0                      | `.planning/ROADMAP.md`                                             |
+| Molde arquitetural (Fase 1+)    | `/docs/ARCHITECTURE-MOLD.md`                                       |
+| Dev local (comandos, URLs, UAT) | `/docs/runbooks/local-dev.md`                                      |
 
 # CLAUDE.md — Orcivo
 
 Leia sempre:
+
 - AGENTS.md
 - docs/AUTONOMY_POLICY.md
 - docs/DECISION_MATRIX.md
@@ -167,21 +171,25 @@ Leia sempre:
 
 **Nível A:** Execute sozinho.
 
-**Nível B — GPT OBRIGATÓRIO (não opcional):**
-1. Criar `.decision/QUESTION.md` com contexto, opções, critérios
-2. Rodar: `node tools/decision-consultant/consult-gpt.mjs .decision/QUESTION.md`
-3. `requires_user=false` → seguir recomendação sem perguntar ao usuário
-4. `requires_user=true` → escalar para Nível C
+**Nível B — Claude decide autonomamente (o Claude é o Decision Agent do projeto):**
+
+1. Pesquisar/analisar código e docs oficiais quando necessário; usar Graphify e skills instaladas quando ajudarem.
+2. Escolher a solução mais simples e robusta dentro da stack/design travados.
+3. Registrar a decisão (ADR ou nota no plano) quando for arquiteturalmente relevante.
+4. Executar sem pedir aprovação humana.
+
+`tools/decision-consultant/consult-gpt.mjs` é opcional (segunda opinião pontual), nunca obrigatório, e nada aqui depende de `OPENAI_API_KEY`.
 
 Exemplos de Nível B: escolha de lib gratuita, estratégia de implementação, ordem de execução, discuss vs plan, erro com múltiplas correções, dúvida de arquitetura interna.
 
 Não é Nível B: criar plano/summary GSD, lint, typecheck, test, leitura de arquivo, criação de arquivo previsto no plano, correção óbvia de 1 linha.
 
-**Nível C:** Perguntar ao usuário — custo, deploy, DNS, secrets, billing, fiscal, LGPD, mudança de stack, perda de dados, comando destrutivo.
+**Nível C:** Perguntar ao usuário — custo, deploy, DNS, secrets/API key fornecida externamente, billing, fiscal, LGPD, mudança de stack, mudança deliberada de estratégia multi-tenant/money handling, perda de dados, comando destrutivo, decisão que altere requisito de negócio, julgamento visual subjetivo sem validação por teste/screenshot.
 
 ## Nível C
 
 Parar apenas para:
+
 - mudança de stack;
 - custo novo;
 - deploy/publicação;
@@ -199,6 +207,7 @@ Parar apenas para:
 ## GSD
 
 Para prompts internos:
+
 - criar plano/checkpoint/summary/contexto: sim;
 - fase com arquitetura nova: Research first;
 - continuação repetitiva: Skip research;
@@ -208,6 +217,7 @@ Para prompts internos:
 ## Design
 
 Seguir Orcivo:
+
 - white / black / purple;
 - --purple-600 #6D28D9;
 - Inter;
@@ -216,6 +226,7 @@ Seguir Orcivo:
 - Orcivo Livre, Orcivo Solo, Orcivo Mais, Orcivo Equipe.
 
 Não usar:
+
 - FREE;
 - POP;
 - PRO;
@@ -227,6 +238,7 @@ Não usar:
 ## Commits
 
 Não adicionar:
+
 - Generated with Claude;
 - Co-authored-by Claude;
 - AI-generated;
