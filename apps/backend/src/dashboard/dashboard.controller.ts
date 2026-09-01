@@ -1,15 +1,13 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
+import { Controller, Get, Req } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
 }
 
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 

@@ -3,14 +3,15 @@ import { WorkOrderCreateDto, WorkOrderUpdateDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
+import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
 const WO_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-  PENDING:     ['IN_PROGRESS', 'CANCELLED'],
+  PENDING: ['IN_PROGRESS', 'CANCELLED'],
   IN_PROGRESS: ['DONE', 'CANCELLED'],
-  DONE:        [],
-  CANCELLED:   [],
+  DONE: [],
+  CANCELLED: [],
 };
 
 @Injectable()
@@ -19,6 +20,7 @@ export class WorkOrderService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly planLimitsService: PlanLimitsService,
+    private readonly ownership: TenantOwnershipService,
   ) {}
 
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
@@ -35,8 +37,17 @@ export class WorkOrderService {
     return this.redis.incr(key);
   }
 
-  async create(dto: WorkOrderCreateDto, companyId: string, userId: string, quoteId?: string, initialStatus: WorkOrderStatus = 'PENDING') {
+  async create(
+    dto: WorkOrderCreateDto,
+    companyId: string,
+    userId: string,
+    quoteId?: string,
+    initialStatus: WorkOrderStatus = 'PENDING',
+  ) {
     await this.planLimitsService.enforceLimit(companyId, 'WORK_ORDERS_MONTH');
+    await this.ownership.assertCustomer(dto.customer_id, companyId);
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
+    await this.ownership.assertQuote(quoteId, companyId);
     const number = await this.nextWorkOrderNumber(companyId);
     return this.prisma.workOrder.create({
       data: {
@@ -89,6 +100,7 @@ export class WorkOrderService {
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string) {
     await this.findOne(id, companyId);
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
     const { status, ...rest } = dto;
     if (status) return this.updateStatus(id, companyId, status as WorkOrderStatus);
     return this.prisma.workOrder.update({

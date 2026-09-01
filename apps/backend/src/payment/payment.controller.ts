@@ -9,24 +9,19 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { PaymentService } from './payment.service';
-import {
-  PaymentCreateSchema,
-  PaymentListQuerySchema,
-  PaymentSettleSchema,
-} from './payment.dto';
+import { PaymentCreateSchema, PaymentListQuerySchema, PaymentSettleSchema } from './payment.dto';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
+// GET is open to any active member; writes are admin-only.
 interface TenantRequest {
   companyId: string;
 }
 
 @Controller('payments')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
@@ -38,6 +33,7 @@ export class PaymentController {
     return this.paymentService.findAll(req.companyId, query as never);
   }
 
+  @AdminOnly()
   @Post()
   @HttpCode(201)
   create(
@@ -47,6 +43,7 @@ export class PaymentController {
     return this.paymentService.create(body as never, req.companyId);
   }
 
+  @AdminOnly()
   @Patch(':id/settle')
   @HttpCode(200)
   settle(
@@ -57,6 +54,7 @@ export class PaymentController {
     return this.paymentService.settle(id, req.companyId, body as never);
   }
 
+  @AdminOnly()
   @Delete(':id')
   @HttpCode(200)
   remove(@Param('id') id: string, @Req() req: TenantRequest) {

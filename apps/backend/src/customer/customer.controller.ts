@@ -1,16 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { CustomerCreateSchema, CustomerListQuerySchema } from '@orcivo/shared-types';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CustomerService } from './customer.service';
 
+// Tenant context (companyId/role) is set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
 }
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}
 

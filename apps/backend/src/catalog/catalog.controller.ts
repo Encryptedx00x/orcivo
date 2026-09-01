@@ -9,20 +9,17 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { CatalogItemCreateSchema, CatalogItemUpdateSchema } from '@orcivo/shared-types';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CatalogService } from './catalog.service';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
 }
 
 @Controller('catalog')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 

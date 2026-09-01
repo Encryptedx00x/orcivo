@@ -15,7 +15,8 @@ describe('CustomerService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     const mockLimits = { enforceLimit: jest.fn().mockResolvedValue(undefined) };
-    service = new CustomerService(mockPrisma as never, mockLimits as never);
+    const mockOwnership = { assertActiveMember: jest.fn().mockResolvedValue(undefined) };
+    service = new CustomerService(mockPrisma as never, mockLimits as never, mockOwnership as never);
   });
 
   describe('create', () => {

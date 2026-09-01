@@ -16,6 +16,7 @@ import { StorageService } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
+import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 
 const mockTx = {
   quote: { updateMany: jest.fn() },
@@ -92,7 +93,17 @@ describe('QuoteService', () => {
         { provide: StorageService, useValue: mockStorage },
         { provide: WorkOrderService, useValue: mockWorkOrderService },
         { provide: QuotePdfService, useValue: mockPdfService },
-        { provide: PlanLimitsService, useValue: { enforceLimit: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: PlanLimitsService,
+          useValue: { enforceLimit: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: TenantOwnershipService,
+          useValue: {
+            assertCustomer: jest.fn().mockResolvedValue(undefined),
+            assertCatalogItems: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);
@@ -142,7 +153,12 @@ describe('QuoteService', () => {
         approval: null,
       });
       mockRedis.set.mockResolvedValue(undefined);
-      mockPrisma.quote.update.mockResolvedValue({ id: 'q1', status: 'SENT', approval_token: 'tok', valid_until: null });
+      mockPrisma.quote.update.mockResolvedValue({
+        id: 'q1',
+        status: 'SENT',
+        approval_token: 'tok',
+        valid_until: null,
+      });
 
       const result = await service.send('q1', 'comp-1');
 
@@ -208,7 +224,9 @@ describe('QuoteService', () => {
       mockPrisma.quoteApproval.create.mockResolvedValue({ id: 'approval-1' });
       mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
       mockTx.auditLog.create.mockResolvedValue({});
-      mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
+      mockPrisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx),
+      );
     });
 
     it('Test A1: approve() com token valido cria QuoteApproval + WorkOrder + AuditLog', async () => {
@@ -237,7 +255,9 @@ describe('QuoteService', () => {
       mockTx.quote.updateMany.mockResolvedValue({ count: 0 }); // ja aprovado
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
 
-      await expect(service.approve(quoteToken, dto, '127.0.0.1', 'ua')).rejects.toThrow(ConflictException);
+      await expect(service.approve(quoteToken, dto, '127.0.0.1', 'ua')).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('Test A3: approve() com APPROVE_BUTTON nao lanca excecao', async () => {
@@ -248,7 +268,8 @@ describe('QuoteService', () => {
     });
 
     it('Test A4: approve() com DRAWN_SIGNATURE salva base64 no MinIO', async () => {
-      const base64Sig = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const base64Sig =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
       const dto = { approval_method: 'DRAWN_SIGNATURE' as const, signature: base64Sig };
 
       await service.approve(quoteToken, dto, '127.0.0.1', 'ua');

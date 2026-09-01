@@ -1,31 +1,15 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AppointmentService } from './appointment.service';
-import {
-  AppointmentCreateSchema,
-  AppointmentListQuerySchema,
-} from './appointment.dto';
+import { AppointmentCreateSchema, AppointmentListQuerySchema } from './appointment.dto';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
 }
 
 @Controller('appointments')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class AppointmentController {
   constructor(private readonly appointmentService: AppointmentService) {}
 
@@ -43,11 +27,7 @@ export class AppointmentController {
     @Req() req: TenantRequest,
     @Body(new ZodValidationPipe(AppointmentCreateSchema)) body: unknown,
   ) {
-    return this.appointmentService.create(
-      body as never,
-      req.companyId,
-      req.user.userId,
-    );
+    return this.appointmentService.create(body as never, req.companyId, req.user.userId);
   }
 
   @Delete(':id')

@@ -10,35 +10,24 @@ import {
   Query,
   Req,
   StreamableFile,
-  UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { QuoteCreateSchema } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
 }
 
 @Controller('quotes')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class QuoteController {
   constructor(private readonly quoteService: QuoteService) {}
 
   @Get()
-  findAll(
-    @Req() req: TenantRequest,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.quoteService.findAll(
-      req.companyId,
-      Number(page) || 1,
-      Number(limit) || 20,
-    );
+  findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.quoteService.findAll(req.companyId, Number(page) || 1, Number(limit) || 20);
   }
 
   @Get(':id')
@@ -49,20 +38,14 @@ export class QuoteController {
   @Get(':id/pdf')
   @Header('Content-Type', 'application/pdf')
   @Header('Content-Disposition', 'inline; filename="orcamento.pdf"')
-  async pdf(
-    @Param('id') id: string,
-    @Req() req: TenantRequest,
-  ): Promise<StreamableFile> {
+  async pdf(@Param('id') id: string, @Req() req: TenantRequest): Promise<StreamableFile> {
     const buffer = await this.quoteService.generatePdf(id, req.companyId);
     return new StreamableFile(buffer);
   }
 
   @Post()
   @HttpCode(201)
-  create(
-    @Body(new ZodValidationPipe(QuoteCreateSchema)) body: unknown,
-    @Req() req: TenantRequest,
-  ) {
+  create(@Body(new ZodValidationPipe(QuoteCreateSchema)) body: unknown, @Req() req: TenantRequest) {
     return this.quoteService.create(body as never, req.companyId, req.user.userId);
   }
 
@@ -74,11 +57,7 @@ export class QuoteController {
 
   @Patch(':id/cancel')
   @HttpCode(200)
-  cancel(
-    @Param('id') id: string,
-    @Req() req: TenantRequest,
-    @Body('reason') reason?: string,
-  ) {
+  cancel(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
     return this.quoteService.cancel(id, req.companyId, reason);
   }
 }

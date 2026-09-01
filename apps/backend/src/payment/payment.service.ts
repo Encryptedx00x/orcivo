@@ -1,24 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type {
-  PaymentCreateDto,
-  PaymentSettleDto,
-  PaymentListQueryDto,
-} from './payment.dto';
+import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import type { PaymentCreateDto, PaymentSettleDto, PaymentListQueryDto } from './payment.dto';
 
 const customerSelect = { select: { id: true, name: true } };
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownership: TenantOwnershipService,
+  ) {}
 
   async create(dto: PaymentCreateDto, companyId: string) {
-    // Garante que o cliente é da mesma empresa (multi-tenant)
-    const customer = await this.prisma.customer.findFirst({
-      where: { id: dto.customer_id, company_id: companyId },
-      select: { id: true },
-    });
-    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    // Every referenced row must belong to the same company (multi-tenant).
+    await this.ownership.assertCustomer(dto.customer_id, companyId);
+    await this.ownership.assertWorkOrder(dto.work_order_id, companyId);
+    await this.ownership.assertQuote(dto.quote_id, companyId);
 
     const status = dto.status ?? (dto.paid_at ? 'PAID' : 'PENDING');
 

@@ -23,6 +23,20 @@ export async function getTestApp(): Promise<INestApplication> {
 
 export async function cleanupDatabase(): Promise<void> {
   assertEphemeralDatabase();
+  // FK-safe order: children -> parents. Does not touch plan_limits (seed data).
+  await prisma.quoteApproval.deleteMany();
+  await prisma.quoteItem.deleteMany();
+  await prisma.workOrderPhoto.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.appointment.deleteMany();
+  await prisma.quote.deleteMany();
+  await prisma.workOrder.deleteMany();
+  await prisma.catalogItem.deleteMany();
+  await prisma.companyInvite.deleteMany();
+  await prisma.subscriptionPayment.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.webhookEvent.deleteMany();
   await prisma.customer.deleteMany();
   await prisma.companyMember.deleteMany();
   await prisma.company.deleteMany();

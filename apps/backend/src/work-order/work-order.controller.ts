@@ -11,27 +11,24 @@ import {
   Query,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkOrderCreateSchema, WorkOrderUpdateSchema } from '@orcivo/shared-types';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { WorkOrderPhotoService } from './work-order-photo.service';
 import { WorkOrderService } from './work-order.service';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
 }
 
 const VALID_STAGES = ['BEFORE', 'DURING', 'AFTER'] as const;
-type PhotoStage = typeof VALID_STAGES[number];
+type PhotoStage = (typeof VALID_STAGES)[number];
 
 @Controller('work-orders')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class WorkOrderController {
   constructor(
     private readonly workOrderService: WorkOrderService,
@@ -39,11 +36,7 @@ export class WorkOrderController {
   ) {}
 
   @Get()
-  findAll(
-    @Req() req: TenantRequest,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
     return this.workOrderService.findAll(req.companyId, Number(page) || 1, Number(limit) || 20);
   }
 
@@ -84,7 +77,14 @@ export class WorkOrderController {
     if (!VALID_STAGES.includes(stage as PhotoStage)) {
       throw new BadRequestException('stage inválido. Use: BEFORE, DURING ou AFTER');
     }
-    return this.photoService.uploadPhoto(id, req.companyId, req.user.userId, file, stage as PhotoStage, caption);
+    return this.photoService.uploadPhoto(
+      id,
+      req.companyId,
+      req.user.userId,
+      file,
+      stage as PhotoStage,
+      caption,
+    );
   }
 
   @Get(':id/photos')

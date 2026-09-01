@@ -1,17 +1,16 @@
-import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
+import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
 import { CompanyService } from './company.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { SubscriptionService } from '../billing/subscription.service';
 import { AllowPastDue } from '../billing/allow-past-due.decorator';
+import { AdminOnly } from '../auth/decorators/roles.decorator';
 
+// Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
 }
 
 @Controller('company')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class CompanyController {
   constructor(
     private readonly companyService: CompanyService,
@@ -24,11 +23,13 @@ export class CompanyController {
     return this.companyService.findCurrent(req.companyId);
   }
 
+  @AdminOnly()
   @Get('members')
   getMembers(@Req() req: TenantRequest) {
     return this.companyService.getMembers(req.companyId);
   }
 
+  @AdminOnly()
   @Patch('approval-methods')
   updateApprovalMethods(
     @Req() req: TenantRequest,

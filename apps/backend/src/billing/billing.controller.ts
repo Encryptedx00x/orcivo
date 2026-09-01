@@ -1,11 +1,9 @@
-import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Req } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
 import { TenantRequest } from '../common/interfaces/tenant-request.interface';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { TenantGuard } from '../auth/guards/tenant.guard';
+import { AdminOnly } from '../auth/decorators/roles.decorator';
 
 @Controller('billing')
-@UseGuards(JwtAuthGuard, TenantGuard)
 export class BillingController {
   constructor(private readonly subscriptionService: SubscriptionService) {}
 
@@ -24,6 +22,7 @@ export class BillingController {
     return this.subscriptionService.getPayments(req.companyId);
   }
 
+  @AdminOnly()
   @Post('checkout')
   createCheckout(
     @Req() req: TenantRequest,

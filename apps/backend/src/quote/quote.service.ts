@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
@@ -11,6 +16,7 @@ import { StorageService } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
+import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 
 @Injectable()
 export class QuoteService {
@@ -23,6 +29,7 @@ export class QuoteService {
     private readonly workOrderService: WorkOrderService,
     private readonly pdfService: QuotePdfService,
     private readonly planLimitsService: PlanLimitsService,
+    private readonly ownership: TenantOwnershipService,
   ) {}
 
   private computeTotals(
@@ -31,15 +38,10 @@ export class QuoteService {
     discountValue: string,
   ) {
     // NUNCA usar number/float — sempre Decimal.js
-    const itemTotals = items.map(
-      (i) => new Decimal(i.quantity).mul(new Decimal(i.unit_price)),
-    );
+    const itemTotals = items.map((i) => new Decimal(i.quantity).mul(new Decimal(i.unit_price)));
     const subtotal = itemTotals.reduce((acc, t) => acc.add(t), new Decimal(0));
     const discountDec = new Decimal(discountValue || '0');
-    const discount =
-      discountType === 'PERCENT'
-        ? subtotal.mul(discountDec).div(100)
-        : discountDec;
+    const discount = discountType === 'PERCENT' ? subtotal.mul(discountDec).div(100) : discountDec;
     const total = subtotal.sub(discount);
     return {
       itemTotals: itemTotals.map((t) => t.toFixed(2)),
@@ -65,6 +67,11 @@ export class QuoteService {
 
   async create(dto: QuoteCreateDto, companyId: string, userId: string) {
     await this.planLimitsService.enforceLimit(companyId, 'QUOTES_MONTH');
+    await this.ownership.assertCustomer(dto.customer_id, companyId);
+    await this.ownership.assertCatalogItems(
+      dto.items.map((i) => i.catalog_item_id),
+      companyId,
+    );
     const number = await this.nextQuoteNumber(companyId);
     const { itemTotals, subtotal, total } = this.computeTotals(
       dto.items,
@@ -132,8 +139,7 @@ export class QuoteService {
     return this.pdfService.generate(
       {
         ...quote,
-        customer_name: (quote as never as { customer: { name: string } })
-          .customer?.name,
+        customer_name: (quote as never as { customer: { name: string } }).customer?.name,
       } as never,
       company as never,
     );
@@ -150,11 +156,19 @@ export class QuoteService {
     // Gerar PDF e salvar no MinIO
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
     const pdfBuffer = await this.pdfService.generate(
-      { ...quote, customer_name: (quote as never as { customer: { name: string } }).customer?.name } as never,
+      {
+        ...quote,
+        customer_name: (quote as never as { customer: { name: string } }).customer?.name,
+      } as never,
       company as never,
     );
     const pdfObjectName = `${companyId}/quotes/${id}.pdf`;
-    const pdfUrl = await this.storage.uploadBuffer('orcivo-pdfs', pdfObjectName, pdfBuffer, 'application/pdf');
+    const pdfUrl = await this.storage.uploadBuffer(
+      'orcivo-pdfs',
+      pdfObjectName,
+      pdfBuffer,
+      'application/pdf',
+    );
 
     const token = crypto.randomUUID();
     const ttl = 7 * 24 * 60 * 60; // 7 dias em segundos = 604800
@@ -218,7 +232,12 @@ export class QuoteService {
       const base64 = (dto.signature as string).replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64, 'base64');
       const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.png`;
-      signatureUrl = await this.storage.uploadBuffer('orcivo-photos', objectName, buffer, 'image/png');
+      signatureUrl = await this.storage.uploadBuffer(
+        'orcivo-photos',
+        objectName,
+        buffer,
+        'image/png',
+      );
     }
 
     // Registrar QuoteApproval
@@ -234,7 +253,9 @@ export class QuoteService {
     });
 
     // Regenerar PDF com assinatura e sobrescrever o objeto MinIO
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: quote.company_id } });
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: quote.company_id },
+    });
     const quoteForPdf = {
       ...quote,
       customer_name: quote.customer.name,
@@ -246,7 +267,12 @@ export class QuoteService {
     };
     const pdfBuffer = await this.pdfService.generate(quoteForPdf as never, company as never);
     const pdfObjectName = `${quote.company_id}/quotes/${quote.id}.pdf`;
-    const pdfUrl = await this.storage.uploadBuffer('orcivo-pdfs', pdfObjectName, pdfBuffer, 'application/pdf');
+    const pdfUrl = await this.storage.uploadBuffer(
+      'orcivo-pdfs',
+      pdfObjectName,
+      pdfBuffer,
+      'application/pdf',
+    );
     await this.prisma.quote.update({ where: { id: quote.id }, data: { pdf_url: pdfUrl } });
 
     // Criar WorkOrder automaticamente (D2-14)

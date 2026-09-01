@@ -1,24 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type {
-  AppointmentCreateDto,
-  AppointmentListQueryDto,
-} from './appointment.dto';
+import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import type { AppointmentCreateDto, AppointmentListQueryDto } from './appointment.dto';
 
 const customerSelect = { select: { id: true, name: true } };
 
 @Injectable()
 export class AppointmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownership: TenantOwnershipService,
+  ) {}
 
   async create(dto: AppointmentCreateDto, companyId: string, userId: string) {
-    if (dto.customer_id) {
-      const customer = await this.prisma.customer.findFirst({
-        where: { id: dto.customer_id, company_id: companyId },
-        select: { id: true },
-      });
-      if (!customer) throw new NotFoundException('Cliente não encontrado');
-    }
+    await this.ownership.assertCustomer(dto.customer_id, companyId);
+    await this.ownership.assertWorkOrder(dto.work_order_id, companyId);
 
     return this.prisma.appointment.create({
       data: {

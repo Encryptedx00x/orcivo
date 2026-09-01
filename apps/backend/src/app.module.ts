@@ -11,11 +11,14 @@ import { CustomerModule } from './customer/customer.module';
 import { QuoteModule } from './quote/quote.module';
 import { WorkOrderModule } from './work-order/work-order.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { TenantGuard } from './auth/guards/tenant.guard';
+import { RoleGuard } from './auth/guards/role.guard';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { PlanLimitsModule } from './plan-limits/plan-limits.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { TenantModule } from './common/tenant/tenant.module';
 import { StorageModule } from './storage/storage.module';
 import { BillingModule } from './billing/billing.module';
 import { WebhookModule } from './webhook/webhook.module';
@@ -37,6 +40,7 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
+    TenantModule,
     StorageModule,
     MailModule,
     PlanLimitsModule,
@@ -56,8 +60,11 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     DashboardModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: SubscriptionStatusGuard },
+    // Order matters (guards run top-to-bottom). See ADR-014.
+    { provide: APP_GUARD, useClass: JwtAuthGuard }, // identity; honours @Public()
+    { provide: APP_GUARD, useClass: TenantGuard }, // req.companyId + req.role; fail-closed
+    { provide: APP_GUARD, useClass: SubscriptionStatusGuard }, // past-due block (now sees companyId)
+    { provide: APP_GUARD, useClass: RoleGuard }, // enforces @Roles(...)
   ],
 })
 export class AppModule {}

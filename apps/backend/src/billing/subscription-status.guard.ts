@@ -33,7 +33,9 @@ export class SubscriptionStatusGuard implements CanActivate {
     if (!method || method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
 
     const companyId = req.companyId;
-    if (!companyId) return true; // sem tenant context = outro guard cuida
+    // TenantGuard runs before this guard and sets req.companyId for every
+    // authenticated non-public route. Missing here on a mutation = fail closed.
+    if (!companyId) throw new ForbiddenException();
 
     const isBlocked = await this.subscriptionService.isBlocked(companyId);
     if (isBlocked) {
