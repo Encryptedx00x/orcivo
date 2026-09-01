@@ -94,6 +94,7 @@ export class QuoteService {
         created_by_user_id: userId,
         items: {
           create: dto.items.map((item, i) => ({
+            company_id: companyId,
             catalog_item_id: item.catalog_item_id,
             description: item.description,
             quantity: item.quantity,
@@ -243,6 +244,7 @@ export class QuoteService {
     // Registrar QuoteApproval
     await this.prisma.quoteApproval.create({
       data: {
+        company_id: quote.company_id,
         quote_id: quote.id,
         approval_method: dto.approval_method,
         typed_name: dto.typed_name,

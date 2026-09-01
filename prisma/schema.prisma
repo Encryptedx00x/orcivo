@@ -50,15 +50,17 @@ model Company {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  members       CompanyMember[]
-  customers     Customer[]
-  catalog_items CatalogItem[]
-  quotes        Quote[]
-  work_orders   WorkOrder[]
-  subscription  Subscription?
-  invites       CompanyInvite[]
-  payments      Payment[]
-  appointments  Appointment[]
+  members         CompanyMember[]
+  customers       Customer[]
+  catalog_items   CatalogItem[]
+  quotes          Quote[]
+  quote_items     QuoteItem[]
+  quote_approvals QuoteApproval[]
+  work_orders     WorkOrder[]
+  subscription    Subscription?
+  invites         CompanyInvite[]
+  payments        Payment[]
+  appointments    Appointment[]
 
   @@map("companies")
 }
@@ -239,6 +241,7 @@ model Quote {
 
 model QuoteItem {
   id             String   @id @default(uuid())
+  company_id     String
   quote_id       String
   catalog_item_id String?
   description    String
@@ -249,15 +252,18 @@ model QuoteItem {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  company      Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
   quote        Quote       @relation(fields: [quote_id], references: [id], onDelete: Cascade)
   catalog_item CatalogItem? @relation(fields: [catalog_item_id], references: [id])
 
   @@index([quote_id])
+  @@index([company_id])
   @@map("quote_items")
 }
 
 model QuoteApproval {
   id                  String         @id @default(uuid())
+  company_id          String
   quote_id            String         @unique
   approval_method     ApprovalMethod
   typed_name          String?
@@ -266,8 +272,10 @@ model QuoteApproval {
   user_agent          String
   approved_at         DateTime       @default(now())
 
-  quote Quote @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  quote   Quote   @relation(fields: [quote_id], references: [id], onDelete: Cascade)
 
+  @@index([company_id])
   @@map("quote_approvals")
 }
 
