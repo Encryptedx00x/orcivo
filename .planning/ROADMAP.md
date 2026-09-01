@@ -277,21 +277,21 @@ Plans:
 aprovação, auth, billing, contratos, qualidade e UAT reproduzíveis antes da Fase
 4.
 
-**Status:** **EM ANDAMENTO — 1/12 waves verificadas**
+**Status:** **EM ANDAMENTO — 2/12 waves verificadas**
 
 **Estado de saída atual:**
 
 - P00/Wave 0: PASS;
-- P01: READY, ainda não iniciada;
-- `baseline_reproducible`: false;
+- P01/Wave 1: PASS (T01–T10, `SAFE_AUTO`); T11 (`HUMAN_APPROVAL`) e T12 (`MANUAL_UAT`) pendentes;
+- `baseline_reproducible`: `migrations_and_container_only`;
 - UAT: 0/75;
 - Fase 4: bloqueada.
 
 Planos:
 
 - [x] 03.1-P00-PLAN.md — Recuperação do repositório (Wave 0)
-- [ ] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — READY)
-- [ ] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2)
+- [x] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — auto PASS; T11/T12 humanos pendentes)
+- [ ] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2 — READY)
 - [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3)
 - [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4)
 - [ ] 03.1-P05-PLAN.md — Auth e sessões (Wave 5)
@@ -302,8 +302,10 @@ Planos:
 - [ ] 03.1-P10-PLAN.md — Fidelidade visual (Wave 10)
 - [ ] 03.1-P11-PLAN.md — Reconciliação GSD (Wave 11)
 
-**Próximo gate:** executar P01 dentro do escopo do plano, usando somente banco
-efêmero protegido por guard. O closeout P00 não autorizou nem iniciou P01-T01.
+**Próximo gate:** P02 — tenant isolation e RBAC. Só depois de P02 as colunas
+soltas de `payments`/`appointments` recebem FK/constraints compostas de tenant
+(deferido de P01 por decisão de escopo, ver `03.1-P01-T01-DRIFT-MATRIX.md`).
+P01-T11 (aplicar migration em DB persistente) segue como gate humano `H-DB`.
 
 ---
 

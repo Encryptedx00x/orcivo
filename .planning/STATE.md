@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 03.1 em andamento — P00/Wave 0 verificada; P01 pronta
-last_updated: "2026-07-23T00:00:00-03:00"
+status: Fase 03.1 em andamento — P00/Wave 0 e P01/Wave 1 (auto) verificadas; P02 liberada
+last_updated: "2026-09-01T00:00:00-03:00"
 progress:
   active_phase: "03.1"
-  verified_waves: 1
+  verified_waves: 2
   total_waves: 12
-  percent: 8
+  percent: 17
   historical_counts_status: pending_reconciliation_in_P11
 ---
 
@@ -17,19 +17,24 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
-**Status:** `in_progress` — P00/Wave 0 PASS; `1/12` waves verificadas
-**Data:** 2026-07-23
-**Próximo:** 03.1-P01 — Migrations e reprodutibilidade
+**Status:** `in_progress` — P00/Wave 0 PASS; P01/Wave 1 auto-tasks PASS; `2/12` waves verificadas
+**Data:** 2026-09-01
+**Próximo:** 03.1-P02 — Tenant isolation e autorização (RBAC)
 
-P01 está liberada pela conclusão da P00, mas ainda não foi iniciada.
-`baseline_reproducible` permanece `false`, UAT permanece `0/75` e a Fase 4
-continua bloqueada.
+P01 (T01–T10, `SAFE_AUTO`) concluída: migration versionada de Payment/Appointment,
+guard de DB efêmero, migrate-from-zero e upgrade verdes em DB descartável, imagem
+Docker sobe com `/health` 200. Pendências humanas de P01: T11 (aplicar migration
+em DB persistente — `HUMAN_APPROVAL`) e T12 (setup manual em Windows limpo —
+`MANUAL_UAT`). Ver `phases/03.1-.../03.1-P01-SUMMARY.md`.
+
+`baseline_reproducible` agora `migrations_and_container_only`. UAT permanece
+`0/75` e a Fase 4 continua bloqueada.
 
 ## Baseline Git atual
 
 | Item | Estado |
 |---|---|
-| Standalone | `main` em `c167cb7525fc7c75869ca8b0e9fa87135340162a`, 165 commits |
+| Standalone | `main` em `c1cb048d1d01767b6cc36ca7709c4afe88f82483`, 171 commits (2026-09-01) |
 | Remote | repositório privado; `origin/main` ahead/behind `0/0` |
 | Working tree | limpa; staged e untracked não ignorado em zero |
 | Git pai | detach local em `1449b648fcf6da14dc2d7ad082915ddccd578cf7` |
