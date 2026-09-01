@@ -200,9 +200,11 @@ Parar apenas para:
 - multi-tenancy strategy;
 - money handling;
 - design system;
-- git push;
+- git push --force / --force-with-lease / reescrita de histórico / deletar branch remota;
 - comando destrutivo;
 - perda de dados.
+
+`git push` normal para `main`/`gsd/*` (repo privado, após os pré-checks) é Nível A.
 
 ## GSD
 
