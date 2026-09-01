@@ -4,12 +4,12 @@ Guia completo para rodar o Orcivo localmente e executar o UAT da Fase 1.
 
 ## Pré-requisitos
 
-| Ferramenta | Versão mínima | Verificar |
-|---|---|---|
-| Node.js | 20 | `node -v` |
-| pnpm | 9 | `pnpm -v` |
-| Docker Desktop | qualquer | `docker -v` |
-| Expo Go (celular) | — | instalar na Play Store / App Store |
+| Ferramenta        | Versão mínima | Verificar                          |
+| ----------------- | ------------- | ---------------------------------- |
+| Node.js           | 20            | `node -v`                          |
+| pnpm              | 9             | `pnpm -v`                          |
+| Docker Desktop    | qualquer      | `docker -v`                        |
+| Expo Go (celular) | —             | instalar na Play Store / App Store |
 
 ---
 
@@ -63,9 +63,12 @@ docker ps
 # Gerar o Prisma Client
 npx prisma generate
 
-# Aplicar schema no banco de desenvolvimento
-npx prisma db push
+# Aplicar as migrations versionadas no banco de desenvolvimento
+npx prisma migrate deploy
 ```
+
+> Use `prisma migrate deploy`, não `prisma db push`. As migrations em
+> `prisma/migrations/` são a fonte única de reprodução do schema.
 
 ---
 
@@ -78,6 +81,7 @@ pnpm dev:backend
 ```
 
 Saída esperada:
+
 ```
 Backend rodando na porta 3000
 ```
@@ -122,31 +126,31 @@ Para testar no celular: escanear o QR Code com o app **Expo Go**.
 ### Ordem correta de execução
 
 1. `pnpm dev:infra` — Postgres + Redis
-2. `npx prisma db push` — schema no banco
+2. `npx prisma migrate deploy` — schema no banco
 3. `pnpm dev:backend` — API em :3000
 4. `pnpm dev:web` OU `pnpm dev:mobile` — cliente
 
 ### UAT Web (http://localhost:3001)
 
-| Teste | Passos | Esperado |
-|---|---|---|
-| Redirecionamento sem auth | Abrir http://localhost:3001 sem login | Redirecionar para /login |
-| Signup step 1 | Ir para /signup, preencher nome, e-mail, telefone, senha | Avançar para step 2 |
-| Signup step 2 | Preencher nome da empresa, documento, cidade, estado | Login automático, sidebar aparece |
-| Sidebar 9 itens | Verificar sidebar após login | Início, Clientes, Ordens de Serviço, Agenda, Técnicos, Relatórios, Estoque, Planos, Configurações |
-| Criar cliente | Clicar Clientes → Novo Cliente, preencher nome e telefone | Cliente aparece na listagem |
-| Logout | Clicar logout | Cookie removido, redirecionado para /login |
+| Teste                     | Passos                                                    | Esperado                                                                                          |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Redirecionamento sem auth | Abrir http://localhost:3001 sem login                     | Redirecionar para /login                                                                          |
+| Signup step 1             | Ir para /signup, preencher nome, e-mail, telefone, senha  | Avançar para step 2                                                                               |
+| Signup step 2             | Preencher nome da empresa, documento, cidade, estado      | Login automático, sidebar aparece                                                                 |
+| Sidebar 9 itens           | Verificar sidebar após login                              | Início, Clientes, Ordens de Serviço, Agenda, Técnicos, Relatórios, Estoque, Planos, Configurações |
+| Criar cliente             | Clicar Clientes → Novo Cliente, preencher nome e telefone | Cliente aparece na listagem                                                                       |
+| Logout                    | Clicar logout                                             | Cookie removido, redirecionado para /login                                                        |
 
 ### UAT Mobile (Expo Go)
 
-| Teste | Passos | Esperado |
-|---|---|---|
-| Tela inicial | Abrir app sem login | LoginScreen exibida |
-| Signup step 1 | Navegar para signup, preencher dados pessoais | Avançar para step 2 |
-| Signup step 2 | Preencher dados da empresa | Login automático, 5 tabs aparecem |
-| 5 tabs | Verificar bottom tabs | Agenda, Clientes, Ordens, Mais, Config |
-| Criar cliente | Tab Clientes → + | Formulário de criação, salvar |
-| Tab Mais | Pressionar tab Mais | Stack com 9 itens |
+| Teste         | Passos                                        | Esperado                               |
+| ------------- | --------------------------------------------- | -------------------------------------- |
+| Tela inicial  | Abrir app sem login                           | LoginScreen exibida                    |
+| Signup step 1 | Navegar para signup, preencher dados pessoais | Avançar para step 2                    |
+| Signup step 2 | Preencher dados da empresa                    | Login automático, 5 tabs aparecem      |
+| 5 tabs        | Verificar bottom tabs                         | Agenda, Clientes, Ordens, Mais, Config |
+| Criar cliente | Tab Clientes → +                              | Formulário de criação, salvar          |
+| Tab Mais      | Pressionar tab Mais                           | Stack com 9 itens                      |
 
 ### UAT CI (GitHub Actions)
 

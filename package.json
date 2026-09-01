@@ -21,7 +21,7 @@
     "dev:mobile:android": "pnpm --filter @orcivo/shared-types build && pnpm --filter @orcivo/mobile android",
     "dev:mobile:ios": "pnpm --filter @orcivo/shared-types build && pnpm --filter @orcivo/mobile ios",
     "db:push": "prisma db push",
-    "db:push:test": "DATABASE_URL=$DATABASE_URL_TEST prisma db push --force-reset",
+    "db:migrate:test": "node prisma/scripts/assert-ephemeral-db.mjs && prisma migrate deploy",
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
   },
   "prisma": {

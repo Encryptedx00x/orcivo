@@ -2,6 +2,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
+import { assertEphemeralDatabase } from './ephemeral-db-guard';
+
+assertEphemeralDatabase();
 
 const prisma = new PrismaClient({
   datasources: { db: { url: process.env['DATABASE_URL_TEST'] } },
@@ -19,6 +22,7 @@ export async function getTestApp(): Promise<INestApplication> {
 }
 
 export async function cleanupDatabase(): Promise<void> {
+  assertEphemeralDatabase();
   await prisma.customer.deleteMany();
   await prisma.companyMember.deleteMany();
   await prisma.company.deleteMany();
