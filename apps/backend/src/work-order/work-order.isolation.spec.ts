@@ -13,14 +13,13 @@ describe('WorkOrder — Multi-tenant isolation', () => {
     app = await getTestApp();
 
     // Criar Tenant A
-    const userA = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({
-        name: 'WO Tenant A',
-        email: 'wo-a@isolation.test',
-        phone: '11900000021',
-        password: 'Senha@123',
-      });
+    const userA = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'WO Tenant A',
+      email: 'wo-a@isolation.test',
+      phone: '11900000021',
+      password: 'Senha@123',
+      accepted_terms: true,
+    });
     const accessA: string = userA.body.access_token;
 
     await request(app.getHttpServer())
@@ -41,14 +40,13 @@ describe('WorkOrder — Multi-tenant isolation', () => {
     tokenA = loginA.body.access_token;
 
     // Criar Tenant B
-    const userB = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({
-        name: 'WO Tenant B',
-        email: 'wo-b@isolation.test',
-        phone: '11900000022',
-        password: 'Senha@456',
-      });
+    const userB = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'WO Tenant B',
+      email: 'wo-b@isolation.test',
+      phone: '11900000022',
+      password: 'Senha@456',
+      accepted_terms: true,
+    });
     const accessB: string = userB.body.access_token;
 
     await request(app.getHttpServer())
@@ -124,7 +122,10 @@ describe('WorkOrder — Multi-tenant isolation', () => {
       .post(`/work-orders/${workOrderBId}/photos`)
       .set('Authorization', `Bearer ${tokenA}`)
       .field('stage', 'BEFORE')
-      .attach('file', Buffer.from('fake-image-content'), { filename: 'test.jpg', contentType: 'image/jpeg' })
+      .attach('file', Buffer.from('fake-image-content'), {
+        filename: 'test.jpg',
+        contentType: 'image/jpeg',
+      })
       .expect(404);
   });
 });

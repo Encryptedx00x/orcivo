@@ -166,17 +166,27 @@ git push origin gsd/phase-1
 
 ## 8. Rodar testes de isolamento localmente
 
-Requer os serviços do `docker-compose.test.yml` (portas separadas para não conflitar com dev):
+`infra/docker-compose.test.yml` sobe Postgres (5433), Redis (6380) e MinIO (9002)
+em portas isoladas do dev. `apps/backend/.env.test.example` já está alinhado a
+essas portas.
 
 ```bash
-# Subir Postgres de teste (porta 5433) + Redis de teste (porta 6380)
+# 1. Config de teste (uma vez)
+cp apps/backend/.env.test.example apps/backend/.env.test
+
+# 2. Subir infra de teste
 docker compose -f infra/docker-compose.test.yml up -d
 
-# Criar banco de teste e aplicar schema
-DATABASE_URL=postgresql://orcivo:orcivo@localhost:5433/orcivo_test npx prisma db push --force-reset
+# 3. Aplicar migrations versionadas (NÃO db push)
+DATABASE_URL=postgresql://orcivo:orcivo@localhost:5433/orcivo_test npx prisma migrate deploy
 
-# Rodar testes (dentro de apps/backend)
-cd apps/backend
+# 4. Rodar a suíte
+pnpm --filter @orcivo/backend test:ci
+```
+
+Setup manual alternativo (sem `.env.test`), dentro de `apps/backend`:
+
+```bash
 DATABASE_URL_TEST=postgresql://orcivo:orcivo@localhost:5433/orcivo_test \
 DATABASE_URL=postgresql://orcivo:orcivo@localhost:5433/orcivo_test \
 JWT_ACCESS_SECRET=local-test-access \

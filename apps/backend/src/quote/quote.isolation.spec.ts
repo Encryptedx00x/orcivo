@@ -25,14 +25,13 @@ describe('Quote — Multi-tenant isolation', () => {
     app = await getTestApp();
 
     // Criar Tenant A
-    const userA = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({
-        name: 'Quote Tenant A',
-        email: 'quote-a@isolation.test',
-        phone: '11900000011',
-        password: 'Senha@123',
-      });
+    const userA = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'Quote Tenant A',
+      email: 'quote-a@isolation.test',
+      phone: '11900000011',
+      password: 'Senha@123',
+      accepted_terms: true,
+    });
     const accessA: string = userA.body.access_token;
 
     await request(app.getHttpServer())
@@ -53,14 +52,13 @@ describe('Quote — Multi-tenant isolation', () => {
     tokenA = loginA.body.access_token;
 
     // Criar Tenant B
-    const userB = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({
-        name: 'Quote Tenant B',
-        email: 'quote-b@isolation.test',
-        phone: '11900000012',
-        password: 'Senha@456',
-      });
+    const userB = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'Quote Tenant B',
+      email: 'quote-b@isolation.test',
+      phone: '11900000012',
+      password: 'Senha@456',
+      accepted_terms: true,
+    });
     const accessB: string = userB.body.access_token;
 
     await request(app.getHttpServer())
@@ -100,9 +98,7 @@ describe('Quote — Multi-tenant isolation', () => {
         title: 'Orçamento B',
         discount_type: 'PERCENT',
         discount_value: '0',
-        items: [
-          { description: 'Serviço B', quantity: '1', unit_price: '100.00' },
-        ],
+        items: [{ description: 'Serviço B', quantity: '1', unit_price: '100.00' }],
       });
     quoteBId = quoteRes.body.id;
 

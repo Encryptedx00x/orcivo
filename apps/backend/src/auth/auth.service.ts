@@ -1,7 +1,19 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { ForgotPasswordDto, ResetPasswordDto, SignupStep1Dto, SignupStep2Dto, LoginDto, LoginResponseDto } from '@orcivo/shared-types';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  SignupStep1Dto,
+  SignupStep2Dto,
+  LoginDto,
+  LoginResponseDto,
+} from '@orcivo/shared-types';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { MailService } from '../mail/mail.service';
@@ -110,7 +122,10 @@ export class AuthService {
     };
   }
 
-  async refresh(userId: string, rawRefreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
+  async refresh(
+    userId: string,
+    rawRefreshToken: string,
+  ): Promise<{ access_token: string; refresh_token: string }> {
     const tokenHash = this.hashToken(rawRefreshToken);
     const stored = await this.prisma.refreshToken.findFirst({
       where: { user_id: userId, token_hash: tokenHash, revoked: false },
@@ -184,8 +199,10 @@ export class AuthService {
   }
 
   private signRefresh(userId: string, email: string) {
+    // jti guarantees each refresh token (and thus its hash) is unique even when
+    // two are issued for the same user in the same second.
     return this.jwt.sign(
-      { sub: userId, email },
+      { sub: userId, email, jti: crypto.randomUUID() },
       { secret: this.config.getOrThrow('JWT_REFRESH_SECRET'), expiresIn: '30d' },
     );
   }

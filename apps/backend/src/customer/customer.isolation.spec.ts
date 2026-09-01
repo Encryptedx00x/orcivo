@@ -13,9 +13,13 @@ describe('Customer — Multi-tenant isolation (TENANT-02)', () => {
     app = await getTestApp();
 
     // Criar Tenant A
-    const userA = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({ name: 'Tenant A', email: 'a@isolation.test', phone: '11900000001', password: 'Senha@123' });
+    const userA = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'Tenant A',
+      email: 'a@isolation.test',
+      phone: '11900000001',
+      password: 'Senha@123',
+      accepted_terms: true,
+    });
     const accessA: string = userA.body.access_token;
 
     await request(app.getHttpServer())
@@ -36,9 +40,13 @@ describe('Customer — Multi-tenant isolation (TENANT-02)', () => {
     tokenA = loginA.body.access_token;
 
     // Criar Tenant B
-    const userB = await request(app.getHttpServer())
-      .post('/auth/signup/user')
-      .send({ name: 'Tenant B', email: 'b@isolation.test', phone: '11900000002', password: 'Senha@456' });
+    const userB = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'Tenant B',
+      email: 'b@isolation.test',
+      phone: '11900000002',
+      password: 'Senha@456',
+      accepted_terms: true,
+    });
     const accessB: string = userB.body.access_token;
 
     await request(app.getHttpServer())
