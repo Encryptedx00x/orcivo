@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { IdempotencyInterceptor } from './common/idempotency/idempotency.interceptor';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -65,6 +66,9 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     { provide: APP_GUARD, useClass: TenantGuard }, // req.companyId + req.role; fail-closed
     { provide: APP_GUARD, useClass: SubscriptionStatusGuard }, // past-due block (now sees companyId)
     { provide: APP_GUARD, useClass: RoleGuard }, // enforces @Roles(...)
+    // Runs after guards, so req.companyId is set. Dedupes mobile mutations that
+    // carry X-Client-Request-Id. See 03.1-P02-SUMMARY.md § T11.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule {}

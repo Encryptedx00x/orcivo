@@ -61,6 +61,7 @@ model Company {
   invites         CompanyInvite[]
   payments        Payment[]
   appointments    Appointment[]
+  idempotency_keys RequestIdempotency[]
 
   @@map("companies")
 }
@@ -462,6 +463,27 @@ model CompanyInvite {
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
+
+// ─── Idempotência de requisições (mutations do mobile) ────────────────────────
+
+model RequestIdempotency {
+  id           String    @id @default(uuid())
+  company_id   String
+  key          String
+  method       String
+  path         String
+  request_hash String
+  status_code  Int?
+  response_json Json?
+  created_at   DateTime  @default(now())
+  completed_at DateTime?
+
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@unique([company_id, key])
+  @@index([company_id])
+  @@map("request_idempotency")
+}
 
 model AuditLog {
   id          String   @id @default(uuid())

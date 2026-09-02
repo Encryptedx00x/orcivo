@@ -4,6 +4,18 @@ import { API_URL } from '../config';
 
 const BASE_URL = API_URL;
 
+/**
+ * Options for a write call. Pass a stable `idempotencyKey` (one per logical
+ * operation, reused on retry) so the backend dedupes replays — see
+ * newIdempotencyKey(). Omit it and one is generated per call (no retry safety).
+ */
+export interface WriteOptions {
+  idempotencyKey?: string;
+}
+
+/** Create one key per logical operation. Keep it (useRef/useState) and reuse it on retry. */
+export const newIdempotencyKey = (): string => Crypto.randomUUID();
+
 async function getHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
   const token = await SecureStore.getItemAsync('access_token');
   return {
@@ -11,6 +23,30 @@ async function getHeaders(extra: Record<string, string> = {}): Promise<Record<st
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...extra,
   };
+}
+
+async function mutate<T>(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body: unknown,
+  opts?: WriteOptions,
+): Promise<T> {
+  const requestId = opts?.idempotencyKey ?? Crypto.randomUUID();
+  const headers = await getHeaders({ 'X-Client-Request-Id': requestId });
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(`${method} ${path} ${res.status}`), {
+      status: res.status,
+      data: err,
+    });
+  }
+  if (res.status === 204) return undefined as unknown as T;
+  return res.json();
 }
 
 export const api = {
@@ -21,69 +57,34 @@ export const api = {
     return res.json();
   },
 
-  async post<T>(path: string, body: unknown): Promise<T> {
-    const requestId = Crypto.randomUUID();
-    const headers = await getHeaders({ 'X-Client-Request-Id': requestId });
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(`POST ${path} ${res.status}`), { status: res.status, data: err });
-    }
-    return res.json();
+  post<T>(path: string, body: unknown, opts?: WriteOptions): Promise<T> {
+    return mutate<T>('POST', path, body, opts);
   },
 
-  async postFormData<T>(path: string, formData: FormData): Promise<T> {
-    const requestId = Crypto.randomUUID();
-    // Omit Content-Type para o browser/fetch definir automaticamente com boundary correto
+  patch<T>(path: string, body: unknown, opts?: WriteOptions): Promise<T> {
+    return mutate<T>('PATCH', path, body, opts);
+  },
+
+  delete<T>(path: string, opts?: WriteOptions): Promise<T> {
+    return mutate<T>('DELETE', path, undefined, opts);
+  },
+
+  async postFormData<T>(path: string, formData: FormData, opts?: WriteOptions): Promise<T> {
+    const requestId = opts?.idempotencyKey ?? Crypto.randomUUID();
     const token = await SecureStore.getItemAsync('access_token');
+    // Omit Content-Type so fetch sets the multipart boundary itself.
     const headers: Record<string, string> = {
       'X-Client-Request-Id': requestId,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: formData });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(`POST ${path} ${res.status}`), { status: res.status, data: err });
+      throw Object.assign(new Error(`POST ${path} ${res.status}`), {
+        status: res.status,
+        data: err,
+      });
     }
-    return res.json();
-  },
-
-  async patch<T>(path: string, body: unknown): Promise<T> {
-    const requestId = Crypto.randomUUID();
-    const headers = await getHeaders({ 'X-Client-Request-Id': requestId });
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(`PATCH ${path} ${res.status}`), { status: res.status, data: err });
-    }
-    return res.json();
-  },
-
-  async delete<T>(path: string): Promise<T> {
-    const requestId = Crypto.randomUUID();
-    const headers = await getHeaders({ 'X-Client-Request-Id': requestId });
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method: 'DELETE',
-      headers,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(`DELETE ${path} ${res.status}`), { status: res.status, data: err });
-    }
-    // DELETE pode retornar 204 sem body
-    if (res.status === 204) return undefined as unknown as T;
     return res.json();
   },
 };

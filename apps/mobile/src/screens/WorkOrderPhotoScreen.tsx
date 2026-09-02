@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Camera, Image as ImageIcon, Upload } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService } from '../services/work-order.service';
+import { newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
@@ -27,6 +28,7 @@ const STAGE_OPTIONS: { value: PhotoStage; label: string }[] = [
 ];
 
 export function WorkOrderPhotoScreen({ navigation, route }: Props) {
+  const uploadKey = useRef(newIdempotencyKey());
   const { workOrderId, stage: initialStage, onPhotoUploaded } = route.params;
 
   const [stage, setStage] = useState<PhotoStage>(initialStage ?? 'BEFORE');
@@ -79,7 +81,13 @@ export function WorkOrderPhotoScreen({ navigation, route }: Props) {
     }
     try {
       setUploading(true);
-      await workOrderService.uploadPhoto(workOrderId, imageUri, stage, caption.trim() || undefined);
+      await workOrderService.uploadPhoto(
+        workOrderId,
+        imageUri,
+        stage,
+        caption.trim() || undefined,
+        { idempotencyKey: uploadKey.current },
+      );
       if (onPhotoUploaded) onPhotoUploaded();
       navigation.goBack();
     } catch {
@@ -94,7 +102,7 @@ export function WorkOrderPhotoScreen({ navigation, route }: Props) {
       {/* Seletor de etapa */}
       <Text style={styles.label}>Etapa da OS *</Text>
       <View style={styles.stagePicker}>
-        {STAGE_OPTIONS.map(opt => (
+        {STAGE_OPTIONS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
             style={[styles.stageBtn, stage === opt.value && styles.stageBtnActive]}
@@ -122,7 +130,11 @@ export function WorkOrderPhotoScreen({ navigation, route }: Props) {
 
       {/* Preview */}
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={styles.preview} accessibilityLabel="Preview da foto selecionada" />
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.preview}
+          accessibilityLabel="Preview da foto selecionada"
+        />
       ) : (
         <View style={styles.previewPlaceholder}>
           <ImageIcon size={48} color="#D1D5DB" />
@@ -165,7 +177,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   content: { padding: 20, paddingBottom: 40 },
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8, marginTop: 16 },
-  stagePicker: { flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB' },
+  stagePicker: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
   stageBtn: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#F9FAFB' },
   stageBtnActive: { backgroundColor: '#6D28D9' },
   stageBtnText: { fontSize: 14, color: '#374151', fontWeight: '500' },

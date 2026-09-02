@@ -12,6 +12,7 @@ import {
 import { Camera, CheckCircle, XCircle } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder, WorkOrderPhoto } from '../services/work-order.service';
+import { newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderDetail'>;
@@ -32,17 +33,25 @@ const STAGE_LABELS: Record<PhotoStage, string> = {
   AFTER: 'Depois',
 };
 
-function PhotoGrid({ photos, stage, onAdd }: {
+function PhotoGrid({
+  photos,
+  stage,
+  onAdd,
+}: {
   photos: WorkOrderPhoto[];
   stage: PhotoStage;
   onAdd: () => void;
 }) {
-  const stagePhotos = photos.filter(p => p.photo_stage === stage);
+  const stagePhotos = photos.filter((p) => p.photo_stage === stage);
   return (
     <View style={styles.stageSection}>
       <View style={styles.stageHeader}>
         <Text style={styles.stageTitle}>{STAGE_LABELS[stage]}</Text>
-        <TouchableOpacity style={styles.addPhotoBtn} onPress={onAdd} accessibilityLabel={`Adicionar foto ${STAGE_LABELS[stage]}`}>
+        <TouchableOpacity
+          style={styles.addPhotoBtn}
+          onPress={onAdd}
+          accessibilityLabel={`Adicionar foto ${STAGE_LABELS[stage]}`}
+        >
           <Camera size={14} color="#6D28D9" />
           <Text style={styles.addPhotoText}>Adicionar foto</Text>
         </TouchableOpacity>
@@ -51,7 +60,7 @@ function PhotoGrid({ photos, stage, onAdd }: {
         <Text style={styles.noPhotosText}>Nenhuma foto nesta etapa</Text>
       ) : (
         <View style={styles.photoGrid}>
-          {stagePhotos.map(photo => (
+          {stagePhotos.map((photo) => (
             <Image
               key={photo.id}
               source={{ uri: photo.file_url }}
@@ -97,27 +106,25 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
       DONE: 'Concluída',
       CANCELLED: 'Cancelada',
     };
-    Alert.alert(
-      'Confirmar',
-      `Alterar status para "${labels[newStatus]}"?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          onPress: async () => {
-            try {
-              setUpdatingStatus(true);
-              const updated = await workOrderService.updateStatus(order.id, newStatus);
-              setOrder(updated);
-            } catch {
-              Alert.alert('Erro', 'Não foi possível alterar o status. Tente novamente.');
-            } finally {
-              setUpdatingStatus(false);
-            }
-          },
+    Alert.alert('Confirmar', `Alterar status para "${labels[newStatus]}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Confirmar',
+        onPress: async () => {
+          try {
+            setUpdatingStatus(true);
+            const updated = await workOrderService.updateStatus(order.id, newStatus, {
+              idempotencyKey: newIdempotencyKey(),
+            });
+            setOrder(updated);
+          } catch {
+            Alert.alert('Erro', 'Não foi possível alterar o status. Tente novamente.');
+          } finally {
+            setUpdatingStatus(false);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const navigateToPhoto = (stage: PhotoStage) => {
@@ -166,7 +173,10 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
       ) : (
         <View style={styles.actions}>
           {status === 'PENDING' && (
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleStatusChange('IN_PROGRESS')}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => handleStatusChange('IN_PROGRESS')}
+            >
               <CheckCircle size={18} color="#FFFFFF" />
               <Text style={styles.actionBtnText}>Iniciar OS</Text>
             </TouchableOpacity>
@@ -195,7 +205,7 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
       {/* Fotos por etapa */}
       <View style={styles.photosSection}>
         <Text style={styles.sectionTitle}>Fotos da OS</Text>
-        {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map(stage => (
+        {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map((stage) => (
           <PhotoGrid
             key={stage}
             photos={order.photos}
@@ -212,7 +222,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   header: { padding: 20, borderBottomWidth: 1, borderColor: '#E5E7EB' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   orderNumber: { fontSize: 14, fontWeight: '700', color: '#6D28D9' },
   title: { fontSize: 18, fontWeight: '700', color: '#0A0A0F', marginBottom: 8 },
   customer: { fontSize: 14, color: '#6B7280' },
@@ -236,7 +251,12 @@ const styles = StyleSheet.create({
   photosSection: { padding: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0A0A0F', marginBottom: 16 },
   stageSection: { marginBottom: 24 },
-  stageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  stageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   stageTitle: { fontSize: 14, fontWeight: '600', color: '#374151' },
   addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addPhotoText: { fontSize: 13, color: '#6D28D9', fontWeight: '500' },
@@ -244,6 +264,11 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   thumbnail: { width: 80, height: 80, borderRadius: 6, backgroundColor: '#F3F4F6' },
   errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
-  retryBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryBtn: {
+    backgroundColor: '#6D28D9',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 });

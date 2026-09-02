@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, WriteOptions } from './api';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
 
@@ -39,8 +39,8 @@ export const workOrderService = {
     return api.get<WorkOrder>(`/work-orders/${id}`);
   },
 
-  async updateStatus(id: string, status: string): Promise<WorkOrder> {
-    return api.patch<WorkOrder>(`/work-orders/${id}`, { status });
+  async updateStatus(id: string, status: string, opts?: WriteOptions): Promise<WorkOrder> {
+    return api.patch<WorkOrder>(`/work-orders/${id}`, { status }, opts);
   },
 
   async uploadPhoto(
@@ -48,6 +48,7 @@ export const workOrderService = {
     fileUri: string,
     stage: 'BEFORE' | 'DURING' | 'AFTER',
     caption?: string,
+    opts?: WriteOptions,
   ): Promise<WorkOrderPhoto> {
     const mimeType = fileUri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
     const ext = mimeType === 'image/png' ? 'png' : 'jpg';
@@ -67,6 +68,6 @@ export const workOrderService = {
       throw new Error(`Stage inválido: ${stage}`);
     }
 
-    return api.postFormData<WorkOrderPhoto>(`/work-orders/${workOrderId}/photos`, formData);
+    return api.postFormData<WorkOrderPhoto>(`/work-orders/${workOrderId}/photos`, formData, opts);
   },
 };

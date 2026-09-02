@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService } from '../services/catalog.service';
+import { newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'CatalogItemForm'>;
@@ -20,6 +21,7 @@ type Props = NativeStackScreenProps<MaisStackParamList, 'CatalogItemForm'>;
 type ItemType = 'SERVICE' | 'PRODUCT';
 
 export function CatalogItemFormScreen({ navigation, route }: Props) {
+  const submitKey = useRef(newIdempotencyKey());
   const existing = route.params?.item;
 
   const [name, setName] = useState(existing?.name ?? '');
@@ -61,9 +63,12 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
         description: description.trim() || undefined,
       };
       if (existing) {
-        await catalogService.updateItem(existing.id, dto);
+        await catalogService.updateItem(existing.id, dto, { idempotencyKey: submitKey.current });
       } else {
-        await catalogService.createItem({ ...dto, is_active: true });
+        await catalogService.createItem(
+          { ...dto, is_active: true },
+          { idempotencyKey: submitKey.current },
+        );
       }
       navigation.goBack();
     } catch (err: unknown) {
@@ -152,9 +157,7 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
           {submitting ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.submitText}>
-              {existing ? 'Salvar alterações' : 'Criar item'}
-            </Text>
+            <Text style={styles.submitText}>{existing ? 'Salvar alterações' : 'Criar item'}</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -178,7 +181,13 @@ const styles = StyleSheet.create({
   inputError: { borderColor: '#DC2626' },
   multiline: { height: 100, textAlignVertical: 'top' },
   errorText: { color: '#DC2626', fontSize: 12, marginTop: 4 },
-  segmented: { flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB' },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
   segBtn: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#F9FAFB' },
   segBtnActive: { backgroundColor: '#6D28D9' },
   segText: { fontSize: 15, color: '#374151', fontWeight: '500' },

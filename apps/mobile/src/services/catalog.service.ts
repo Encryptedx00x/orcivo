@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, WriteOptions } from './api';
 import { CatalogItemCreateDto, CatalogItemUpdateDto } from '@orcivo/shared-types';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch / api.delete (interceptor em api.ts)
@@ -19,15 +19,19 @@ export const catalogService = {
     return api.get<CatalogItem[]>(`/catalog${query}`);
   },
 
-  async createItem(dto: CatalogItemCreateDto): Promise<CatalogItem> {
-    return api.post<CatalogItem>('/catalog', dto);
+  async createItem(dto: CatalogItemCreateDto, opts?: WriteOptions): Promise<CatalogItem> {
+    return api.post<CatalogItem>('/catalog', dto, opts);
   },
 
-  async updateItem(id: string, dto: CatalogItemUpdateDto): Promise<CatalogItem> {
-    return api.patch<CatalogItem>(`/catalog/${id}`, dto);
+  async updateItem(
+    id: string,
+    dto: CatalogItemUpdateDto,
+    opts?: WriteOptions,
+  ): Promise<CatalogItem> {
+    return api.patch<CatalogItem>(`/catalog/${id}`, dto, opts);
   },
 
-  async deactivateItem(id: string): Promise<void> {
-    await api.delete<void>(`/catalog/${id}`);
+  async deactivateItem(id: string, opts?: WriteOptions): Promise<void> {
+    await api.delete<void>(`/catalog/${id}`, opts);
   },
 };
