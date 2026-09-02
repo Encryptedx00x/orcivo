@@ -17,9 +17,9 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
-**Status:** `in_progress` — P00/Wave 0 PASS; P01/Wave 1 auto-tasks PASS; P02/Wave 2 T01–T10 done
+**Status:** `in_progress` — P00 PASS; P01 auto PASS; P02/Wave 2 T01–T11 done (green), aguardando T12/T13
 **Data:** 2026-09-01
-**Próximo:** 03.1-P02-T11 (idempotência de mutations mobile), depois T12/T13 (gates humanos)
+**Próximo:** P02-T12 (HUMAN_APPROVAL — migrations de tenant em DB persistente) e T13 (MANUAL_UAT). NÃO iniciar sozinho.
 
 P02 (T01–T10): TenantGuard global + RoleGuard, ownership de IDs relacionados,
 `company_id` em quote_items/quote_approvals, 35 testes de integração A/B verdes
