@@ -10,7 +10,41 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
-## Orquestração multi-agente (2026-09-02) — SUPERVISOR PRODUCTION-READY
+## Orquestração — REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
+
+**O supervisor V1 foi REJEITADO** por revisão adversarial independente do Codex
+(`.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md`, VERDICT:
+REJECT). V1 é agora `LEGACY_REJECTED_REFERENCE_ONLY` — preservado só para
+comparação e como baseline de regressão (23/23). `run`/`loop`/`cleanup` do V1
+estão bloqueados (guard em `supervisor.ps1`); `index`/`status`/`next`/`recover`
+seguem disponíveis só para inspeção.
+
+**V2 — `scripts/orchestration/v2/`** (clean-room, namespace próprio
+`.orchestration/v2/`, não faz dot-source do V1, não migra artefato V1 para
+confiança V2). Esta sessão construiu e **provou adversarialmente** a espinha de
+segurança:
+
+- `SECURITY_SPINE_V2 = PASS` — suíte `v2/tests/run-spine-tests.ps1` **40/40 verde**,
+  repositórios git descartáveis, sem chamadas de modelo.
+- Fixados + testados: **C-01, C-02, C-03, H-01, H-03, H-04, H-05, H-06, H-07,
+  H-11, H-12, M-01, M-03, M-05**; **C-04 e H-02 parciais**.
+- Deferidos (próxima sessão, cada um precisa de revisão própria): **C-05, C-06,
+  H-08, H-09, H-10** + smoke real Claude/Codex descartável.
+- `SECURITY_SPINE_V2` docs: `docs/agents/ORCHESTRATION-THREAT-MODEL.md`,
+  `docs/agents/ORCHESTRATION-ATTESTATIONS.md`.
+- **NÃO** é production-ready. **NÃO** declarado READY_FOR_CANARY. Nenhuma task
+  real / P03 / T12 / T13 / DB persistente tocada.
+- `READY_FOR_SECOND_SECURITY_REVIEW = YES` (para a espinha; C-05/C-06/H-08..H-10
+  ficam para depois desse review).
+
+Detalhe da matriz e arquitetura: `docs/runbooks/agent-orchestration.md`.
+
+---
+
+## Orquestração multi-agente (2026-09-02) — SUPERVISOR V1 (REJEITADO — histórico)
+
+> A seção abaixo descrevia o V1 como "production-ready". Isso foi **refutado**
+> pela revisão independente. Mantida como registro histórico.
 
 `docs/runbooks/agent-orchestration.md` + `scripts/orchestration/` +
 `.orchestration/config.json`. Camada mínima, Windows-nativa (PowerShell 5.1),
@@ -188,6 +222,7 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
+| 2026-09-02 | Claude | **Remediação de segurança da orquestração.** V1 marcado `LEGACY_REJECTED_REFERENCE_ONLY` (guard bloqueia run/loop/cleanup; regressão 23/23 preservada). V2 security spine clean-room em `scripts/orchestration/v2/` (namespace `.orchestration/v2/`): ledger monotônico content-addressed (C-01), contract freeze + protected paths + post-diff scope (H-06/M-01/M-03), attestations content-addressed + staleness (C-03), review envelope JSON fail-closed (C-02/H-03/M-05), leases atômicas 4 namespaces + integração serial + fetch/CAS (H-05/H-04), preflight obrigatório + human gate durável (H-07/C-04 parcial), classificação por control channel + corpus negativo (H-01), streaming redaction + secret scan (H-11), Win32 argv/ID grammar (H-12). Suíte adversarial 40/40 (`v2/tests/`, repos descartáveis, sem modelo). Docs: THREAT-MODEL + ATTESTATIONS. Deferidos: C-05/C-06/H-08/H-09/H-10 + smoke real. NÃO production-ready; NÃO READY_FOR_CANARY. `READY_FOR_SECOND_SECURITY_REVIEW = YES`. | (ver `git log -1`) |
 | 2026-09-02 | Claude | Supervisor de orquestração production-ready: reconciliador real (`reconcile.ps1`), scheduler `loop`, scope-conflict, `merge.ps1` (safe merge, sem force/reset), reviewer cruzado (`review.ps1`), classificação de falha (12 classes), redaction endurecida, `recover`. Suite determinística 23/23 (`tests/`, fake-agent, sem chamadas de modelo). Drift documental corrigido (CLAUDE.md deixa de afirmar Fase 0). Não ligado a tasks reais; P02/P03 inalterados. | (ver `git log -1`) |
 | 2026-09-02 | Claude | Camada de orquestração multi-agente: SETUP + POC (14/14). `scripts/orchestration/` + `docs/runbooks/agent-orchestration.md`. orca-cli descartado (esqueleto abandonado). Não ligado a tarefas reais. P02/P03 inalterados. | `ae668f4` |
 | 2026-09-01 | Claude (Decision Agent) | Discovery de produto incorporado ao planejamento; ADRs 015/016/017; addenda P04/P06/P07; wave P07.5. P02 segue aguardando T12/T13. | `0260a72` |

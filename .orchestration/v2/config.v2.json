@@ -1,0 +1,106 @@
+{
+  "$comment": "Orcivo orchestration SECURITY SPINE (V2) config. V2 is a clean-room rebuild after the independent review REJECTED V1. This file holds knobs, NEVER status. V2 runtime state lives under .orchestration/v2/ and is authoritative for V2 only. V1 runtime state is never read by V2.",
+  "schemaVersion": "orcivo.orchestration.v2.config/1",
+  "spineStatus": "UNDER_REVIEW_NOT_READY",
+  "target": {
+    "branch": "main",
+    "requireCleanAuthorityTree": true,
+    "requireFetchWithinSec": 900
+  },
+  "ledger": {
+    "terminalStates": ["PUBLISHED", "QUARANTINED"],
+    "dispatchableStates": ["DISCOVERED", "READY", "WAITING_HUMAN", "FAILED"],
+    "maxAttemptsPerVersion": 3
+  },
+  "contract": {
+    "protectedPaths": [
+      ".planning/",
+      ".orchestration/",
+      "scripts/orchestration/",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "docs/AUTONOMY_POLICY.md",
+      "docs/DECISION_MATRIX.md",
+      "docs/GPT_DECISION_BRIDGE.md",
+      ".github/workflows/"
+    ],
+    "authoritativeAcceptanceGlobs": ["**/*.isolation.spec.ts", "prisma/schema.prisma"],
+    "protectedPathElevatedRisks": ["C"]
+  },
+  "review": {
+    "schemaVersion": "orcivo.orchestration.v2.review-envelope/1",
+    "beginMarker": "<<<ORCIVO_REVIEW_ENVELOPE_V1",
+    "endMarker": "ORCIVO_REVIEW_ENVELOPE_V1>>>",
+    "verdicts": ["APPROVE", "REQUEST_CHANGES", "HUMAN_REVIEW_REQUIRED", "INCOMPLETE_REVIEW"],
+    "maxCycles": 2,
+    "promptTemplateVersion": "v2-review-1"
+  },
+  "classification": {
+    "$comment": "H-01: provider failover is allowed ONLY for these classes, and ONLY when the class comes from the CLI's own structured control channel - never from application/task/test stdout.",
+    "providerClasses": [
+      "PROVIDER_AUTH",
+      "PROVIDER_QUOTA",
+      "PROVIDER_RATE_LIMIT",
+      "PROVIDER_TRANSIENT"
+    ],
+    "nonFailoverClasses": [
+      "TOOL_ERROR",
+      "APPLICATION_ERROR",
+      "CHECK_FAILURE",
+      "POLICY_BLOCK",
+      "TIMEOUT",
+      "UNKNOWN"
+    ],
+    "maxCrossProviderFailoversPerLineage": 1
+  },
+  "budgets": {
+    "runTimeoutSec": 900,
+    "checkTimeoutSec": 1200,
+    "reviewTimeoutSec": 600,
+    "totalWallTimeSec": 5400,
+    "maxReviewCycles": 2,
+    "killSwitchFile": "KILL_SWITCH"
+  },
+  "leases": {
+    "namespaces": ["scheduler", "taskversion", "workspace", "integration"],
+    "heartbeatSec": 30,
+    "staleAfterSec": 180
+  },
+  "providers": {
+    "primary": "claude",
+    "fallback": "codex",
+    "claude": { "bin": "claude" },
+    "codex": { "bin": "codex" }
+  },
+  "redaction": {
+    "maxEnvLikeLines": 6,
+    "replacement": "[REDACTED]",
+    "patterns": [
+      "(?im)^\\s*(authorization|proxy-authorization)\\s*:\\s*.+$",
+      "(?i)authorization\\s*[:=]\\s*\\S+",
+      "(?i)bearer\\s+[A-Za-z0-9._~+/-]{8,}=*",
+      "(?im)^\\s*(set-)?cookie\\s*:\\s*.+$",
+      "(?i)(cookie|set-cookie)\\s*[:=]\\s*\\S+",
+      "(?i)([A-Z0-9_]*(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|session)[A-Z0-9_]*)\\s*[:=]\\s*\\S+",
+      "(?i)\\b(password|passwd|pwd)\\b\\s*[:=]\\s*\\S+",
+      "(?i)database_url\\s*[:=]\\s*\\S+",
+      "(?i)[a-z][a-z0-9+.-]*://[^\\s:/@]+:[^\\s:/@]+@[^\\s/]+",
+      "(?im)^\\s*(export\\s+)?[A-Z][A-Z0-9_]{2,}\\s*=\\s*.+$",
+      "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*",
+      "sk-[A-Za-z0-9_-]{16,}",
+      "gh[pousr]_[A-Za-z0-9]{20,}",
+      "xox[baprs]-[A-Za-z0-9-]{10,}",
+      "AKIA[0-9A-Z]{16}",
+      "AIza[0-9A-Za-z_-]{30,}",
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+    ],
+    "scanPatterns": [
+      "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+",
+      "sk-[A-Za-z0-9_-]{16,}",
+      "gh[pousr]_[A-Za-z0-9]{20,}",
+      "AKIA[0-9A-Z]{16}",
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+      "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}"
+    ]
+  }
+}

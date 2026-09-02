@@ -97,3 +97,11 @@ prisma/migrations/*.sql.bak
 .orchestration/*
 !.orchestration/config.json
 !.orchestration/README.md
+# V2 security spine — tracked: config.v2.json, README.md, schemas/. Runtime ignored.
+!.orchestration/v2/
+.orchestration/v2/*
+!.orchestration/v2/config.v2.json
+!.orchestration/v2/README.md
+!.orchestration/v2/schemas/
+.orchestration/v2/schemas/*
+!.orchestration/v2/schemas/*.json

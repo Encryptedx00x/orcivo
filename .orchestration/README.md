@@ -3,6 +3,12 @@
 Runtime state for the Orcivo agent-orchestration layer. Full picture:
 `docs/runbooks/agent-orchestration.md`.
 
+> **This directory is V1 runtime state. V1 is `LEGACY_REJECTED_REFERENCE_ONLY`**
+> (independent review VERDICT: REJECT). The security remediation lives in
+> `.orchestration/v2/` with its own namespace — V2 never reads V1 state, and no
+> V1 PASS/review/check artifact carries any trust into V2. V1 `run`/`loop`/
+> `cleanup` are disabled; `index`/`status`/`next`/`recover` remain for inspection.
+
 ## Tracked (only these two)
 
 - `config.json` — knobs only (providers, check profiles, scheduler limits, merge

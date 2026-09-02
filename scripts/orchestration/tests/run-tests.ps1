@@ -89,7 +89,9 @@ function Invoke-Child {
     # git rev-parse --show-toplevel resolves to the fixture, never the real repo)
     param([string]$Fix, [string]$Script, [string[]]$ScriptArgs, [hashtable]$EnvVars)
     $saved = @{}
-    $base = @{ ORCH_FAKE_AGENT = $FakeAgent }
+    # this suite is the frozen regression baseline for the REJECTED V1 supervisor;
+    # it drives run/loop/cleanup against throwaway fixtures only.
+    $base = @{ ORCH_FAKE_AGENT = $FakeAgent; ORCH_V1_REGRESSION_HARNESS = '1' }
     if ($EnvVars) { foreach ($k in $EnvVars.Keys) { $base[$k] = $EnvVars[$k] } }
     foreach ($k in @($base.Keys)) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $base[$k]) }
     $o = Join-Path $env:TEMP ("sv-out-" + [guid]::NewGuid().ToString('N').Substring(0,8) + ".txt")
