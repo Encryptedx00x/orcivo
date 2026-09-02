@@ -175,7 +175,19 @@ function Get-NextReadyTask {
 }
 
 function Get-GatedTasks {
-    Get-SchedulableTasks | Where-Object { $_.status -eq 'READY' -and (Test-LevelCGate $_) -and (Test-DepsSatisfied $_) }
+    # tasks that need a human before the pipeline can move: Level-C READY tasks,
+    # plus index tasks already sitting in WAITING_HUMAN whose other deps are done.
+    $out = @(Get-SchedulableTasks | Where-Object { $_.status -eq 'READY' -and (Test-LevelCGate $_) -and (Test-DepsSatisfied $_) })
+    try {
+        $idx = Get-ExecutionIndex
+        foreach ($t in $idx.tasks) {
+            if ($t.status -ne 'WAITING_HUMAN') { continue }
+            $spec = ConvertTo-DerivedSpec $t $idx
+            $spec.status = 'READY'
+            if (Test-DepsSatisfied $spec) { $out += ,$spec }
+        }
+    } catch { }
+    return @($out)
 }
 
 # ======================================================================
@@ -445,13 +457,15 @@ function Invoke-Loop {
         $idx = Update-ExecutionIndex
         if ($cfg.scheduler.refuseRunWhenNotReconciled -and -not $idx.reconciled) {
             Write-OrchLog "loop: index NOT reconciled ($($idx.errors.Count) errors). Not running anything. Fix .planning, then continue." 'WARN'
-            Start-Sleep -Seconds ([int]$cfg.scheduler.blockedSleepSec); if ($Once) { break }; continue
+            if ($Once) { break }
+            Start-Sleep -Seconds ([int]$cfg.scheduler.blockedSleepSec); continue
         }
 
         $active = @(Get-AllRunRecords | Where-Object { $_.status -eq 'RUNNING' })
         if ($active.Count -ge $maxPar) {
             Write-OrchLog "loop: $($active.Count)/$maxPar workers busy - waiting."
-            Start-Sleep -Seconds ([int]$cfg.scheduler.idleSleepSec); if ($Once) { break }; continue
+            if ($Once) { break }
+            Start-Sleep -Seconds ([int]$cfg.scheduler.idleSleepSec); continue
         }
 
         $next = Get-NextReadyTask
@@ -460,20 +474,20 @@ function Invoke-Loop {
             if ($gated.Count -gt 0) {
                 Write-OrchLog "loop: nothing runnable; $($gated.Count) task(s) waiting on a human gate:" 'WARN'
                 foreach ($g in $gated) { Show-HumanGate $g }
-                Start-Sleep -Seconds ([int]$cfg.scheduler.humanGateSleepSec)
             } else {
                 Write-OrchLog "loop: no READY task (all blocked / done). Waiting."
-                Start-Sleep -Seconds ([int]$cfg.scheduler.blockedSleepSec)
             }
-            if ($Once) { break }; continue
+            if ($Once) { break }
+            Start-Sleep -Seconds ([int]$(if ($gated.Count -gt 0) { $cfg.scheduler.humanGateSleepSec } else { $cfg.scheduler.blockedSleepSec }))
+            continue
         }
 
         Write-OrchLog "loop: dispatching $($next.taskId)"
         try { Invoke-Pipeline -TaskId $next.taskId }
         catch { Write-OrchLog "loop: pipeline error for $($next.taskId): $($_.Exception.Message)" 'ERROR' }
 
-        Start-Sleep -Seconds ([int]$cfg.scheduler.idleSleepSec)
         if ($Once) { break }
+        Start-Sleep -Seconds ([int]$cfg.scheduler.idleSleepSec)
     }
 }
 
