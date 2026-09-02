@@ -1,16 +1,19 @@
 # Agent orchestration — Orcivo
 
 > **Status (2026-09-02): V1 is `LEGACY_REJECTED_REFERENCE_ONLY`; the V2 spine is
-> in its 2nd remediation and awaiting a THIRD independent review.**
+> in its 3rd remediation and awaiting a FOURTH independent review.**
 >
-> Two independent adversarial reviews rejected the work so far:
-> `.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md` (V1) and
-> `.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW.md` (the first V2
-> spine — the reviewer independently reproduced ledger corruption under
-> concurrency, schema-invalid review approvals, stale attestations after
-> contract mutation, publication without a push, a broken live lease, broken
-> protected dot-paths, preflight accepting an absent version, and raw synthetic
-> secrets on failure paths).
+> Three independent adversarial reviews rejected the work so far:
+> `.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md` (V1),
+> `.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW.md` (first V2 spine),
+> and `.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW-3.md` (the second
+> remediation — the reviewer reproduced a caller-controlled verification
+> procedure, schema-invalid review approvals via wrong JSON types, prompt-fence
+> escape, non-sticky lease quarantine, a wildcard protected-path grant,
+> tamper-then-refreeze, JSON-shaped secrets surviving redaction, and a forged
+> `NO_REMOTE` fetch observation). The third remediation
+> (`.planning/reviews/THIRD-SPINE-REMEDIATION-REPORT.md`) closes H3-01..H3-05,
+> M3-01..M3-03, #9, #10 and L3-01, each as a permanent regression test.
 >
 > V2 is **NOT production-ready** and is `UNDER_REVIEW / NOT_READY`. Neither V1 nor
 > V2 executes real GSD tasks. V1 `run` / `loop` / `cleanup` are **permanently

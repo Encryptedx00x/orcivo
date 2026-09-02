@@ -20,7 +20,7 @@ switch ($Command) {
     'status' {
         $cfg = Get-V2Config
         Write-Host ""
-        Write-Host "Orcivo orchestration - SECURITY SPINE V2 (2nd remediation)" -ForegroundColor Cyan
+        Write-Host "Orcivo orchestration - SECURITY SPINE V2 (3rd remediation)" -ForegroundColor Cyan
         Write-Host "  spineStatus:   $($cfg.spineStatus)" -ForegroundColor Yellow
         Write-Host "  V1:            LEGACY_REJECTED_REFERENCE_ONLY - run/loop/cleanup permanently disabled (no override)"
         Write-Host "  V2 state:      .orchestration/v2/  (own namespace; V1 runtime never trusted)"
@@ -36,7 +36,32 @@ switch ($Command) {
     }
     'explain' {
         @"
-V2 SECURITY SPINE - finding coverage (2nd remediation)
+V2 SECURITY SPINE - finding coverage (3rd remediation)
+
+Third-review reproductions now fixed + permanently regression-tested:
+  H3-01 verification authority: NO caller scriptblock anywhere in the authoritative
+        pipeline; canonical result-independent verification invocation hash; the
+        integrator recomputes it from the frozen profile and compares
+  H3-02 ONE canonical secret library (redactor == scanner); pre-publication
+        recursive scan gate INSIDE Invoke-Integration, before any push;
+        SECRET_LEAK_BLOCKED ledger state (recovers only via QUARANTINE)
+  H3-03 untrusted spec/acceptance/diff transported OUT OF BAND as sha256-bound
+        read-only files; no fixed textual fence to escape
+  H3-04 malformed lease -> DURABLE quarantine marker; every acquire refuses until
+        the explicit Repair-QuarantinedLease recovery primitive
+  H3-05 protected-path grants must be exact canonical members of the orchestrator
+        allowlist; no glob / root / parent / whole-.planning; risk C is not blanket
+  M3-01 review envelope validated with a raw-JSON-type-preserving parser; object /
+        null / string where the schema wants an array is rejected
+  M3-02 re-freeze runs the full recompute-on-read validation before returning
+  M3-03 fetch observation is in-process authority (session token); no NO_REMOTE
+        dispatch path; a writable last-fetch.json is audit-only
+  #9    preflight binds the derived index entry to the frozen contract (taskId,
+        gate, dependencies) - a derived index cannot weaken a frozen contract
+  #10   deterministic after-CAS-push-reject / ancestry-failure / tree-mismatch
+        regressions (genuine reject hook + disposable-harness-only fault seam)
+  L3-01 heartbeat docs corrected: explicit Beat-Lease checkpoints + live-process
+        identity is load-bearing; there is no background renewal
 
 Addressed + adversarially re-tested against the second review's reproductions:
   C-01  hash-chained monotonic ledger; atomic ledger lease over select+append+seal;
@@ -51,8 +76,9 @@ Addressed + adversarially re-tested against the second review's reproductions:
   H-03  APPROVE downgraded unless every frozen criterion is met with evidence + hashes exact
   H-04  publication == remote-confirmed: mandatory push, expected-remote-SHA CAS, ancestry + tree proof;
         every remote failure -> durable ledger state (PUSH_FAILED / REMOTE_DIVERGED / INTEGRATION_FAILED)
-  H-05  live holder is NEVER an orphan (stale heartbeat alone quarantines the record, not the key);
-        CAS heartbeat/release/break; malformed lease -> quarantined, not granted; background heartbeats
+  H-05  live holder is NEVER an orphan (stale heartbeat alone does not hand over the key);
+        CAS heartbeat/release/break; malformed lease -> DURABLE quarantine (H3-04), explicit recovery only;
+        renewal is explicit Beat-Lease checkpoints - NO background runspace (L3-01)
   H-06  canonical Windows-aware protected-path matching (.planning etc.); empty scope FAILS CLOSED;
         unrestricted scope is an explicit risk-C grant
   H-07  preflight rejects a requested version absent from the reconciled index (unconditional);

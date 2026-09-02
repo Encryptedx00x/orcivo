@@ -16,8 +16,18 @@ This version:
     second writer.
   * heartbeat update / release / break are compare-and-swap on the exact lease
     bytes + leaseId + owner identity. No blind read-then-delete.
-  * Invoke-WithLease runs a background heartbeat runspace for the duration of the
-    body, and callers that hold a lease explicitly can Start/Stop one.
+
+Third-review remediation (H3-04): a malformed lease record now produces a
+DURABLE quarantine marker (`<key>.lease.QUARANTINED`). While that marker exists,
+NO New-Lease for the namespace/key can acquire - first, second, eighth,
+simultaneous, all refuse. The marker is cleared ONLY by the explicit
+Repair-QuarantinedLease recovery primitive, which validates namespace/key, proves
+there is no live owner, records who/what requested recovery and a recovery token,
+and is entirely separate from normal acquire. There is no silent auto-recovery.
+
+L3-01: heartbeats are NOT a background renewal. Renewal happens only at explicit
+Beat-Lease checkpoints; live-process identity is the load-bearing anti-theft
+rule. Start/Stop-LeaseHeartbeat are checkpoint bookkeeping, not a runspace.
 
 Namespaces (config.leases.namespaces): scheduler | taskversion | workspace | integration | ledger
 #>
@@ -33,6 +43,37 @@ function Get-LeasePath {
     if ($Key -match '^[0-9a-f]{64}$') { }        # a taskVersionId is a valid key
     elseif (-not (Test-SafeId $Key)) { throw "v2 lease: unsafe lease key '$Key'" }
     return (Join-Path $script:LeaseDir "$Namespace\$Key.lease")
+}
+
+function Get-LeaseQuarantinePath {
+    param([string]$Namespace, [string]$Key)
+    return ((Get-LeasePath $Namespace $Key) + '.QUARANTINED')
+}
+
+# H3-04: a namespace/key is quarantined iff the marker file exists. A malformed
+# marker still counts as quarantined - fail closed.
+function Test-LeaseQuarantined {
+    param([string]$Namespace, [string]$Key)
+    return (Test-Path -LiteralPath (Get-LeaseQuarantinePath $Namespace $Key))
+}
+
+function _WriteQuarantineMarker {
+    param([string]$Namespace, [string]$Key, [string]$Reason, [string]$MovedTo = '')
+    $qp = Get-LeaseQuarantinePath $Namespace $Key
+    $body = ConvertTo-CanonicalJson ([ordered]@{
+        schemaVersion = 'orcivo.orchestration.v2.lease-quarantine/1'
+        namespace     = $Namespace
+        key           = $Key
+        quarantinedAt = (Get-Date).ToUniversalTime().ToString('o')
+        reason        = $Reason
+        byProcess     = (Get-ProcessIdentity)
+        originalRecordMovedTo = $MovedTo
+        recovered     = $false
+    })
+    if (-not (New-ExclusiveFile $qp $body)) {
+        # marker already exists - already quarantined, that is fine
+    }
+    Write-V2Log "lease: QUARANTINE marker set for $Namespace/$Key ($Reason)" 'ERROR'
 }
 
 # read the lease and its exact on-disk bytes hash (for CAS). Returns
@@ -91,20 +132,31 @@ function New-Lease {
         [string]$Scope = ''
     )
     $path = Get-LeasePath $Namespace $Key
+
+    # H3-04: a durable quarantine marker blocks EVERY acquire until explicit recovery.
+    if (Test-LeaseQuarantined $Namespace $Key) {
+        return [ordered]@{ ok = $false; leaseId = $null; path = $path; broke = $false; quarantined = $true; heldBy = $null }
+    }
+
     $leaseId = New-LeaseId
     $json = (ConvertTo-CanonicalJson (_LeaseBody $leaseId $Namespace $Key $TaskVersionId $RunId $Scope))
 
     if (New-ExclusiveFile $path $json) {
+        # re-check the marker: it may have appeared between the two ops.
+        if (Test-LeaseQuarantined $Namespace $Key) {
+            [void](Invoke-FileCas -Path $path -ExpectedHash (New-StringHash $json) -NewContent '' -Delete)
+            return [ordered]@{ ok = $false; leaseId = $null; path = $path; broke = $false; quarantined = $true; heldBy = $null }
+        }
         Write-V2Log "lease: acquired $Namespace/$Key ($($leaseId.Substring(0,14)))"
         return [ordered]@{ ok = $true; leaseId = $leaseId; path = $path; broke = $false }
     }
 
     $rawInfo = Read-LeaseRaw $path
     if ($rawInfo.malformed) {
-        # NEVER grant on a malformed record. Quarantine it and fail closed.
-        $q = "$path.quarantine-$((New-Nonce).Substring(0,8))"
+        # NEVER grant on a malformed record. DURABLE quarantine + fail closed.
+        $q = "$path.malformed-$((New-Nonce).Substring(0,8))"
         try { [System.IO.File]::Move($path, $q) } catch { }
-        Write-V2Log "lease: QUARANTINED malformed lease record $Namespace/$Key (-> $(Split-Path -Leaf $q)); not granting" 'ERROR'
+        _WriteQuarantineMarker -Namespace $Namespace -Key $Key -Reason 'malformed lease record' -MovedTo (Split-Path -Leaf $q)
         return [ordered]@{ ok = $false; leaseId = $null; path = $path; broke = $false; quarantined = $true; heldBy = $null }
     }
 
@@ -162,7 +214,10 @@ function Remove-Lease {
     $info = Read-LeaseRaw $path
     if (-not (Test-Path -LiteralPath $path)) { return $true }
     if ($info.malformed) {
-        Write-V2Log "lease: refusing to release malformed $Namespace/$Key" 'WARN'
+        $q = "$path.malformed-$((New-Nonce).Substring(0,8))"
+        try { [System.IO.File]::Move($path, $q) } catch { }
+        _WriteQuarantineMarker -Namespace $Namespace -Key $Key -Reason 'malformed lease record on release' -MovedTo (Split-Path -Leaf $q)
+        Write-V2Log "lease: refusing to release malformed $Namespace/$Key - quarantined" 'WARN'
         return $false
     }
     if (-not $info.lease -or $info.lease.leaseId -ne $LeaseId) {
@@ -175,6 +230,51 @@ function Remove-Lease {
     }
     Write-V2Log "lease: release CAS lost a race for $Namespace/$Key" 'WARN'
     return $false
+}
+
+# H3-04: the ONLY way out of lease quarantine. Explicit, authenticated, audited,
+# and separate from acquire. Proves there is no live owner where it can.
+function Repair-QuarantinedLease {
+    param(
+        [Parameter(Mandatory)][string]$Namespace,
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][string]$RecoveryToken,
+        [Parameter(Mandatory)][string]$RequestedBy
+    )
+    $qp = Get-LeaseQuarantinePath $Namespace $Key
+    if (-not (Test-Path -LiteralPath $qp)) { return [ordered]@{ ok = $false; reason = 'not quarantined' } }
+    [void](Get-LeasePath $Namespace $Key)   # validates namespace + key grammar
+    if (-not $RecoveryToken -or $RecoveryToken.Length -lt 8) { return [ordered]@{ ok = $false; reason = 'recovery token missing/too short' } }
+
+    $path = Get-LeasePath $Namespace $Key
+    $noLiveOwner = $true
+    $residual = @(Get-ChildItem -LiteralPath (Split-Path $path) -Filter ((Split-Path -Leaf $path) + '*') -ErrorAction SilentlyContinue)
+    foreach ($r in $residual) {
+        if ($r.FullName -eq $qp) { continue }
+        $l = Read-Lease $r.FullName
+        if ($l -and $l.holder -and (Test-HolderLive $l.holder)) { $noLiveOwner = $false }
+    }
+    if (-not $noLiveOwner) { return [ordered]@{ ok = $false; reason = 'a residual lease record still has a LIVE owner - not safe to recover' } }
+
+    $marker = $null
+    try { $marker = Read-V2Json $qp } catch { }
+    $rec = [ordered]@{
+        schemaVersion = 'orcivo.orchestration.v2.lease-quarantine/1'
+        namespace = $Namespace; key = $Key
+        quarantinedAt = $(if ($marker) { $marker.quarantinedAt } else { $null })
+        reason = $(if ($marker) { $marker.reason } else { 'unknown (marker unreadable)' })
+        recovered = $true
+        recoveredAt = (Get-Date).ToUniversalTime().ToString('o')
+        recoveredBy = $RequestedBy
+        recoveryToken = (New-StringHash $RecoveryToken)
+        verifiedNoLiveOwner = $true
+        recoveredByProcess = (Get-ProcessIdentity)
+    }
+    $audit = Join-Path (Get-V2Dir) "leases\$Namespace\$Key.lease.recovered-$((New-Nonce).Substring(0,8)).json"
+    Write-V2JsonCanonical $audit $rec
+    foreach ($r in $residual) { try { Remove-Item -LiteralPath $r.FullName -Force } catch { } }
+    Write-V2Log "lease: RECOVERED $Namespace/$Key by $RequestedBy (audit $(Split-Path -Leaf $audit))" 'WARN'
+    return [ordered]@{ ok = $true; reason = 'recovered'; audit = $audit }
 }
 
 # Heartbeat helpers.

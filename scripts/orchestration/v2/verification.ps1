@@ -32,6 +32,47 @@ function New-VerificationDefinitionHash {
     return (New-ContentHash (_ToHashtable (Get-VerificationProfile $ProfileId)))
 }
 
+# H3-01: the CANONICAL, RESULT-INDEPENDENT invocation representation of a frozen
+# profile. Every field that determines what the verification procedure actually
+# does is here. There is no caller-supplied scriptblock anywhere in the
+# authoritative pipeline, so this hash IS the verification authority: the check
+# attestation carries it and the integrator recomputes and compares it.
+function Get-VerificationInvocation {
+    param([Parameter(Mandatory)][string]$ProfileId)
+    $p = Get-VerificationProfile $ProfileId
+    $steps = @()
+    $ord = 0
+    foreach ($chk in @($p.checks)) {
+        $ord++
+        $steps += [ordered]@{
+            ordinal          = $ord
+            stepId           = "$($chk.id)"
+            kind             = "$($chk.kind)"
+            builtin          = "$($chk.builtin)"
+            resolvedExecutable = "in-process:orcivo.v2.verification.$($chk.builtin)"
+            argv             = @()
+            cwdPolicy        = "$($p.workingDirPolicy)"
+            expectedExit     = 0
+        }
+    }
+    return [ordered]@{
+        v                = 'orcivo.orchestration.v2.verification-invocation/2'
+        profileId        = "$ProfileId"
+        profileVersion   = [int]$p.profileVersion
+        definitionHash   = (New-VerificationDefinitionHash $ProfileId)
+        workingDirPolicy = "$($p.workingDirPolicy)"
+        environmentPolicy = "$($p.environmentPolicy)"
+        environmentAllowlistHash = (New-StringHash "$($p.environmentPolicy)")
+        timeoutSec       = [int]$p.timeoutSec
+        steps            = @($steps)
+    }
+}
+
+function New-VerificationInvocationHash {
+    param([Parameter(Mandatory)][string]$ProfileId)
+    return (New-ContentHash (Get-VerificationInvocation $ProfileId))
+}
+
 function _CheckNoMergeMarkers {
     param([string]$Dir, [string[]]$ChangedFiles)
     $bad = @()
@@ -78,17 +119,17 @@ function Invoke-VerificationProfile {
         }
     }
     $pass = (@($results | Where-Object { -not $_.pass }).Count -eq 0)
-    $effective = New-ContentHash ([ordered]@{
-        v                = 'orcivo.orchestration.v2.verification-invocation/1'
-        profileId        = "$ProfileId"
-        profileVersion   = [int]$profile.profileVersion
-        definitionHash   = $defHash
-        workingDir       = 'worktree-root'
-        workingDirPolicy = "$($profile.workingDirPolicy)"
-        environmentPolicy = "$($profile.environmentPolicy)"
-        timeoutSec       = [int]$profile.timeoutSec
-        checksExecuted   = @($results | ForEach-Object { "$($_.id)" })
-    })
+    # H3-01: effectiveInvocationHash is the RESULT-INDEPENDENT canonical invocation
+    # of the frozen profile. It cannot vary with what a caller passed in, because
+    # nothing is passed in. The integrator recomputes exactly this.
+    $effective = New-VerificationInvocationHash $ProfileId
+    $executedIds = @($results | ForEach-Object { "$($_.id)" })
+    $declaredIds = @($profile.checks | ForEach-Object { "$($_.id)" })
+    if (($executedIds -join '|') -ne ($declaredIds -join '|')) {
+        # the runtime did not run exactly the frozen step list, in order -> not authoritative
+        $pass = $false
+        $results += [ordered]@{ id = 'invocation-integrity'; pass = $false; detail = "executed {$($executedIds -join ',')} != frozen definition {$($declaredIds -join ',')}" }
+    }
     return [ordered]@{
         profileId                 = "$ProfileId"
         pass                      = $pass

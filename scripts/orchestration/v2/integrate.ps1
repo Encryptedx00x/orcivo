@@ -19,7 +19,23 @@ Deterministic process, no LLM.
 
 Merge-local-only tests use Test-MergeCandidateLocally, a separate primitive that
 NEVER transitions the ledger to PUBLISHED.
+
+Third-review remediation:
+  * H3-01 - there is NO caller scriptblock. Post-integration verification re-runs
+    the DECLARATIVE frozen verification profile on the merged tree.
+  * H3-02 - a recursive secret scan over the candidate worktree + every runtime
+    artifact root runs BEFORE the push. A hit -> SECRET_LEAK_BLOCKED, no push,
+    no PUBLISHED. The finally sweep in the pipeline stays as defence in depth.
+  * Section 10 - $script:V2IntegrationTestFaults is a seam set ONLY by the
+    disposable test harness (tests/integration-faults.ps1). It is never set by
+    spine.ps1 or Invoke-SpineRun and there is no env var for it. It forces the
+    real failure branches (after-CAS push reject, ancestry failure, tree
+    mismatch) so each one has a deterministic regression.
 #>
+
+# test-only fault seam - $null in every production/normal path.
+$script:V2IntegrationTestFaults = $null
+function _fault { param([string]$Name) return ($script:V2IntegrationTestFaults -and $script:V2IntegrationTestFaults[$Name]) }
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'ledger.ps1')
@@ -73,7 +89,7 @@ function Invoke-Integration {
         [Parameter(Mandatory)][string]$Branch,
         [Parameter(Mandatory)][string]$BaseSha,           # expectedTargetSha the candidate was built on
         [Parameter(Mandatory)][string]$HeadSha,           # the immutable reviewed candidate commit
-        [scriptblock]$PostIntegrationCheck = $null
+        [string[]]$SecretScanRoots = @()                  # extra roots for the pre-publish scan
     )
     $cfg = Get-V2Config
     $target = $cfg.target.branch
@@ -123,11 +139,22 @@ function Invoke-Integration {
         }
         $candTree = (Get-GitTreeHash -Dir $WorktreeDir -Ref $HeadSha)
 
-        # 5. post-integration verification on the candidate tree (== future target tree),
-        #    BEFORE the target branch is touched, so no undo is ever needed.
-        if ($PostIntegrationCheck) {
-            $ok = & $PostIntegrationCheck $WorktreeDir
-            if (-not $ok) { return (_fail $TaskVersionId $RunId $result "post-integration check failed" 'INTEGRATION_FAILED') }
+        # 5. post-integration verification = the DECLARATIVE frozen profile, re-run
+        #    on the candidate tree (== future target tree), BEFORE the target
+        #    branch is touched. No caller scriptblock (H3-01).
+        $c = $null
+        try { $c = Get-Contract $TaskVersionId } catch { return (_fail $TaskVersionId $RunId $result "cannot load frozen contract: $($_.Exception.Message)" 'INTEGRATION_FAILED') }
+        $piv = Invoke-VerificationProfile -ProfileId $c.verificationProfile -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha
+        if (-not $piv.pass) { return (_fail $TaskVersionId $RunId $result "post-integration verification profile failed: $(@($piv.checks | Where-Object { -not $_.pass } | ForEach-Object { $_.id }) -join ', ')" 'INTEGRATION_FAILED') }
+
+        # 5b. H3-02: pre-publication recursive secret scan. CLEAN is mandatory
+        #     before anything is pushed.
+        $scanRoots = @($WorktreeDir) + @($SecretScanRoots) + @(
+            (Join-Path (Get-V2Dir) 'logs'), (Join-Path (Get-V2Dir) 'contracts'),
+            (Join-Path (Get-V2Dir) 'attestations'), (Join-Path (Get-V2Dir) 'runs'))
+        $scan = Test-TreeSecretsClean -Roots $scanRoots
+        if (-not $scan.clean) {
+            return (_fail $TaskVersionId $RunId $result "pre-publication secret scan found $($scan.hits.Count) hit(s): $((@($scan.hits) | Select-Object -First 5) -join ' ; ')" 'SECRET_LEAK_BLOCKED')
         }
 
         # 6. deterministic merge of the reviewed candidate into target.
@@ -153,7 +180,7 @@ function Invoke-Integration {
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'push-start' -ToState 'INTEGRATING' -RunId $RunId -Note 'PUSHING' | Out-Null
         Assert-SafeGitV2 @('push', 'origin', $target)
         & git -C $RepoDir push origin "HEAD:$target" 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
+        if (($LASTEXITCODE -ne 0) -or (_fault 'afterCasPushReject')) {
             return (_fail $TaskVersionId $RunId $result "git push origin $target rejected - target advanced locally but NOT published; branch preserved" 'PUSH_FAILED')
         }
         & git -C $RepoDir fetch origin --quiet 2>&1 | Out-Null
@@ -161,11 +188,11 @@ function Invoke-Integration {
         if (-not $remoteAfter) { return (_fail $TaskVersionId $RunId $result "cannot read origin/$target after push" 'PUSH_FAILED') }
         $remoteAfter = $remoteAfter.Trim()
         & git -C $RepoDir merge-base --is-ancestor $mergeCommit $remoteAfter 2>$null
-        if ($LASTEXITCODE -ne 0) {
+        if (($LASTEXITCODE -ne 0) -or (_fault 'ancestryFail')) {
             return (_fail $TaskVersionId $RunId $result "remote origin/$target does not contain the merge commit after push" 'PUSH_FAILED')
         }
         $remoteTree = (Get-GitTreeHash -Dir $RepoDir -Ref $remoteAfter)
-        if ($remoteTree -ne $candTree) {
+        if (($remoteTree -ne $candTree) -or (_fault 'treeMismatch')) {
             return (_fail $TaskVersionId $RunId $result "remote tree after push != reviewed candidate tree" 'REMOTE_DIVERGED')
         }
         $result.pushed = $true
@@ -193,6 +220,7 @@ function _fail {
     $result.status = $(switch ($LedgerState) {
         'REMOTE_DIVERGED'    { 'REMOTE_DIVERGED' }
         'PUSH_FAILED'        { 'PUSH_FAILED' }
+        'SECRET_LEAK_BLOCKED' { 'SECRET_LEAK_BLOCKED' }
         default              { 'INTEGRATION_FAILED' }
     })
     try { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'integrate-failed' -ToState $LedgerState -RunId $RunId -Note $Reason | Out-Null } catch {

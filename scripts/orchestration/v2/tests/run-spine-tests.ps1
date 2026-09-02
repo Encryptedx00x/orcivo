@@ -135,6 +135,8 @@ Check 'C-01: QUARANTINED resurrection refused'                        { ProbeOK 
 Check 'H-05: lease CAS release + PID-reuse orphan break'              { ProbeOK (New-V2Fixture) 'lease-cas-and-pidreuse' }
 Check 'H-05: LIVE owner + stale heartbeat -> second acquire FAILS'    { ProbeOK (New-V2Fixture) 'lease-live-owner-stale-heartbeat' }
 Check 'H-05: malformed lease record -> quarantined, not granted'      { ProbeOK (New-V2Fixture) 'lease-malformed-quarantine' }
+Check 'H3-04: malformed lease quarantine is STICKY (1st..8th refuse)' { ProbeOK (New-V2Fixture) 'lease-quarantine-sticky' }
+Check 'H3-04: 8 concurrent acquires on a quarantined key all refuse'  { ProbeOK (New-V2Fixture) 'lease-quarantine-concurrent' }
 Check 'H-05: heartbeat renewal is holder-only (CAS)'                  { ProbeOK (New-V2Fixture) 'lease-heartbeat-renewal' }
 Check 'H-05: 8 processes race for one lease - exactly one wins' {
     $fx = New-V2Fixture
@@ -178,6 +180,9 @@ Check 'H-03: APPROVE w/ wrong treeHash -> INCOMPLETE_REVIEW'          { ProbeOK 
 Check 'H-03: APPROVE w/ wrong specHash -> INCOMPLETE_REVIEW'          { ProbeOK (New-V2Fixture) 'review-parse' 'approve-wrong-spec' 'INCOMPLETE_REVIEW' }
 Check 'H-03: APPROVE w/ unrelated criterion id -> INCOMPLETE'         { ProbeOK (New-V2Fixture) 'review-parse' 'approve-unrelated-criterion' 'INCOMPLETE_REVIEW' }
 Check 'C-02: reviewer describing hostile spec still returns own verdict' { ProbeOK (New-V2Fixture) 'review-parse' 'spec-echo-attack' 'REQUEST_CHANGES' }
+Check 'M3-01: criteria object -> schema rejection'                    { ProbeOK (New-V2Fixture) 'schema-type-fuzz' }
+Check 'H3-03: untrusted spec/acceptance/diff transported OUT OF BAND' { ProbeOK (New-V2Fixture) 'review-prompt-transport' }
+Check 'H3-03: e2e hostile markers + embedded APPROVE -> not published' { ProbeOK (New-V2Fixture) 'pipeline-prompt-injection' }
 
 # ---- contract freeze / scope (H-06 / M-01 / M-03 / NH-01) ------------
 Check 'H-06: in-scope change -> CHANGED'                              { ProbeOK (New-V2Fixture) 'contract-compliance' 'in-scope' 'CHANGED' }
@@ -192,6 +197,16 @@ Check 'C-03: tampered acceptanceText -> Get-Contract throws'                { Pr
 Check 'C-03: swapped verification profile -> Get-Contract throws'          { ProbeOK (New-V2Fixture) 'contract-tamper' 'profile' }
 Check 'C-03: tampered contract field, stored contractHash -> throws'       { ProbeOK (New-V2Fixture) 'contract-tamper' 'contractField' }
 Check 'NH-02: verification profile content mutated after freeze -> stale'  { ProbeOK (New-V2Fixture) 'verification-profile-mutation' }
+Check 'H3-01: substituted verification invocation hash -> integration rejects' { ProbeOK (New-V2Fixture) 'verification-substitution' }
+Check 'M3-02: re-freeze validates existing contract - tampered spec'       { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'spec' }
+Check 'M3-02: re-freeze validates existing contract - tampered acceptance' { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'acceptance' }
+Check 'M3-02: re-freeze validates existing contract - swapped profile'     { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'profile' }
+Check 'M3-02: re-freeze validates existing contract - tampered gate'       { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'gate' }
+Check 'M3-02: re-freeze validates existing contract - widened scope'       { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'scope' }
+Check 'M3-02: re-freeze validates existing contract - wildcard grant'      { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'grants' }
+Check 'M3-02: re-freeze validates existing contract - contract field'      { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'contractField' }
+Check 'M3-02: re-freeze validates existing contract - forged storedHash'   { ProbeOK (New-V2Fixture) 'contract-refreeze-tamper' 'storedHash' }
+Check 'H3-05: wildcard / root / parent / broad protected grants rejected'  { ProbeOK (New-V2Fixture) 'protected-grant-strict' }
 
 # ---- attestations (C-03 / NM-01) -----------------------------------
 Check 'C-03: attestation STALE when the tree changes after check'         { ProbeOK (New-V2Fixture) 'attest-stale' 'tree' }
@@ -204,7 +219,9 @@ Check 'NM-01: old APPROVE + later REQUEST_CHANGES -> integration refused' { Prob
 Check 'H-07: dirty tree / stale index -> preflight refuses'               { ProbeOK (New-V2Fixture) 'preflight-gates' }
 Check 'H-07/#11: requested version absent from EMPTY index -> reject'      { ProbeOK (New-V2Fixture) 'preflight-absent-version' 'empty-index' }
 Check 'H-07/#11: requested version missing from index -> reject'          { ProbeOK (New-V2Fixture) 'preflight-absent-version' 'missing-task' }
-Check '#12: forged fetch observation rejected; real fetch restores'       { ProbeOK (New-V2Fixture) 'preflight-fetch-forgery' }
+Check 'M3-03: forged fetch object / NO_REMOTE rejected; real fetch restores' { ProbeOK (New-V2Fixture) 'preflight-fetch-forgery' }
+Check '#9: index gate none does not override frozen contract gate g1'     { ProbeOK (New-V2Fixture) 'preflight-contract-index-authority' }
+Check '#9: dependency removed only from the derived index -> reject'      { ProbeOK (New-V2Fixture) 'preflight-contract-index-deps' }
 Check 'C-04(partial): human gate durable + bound to specHash'            { ProbeOK (New-V2Fixture) 'human-gate-durable' }
 Check '#13: gate decision tamper detected'                               { ProbeOK (New-V2Fixture) 'gate-tampering' 'decision' }
 Check '#13: gate specHash tamper detected'                               { ProbeOK (New-V2Fixture) 'gate-tampering' 'specHash' }
@@ -245,6 +262,8 @@ Check 'C-02: e2e truncated review -> not published'                     { ProbeO
 Check 'M-05: e2e reviewer provenance is the launcher metadata, not the envelope' { ProbeOK (New-V2Fixture) 'pipeline-reviewer-provenance' }
 Check 'H-11/#15: e2e secret-crash - single-line secret never persisted' { ProbeOK (New-V2Fixture) 'pipeline-secret-crash' 'single' }
 Check 'H-11/#15: e2e secret-crash - multiline PEM never persisted'      { ProbeOK (New-V2Fixture) 'pipeline-secret-crash' 'pem' }
+Check 'H3-02: JSON password/token/DATABASE_URL redacted + scanned (one lib)' { ProbeOK (New-V2Fixture) 'secret-json-corpus' }
+Check 'H3-02: pre-publication secret gate blocks push (no PUBLISHED)'   { ProbeOK (New-V2Fixture) 'pipeline-prepublish-secret-gate' }
 
 # ---- integration (C-03 / H-04 / #6 / #7 / NM-02) -------------
 Check 'C-03: commit changed after review -> integration refuses'          { ProbeOK (New-V2Fixture) 'integration-stale-after-review' }
@@ -255,6 +274,9 @@ Check 'H-04/#7: origin advanced under us -> REMOTE_DIVERGED, ledger closed' {
 Check '#7: target moves after review -> STOP, rebuild/re-review required' {
     $fx = New-V2Fixture; ProbeOK $fx 'integration-post-review-target-movement' (New-Sibling $fx)
 }
+Check 'section 10: after-CAS push rejected -> PUSH_FAILED, never PUBLISHED'  { ProbeOK (New-V2Fixture) 'integration-fault' 'afterCasPushReject' }
+Check 'section 10: remote ancestry verification fails -> PUSH_FAILED'       { ProbeOK (New-V2Fixture) 'integration-fault' 'ancestryFail' }
+Check 'section 10: remote tree mismatch after push -> REMOTE_DIVERGED'      { ProbeOK (New-V2Fixture) 'integration-fault' 'treeMismatch' }
 
 Write-Host ""
 Write-Host ("=== {0} passed, {1} failed ===" -f $script:pass, $script:fail) -ForegroundColor $(if ($script:fail) { 'Red' } else { 'Green' })

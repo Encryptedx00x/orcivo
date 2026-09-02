@@ -20,6 +20,20 @@ V2 state lives under .orchestration/v2/ ONLY. V1 runtime state is never read her
 
 $ErrorActionPreference = 'Stop'
 
+# M3-01: a JSON parser that PRESERVES raw JSON type information. PS 5.1
+# ConvertFrom-Json unrolls single-element arrays and collapses [] to $null, so it
+# cannot tell `"findings": []` from `"findings": null` from `"findings": {}`.
+# JavaScriptSerializer keeps object[] / Dictionary / $null distinct.
+try { Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop } catch { }
+
+function ConvertFrom-JsonTyped {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Json, [int]$MaxLen = 8000000, [int]$RecursionLimit = 64)
+    $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+    $ser.MaxJsonLength = $MaxLen
+    $ser.RecursionLimit = $RecursionLimit
+    return $ser.DeserializeObject($Json)   # Dictionary<string,object> / object[] / primitive / $null
+}
+
 # ----------------------------------------------------------------------------
 # repo / namespace
 # ----------------------------------------------------------------------------
@@ -436,9 +450,14 @@ function Test-HolderLive {
 # streaming + multiline secret redaction  (H-11)
 # ----------------------------------------------------------------------------
 
-function Get-RedactionPatterns   { return @((Get-V2Config).redaction.patterns) }
+# H3-02: ONE canonical secret library. Redactor, sanitize-before-write, the
+# pre-publication scan gate and the final sweep all call Get-SecretPatterns.
+function Get-SecretPatterns       { return @((Get-V2Config).redaction.secretPatterns) }
 function Get-MultilinePatterns    { return @((Get-V2Config).redaction.multilinePatterns) }
-function Get-AllRedactionPatterns { $c = Get-V2Config; return (@($c.redaction.patterns) + @($c.redaction.scanPatterns)) }
+function Get-MultilineScanPatterns { return @((Get-V2Config).redaction.multilineScanPatterns) }
+# back-compat shims - every caller now resolves to the single library
+function Get-RedactionPatterns    { return (Get-SecretPatterns) }
+function Get-AllRedactionPatterns { return (Get-SecretPatterns) }
 
 $script:MaxRedactLine = 16384   # lines longer than this are refused, not regex'd
 
@@ -552,21 +571,42 @@ function Copy-StreamRedacted {
     return $collected.ToString()
 }
 
-# Final sweep of a finished artifact tree. One hit fails the run closed (H-11).
+# Sweep of a finished artifact tree with the CANONICAL secret library (H3-02).
+# One hit fails the run closed (H-11). Also the pre-publication gate primitive.
 function Test-ArtifactsClean {
     param([string]$Root)
-    $cfg = Get-V2Config
     $hits = @()
     if (-not (Test-Path $Root)) { return [ordered]@{ clean = $true; hits = @() } }
+    $linePats = Get-SecretPatterns
+    $mlPats   = Get-MultilineScanPatterns
     foreach ($f in (Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue)) {
         $txt = ''
         try { $txt = Get-Content -Raw -LiteralPath $f.FullName -ErrorAction Stop } catch { continue }
         if ($null -eq $txt) { continue }
-        foreach ($pat in $cfg.redaction.scanPatterns) {
+        foreach ($pat in $linePats) {
+            try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
+                $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
+            } } catch { }
+        }
+        foreach ($pat in $mlPats) {
             try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
                 $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
             } } catch { }
         }
+    }
+    return [ordered]@{ clean = ($hits.Count -eq 0); hits = @($hits) }
+}
+
+# H3-02: recursive pre-publication scan over EVERY candidate/runtime/artifact
+# root. CLEAN is required before integration/push. Uses the same canonical
+# library as the redactor - not a smaller list.
+function Test-TreeSecretsClean {
+    param([string[]]$Roots)
+    $hits = @()
+    foreach ($r in (@($Roots) | Where-Object { $_ } | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $r)) { continue }
+        $s = Test-ArtifactsClean -Root $r
+        if (-not $s.clean) { $hits += $s.hits }
     }
     return [ordered]@{ clean = ($hits.Count -eq 0); hits = @($hits) }
 }
@@ -800,14 +840,17 @@ function Get-GitChangedFiles {
 # H-07 / #12: perform a REAL fetch and return a structured observation that
 # preflight binds to. Not a timestamp.
 function Invoke-GitFetchProven {
-    param([string]$Dir, [string]$Remote = 'origin', [string]$Target = 'main')
+    param([string]$Dir, [string]$Remote = 'origin', [string]$Target = 'main', [string]$Nonce = '')
+    if (-not $Nonce) { $Nonce = (New-Nonce) }
     $beforeLocal  = (Get-GitHeadV2 $Dir)
     $hasRemote = [bool](& git -C $Dir remote 2>$null)
     if (-not $hasRemote) {
+        # M3-03: NO_REMOTE is a real failure, not a dispatch path.
         return [ordered]@{
             performed = $false; remote = $Remote; target = $Target
-            beforeSHA = $beforeLocal; observedRemoteSHA = $null
+            beforeSHA = $beforeLocal; beforeRemoteSHA = $null; observedRemoteSHA = $null
             at = (Get-Date).ToUniversalTime().ToString('o')
+            nonce = $Nonce
             invocation = "git -C <dir> remote (none)"
             result = 'NO_REMOTE'
         }
@@ -822,6 +865,7 @@ function Invoke-GitFetchProven {
         beforeRemoteSHA = $(if ($beforeRemote) { $beforeRemote.Trim() } else { $null })
         observedRemoteSHA = $(if ($afterRemote) { $afterRemote.Trim() } else { $null })
         at = (Get-Date).ToUniversalTime().ToString('o')
+        nonce = $Nonce
         invocation = "git -C $Dir fetch $Remote --prune"
         result = $(if ($code -eq 0) { 'OK' } else { "FETCH_EXIT_$code" })
     }

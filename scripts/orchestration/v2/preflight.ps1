@@ -20,6 +20,10 @@ Second-review remediation:
 
 $script:V2State = Join-Path (Get-V2Dir) 'state'
 
+# M3-03: in-process fetch authority. A forged JSON file is NEVER authority.
+$script:LastPreflightFetch     = $null
+$script:PreflightAuthorityToken = $null
+
 function Get-V2IndexPath { return (Join-Path $script:V2State 'index.v2.json') }
 
 function Get-V2Index {
@@ -28,14 +32,51 @@ function Get-V2Index {
     return (Read-V2Json $p)
 }
 
-# #12: run a REAL fetch and persist the structured observation preflight binds to.
+# #12 / M3-03: run a REAL fetch and keep the observation as IN-PROCESS authority.
+# The persisted last-fetch.json is audit-only and is never read back as proof.
 function Invoke-PreflightFetch {
     param([string]$RepoDir = '', [string]$Remote = 'origin')
     if (-not $RepoDir) { $RepoDir = (Get-RepoRoot) }
     $cfg = Get-V2Config
-    $obs = Invoke-GitFetchProven -Dir $RepoDir -Remote $Remote -Target $cfg.target.branch
+    $token = (New-Nonce)
+    $obs = Invoke-GitFetchProven -Dir $RepoDir -Remote $Remote -Target $cfg.target.branch -Nonce $token
+    $obs.authorityToken = $token
+    $obs.observedAtTicks = [datetime]::UtcNow.Ticks
+    $obs.repoDir = ([System.IO.Path]::GetFullPath($RepoDir)).TrimEnd('\')
+    $script:LastPreflightFetch      = $obs
+    $script:PreflightAuthorityToken = $token
+    $obs.auditNote = 'AUDIT ONLY - not authority (M3-03)'
     Write-V2Json (Join-Path $script:V2State 'last-fetch.json') $obs
     return $obs
+}
+
+# the frozen fetch requirement, checked against the in-process authority object.
+function Test-FetchAuthority {
+    param([string]$RepoDir, $Cfg)
+    $fail = @()
+    $obs = $script:LastPreflightFetch
+    if ($null -eq $obs) { return @("no in-process proven git fetch this session (call Invoke-PreflightFetch immediately before Test-Preflight)") }
+    if (-not $script:PreflightAuthorityToken -or "$($obs.authorityToken)" -ne "$($script:PreflightAuthorityToken)") { return @("fetch observation is not the one this session minted (forged / stale authority token)") }
+    if ("$($obs.nonce)" -ne "$($obs.authorityToken)") { $fail += "fetch nonce != authority token" }
+    if ($obs.performed -ne $true) { $fail += "fetch not performed (result $($obs.result)) - NO_REMOTE is not a dispatch path (M3-03)" }
+    if ("$($obs.result)" -ne 'OK') { $fail += "fetch result is '$($obs.result)', not OK" }
+    if ("$($obs.remote)" -ne 'origin') { $fail += "fetch remote '$($obs.remote)' != origin" }
+    if ("$($obs.target)" -ne "$($Cfg.target.branch)") { $fail += "fetch target '$($obs.target)' != '$($Cfg.target.branch)'" }
+    $localHead = (Get-GitHeadV2 $RepoDir)
+    if ("$($obs.beforeSHA)" -ne $localHead) { $fail += "fetch beforeSHA '$($obs.beforeSHA)' != current local HEAD '$localHead'" }
+    if ([string]::IsNullOrWhiteSpace([string]$obs.observedRemoteSHA)) { $fail += "fetch produced no observed remote SHA" }
+    else {
+        $localTarget = (Get-GitHeadV2 $RepoDir)
+        if ("$($obs.observedRemoteSHA)" -ne $localTarget) { $fail += "observed remote $($Cfg.target.branch) ($([string]$obs.observedRemoteSHA)) != local ($localTarget)" }
+    }
+    if (-not $obs.observedAtTicks) { $fail += "fetch observation has no in-process timestamp" }
+    else {
+        $age = ([datetime]::UtcNow.Ticks - [long]$obs.observedAtTicks) / 10000000.0
+        if ($age -gt [int]$Cfg.target.requireFetchWithinSec) { $fail += "in-process fetch is stale ($([int]$age)s)" }
+    }
+    $rd = ([System.IO.Path]::GetFullPath($RepoDir)).TrimEnd('\')
+    if ("$($obs.repoDir)" -ne $rd) { $fail += "fetch was observed for a different repo dir" }
+    return @($fail)
 }
 
 function Test-Preflight {
@@ -60,22 +101,8 @@ function Test-Preflight {
     $planDirty = @(& git -C $RepoDir status --porcelain=v1 -- .planning CLAUDE.md AGENTS.md)
     if ($planDirty.Count -gt 0) { $fail += "uncommitted planning/policy changes ($($planDirty.Count) path(s))" }
 
-    # 4. proven remote fetch freshness (#12)
-    $lf = Join-Path $script:V2State 'last-fetch.json'
-    if (-not (Test-Path $lf)) { $fail += "no proven git fetch (call Invoke-PreflightFetch)" }
-    else {
-        $obs = Read-V2Json $lf
-        if ("$($obs.result)" -notin @('OK','NO_REMOTE')) { $fail += "last fetch did not succeed ($($obs.result))" }
-        if (-not $obs.at) { $fail += "fetch observation has no timestamp" }
-        else {
-            $age = ((Get-Date).ToUniversalTime() - [datetime]::Parse($obs.at).ToUniversalTime()).TotalSeconds
-            if ($age -gt [int]$cfg.target.requireFetchWithinSec) { $fail += "proven fetch is stale ($([int]$age)s)" }
-        }
-        if ($obs.result -eq 'OK' -and $obs.observedRemoteSHA) {
-            $localTarget = (Get-GitHeadV2 $RepoDir)
-            if ($obs.observedRemoteSHA -ne $localTarget) { $fail += "observed remote $($cfg.target.branch) ($($obs.observedRemoteSHA.Substring(0,10))) != local ($($localTarget.Substring(0,10)))" }
-        }
-    }
+    # 4. proven remote fetch freshness - IN-PROCESS authority only (#12 / M3-03)
+    $fail += @(Test-FetchAuthority -RepoDir $RepoDir -Cfg $cfg)
 
     # 5. index reconciled + pinned to this HEAD
     $idx = $null
@@ -92,11 +119,25 @@ function Test-Preflight {
         $fail += "no reconciled index - cannot verify the requested taskVersionId exists (reject)"
     }
 
-    # 6. contract frozen + consistent with the index
+    # 6. contract frozen + consistent with the index. A derived index can NEVER
+    #    weaken the frozen contract (#9): taskId, gate and dependencies must match.
     $contract = $null
     try { $contract = Get-Contract $TaskVersionId } catch { $fail += $_.Exception.Message }
     if ($contract -and $idx -and $contract.planningHead -ne $idx.planningHead) {
         $fail += "contract planningHead != index planningHead (spec frozen against a different tree)"
+    }
+    if ($contract -and $me) {
+        if ("$($me.taskId)" -ne "$($contract.taskId)") { $fail += "index taskId '$($me.taskId)' != frozen contract taskId '$($contract.taskId)'" }
+        $idxGate = $(if ([string]::IsNullOrWhiteSpace([string]$me.gate)) { 'none' } else { [string]$me.gate })
+        $cGate   = $(if ([string]::IsNullOrWhiteSpace([string]$contract.gate)) { 'none' } else { [string]$contract.gate })
+        if ($idxGate -ne $cGate) {
+            $fail += "STALE/INCONSISTENT AUTHORITY: index gate '$idxGate' != frozen contract gate '$cGate' - a derived index cannot add or drop a gate; reconcile / re-freeze required"
+        }
+        $idxDeps = @(@($me.deps) | Where-Object { $_ } | ForEach-Object { [string]$_ } | Sort-Object -Unique)
+        $cDeps   = @(@($contract.dependencies) | Where-Object { $_ } | ForEach-Object { [string]$_ } | Sort-Object -Unique)
+        if (($idxDeps -join '|') -ne ($cDeps -join '|')) {
+            $fail += "STALE/INCONSISTENT AUTHORITY: index dependencies {$($idxDeps -join ',')} != frozen contract dependencies {$($cDeps -join ',')} - a derived index cannot remove a dependency"
+        }
     }
 
     # 7. ledger: exactly-once + not corrupt

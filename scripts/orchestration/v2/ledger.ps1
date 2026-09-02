@@ -38,7 +38,7 @@ $script:Transitions = @{
     'CHECKING'      = @('REVIEWING', 'RUNNING', 'FAILED', 'QUARANTINED')
     'REVIEWING'     = @('APPROVED', 'NO_CHANGE_ACCEPTED', 'RUNNING', 'WAITING_HUMAN', 'FAILED', 'QUARANTINED')
     'APPROVED'      = @('INTEGRATING', 'FAILED', 'QUARANTINED')
-    'INTEGRATING'   = @('INTEGRATING', 'PUBLISHED', 'PUSH_FAILED', 'REMOTE_DIVERGED', 'INTEGRATION_FAILED', 'FAILED', 'QUARANTINED')
+    'INTEGRATING'   = @('INTEGRATING', 'PUBLISHED', 'PUSH_FAILED', 'REMOTE_DIVERGED', 'INTEGRATION_FAILED', 'SECRET_LEAK_BLOCKED', 'FAILED', 'QUARANTINED')
     'PUBLISHED'          = @()   # terminal
     'NO_CHANGE_ACCEPTED' = @()   # terminal (M-03)
     'WAITING_HUMAN' = @('DISPATCHED', 'QUARANTINED', 'FAILED')     # resume ONLY via an explicit gate approval (preflight-checked)
@@ -46,10 +46,11 @@ $script:Transitions = @{
     'PUSH_FAILED'       = @('READY', 'QUARANTINED')
     'REMOTE_DIVERGED'   = @('READY', 'QUARANTINED')
     'INTEGRATION_FAILED'= @('READY', 'QUARANTINED')
+    'SECRET_LEAK_BLOCKED' = @('QUARANTINED')   # a leak needs human review before any retry
     'QUARANTINED'   = @()        # terminal
 }
 $script:TerminalStates    = @('PUBLISHED', 'NO_CHANGE_ACCEPTED', 'QUARANTINED')
-$script:NonPublishedTerminal = @('NO_CHANGE_ACCEPTED', 'QUARANTINED', 'PUSH_FAILED', 'REMOTE_DIVERGED', 'INTEGRATION_FAILED', 'FAILED')
+$script:NonPublishedTerminal = @('NO_CHANGE_ACCEPTED', 'QUARANTINED', 'PUSH_FAILED', 'REMOTE_DIVERGED', 'INTEGRATION_FAILED', 'SECRET_LEAK_BLOCKED', 'FAILED')
 
 function Test-LedgerTransition {
     param([string]$From, [string]$To)

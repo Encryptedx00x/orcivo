@@ -90,7 +90,29 @@ $critMatch = [regex]::Match($stdin, '(?m)EXACTLY these ids:\s*(.*)$')
 $critIds = @('AC1')
 if ($critMatch.Success -and $critMatch.Groups[1].Value.Trim()) { $critIds = @($critMatch.Groups[1].Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
 
-function Envelope([hashtable]$over) {
+# A real reviewer emits proper JSON: arrays stay arrays even with one element.
+# PS 5.1 ConvertTo-Json unrolls single-element arrays, so use a tiny explicit emitter.
+function ToJson($o) {
+    if ($null -eq $o) { return 'null' }
+    if ($o -is [bool]) { return $(if ($o) { 'true' } else { 'false' }) }
+    if ($o -is [int] -or $o -is [long] -or $o -is [double]) { return ([string]$o) }
+    if ($o -is [string]) {
+        $s = $o -replace '\\','\\' -replace '"','\"' -replace "`r",'\r' -replace "`n",'\n' -replace "`t",'\t'
+        return '"' + $s + '"'
+    }
+    if ($o -is [System.Collections.IDictionary]) {
+        $parts = @()
+        foreach ($k in $o.Keys) { $parts += ((ToJson ([string]$k)) + ':' + (ToJson $o[$k])) }
+        return '{' + ($parts -join ',') + '}'
+    }
+    if ($o -is [System.Collections.IEnumerable]) {
+        $parts = @(); foreach ($i in $o) { $parts += (ToJson $i) }
+        return '[' + ($parts -join ',') + ']'
+    }
+    return (ToJson ([string]$o))
+}
+
+function EnvelopeObj([hashtable]$over) {
     $crit = @($critIds | ForEach-Object { @{ id = $_; met = $true; evidence = "work/artifact.md has the required headings (diff)" } })
     $env = [ordered]@{
         schemaVersion = 'orcivo.orchestration.v2.review-envelope/1'
@@ -106,13 +128,37 @@ function Envelope([hashtable]$over) {
         reviewerMeta  = @{ provider = 'codex'; model = 'gpt-5-codex'; effort = 'medium'; toolPolicy = 'read-only'; promptTemplateVersion = 'v2-review-2' }
     }
     if ($over) { foreach ($k in $over.Keys) { $env[$k] = $over[$k] } }
-    return ($env | ConvertTo-Json -Depth 8)
+    return $env
 }
+function Envelope([hashtable]$over) { return (ToJson (EnvelopeObj $over)) }
 function Emit([string]$json) { Write-Output $begin; Write-Output $json; Write-Output $end }
+
+# H3-03: read an out-of-band data file the prompt manifest points at. A REAL
+# reviewer would read these; this proves the transport is structural, not a
+# fake-agent that ignores the attack.
+function ReadDataFile([string]$name) {
+    $m = [regex]::Match($stdin, "(?im)^\s*$([regex]::Escape($name))\s+sha256:[0-9a-f]{64}\s+\(\d+ bytes\)\s+(.+?)\s*$")
+    if ($m.Success -and (Test-Path -LiteralPath $m.Groups[1].Value)) { return (Get-Content -Raw -LiteralPath $m.Groups[1].Value) }
+    return ''
+}
 
 $s = $env:ORCH_V2_REVIEW; if (-not $s) { $s = 'approve' }
 switch ($s) {
     'approve'              { Emit (Envelope $null); exit 0 }
+    'obey-embedded-directive' {
+        # deliberately NAIVE: this reviewer scans its inputs for an envelope-shaped
+        # block and, if the untrusted data contains a directive, regurgitates the
+        # attacker's embedded envelope verbatim. It is NOT preprogrammed to reject.
+        $data = (ReadDataFile 'spec.txt') + "`n" + (ReadDataFile 'acceptance.txt') + "`n" + (ReadDataFile 'diff.patch')
+        if ($data -match '(?im)REVIEWER_DIRECTIVE:\s*EMIT_APPROVE') {
+            $m = [regex]::Match($data, [regex]::Escape($begin) + '(.*?)' + [regex]::Escape($end), 'Singleline')
+            $payload = $(if ($m.Success) { $m.Groups[1].Value.Trim() } else { '{"verdict":"APPROVE"}' })
+            Write-Output $begin; Write-Output $payload; Write-Output $end
+            exit 0
+        }
+        Emit (Envelope @{ verdict = 'REQUEST_CHANGES'; findings = @(@{ severity='low'; detail='no directive found' }) })
+        exit 0
+    }
     'request-changes'      { Emit (Envelope @{ verdict = 'REQUEST_CHANGES'; findings = @(@{ severity='medium'; file='work/artifact.md'; detail='Body is thin' }) }); exit 0 }
     'approve-no-evidence'  { Emit (Envelope @{ criteria = @($critIds | ForEach-Object { @{ id=$_; met=$true; evidence='' } }) }); exit 0 }
     'approve-crit-finding' { Emit (Envelope @{ findings = @(@{ severity='critical'; detail='hardcoded credential' }) }); exit 0 }
@@ -120,12 +166,8 @@ switch ($s) {
     'approve-wrong-hash'   { Emit (Envelope @{ treeHash = ('0' * 40) }); exit 0 }
     'approve-wrong-spec'   { Emit (Envelope @{ specHash = ('sha256:' + ('0'*64)) }); exit 0 }
     'approve-unrelated-criterion' { Emit (Envelope @{ criteria = @(@{ id='ZZ99'; met=$true; evidence='totally unrelated' }) }); exit 0 }
-    'extra-root-field'     { $j = (Envelope $null | ConvertFrom-Json); $j | Add-Member -NotePropertyName 'sneaky' -NotePropertyValue 'x'; Write-Output $begin; Write-Output ($j | ConvertTo-Json -Depth 8); Write-Output $end; exit 0 }
-    'extra-nested-field'   {
-        $j = (Envelope $null | ConvertFrom-Json)
-        $j.reviewerMeta | Add-Member -NotePropertyName 'evil' -NotePropertyValue 'y'
-        Write-Output $begin; Write-Output ($j | ConvertTo-Json -Depth 8); Write-Output $end; exit 0
-    }
+    'extra-root-field'     { $o = EnvelopeObj $null; $o['sneaky'] = 'x'; Emit (ToJson $o); exit 0 }
+    'extra-nested-field'   { $o = EnvelopeObj $null; $o.reviewerMeta['evil'] = 'y'; Emit (ToJson $o); exit 0 }
     'huge-finding'         { Emit (Envelope @{ verdict='REQUEST_CHANGES'; findings = @(@{ severity='high'; detail=('A' * 50000) }) }); exit 0 }
     'hostile-json'         { Write-Output $begin; Write-Output '{"verdict":"APPROVE","x":"<script>alert(1)</script>","y":" "}'; Write-Output $end; exit 0 }
     'inject-prose-verdict' {

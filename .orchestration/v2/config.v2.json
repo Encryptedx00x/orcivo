@@ -15,7 +15,7 @@
     "hashChainVersion": "orcivo.orchestration.v2.ledger-event/2"
   },
   "contract": {
-    "$comment": "H-06/M-01: an empty declaredScope FAILS CLOSED (no changed file is in scope). An unrestricted executor needs the explicit risk-C grant 'unrestrictedScope', which is a different thing from [].",
+    "$comment": "H-06/M-01: an empty declaredScope FAILS CLOSED (no changed file is in scope). An unrestricted executor needs the explicit risk-C grant 'unrestrictedScope', which is a different thing from []. H3-05: a protectedPathGrant MUST be an exact canonical member of grantableProtectedPrefixes - no globs, no root, no parent, no 'whole .planning'. A task can never invent a new protected prefix.",
     "protectedPaths": [
       ".planning/",
       ".orchestration/",
@@ -29,7 +29,17 @@
     ],
     "authoritativeAcceptanceGlobs": ["**/*.isolation.spec.ts", "prisma/schema.prisma"],
     "protectedPathElevatedRisks": ["C"],
-    "emptyScopeFailsClosed": true
+    "emptyScopeFailsClosed": true,
+    "grantableProtectedPrefixes": [
+      ".planning/reviews/",
+      ".planning/phases/",
+      ".orchestration/v2/state/"
+    ]
+  },
+  "preflight": {
+    "$comment": "M3-03: the fetch observation is in-process authority only. Invoke-PreflightFetch mints a session token; Test-Preflight requires the exact in-memory object, performed=true, exit 0, correct remote/target/beforeSHA, a non-empty freshly-observed remote SHA, and NO 'NO_REMOTE' dispatch path. A writable last-fetch.json is audit-only and never authority. #9: the derived index entry must agree with the frozen contract on taskId, gate and dependencies - a derived index can never weaken a frozen contract.",
+    "requireInProcessFetchAuthority": true,
+    "rejectNoRemoteDispatch": true
   },
   "review": {
     "schemaVersion": "orcivo.orchestration.v2.review-envelope/1",
@@ -133,41 +143,31 @@
   "redaction": {
     "maxEnvLikeLines": 6,
     "replacement": "[REDACTED]",
-    "$comment": "H-11: `patterns` redact (streaming, line + multiline buffered); `multilinePatterns` need a state buffer (PEM); `scanPatterns` are the final artifact sweep. Redactor and scanner share this library.",
-    "patterns": [
-      "(?im)^\\s*(authorization|proxy-authorization)\\s*:\\s*.+$",
-      "(?i)authorization\\s*[:=]\\s*\\S+",
-      "(?i)bearer\\s+[A-Za-z0-9._~+/-]{8,}=*",
-      "(?im)^\\s*(set-)?cookie\\s*:\\s*.+$",
-      "(?i)(cookie|set-cookie)\\s*[:=]\\s*\\S+",
-      "(?i)([A-Z0-9_]*(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|session)[A-Z0-9_]*)\\s*[:=]\\s*\\S+",
-      "(?i)\\b(password|passwd|pwd)\\b\\s*[:=]\\s*\\S+",
-      "(?i)database_url\\s*[:=]\\s*\\S+",
-      "(?i)[a-z][a-z0-9+.-]*://[^\\s:/@]+:[^\\s:/@]+@[^\\s/]+",
-      "(?im)^\\s*(export\\s+)?[A-Z][A-Z0-9_]{2,}\\s*=\\s*.+$",
-      "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*",
-      "sk-[A-Za-z0-9_-]{16,}",
-      "gh[pousr]_[A-Za-z0-9]{20,}",
-      "xox[baprs]-[A-Za-z0-9-]{10,}",
-      "AKIA[0-9A-Z]{16}",
-      "AIza[0-9A-Za-z_-]{30,}",
+    "$comment": "H3-02: ONE canonical secret library. `secretPatterns` is used identically by the streaming redactor (Protect-Line), the sanitize-before-write path, the pre-publication scan gate AND the final artifact sweep. `multilinePatterns` is the stateful PEM buffer. Every value-capturing pattern includes its key/prefix in the match so a `[REDACTED]` replacement removes the trigger and a redacted artifact scans clean.",
+    "secretPatterns": [
+      "(?i)\"[A-Za-z0-9_. -]{0,40}(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|session[_-]?key|database[_-]?url|connection[_-]?string|authorization)[A-Za-z0-9_. -]{0,40}\"[ \\t]*:[ \\t]*\"[^\"]+\"",
+      "(?im)^[ \\t]*(export[ \\t]+)?[A-Za-z0-9_. -]{0,40}(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|database[_-]?url|connection[_-]?string)[A-Za-z0-9_]{0,40}[ \\t]*[:=][ \\t]*[^\\r\\n]+$",
+      "(?im)^[ \\t]*(export[ \\t]+)?[A-Z][A-Z0-9_]{2,}[ \\t]*=[ \\t]*[^\\r\\n]+$",
+      "(?im)^[ \\t]*(proxy-)?authorization[ \\t]*:[ \\t]*[^\\r\\n]+$",
+      "(?i)\\bauthorization\\b[ \\t]*[:=][ \\t]*\\S+",
+      "(?i)\\bbearer[ \\t]+[A-Za-z0-9._~+/-]{8,}=*",
+      "(?im)^[ \\t]*(set-)?cookie[ \\t]*:[ \\t]*[^\\r\\n]+$",
+      "(?i)\\b(set-)?cookie[ \\t]*[:=][ \\t]*\\S+",
+      "(?i)[a-z][a-z0-9+.\\-]*://[^\\s:/@]+:[^\\s:/@]+@[^\\s/]+",
+      "eyJ[A-Za-z0-9_-]{6,}\\.[A-Za-z0-9_-]{6,}\\.[A-Za-z0-9_-]*",
+      "\\bsk-[A-Za-z0-9_-]{16,}",
+      "\\bgh[pousr]_[A-Za-z0-9]{20,}",
+      "\\bxox[baprs]-[A-Za-z0-9-]{10,}",
+      "\\bAKIA[0-9A-Z]{16}\\b",
+      "\\bAIza[0-9A-Za-z_-]{30,}",
       "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}"
     ],
     "multilinePatterns": [
       "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
       "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\\s\\S]{0,4000}"
     ],
+    "multilineScanPatterns": ["-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"],
     "multilineTriggers": ["-----BEGIN "],
-    "multilineBufferLines": 200,
-    "scanPatterns": [
-      "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+",
-      "sk-[A-Za-z0-9_-]{16,}",
-      "gh[pousr]_[A-Za-z0-9]{20,}",
-      "AKIA[0-9A-Z]{16}",
-      "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
-      "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}",
-      "(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]{16,}",
-      "(?i)database_url\\s*[:=]\\s*\\S+"
-    ]
+    "multilineBufferLines": 200
   }
 }

@@ -60,9 +60,10 @@ function Invoke-SpineRun {
     param(
         [Parameter(Mandatory)][string]$TaskVersionId,
         [Parameter(Mandatory)][string]$RepoDir,
-        [scriptblock]$CheckBlock = $null,
         [string]$NoChangeEvidenceFile = ''
     )
+    # H3-01: the authoritative pipeline accepts NO caller scriptblock. Verification
+    # is exclusively the declarative frozen profile.
     Assert-DisposableRoot -RepoDir $RepoDir -Why 'run the spine pipeline'
 
     $cfg = Get-V2Config
@@ -166,7 +167,6 @@ function Invoke-SpineRun {
                 $res.stage = 'check'
                 $vp = Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $wt -BaseSha $candBase -HeadSha $candHead
                 $checkPass = $vp.pass
-                if ($CheckBlock) { $checkPass = $checkPass -and [bool](& $CheckBlock $wt) }
                 $bindings = Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $wt -BaseSha $candBase -HeadSha $candHead
                 New-Attestation -Kind check -TaskVersionId $TaskVersionId -RunId $runId -Bindings $bindings `
                     -Result $(if ($checkPass) { 'PASS' } else { 'FAIL' }) `
@@ -183,7 +183,8 @@ function Invoke-SpineRun {
                 $diff = (& git -C $wt diff --no-color "$candBase..$candHead") -join "`n"
                 $changed = @(Get-GitChangedFiles -Dir $wt -BaseSha $candBase -HeadSha $candHead)
                 $critIds = @($contract.acceptanceCriteriaIds)
-                $rprompt = Build-ReviewPrompt -TaskVersionId $TaskVersionId -Head $candHead -TreeHash $bindings.treeHash `
+                $rDataDir = Join-Path $runDir 'review-data'
+                $rprompt = Build-ReviewPrompt -DataDir $rDataDir -TaskVersionId $TaskVersionId -Head $candHead -TreeHash $bindings.treeHash `
                     -DiffHash $bindings.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText `
                     -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "verdict=PASS profile=$($contract.verificationProfile)" `
                     -CriteriaIds $critIds
@@ -223,7 +224,7 @@ function Invoke-SpineRun {
                 # 11. integration (H-04 / C-03 / #6 / #7)
                 $res.stage = 'integrate'
                 $ir = Invoke-Integration -TaskVersionId $TaskVersionId -RunId $runId -RepoDir $RepoDir -WorktreeDir $wt `
-                    -Branch $branch -BaseSha $candBase -HeadSha $candHead -PostIntegrationCheck $CheckBlock
+                    -Branch $branch -BaseSha $candBase -HeadSha $candHead -SecretScanRoots @($runDir, $wt)
                 $res.details.integration = $ir
                 $res.status = $ir.status
                 $res.reason = $ir.reason

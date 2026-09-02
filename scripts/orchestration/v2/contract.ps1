@@ -28,7 +28,7 @@ $script:ContractContentKeys = @(
     'schemaVersion','taskVersionId','taskId','planningHead',
     'specText','acceptanceText','specHash','acceptanceHash','configHash',
     'verificationProfile','verificationProfileHash','verificationDefinitionHash',
-    'declaredScope','protectedPathGrants','risk','gate','acceptanceCriteriaIds','bindings'
+    'declaredScope','protectedPathGrants','dependencies','risk','gate','acceptanceCriteriaIds','bindings'
 )
 
 function Get-ContractPath {
@@ -54,7 +54,25 @@ function Get-AcceptanceCriteriaIds {
 # Canonicalise every field to a fixed shape so the hash is identical whether it
 # comes from the freeze-time [ordered] object or from JSON round-trip (PS 5.1
 # unrolls single-element arrays and turns [] into "" / {}).
-$script:ContractArrayKeys = @('declaredScope','protectedPathGrants','acceptanceCriteriaIds')
+$script:ContractArrayKeys = @('declaredScope','protectedPathGrants','dependencies','acceptanceCriteriaIds')
+
+# H3-05: a protected-path grant must be an EXACT canonical member of the
+# orchestrator allowlist. No globs, no root, no parent, no bare drive, no
+# "whole .planning". Returns the canonical key on success; throws otherwise.
+function Assert-GrantAllowed {
+    param([string]$Grant, [string[]]$Allowlist)
+    if ($Grant -eq 'unrestrictedScope') { return $Grant }   # cannot reach protected paths anyway
+    if ([string]::IsNullOrWhiteSpace($Grant)) { throw "v2 contract H3-05: empty protected-path grant" }
+    if ($Grant -match '[*?]') { throw "v2 contract H3-05: glob protected-path grant '$Grant' rejected" }
+    if ($Grant -match '(^|[/\\])\.\.([/\\]|$)') { throw "v2 contract H3-05: parent-traversal grant '$Grant' rejected" }
+    $gk = ConvertTo-RelPathKey $Grant
+    if (-not $gk) { throw "v2 contract H3-05: grant '$Grant' canonicalises to nothing (root/./.. rejected)" }
+    $canon = @($Allowlist | ForEach-Object { ConvertTo-RelPathKey $_ })
+    if ($canon -cnotcontains $gk) {
+        throw "v2 contract H3-05: protected-path grant '$Grant' is not an exact member of the orchestrator allowlist [$($Allowlist -join ', ')]. A task can never invent a protected prefix."
+    }
+    return $gk
+}
 function _ComputeContentHash {
     param($Obj)
     $get = { param($k) if ($Obj -is [System.Collections.IDictionary]) { return $Obj[$k] } else { return $Obj.$k } }
@@ -83,6 +101,7 @@ function Freeze-Contract {
         [Parameter(Mandatory)][string]$AcceptanceText,
         [string[]]$DeclaredScope = @(),
         [string[]]$ProtectedPathGrants = @(),
+        [string[]]$Dependencies = @(),
         [ValidateSet('A','B','C')][string]$Risk = 'B',
         [string]$Gate = 'none',
         [ValidateSet('A','B','C')][string]$VerificationProfile = 'B',
@@ -113,6 +132,13 @@ function Freeze-Contract {
     if (($grants -contains 'unrestrictedScope') -and $Risk -notin @($cfg.contract.protectedPathElevatedRisks)) {
         throw "v2 contract H-06: 'unrestrictedScope' is a risk-elevated grant"
     }
+    # H3-05: every explicit grant must be an exact allowlist member. Risk C alone
+    # is NOT a blank cheque.
+    $allow = @($cfg.contract.grantableProtectedPrefixes)
+    foreach ($g in $grants) { [void](Assert-GrantAllowed -Grant $g -Allowlist $allow) }
+
+    $deps = @($Dependencies | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { [string]$_ })
+    foreach ($d in $deps) { if ($d -notmatch '^[0-9a-f]{64}$') { throw "v2 contract #9: dependency '$d' is not a taskVersionId" } }
 
     $contract = [ordered]@{
         schemaVersion       = 'orcivo.orchestration.v2.contract/2'
@@ -129,6 +155,7 @@ function Freeze-Contract {
         verificationDefinitionHash = $defHash
         declaredScope       = @($DeclaredScope)
         protectedPathGrants = $grants
+        dependencies        = @($deps)
         risk                = $Risk
         gate                = $Gate
         acceptanceCriteriaIds = @($critIds)
@@ -143,14 +170,17 @@ function Freeze-Contract {
 
     $path = Get-ContractPath $tvid
     if (Test-Path $path) {
-        $existing = Read-V2Json $path
+        # M3-02: an existing contract is put through the FULL recompute-on-read
+        # validation (Get-Contract) BEFORE it can be returned. A tampered contract
+        # never leaves this function as an authoritative object.
+        $existing = Get-Contract $tvid
         if ($existing.contractHash -ne $contract.contractHash) {
             throw "v2 contract NH-01: a DIFFERENT contract is already frozen for $tvid. Contracts are immutable; a content change must produce a new taskVersionId."
         }
-        return $existing        # idempotent: same content -> same contract
+        return $existing        # idempotent: same content, fully re-validated
     }
     if (-not (New-ExclusiveFile $path (ConvertTo-CanonicalJson $contract))) {
-        $existing = Read-V2Json $path
+        $existing = Get-Contract $tvid
         if ($existing.contractHash -ne $contract.contractHash) { throw "v2 contract NH-01: lost a freeze race with a different contract for $tvid" }
         return $existing
     }
@@ -255,7 +285,17 @@ function Test-ContractCompliance {
     $declared = @($c.declaredScope | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $grants   = @($c.protectedPathGrants | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $unrestricted   = ($grants -contains 'unrestrictedScope')
-    $explicitGrants = @($grants | Where-Object { $_ -ne 'unrestrictedScope' })   # real protected-path grants only
+    # H3-05: re-validate every explicit grant against the allowlist on read too
+    # (defence in depth - Get-Contract already rejects a tampered grant via the
+    # contractHash recompute). A glob / root / parent grant can never authorise.
+    $allow = @($cfg.contract.grantableProtectedPrefixes)
+    $explicitGrants = @()
+    foreach ($g in @($grants | Where-Object { $_ -ne 'unrestrictedScope' })) {
+        try { $explicitGrants += (Assert-GrantAllowed -Grant $g -Allowlist $allow) } catch {
+            return [ordered]@{ compliant = $false; verdict = 'POLICY_BLOCK'; changeClass = 'CHANGED'; changedFiles = @()
+                violations = @("invalid protected-path grant '$g': $($_.Exception.Message)") }
+        }
+    }
     $protected = @($cfg.contract.protectedPaths) + @($cfg.contract.authoritativeAcceptanceGlobs)
 
     # H-06: empty declared scope FAILS CLOSED unless explicitly unrestricted (risk C)
@@ -264,12 +304,18 @@ function Test-ContractCompliance {
             violations = @("declaredScope is empty - fail closed (M-01). Use an explicit 'unrestrictedScope' grant at risk C for a genuinely unrestricted task.") }
     }
 
+    $fkey = { param($x) ConvertTo-RelPathKey $x }
     foreach ($f in $cc.changedFiles) {
         $inScope     = $unrestricted -or (Test-RelPathUnder $f $declared)
         $isProtected = Test-RelPathUnder $f $protected
         # an unrestricted scope does NOT reach protected paths - those always need
-        # their own explicit protected-path grant (#10).
-        $isGranted   = ($explicitGrants.Count -gt 0) -and (Test-RelPathUnder $f $explicitGrants)
+        # their own explicit protected-path grant (#10). Grant match is EXACT
+        # canonical prefix, never a glob (H3-05).
+        $fk = & $fkey $f
+        $isGranted = $false
+        foreach ($gk in $explicitGrants) {
+            if ($fk -eq $gk -or $fk.StartsWith($gk + '/', [System.StringComparison]::OrdinalIgnoreCase)) { $isGranted = $true; break }
+        }
 
         if ($isProtected -and -not $isGranted) {
             $violations += "PROTECTED path modified without a contract grant: $f"

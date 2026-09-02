@@ -10,6 +10,60 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Orquestração — TERCEIRA REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
+
+**Três revisões independentes REJEITARAM o trabalho.** O terceiro review
+(`.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW-3.md`,
+`SECURITY_SPINE_REVIEW = FAIL`) reproduziu, contra controles que a 2ª remediação
+declarava corrigidos: procedimento de verificação controlado pelo caller
+(`CheckBlock`), APPROVE de review com tipos JSON errados (objeto/null/string onde
+o schema pede array), escape de fence no prompt de review, quarentena de lease
+malformada não-persistente, grant de protected-path com wildcard, tamper +
+refreeze retornando contrato adulterado, secret em formato JSON sobrevivendo à
+redação, e observação de fetch `NO_REMOTE` forjada.
+
+**Esta sessão fez a terceira remediação** — relatório completo em
+`.planning/reviews/THIRD-SPINE-REMEDIATION-REPORT.md`. Cada exploit virou teste
+de regressão permanente:
+
+- **H3-01** — pipeline autoritativa NÃO aceita mais nenhum `ScriptBlock`
+  (`-CheckBlock`/`-PostIntegrationCheck` removidos). Verificação = profile
+  declarativo congelado; `effectiveInvocationHash` canônico e result-independent
+  entra na attestation e é **recomputado** pelo integrator.
+- **H3-02** — UMA biblioteca canônica de secret (`redaction.secretPatterns`)
+  para redactor E scanner; scan recursivo pré-publicação DENTRO de
+  `Invoke-Integration` antes de qualquer push → `SECRET_LEAK_BLOCKED`.
+- **H3-03** — spec/acceptance/diff não confiáveis transportados **fora de banda**
+  em arquivos read-only ligados por SHA-256; sem fence textual fixo.
+- **H3-04** — lease malformada → marker de quarentena **durável**; todo acquire
+  recusa até `Repair-QuarantinedLease` (recovery explícito, auditado).
+- **H3-05** — grant de protected-path tem de ser membro exato de
+  `contract.grantableProtectedPrefixes`; sem glob/root/parent/".planning inteira".
+- **M3-01** — envelope de review validado com parser que preserva tipo JSON cru
+  (`ConvertFrom-JsonTyped`); objeto/null/string onde se espera array → rejeitado.
+- **M3-02** — refreeze roda a validação completa recompute-on-read antes de
+  retornar contrato existente.
+- **M3-03** — observação de fetch é autoridade **in-process** (session token);
+  sem caminho de dispatch `NO_REMOTE`; `last-fetch.json` é só auditoria.
+- **#9** — preflight liga o índice derivado ao contrato congelado (`taskId`,
+  `gate`, `dependencies`).
+- **#10** — regressões determinísticas de after-CAS-push-reject (hook real) /
+  ancestry-failure / tree-mismatch (seam só do harness descartável).
+- **L3-01** — docs corrigidas: sem heartbeat de background; identidade de
+  processo vivo é o controle load-bearing.
+
+- Suítes: V1 primitivas **8/8**; V2 adversarial **108/108**
+  (`spine.ps1 selftest`), repos descartáveis, sem chamadas de modelo. Os 86
+  testes anteriores foram mantidos (nenhum substituído por teste mais fraco).
+- Deferidos (não viraram PASS): **C-04 completo, C-05, C-06, H-02 completo,
+  H-08, H-09 completo, H-10** + smoke real Claude/Codex. Nenhum entrypoint de
+  task real.
+- **NÃO** production-ready. **NÃO** READY_FOR_CANARY.
+- `READY_FOR_FOURTH_SECURITY_REVIEW = YES`. Só o Codex independente pode
+  declarar `SECURITY_SPINE_REVIEW = PASS`.
+
+---
+
 ## Orquestração — SEGUNDA REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
 
 **Duas revisões independentes REJEITARAM o trabalho até agora:** o supervisor V1

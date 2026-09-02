@@ -17,6 +17,7 @@ Second-review remediation:
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'contract.ps1')
+. (Join-Path $PSScriptRoot 'verification.ps1')
 
 $script:AttestDir = Join-Path (Get-V2Dir) 'attestations'
 
@@ -169,6 +170,22 @@ function Assert-IntegrationAttestations {
         }
         $f = Test-AttestationFresh -Attestation $latest -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha
         if (-not $f.fresh) { $problems += "$kind attestation is STALE: $($f.drift -join '; ')" }
+
+        # H3-01: the check attestation must carry the EXACT canonical invocation of
+        # the frozen verification profile. Recompute it here and compare - a
+        # substituted / caller-influenced verification procedure cannot match.
+        if ($kind -eq 'check') {
+            $c = $null
+            try { $c = Get-Contract $TaskVersionId } catch { $problems += "cannot load frozen contract to check verification authority: $($_.Exception.Message)"; continue }
+            $expectInv = New-VerificationInvocationHash ([string]$c.verificationProfile)
+            $gotInv    = [string]$latest.payload.effectiveInvocationHash
+            if ($gotInv -ne $expectInv) {
+                $problems += "check attestation effectiveInvocationHash '$gotInv' != recomputed frozen verification invocation '$expectInv' (verification procedure is not the frozen authoritative one)"
+            }
+            if ([string]$latest.bindings.verificationDefinitionHash -ne [string]$c.verificationDefinitionHash) {
+                $problems += "check attestation verificationDefinitionHash != frozen contract"
+            }
+        }
     }
     return [ordered]@{ ok = ($problems.Count -eq 0); problems = @($problems) }
 }

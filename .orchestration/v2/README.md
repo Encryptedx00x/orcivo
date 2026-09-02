@@ -14,7 +14,8 @@ attestations/<taskVersionId>/     content-addressed check/review/integration att
 leases/<namespace>/<key>.lease    atomic writer/integration leases (H-05, H-04)
 gates/<taskVersionId>/<gateId>.json   durable human-gate decisions (C-04, partial)
 state/index.v2.json               derived task index (written by the V2 reconciler — deferred)
-state/last-fetch.json             proof of a recent `git fetch` for preflight (H-07)
+state/last-fetch.json             AUDIT ONLY — the real fetch authority is in-process (M3-03)
+leases/<ns>/<key>.lease.QUARANTINED   durable malformed-lease quarantine marker (H3-04)
 runs/<runId>/                      per-run prompts + redacted logs
 logs/spine.log                    redacted spine log
 KILL_SWITCH                        create this file to stop all V2 dispatch
