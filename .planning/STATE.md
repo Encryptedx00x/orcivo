@@ -24,7 +24,7 @@ progress:
 P02 (T01–T10): TenantGuard global + RoleGuard, ownership de IDs relacionados,
 `company_id` em quote_items/quote_approvals, 35 testes de integração A/B verdes
 (cross-tenant read/list/detail/update/delete/nested/related-IDs/invites + RBAC +
-fail-closed). Fecha G-1..G-4. Falta T11; T12 (migrations de tenant em DB
+fail-closed). Fecha G-1..G-4. T12 (migrations de tenant em DB
 persistente) e T13 (UAT A/B) são gates humanos. Ver `03.1-P02-SUMMARY.md`.
 
 P01 (T01–T10, `SAFE_AUTO`) concluída: migration versionada de Payment/Appointment,
