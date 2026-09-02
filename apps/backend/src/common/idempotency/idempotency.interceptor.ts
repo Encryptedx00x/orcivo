@@ -38,21 +38,34 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const key: string | undefined = req.headers?.[HEADER];
     const companyId: string | undefined = req.companyId;
 
-    if (!MUTATION_METHODS.has(req.method) || !key || !companyId) {
+    const path: string = (req.route?.path as string) ?? req.path ?? req.url;
+
+    // Auth routes manage their own duplicate-submit semantics (jti, signupCompany
+    // guard). They also run before a company exists.
+    if (!MUTATION_METHODS.has(req.method) || !key || !companyId || path.startsWith('/auth')) {
       return next.handle();
     }
 
-    const path: string = (req.route?.path as string) ?? req.path ?? req.url;
-    const requestHash = createHash('sha256')
-      .update(`${req.method}\n${path}\n${stableStringify(req.body)}`)
-      .digest('hex');
+    // Multipart bodies are parsed by multer *inside* next.handle(), so req.body is
+    // not available here — dedupe such requests by key alone (the client generates
+    // one key per upload; see api.postFormData).
+    const isMultipart = String(req.headers?.['content-type'] ?? '').includes('multipart/form-data');
+    const requestHash = isMultipart
+      ? 'multipart'
+      : createHash('sha256')
+          .update(`${req.method}\n${path}\n${stableStringify(req.body)}`)
+          .digest('hex');
     const where = { company_id_key: { company_id: companyId, key } };
     const statusCode = this.resolveStatus(context, req.method);
 
     return from(this.prisma.requestIdempotency.findUnique({ where })).pipe(
       switchMap((existing) => {
         if (existing) {
-          if (existing.request_hash !== requestHash) {
+          if (
+            existing.request_hash !== 'multipart' &&
+            requestHash !== 'multipart' &&
+            existing.request_hash !== requestHash
+          ) {
             throw new ConflictException(
               'X-Client-Request-Id reutilizado com um payload diferente.',
             );

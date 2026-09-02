@@ -191,4 +191,67 @@ describe('P02-T11 — request idempotency', () => {
     await request(app.getHttpServer()).get('/customers').set(bearer()).set(HDR, rid).expect(200);
     await request(app.getHttpServer()).get('/customers').set(bearer()).set(HDR, rid).expect(200);
   });
+
+  it('multipart (photo upload): same key replays without a second photo', async () => {
+    const cust = await request(app.getHttpServer())
+      .post('/customers')
+      .set(bearer())
+      .send({ name: 'WO Cust' });
+    const wo = await request(app.getHttpServer())
+      .post('/work-orders')
+      .set(bearer())
+      .send({ customer_id: cust.body.id, title: 'WO' });
+    // 1x1 PNG
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const rid = crypto.randomUUID();
+    const up1 = await request(app.getHttpServer())
+      .post(`/work-orders/${wo.body.id}/photos`)
+      .set(bearer())
+      .set(HDR, rid)
+      .field('stage', 'BEFORE')
+      .attach('file', png, 'p.png');
+    expect(up1.status).toBe(201);
+
+    const up2 = await request(app.getHttpServer())
+      .post(`/work-orders/${wo.body.id}/photos`)
+      .set(bearer())
+      .set(HDR, rid)
+      .field('stage', 'BEFORE')
+      .attach('file', png, 'p.png');
+    expect(up2.status).toBe(201);
+    expect(up2.body.id).toBe(up1.body.id);
+
+    const photos = await request(app.getHttpServer())
+      .get(`/work-orders/${wo.body.id}/photos`)
+      .set(bearer());
+    expect(photos.body).toHaveLength(1);
+  });
+
+  it('signup/company double-submit is idempotent (one company, both return a session)', async () => {
+    const email = `dup.${crypto.randomUUID()}@isolation.test`;
+    const step1 = await request(app.getHttpServer()).post('/auth/signup/user').send({
+      name: 'Dup',
+      email,
+      phone: '11900000000',
+      password: 'Senha@Teste123',
+      accepted_terms: true,
+    });
+    const t = step1.body.access_token;
+    const c1 = await request(app.getHttpServer())
+      .post('/auth/signup/company')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ trade_name: 'Dup Co', document_type: 'CNPJ' });
+    const c2 = await request(app.getHttpServer())
+      .post('/auth/signup/company')
+      .set('Authorization', `Bearer ${t}`)
+      .send({ trade_name: 'Dup Co Again', document_type: 'CNPJ' });
+
+    expect(c1.status).toBe(201);
+    expect(c2.status).toBeLessThan(300);
+    expect(c2.body.company.id).toBe(c1.body.company.id);
+    expect(c2.body.access_token).toBeTruthy();
+  });
 });

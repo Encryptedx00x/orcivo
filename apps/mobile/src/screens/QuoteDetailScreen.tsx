@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { formatMoney } from '@orcivo/shared-types';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
+import { newIdempotencyKey } from '../services/api';
 
 type Props = NativeStackScreenProps<QuotesStackParamList, 'QuoteDetail'>;
 
@@ -43,6 +44,8 @@ function buildWhatsAppLink(phone: string, message: string): string {
 }
 
 export function QuoteDetailScreen({ route, navigation }: Props) {
+  const sendKey = useRef(newIdempotencyKey());
+  const cancelKey = useRef(newIdempotencyKey());
   const { id } = route.params;
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +74,7 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
     if (!quote) return;
     try {
       setSending(true);
-      const result = await quoteService.sendQuote(quote.id);
+      const result = await quoteService.sendQuote(quote.id, { idempotencyKey: sendKey.current });
       setApprovalUrl(result.approvalUrl);
       // Recarrega para atualizar status para SENT
       await load();
@@ -84,25 +87,23 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
 
   const handleCancel = () => {
     if (!quote) return;
-    Alert.alert(
-      'Cancelar orçamento',
-      'Tem certeza que deseja cancelar este orçamento?',
-      [
-        { text: 'Voltar', style: 'cancel' },
-        {
-          text: 'Cancelar orçamento',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await quoteService.cancelQuote(quote.id);
-              navigation.goBack();
-            } catch {
-              Alert.alert('Erro', 'Não foi possível cancelar o orçamento.');
-            }
-          },
+    Alert.alert('Cancelar orçamento', 'Tem certeza que deseja cancelar este orçamento?', [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: 'Cancelar orçamento',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await quoteService.cancelQuote(quote.id, undefined, {
+              idempotencyKey: cancelKey.current,
+            });
+            navigation.goBack();
+          } catch {
+            Alert.alert('Erro', 'Não foi possível cancelar o orçamento.');
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleWhatsApp = () => {
@@ -271,7 +272,13 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 12, fontWeight: '600' },
   section: { marginBottom: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', marginBottom: 8 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -345,6 +352,11 @@ const styles = StyleSheet.create({
   },
   approvedText: { fontSize: 16, fontWeight: '600', color: '#16A34A' },
   errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
-  retryBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryBtn: {
+    backgroundColor: '#6D28D9',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 });

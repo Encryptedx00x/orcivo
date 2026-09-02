@@ -64,6 +64,25 @@ export class AuthService {
   }
 
   async signupCompany(userId: string, dto: SignupStep2Dto): Promise<LoginResponseDto> {
+    // Idempotent: a double-submit must not create a second company/membership.
+    const already = await this.prisma.companyMember.findFirst({
+      where: { user_id: userId, active: true },
+      include: { company: { select: { id: true, trade_name: true } } },
+    });
+    if (already) {
+      const u = await this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { id: true, name: true, email: true },
+      });
+      const t = await this.issueTokens(userId, u.email);
+      return {
+        access_token: t.access_token,
+        refresh_token: t.refresh_token,
+        user: u,
+        company: already.company,
+      };
+    }
+
     const [company] = await this.prisma.$transaction([
       this.prisma.company.create({
         data: {
