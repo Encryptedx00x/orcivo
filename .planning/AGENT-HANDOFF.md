@@ -10,6 +10,33 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Orquestração multi-agente (2026-09-02) — SETUP + POC concluídos
+
+`docs/runbooks/agent-orchestration.md` + `scripts/orchestration/` +
+`.orchestration/config.json`. Camada mínima, Windows-nativa, sem dependência
+de terceiros.
+
+- **orca-cli/orca foi descartado** — é um esqueleto de 1 semana abandonado em
+  2026-05 (sem releases, `mcp serve`/`config init` não implementados).
+- Executores: **Claude Code headless** (`claude -p`, primário) +
+  **Codex** (`codex exec`, fallback/reviewer). Codex autenticado via ChatGPT
+  (sem API key). Isolamento por **git worktree** nativo.
+- POC (descartável, disposição total no fim) validou 14 pontos:
+  worktree/branch isolation, execução headless dos dois, verifier
+  determinístico, retry, stop-sem-failover em CHECK_FAILURE, checkpoint,
+  PROVIDER_QUOTA simulado (injeção controlada), **continuação Claude→Codex no
+  MESMO worktree**, writer-lock, Level-C→WAITING_HUMAN, cleanup, **main intacta**
+  (HEAD nunca mudou, zero commits `orch/*` em main), execução paralela (2 runs
+  sobrepostos 00:28:30–00:28:40).
+- **Não ligado a tarefas reais do GSD.** Falta antes de usar em P03+: loop
+  contínuo do scheduler, reconciliação real do execution-index vs STATE/SUMMARY,
+  política de merge, endurecer classificação/redação com casos reais, revisão
+  independente Codex. P03 continua bloqueada por P02.
+- Runtime em `.orchestration/` é 100% gitignored (exceto `config.json` +
+  `README.md`). POC archive: `.orchestration/_poc-archive/` (local, ignorado).
+
+---
+
 ## Estado corrente — 2026-09-01
 
 | Campo | Valor |
@@ -133,6 +160,7 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
-| 2026-09-01 | Claude (Decision Agent) | Discovery de produto incorporado ao planejamento; ADRs 015/016/017; addenda P04/P06/P07; wave P07.5. P02 segue aguardando T12/T13. | (commit de discovery — ver git log) |
+| 2026-09-02 | Claude | Camada de orquestração multi-agente: SETUP + POC (14/14). `scripts/orchestration/` + `docs/runbooks/agent-orchestration.md`. orca-cli descartado (esqueleto abandonado). Não ligado a tarefas reais. P02/P03 inalterados. | (commit de orquestração — ver git log) |
+| 2026-09-01 | Claude (Decision Agent) | Discovery de produto incorporado ao planejamento; ADRs 015/016/017; addenda P04/P06/P07; wave P07.5. P02 segue aguardando T12/T13. | `0260a72` |
 | 2026-09-01 | Claude | Handoff T12/T13 de P02 preparado (`03.1-P02-T12-T13-HANDOFF.md`); dev local destravado (Postgres 5544, seed via node TS-strip). | `c5fbf04` |
 | 2026-09-01 | Claude | P02 T11 (request idempotency mobile) + auditoria de write-path. | `7628802` |

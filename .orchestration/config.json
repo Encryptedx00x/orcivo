@@ -1,0 +1,115 @@
+{
+  "$comment": "Orcivo agent-orchestration config. Tracked. Minimal by design. Textual policy stays in .planning + docs/AUTONOMY_POLICY.md + docs/DECISION_MATRIX.md + CLAUDE.md.",
+  "version": 1,
+  "sourceOfTruth": {
+    "planning": ".planning",
+    "handoff": ".planning/AGENT-HANDOFF.md",
+    "state": ".planning/STATE.md",
+    "roadmap": ".planning/ROADMAP.md",
+    "canonicalImplementation": "git"
+  },
+  "policyDocs": ["CLAUDE.md", "docs/AUTONOMY_POLICY.md", "docs/DECISION_MATRIX.md", "AGENTS.md"],
+  "scheduler": {
+    "maxParallelTasks": 2,
+    "serializeOnScopeUncertainty": true,
+    "autoMergeToMain": false,
+    "branchPrefix": "orch/"
+  },
+  "providers": {
+    "primary": "claude",
+    "fallback": "codex",
+    "failoverOn": [
+      "PROVIDER_QUOTA",
+      "PROVIDER_RATE_LIMIT",
+      "PROVIDER_AUTH_EXPIRED",
+      "PROVIDER_TEMP_UNAVAILABLE"
+    ],
+    "neverFailoverOn": [
+      "TEST_FAILURE",
+      "TYPECHECK_FAILURE",
+      "LINT_FAILURE",
+      "APPLICATION_BUG",
+      "BAD_IMPLEMENTATION",
+      "HUMAN_GATE",
+      "MERGE_CONFLICT",
+      "DATABASE_FAILURE",
+      "UNRELATED_INFRA_FAILURE",
+      "AGENT_ERROR"
+    ],
+    "claude": {
+      "bin": "claude",
+      "args": ["-p", "--output-format", "json", "--permission-mode", "acceptEdits"],
+      "model": "sonnet"
+    },
+    "codex": {
+      "bin": "codex",
+      "args": [
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "--json",
+        "--skip-git-repo-check",
+        "-c",
+        "approval_policy=\"never\"",
+        "-c",
+        "model_reasoning_effort=\"low\""
+      ]
+    }
+  },
+  "checkProfiles": {
+    "A": ["typecheck"],
+    "B": ["typecheck", "lint"],
+    "C": ["typecheck", "lint", "test", "prisma-validate"],
+    "poc": ["poc-artifact"],
+    "security": ["typecheck", "lint", "test", "prisma-validate", "isolation-tests"]
+  },
+  "checks": {
+    "typecheck": { "cmd": "pnpm", "args": ["typecheck"], "cwd": "." },
+    "lint": { "cmd": "pnpm", "args": ["lint"], "cwd": "." },
+    "test": { "cmd": "pnpm", "args": ["--filter", "@orcivo/backend", "test"], "cwd": "." },
+    "prisma-validate": { "cmd": "npx", "args": ["prisma", "validate"], "cwd": "." },
+    "isolation-tests": {
+      "cmd": "pnpm",
+      "args": ["--filter", "@orcivo/backend", "test", "--", "isolation"],
+      "cwd": "."
+    },
+    "poc-artifact": { "cmd": "node", "args": ["scripts/orchestration/poc-verify.mjs"], "cwd": "." }
+  },
+  "levelCGuards": {
+    "note": "Terminal PAUSED state (WAITING_HUMAN), not a failure. Full matrix in CLAUDE.md.",
+    "triggers": [
+      "stack change",
+      "new paid service",
+      "billing",
+      "fiscal",
+      "LGPD",
+      "multi-tenant strategy change",
+      "money handling change",
+      "deploy",
+      "production",
+      "DNS",
+      "secrets",
+      "API key",
+      "destructive data operation",
+      "force push",
+      "history rewrite",
+      "remote branch deletion",
+      "business requirement change",
+      "subjective visual judgement without test/screenshot"
+    ]
+  },
+  "redaction": {
+    "patterns": [
+      "(?i)(api[_-]?key|secret|client[_-]?secret|password|passwd|access[_-]?token|refresh[_-]?token|auth[_-]?token|cookie|set-cookie)\\s*[:=]\\s*\\S+",
+      "(?i)bearer\\s+[A-Za-z0-9._~+/-]+=*",
+      "(?i)authorization\\s*[:=]\\s*\\S+",
+      "(?i)(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITHUB_PAT_TOKEN|GH_TOKEN|GITHUB_TOKEN|AWS_SECRET_ACCESS_KEY|DATABASE_URL)\\s*[:=]\\s*\\S+",
+      "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*",
+      "sk-[A-Za-z0-9_-]{16,}",
+      "gh[pousr]_[A-Za-z0-9]{20,}",
+      "xox[baprs]-[A-Za-z0-9-]{10,}",
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    ],
+    "replacement": "[REDACTED]"
+  }
+}

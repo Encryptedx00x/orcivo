@@ -92,3 +92,8 @@ prisma/migrations/*.sql.bak
 # Transcripts / prompts (do not version)
 *.transcript
 .agents/
+
+# Agent orchestration — runtime only. Tracked: config.json, README.md.
+.orchestration/*
+!.orchestration/config.json
+!.orchestration/README.md
