@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Fase 03.1 em andamento — P00/Wave 0 e P01/Wave 1 (auto) verificadas; P02 liberada
-last_updated: "2026-09-01T00:00:00-03:00"
+status: verifying
+last_updated: "2026-09-01T23:59:29.401Z"
 progress:
-  active_phase: "03.1"
-  verified_waves: 2
-  total_waves: 12
-  percent: 17
-  historical_counts_status: pending_reconciliation_in_P11
+  total_phases: 5
+  completed_phases: 3
+  total_plans: 48
+  completed_plans: 30
+  percent: 63
 ---
 
 # Orcivo — STATE.md
@@ -17,9 +17,15 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
-**Status:** `in_progress` — P00/Wave 0 PASS; P01/Wave 1 auto-tasks PASS; `2/12` waves verificadas
+**Status:** `in_progress` — P00/Wave 0 PASS; P01/Wave 1 auto-tasks PASS; P02/Wave 2 T01–T10 done
 **Data:** 2026-09-01
-**Próximo:** 03.1-P02 — Tenant isolation e autorização (RBAC)
+**Próximo:** 03.1-P02-T11 (idempotência de mutations mobile), depois T12/T13 (gates humanos)
+
+P02 (T01–T10): TenantGuard global + RoleGuard, ownership de IDs relacionados,
+`company_id` em quote_items/quote_approvals, 35 testes de integração A/B verdes
+(cross-tenant read/list/detail/update/delete/nested/related-IDs/invites + RBAC +
+fail-closed). Fecha G-1..G-4. Falta T11; T12 (migrations de tenant em DB
+persistente) e T13 (UAT A/B) são gates humanos. Ver `03.1-P02-SUMMARY.md`.
 
 P01 (T01–T10, `SAFE_AUTO`) concluída: migration versionada de Payment/Appointment,
 guard de DB efêmero, migrate-from-zero e upgrade verdes em DB descartável, imagem
@@ -131,6 +137,7 @@ Waves 1-3 concluídas. Pendentes:
 
 - Migration-from-zero, upgrade versionado e integração segura ainda dependem de
   P01.
+
 - Waves P01–P11 permanecem não verificadas.
 - Gate R e todos os 75 casos UAT permanecem pendentes.
 - Fase 4 não pode começar antes do encerramento da fase 03.1.
