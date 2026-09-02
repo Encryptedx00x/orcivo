@@ -61,19 +61,23 @@ foreach ($name in $checkNames) {
 
     $ok = ($exit -eq 0)
     if (-not $ok) { $allPass = $false }
+    $failClass = if ($spec.failureClass) { $spec.failureClass } else { 'CHECK_FAILURE' }
+    # promote to INFRA_FAILURE when the check clearly failed on missing infra, not on the code
+    if (-not $ok -and $body -match '(?i)(ECONNREFUSED|could not connect|connection refused).*(5433|5544|6379|6380|9000|9002|postgres|redis|minio)') { $failClass = 'INFRA_FAILURE' }
     $checkResults += [ordered]@{
-        name = $name; exitCode = $exit; pass = $ok
+        name = $name; exitCode = $exit; pass = $ok; failureClass = $(if ($ok) { '' } else { $failClass })
         durationSec = [math]::Round(((Get-Date) - $start).TotalSeconds, 1)
         log = (Resolve-Path $log).Path
     }
     Write-OrchLog ("verify: <- {0} exit {1} ({2})" -f $name, $exit, $(if ($ok) {'PASS'} else {'FAIL'}))
 }
 
+$firstFail = @($checkResults | Where-Object { -not $_.pass } | Select-Object -First 1)
 $verdict = [ordered]@{
     runId      = $RunId
     profile    = $profileName
     verdict    = if ($allPass) { 'PASS' } else { 'FAIL' }
-    failureClass = if ($allPass) { '' } else { 'CHECK_FAILURE' }
+    failureClass = if ($allPass) { '' } elseif ($firstFail) { $firstFail[0].failureClass } else { 'CHECK_FAILURE' }
     isProviderFail = $false
     checks     = $checkResults
     at         = (Get-Date).ToString('o')

@@ -82,27 +82,35 @@ Condições obrigatórias antes de qualquer push:
 
 Este projeto usa GSD (Get Shit Done) para execução estruturada.
 
-### Estado atual
+### Onde está o estado (não duplicar aqui)
 
-```
-Fase 0 — Planejada, aguardando execução
-```
+Este arquivo é **regra/política**, não status. O estado vivo mora em:
+
+| Fonte                                 | Papel                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `.planning/STATE.md`                  | estado GSD autoritativo (fase ativa, waves, progresso)                          |
+| `.planning/AGENT-HANDOFF.md`          | checkpoint operacional entre sessões/agentes                                    |
+| `.planning/ROADMAP.md`                | fases e deliverables                                                            |
+| `.orchestration/execution-index.json` | índice de tasks derivado de `.planning` (reconstruível: `supervisor.ps1 index`) |
+
+Não repetir número de fase, HEAD, contagem de waves ou percentuais aqui — consultar as fontes acima.
 
 ### Arquivos de planejamento
 
 ```
 .planning/PROJECT.md       — contexto do projeto
-.planning/REQUIREMENTS.md  — requisitos da Fase 0
+.planning/REQUIREMENTS.md  — requisitos
 .planning/ROADMAP.md       — fases e deliverables
-.planning/STATE.md         — estado atual e progresso
+.planning/STATE.md         — estado GSD autoritativo
+.planning/AGENT-HANDOFF.md — checkpoint operacional
 ```
 
 ### Comandos de trabalho
 
 ```
-/gsd-plan-phase 0     — criar planos de execução da Fase 0
-/gsd-execute-phase 0  — executar planos aprovados
 /gsd-progress         — ver progresso atual
+/gsd-plan-phase N     — criar planos de execução da fase N
+/gsd-execute-phase N  — executar planos aprovados
 /gsd-discuss-phase N  — discutir abordagem de uma fase
 ```
 
@@ -154,7 +162,7 @@ infra/          Docker Compose, scripts, Caddyfile
 | UI Kit mobile                   | `/docs/design-handoff/orcivo-design-system/ui_kits/mobile/`        |
 | Screen specs                    | `/docs/FRONTEND_DESIGN_MASTER.md` §4 (mobile) §5 (web)             |
 | Telas operacionais              | `/docs/OPERATIONS_UI_MISSING_SPECS.md`                             |
-| GSD Fase 0                      | `.planning/ROADMAP.md`                                             |
+| GSD roadmap e fases             | `.planning/ROADMAP.md` · estado: `.planning/STATE.md`              |
 | Molde arquitetural (Fase 1+)    | `/docs/ARCHITECTURE-MOLD.md`                                       |
 | Dev local (comandos, URLs, UAT) | `/docs/runbooks/local-dev.md`                                      |
 

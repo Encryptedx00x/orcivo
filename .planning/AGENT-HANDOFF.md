@@ -10,46 +10,74 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
-## Orquestração multi-agente (2026-09-02) — SETUP + POC concluídos
+## Orquestração multi-agente (2026-09-02) — SUPERVISOR PRODUCTION-READY
 
 `docs/runbooks/agent-orchestration.md` + `scripts/orchestration/` +
-`.orchestration/config.json`. Camada mínima, Windows-nativa, sem dependência
-de terceiros.
+`.orchestration/config.json`. Camada mínima, Windows-nativa (PowerShell 5.1),
+sem dependência de terceiros. **orca-cli/orca descartado** (esqueleto abandonado).
 
-- **orca-cli/orca foi descartado** — é um esqueleto de 1 semana abandonado em
-  2026-05 (sem releases, `mcp serve`/`config init` não implementados).
-- Executores: **Claude Code headless** (`claude -p`, primário) +
-  **Codex** (`codex exec`, fallback/reviewer). Codex autenticado via ChatGPT
-  (sem API key). Isolamento por **git worktree** nativo.
-- POC (descartável, disposição total no fim) validou 14 pontos:
-  worktree/branch isolation, execução headless dos dois, verifier
-  determinístico, retry, stop-sem-failover em CHECK_FAILURE, checkpoint,
-  PROVIDER_QUOTA simulado (injeção controlada), **continuação Claude→Codex no
-  MESMO worktree**, writer-lock, Level-C→WAITING_HUMAN, cleanup, **main intacta**
-  (HEAD nunca mudou, zero commits `orch/*` em main), execução paralela (2 runs
-  sobrepostos 00:28:30–00:28:40).
-- **Não ligado a tarefas reais do GSD.** Falta antes de usar em P03+: loop
-  contínuo do scheduler, reconciliação real do execution-index vs STATE/SUMMARY,
-  política de merge, endurecer classificação/redação com casos reais, revisão
-  independente Codex. P03 continua bloqueada por P02.
-- Runtime em `.orchestration/` é 100% gitignored (exceto `config.json` +
-  `README.md`). POC archive: `.orchestration/_poc-archive/` (local, ignorado).
+Executores: **Claude Code headless** (`claude -p`, primário) + **Codex**
+(`codex exec`, fallback + reviewer cruzado). Codex via ChatGPT (sem API key).
+Isolamento por **git worktree** nativo.
+
+Scripts: `supervisor.ps1` (`index|status|next|run|loop|recover|cleanup`),
+`reconcile.ps1`, `run-agent.ps1`, `verify.ps1`, `review.ps1`, `merge.ps1`,
+`checkpoint.ps1`. Suite determinística: `scripts/orchestration/tests/`
+(`fake-agent.ps1` + `run-tests.ps1`, 23 casos, **sem chamadas reais de modelo**).
+
+Fechado nesta sessão (gaps do POC):
+- **reconciliador real** `.planning → execution-index.json` em granularidade de
+  task; valida ciclo / dependência inexistente / task ausente / status
+  impossível / STATE-SUMMARY divergente / DONE sem evidência; escopo = fase
+  ativa e diante (fases históricas confiam em STATE.md). Real: 48 planos, 184
+  tasks, `reconciled=true`.
+- **scheduler contínuo** `supervisor.ps1 loop` — reconcile → READY → run →
+  repeat; dorme em idle / blocked / human-gate; nunca busy-loop; para via
+  `.orchestration/loop.stop`. `maxParallel=1` (teto 2).
+- **dependency + scope-conflict scheduling** — serializa quando independência
+  não é provável (schema/shared-types/lockfile/CI/Level-C).
+- **merge policy segura** — integra target no branch → re-verify (== árvore
+  pós-merge) → `merge --no-ff` → push normal. Nunca force/reset; nunca faz merge
+  de branch vermelha; conflito não trivial → `NEEDS_REVIEW`, main intacta.
+- **reviewer cruzado** Claude↔Codex — `APPROVE | REQUEST_CHANGES |
+  HUMAN_REVIEW_REQUIRED`; REQUEST_CHANGES volta ao executor (máx. 2 ciclos).
+- **failure classification** endurecida: 12 classes; failover só nas 4
+  `PROVIDER_*` corroboradas; `UNKNOWN` não faz failover.
+- **redaction** endurecida: headers/bearer/cookies/`*_SECRET`/`*_TOKEN`/
+  `DATABASE_URL`/URLs com credencial + colapso estrutural de dumps `.env`.
+- **crash recovery** `supervisor.ps1 recover` — locks órfãos (pid morto),
+  worktrees/ runs interrompidos → `RECOVERABLE`/`NEEDS_REVIEW`; **nunca** apaga
+  trabalho sujo; `-Apply` só limpa órfãos provadamente seguros.
+
+Ainda aberto antes de ligar em task real de produção: endurecer os regexes de
+classificação com stderr real das versões instaladas (2.1.258 / 0.152.1) sob
+falha genuína; revisão independente por Codex do próprio supervisor; política de
+merge order quando 2 branches `orch/*` tocam áreas adjacentes. **Não ligado a
+tasks reais do GSD. P03 segue bloqueada por P02.**
+
+Runtime em `.orchestration/` é gitignored (exceto `config.json` + `README.md`).
 
 ---
 
-## Estado corrente — 2026-09-01
+## Estado corrente — 2026-09-02
 
-| Campo | Valor |
+Valores mutáveis não são copiados aqui — consultar a fonte.
+
+| Campo | Fonte autoritativa |
 |---|---|
-| Branch | `main` |
-| HEAD | `c5fbf04` (antes do commit de discovery) |
-| origin/main | ahead/behind `0/0` |
-| Working tree | modificações de planejamento pendentes de commit (discovery) |
-| Fase GSD ativa | **03.1 — Estabilização pós-Fase 3** |
-| Waves verificadas | P00 PASS, P01 PASS (auto) — 2/13 |
-| Wave em andamento | **P02 — Tenant isolation e RBAC**: T01–T11 done + testes verdes; **aguardando gates humanos T12 (HUMAN_APPROVAL) e T13 (MANUAL_UAT)** |
-| Próxima wave | P03 (storage privado) — **bloqueada até P02 = PASS** |
-| P03+ | não iniciar |
+| Branch / HEAD / origin sync | `git status` · `git log -1` · `supervisor.ps1 status` |
+| Fase GSD ativa / waves / progresso | `.planning/STATE.md` |
+| Índice de tasks + gates + dependências | `.orchestration/execution-index.json` (`supervisor.ps1 index`) |
+
+Instantâneo (2026-09-02, pode envelhecer):
+
+- Branch `main`; HEAD = commit de hardening da orquestração (ver `git log -1`).
+- Fase GSD ativa **03.1**. P00 PASS, P01 auto PASS.
+- **P02 — Tenant isolation e RBAC**: T01–T11 done + testes verdes; **aguardando
+  gates humanos T12 (HUMAN_APPROVAL) e T13 (MANUAL_UAT)** — ver
+  `03.1-P02-T12-T13-HANDOFF.md`.
+- Próxima wave **P03 (storage privado) — bloqueada até P02 = PASS**. P03+ não iniciar.
+- `supervisor.ps1 next` → "no READY task" (correto: P03 depende de P02 não resolvida).
 
 ### Última tarefa concluída
 
@@ -160,7 +188,8 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
-| 2026-09-02 | Claude | Camada de orquestração multi-agente: SETUP + POC (14/14). `scripts/orchestration/` + `docs/runbooks/agent-orchestration.md`. orca-cli descartado (esqueleto abandonado). Não ligado a tarefas reais. P02/P03 inalterados. | (commit de orquestração — ver git log) |
+| 2026-09-02 | Claude | Supervisor de orquestração production-ready: reconciliador real (`reconcile.ps1`), scheduler `loop`, scope-conflict, `merge.ps1` (safe merge, sem force/reset), reviewer cruzado (`review.ps1`), classificação de falha (12 classes), redaction endurecida, `recover`. Suite determinística 23/23 (`tests/`, fake-agent, sem chamadas de modelo). Drift documental corrigido (CLAUDE.md deixa de afirmar Fase 0). Não ligado a tasks reais; P02/P03 inalterados. | (ver `git log -1`) |
+| 2026-09-02 | Claude | Camada de orquestração multi-agente: SETUP + POC (14/14). `scripts/orchestration/` + `docs/runbooks/agent-orchestration.md`. orca-cli descartado (esqueleto abandonado). Não ligado a tarefas reais. P02/P03 inalterados. | `ae668f4` |
 | 2026-09-01 | Claude (Decision Agent) | Discovery de produto incorporado ao planejamento; ADRs 015/016/017; addenda P04/P06/P07; wave P07.5. P02 segue aguardando T12/T13. | `0260a72` |
 | 2026-09-01 | Claude | Handoff T12/T13 de P02 preparado (`03.1-P02-T12-T13-HANDOFF.md`); dev local destravado (Postgres 5544, seed via node TS-strip). | `c5fbf04` |
 | 2026-09-01 | Claude | P02 T11 (request idempotency mobile) + auditoria de write-path. | `7628802` |

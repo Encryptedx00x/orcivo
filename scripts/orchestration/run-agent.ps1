@@ -1,18 +1,29 @@
 <#
 run-agent.ps1 - launch ONE agent (claude|codex) against ONE worktree, once.
 
-- Acquires the worktree writer lock (never two writers at once).
+- Acquires the worktree writer lock (never two writers at once; orphan locks are
+  cleared automatically when their owning process is dead).
 - Runs the CLI headless with cwd = worktree, stdout/stderr -> redacted log files.
 - Classifies the result from exit code + stderr + stdout (+ optional injected signal).
 - Writes result.json into the run dir. Does NOT commit, merge, retry, or fail over.
 
-Fault injection for the POC (no real quota is ever exhausted):
-  $env:ORCH_INJECT_FAIL = "claude:PROVIDER_QUOTA"   # provider:CLASS  (matches the running provider)
+Modes:
+  execute  (default) - agent may edit files in the worktree
+  review             - agent must NOT edit; read-only sandbox; emits a VERDICT line
+
+Deterministic testing (no real CLI, no quota):
+  $env:ORCH_FAKE_AGENT   = "<abs path to tests\fake-agent.ps1>"
+  $env:ORCH_FAKE_SCENARIO = "ok-artifact" | "quota" | "partial-then-quota" | ...
+
+Fault injection against the real CLI (POC):
+  $env:ORCH_INJECT_FAIL = "claude:PROVIDER_QUOTA"          # provider:CLASS
+  $env:ORCH_INJECT_FAIL = "claude:PROVIDER_QUOTA:after"    # run for real, THEN report
 #>
 param(
     [Parameter(Mandatory)] [string]$RunId,
     [Parameter(Mandatory)] [ValidateSet('claude','codex')] [string]$Provider,
     [Parameter(Mandatory)] [string]$PromptFile,
+    [ValidateSet('execute','review')] [string]$Mode = 'execute',
     [int]$TimeoutSec = 900
 )
 
@@ -25,18 +36,13 @@ $wt      = $run.worktreePath
 if (-not (Test-Path $wt)) { throw "worktree missing: $wt" }
 if (-not (Test-Path $PromptFile)) { throw "prompt file missing: $PromptFile" }
 
-$prompt   = Get-Content -Raw -LiteralPath $PromptFile
-$stampId  = "{0}-{1}" -f $Provider, (Get-Date -Format 'yyyyMMddHHmmss')
+$stampId  = "{0}-{1}-{2}" -f $Provider, $Mode, (Get-Date -Format 'yyyyMMddHHmmss')
 $outLog   = Join-Path $runDir ("logs\{0}.stdout.log" -f $stampId)
 $errLog   = Join-Path $runDir ("logs\{0}.stderr.log" -f $stampId)
-$rawOut   = Join-Path $runDir ("logs\{0}.stdout.raw"  -f $stampId)   # transient, deleted after redaction
+$rawOut   = Join-Path $runDir ("logs\{0}.stdout.raw"  -f $stampId)
 $rawErr   = Join-Path $runDir ("logs\{0}.stderr.raw"  -f $stampId)
 New-Item -ItemType Directory -Force -Path (Split-Path $outLog) | Out-Null
 
-# --- injected fault (POC only) ------------------------------------------
-#   ORCH_INJECT_FAIL = "<provider>:<CLASS>"            -> report CLASS, do not call the CLI
-#   ORCH_INJECT_FAIL = "<provider>:<CLASS>:after"      -> run the CLI for real, THEN report CLASS
-#                                                         (simulates quota hit mid/after a partial pass)
 $injected = ''
 $injectAfter = $false
 if ($env:ORCH_INJECT_FAIL) {
@@ -47,9 +53,10 @@ if ($env:ORCH_INJECT_FAIL) {
     }
 }
 
-$lock = Enter-WorktreeLock -RunId $RunId -Owner $Provider
-Write-OrchLog "run-agent: $Provider on $RunId (worktree $wt)"
+$lock = Enter-WorktreeLock -RunId $RunId -Owner "$Provider/$Mode"
+Write-OrchLog "run-agent: $Provider ($Mode) on $RunId (worktree $wt)"
 $started = Get-Date
+$class = ''
 
 try {
     if ($injected -and -not $injectAfter) {
@@ -60,30 +67,29 @@ try {
         $class = Get-FailureClass -Provider $Provider -ExitCode $exit -Stdout "" -Stderr "" -InjectedSignal $injected
     }
     else {
-        # prompt goes on STDIN (avoids the Windows command-line length limit and
-        # any interactive stdin wait). Both CLIs read the prompt from stdin.
-        if ($Provider -eq 'claude') {
+        if ($env:ORCH_FAKE_AGENT) {
+            $binPath = (Get-Command powershell -ErrorAction Stop).Source
+            $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $env:ORCH_FAKE_AGENT,
+                      '-Provider', $Provider, '-Mode', $Mode, '-Worktree', $wt)
+        }
+        elseif ($Provider -eq 'claude') {
             $pc = $cfg.providers.claude
-            $args = @()
-            $args += $pc.args
+            $args = @() + $pc.args
+            if ($Mode -eq 'review') { $args = @('-p', '--output-format', 'json', '--permission-mode', 'plan') }
             if ($pc.model) { $args += @('--model', $pc.model) }
             $args += @('--add-dir', $wt)
-            $bin = $pc.bin
+            $binPath = (Get-Command $pc.bin -ErrorAction Stop).Source
         }
         else {
             $pc = $cfg.providers.codex
-            $args = @()
-            $args += $pc.args
+            $args = @() + $pc.args
+            if ($Mode -eq 'review') { $args = @('exec', '--sandbox', 'read-only', '--json', '--skip-git-repo-check', '-c', 'approval_policy="never"') }
             $args += @('-C', $wt)
             $lastMsg = Join-Path $runDir ("logs\{0}.codex-last.txt" -f $stampId)
-            $args += @('-o', $lastMsg)
-            $args += '-'   # read prompt from stdin
-            $bin = $pc.bin
+            $args += @('-o', $lastMsg, '-')
+            $binPath = (Get-Command $pc.bin -ErrorAction Stop).Source
         }
 
-        # resolve to a Start-Process-runnable file. npm shims resolve to .ps1 /
-        # extensionless first; Start-Process needs the .cmd (or a real .exe).
-        $binPath = (Get-Command $bin -ErrorAction Stop).Source
         if ($binPath -match '\.ps1$') { $binPath = $binPath -replace '\.ps1$', '.cmd' }
         elseif (-not [System.IO.Path]::GetExtension($binPath)) { $binPath = "$binPath.cmd" }
 
@@ -92,15 +98,13 @@ try {
              -RedirectStandardInput $PromptFile `
              -RedirectStandardOutput $rawOut -RedirectStandardError $rawErr `
              -NoNewWindow -PassThru
-        $null = $p.Handle   # cache handle so .ExitCode is readable after exit (PS 5.1 quirk)
+        $null = $p.Handle
         if (-not $p.WaitForExit($TimeoutSec * 1000)) {
             try { $p.Kill($true) } catch { }
             $exit = 124
-            $class = 'TIMEOUT'
+            $class = 'AGENT_ERROR'
         }
-        else {
-            $exit = $p.ExitCode
-        }
+        else { $exit = $p.ExitCode }
 
         $so = if (Test-Path $rawOut) { Get-Content -Raw -LiteralPath $rawOut } else { "" }
         $se = if (Test-Path $rawErr) { Get-Content -Raw -LiteralPath $rawErr } else { "" }
@@ -108,11 +112,9 @@ try {
         Write-RedactedFile -Path $errLog -Content $se
         Remove-Item -LiteralPath $rawOut, $rawErr -Force -ErrorAction SilentlyContinue
 
-        if (-not $class) {
-            $class = Get-FailureClass -Provider $Provider -ExitCode $exit -Stdout $so -Stderr $se
-        }
+        if (-not $class) { $class = Get-FailureClass -Provider $Provider -ExitCode $exit -Stdout $so -Stderr $se }
         if ($injectAfter) {
-            Write-OrchLog "run-agent: INJECTED post-run fault $injected for $Provider (CLI ran, partial work kept)" 'WARN'
+            Write-OrchLog "run-agent: INJECTED post-run fault $injected (CLI ran, partial work kept)" 'WARN'
             Add-Content -LiteralPath $errLog -Value "`nINJECTED_FAULT_AFTER_RUN $injected"
             $class = $injected
             $exit = 1
@@ -123,10 +125,27 @@ finally {
     Exit-WorktreeLock -RunId $RunId
 }
 
+# in review mode a reviewer must not leave edits behind
+$reviewerDirtied = @()
+if ($Mode -eq 'review') {
+    $reviewerDirtied = @(Get-GitStatusPorcelain $wt)
+    if ($reviewerDirtied.Count -gt 0) {
+        & git -C $wt checkout -- . 2>$null | Out-Null
+        foreach ($l in $reviewerDirtied) {
+            if ($l -match '^\?\?\s+(.+)$') {
+                $u = Join-Path $wt ($matches[1].Trim('"'))
+                if (Test-Path $u) { Remove-Item -LiteralPath $u -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        Write-OrchLog "run-agent: reviewer left $($reviewerDirtied.Count) edit(s) - reverted (review is read-only)" 'WARN'
+    }
+}
+
 $ended = Get-Date
 $result = [ordered]@{
     runId          = $RunId
     provider       = $Provider
+    mode           = $Mode
     startedAt      = $started.ToString('o')
     endedAt        = $ended.ToString('o')
     durationSec    = [math]::Round(($ended - $started).TotalSeconds, 1)
@@ -134,6 +153,7 @@ $result = [ordered]@{
     failureClass   = $class
     isProviderFail = (Test-IsProviderFailure $class)
     injected       = [bool]$injected
+    reviewerDirtied = $reviewerDirtied.Count
     stdoutLog      = (Resolve-Path $outLog -ErrorAction SilentlyContinue).Path
     stderrLog      = (Resolve-Path $errLog -ErrorAction SilentlyContinue).Path
     worktreePath   = $wt
@@ -143,7 +163,5 @@ $result = [ordered]@{
 }
 $resultPath = Join-Path $runDir ("results\{0}.json" -f $stampId)
 Write-JsonFile -Path $resultPath -Object $result
-Write-OrchLog ("run-agent: {0} -> exit {1} class {2} (provider-fail={3})" -f $Provider, $exit, $class, $result.isProviderFail)
-
-# echo the result path so the supervisor can pick it up
+Write-OrchLog ("run-agent: {0}/{1} -> exit {2} class {3} (provider-fail={4})" -f $Provider, $Mode, $exit, $class, $result.isProviderFail)
 Write-Output $resultPath

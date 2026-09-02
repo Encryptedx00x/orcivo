@@ -1,19 +1,56 @@
 {
-  "$comment": "Orcivo agent-orchestration config. Tracked. Minimal by design. Textual policy stays in .planning + docs/AUTONOMY_POLICY.md + docs/DECISION_MATRIX.md + CLAUDE.md.",
-  "version": 1,
+  "$comment": "Orcivo agent-orchestration config. Tracked. Minimal by design. Textual policy stays in .planning + docs/AUTONOMY_POLICY.md + docs/DECISION_MATRIX.md + CLAUDE.md. This file holds knobs, not status.",
+  "version": 2,
   "sourceOfTruth": {
+    "gsdState": ".planning/STATE.md",
+    "operationalCheckpoint": ".planning/AGENT-HANDOFF.md",
+    "policy": "CLAUDE.md",
     "planning": ".planning",
-    "handoff": ".planning/AGENT-HANDOFF.md",
-    "state": ".planning/STATE.md",
-    "roadmap": ".planning/ROADMAP.md",
     "canonicalImplementation": "git"
   },
   "policyDocs": ["CLAUDE.md", "docs/AUTONOMY_POLICY.md", "docs/DECISION_MATRIX.md", "AGENTS.md"],
   "scheduler": {
-    "maxParallelTasks": 2,
+    "maxParallel": 1,
+    "maxParallelCeiling": 2,
+    "idleSleepSec": 45,
+    "blockedSleepSec": 120,
+    "humanGateSleepSec": 300,
     "serializeOnScopeUncertainty": true,
-    "autoMergeToMain": false,
-    "branchPrefix": "orch/"
+    "branchPrefix": "orch/",
+    "stopFile": "loop.stop",
+    "refuseRunWhenNotReconciled": true
+  },
+  "merge": {
+    "enabled": true,
+    "target": "main",
+    "requireReviewApprove": true,
+    "requirePostMergeVerify": true,
+    "pushAfterMerge": true,
+    "onMainMovedDuringRun": "rebase-then-verify",
+    "onNonTrivialConflict": "stop-needs-review",
+    "forbidden": [
+      "force push",
+      "reset --hard",
+      "branch delete before recovery guaranteed",
+      "merge of a red branch"
+    ]
+  },
+  "review": {
+    "enabled": true,
+    "crossProvider": true,
+    "maxCycles": 2,
+    "verdicts": ["APPROVE", "REQUEST_CHANGES", "HUMAN_REVIEW_REQUIRED"],
+    "checklist": [
+      "requirement miss vs acceptance criteria",
+      "regression in untouched behaviour",
+      "security / authz",
+      "tenant isolation (company_id on every business query)",
+      "money handling (Decimal, never float)",
+      "idempotency / RequestIdempotency for mobile mutations",
+      "unintended scope / files outside the task",
+      "fake or mocked behaviour presented as real",
+      "weak, absent or tautological tests"
+    ]
   },
   "providers": {
     "primary": "claude",
@@ -25,16 +62,14 @@
       "PROVIDER_TEMP_UNAVAILABLE"
     ],
     "neverFailoverOn": [
+      "AGENT_ERROR",
+      "CHECK_FAILURE",
+      "BUILD_FAILURE",
       "TEST_FAILURE",
-      "TYPECHECK_FAILURE",
-      "LINT_FAILURE",
-      "APPLICATION_BUG",
-      "BAD_IMPLEMENTATION",
-      "HUMAN_GATE",
       "MERGE_CONFLICT",
-      "DATABASE_FAILURE",
-      "UNRELATED_INFRA_FAILURE",
-      "AGENT_ERROR"
+      "INFRA_FAILURE",
+      "HUMAN_GATE",
+      "UNKNOWN"
     ],
     "claude": {
       "bin": "claude",
@@ -64,16 +99,64 @@
     "security": ["typecheck", "lint", "test", "prisma-validate", "isolation-tests"]
   },
   "checks": {
-    "typecheck": { "cmd": "pnpm", "args": ["typecheck"], "cwd": "." },
-    "lint": { "cmd": "pnpm", "args": ["lint"], "cwd": "." },
-    "test": { "cmd": "pnpm", "args": ["--filter", "@orcivo/backend", "test"], "cwd": "." },
-    "prisma-validate": { "cmd": "npx", "args": ["prisma", "validate"], "cwd": "." },
+    "typecheck": {
+      "cmd": "pnpm",
+      "args": ["typecheck"],
+      "cwd": ".",
+      "failureClass": "BUILD_FAILURE"
+    },
+    "lint": { "cmd": "pnpm", "args": ["lint"], "cwd": ".", "failureClass": "CHECK_FAILURE" },
+    "test": {
+      "cmd": "pnpm",
+      "args": ["--filter", "@orcivo/backend", "test"],
+      "cwd": ".",
+      "failureClass": "TEST_FAILURE"
+    },
+    "prisma-validate": {
+      "cmd": "npx",
+      "args": ["prisma", "validate"],
+      "cwd": ".",
+      "failureClass": "BUILD_FAILURE"
+    },
     "isolation-tests": {
       "cmd": "pnpm",
       "args": ["--filter", "@orcivo/backend", "test", "--", "isolation"],
-      "cwd": "."
+      "cwd": ".",
+      "failureClass": "TEST_FAILURE"
     },
-    "poc-artifact": { "cmd": "node", "args": ["scripts/orchestration/poc-verify.mjs"], "cwd": "." }
+    "poc-artifact": {
+      "cmd": "node",
+      "args": ["scripts/orchestration/poc-verify.mjs"],
+      "cwd": ".",
+      "failureClass": "CHECK_FAILURE"
+    }
+  },
+  "reconcile": {
+    "planGlob": ".planning/phases/**/*-PLAN.md",
+    "classToRisk": {
+      "SAFE_AUTO": "B",
+      "AUTO": "B",
+      "DEV": "B",
+      "HUMAN_APPROVAL": "C",
+      "MANUAL_UAT": "C",
+      "HUMAN": "C",
+      "DEFERRED": "X"
+    },
+    "doneMarkers": ["done", "pass", "passed", "ok", "complete", "concluíd", "verde", "✅", "[x]"],
+    "humanMarkers": ["human_approval", "manual_uat", "human", "aprovaç", "aguardando gate"],
+    "sharedScopeGlobs": [
+      "prisma/",
+      "*.prisma",
+      "packages/shared-types/",
+      "pnpm-lock.yaml",
+      "package.json",
+      "turbo.json",
+      "tsconfig",
+      ".eslintrc",
+      ".github/workflows/",
+      "apps/backend/src/main.ts",
+      "apps/backend/src/app.module.ts"
+    ]
   },
   "levelCGuards": {
     "note": "Terminal PAUSED state (WAITING_HUMAN), not a failure. Full matrix in CLAUDE.md.",
@@ -90,7 +173,9 @@
       "DNS",
       "secrets",
       "API key",
+      "persistent DB",
       "destructive data operation",
+      "hard delete",
       "force push",
       "history rewrite",
       "remote branch deletion",
@@ -99,16 +184,25 @@
     ]
   },
   "redaction": {
+    "maxEnvLikeLines": 6,
     "patterns": [
-      "(?i)(api[_-]?key|secret|client[_-]?secret|password|passwd|access[_-]?token|refresh[_-]?token|auth[_-]?token|cookie|set-cookie)\\s*[:=]\\s*\\S+",
-      "(?i)bearer\\s+[A-Za-z0-9._~+/-]+=*",
+      "(?im)^\\s*(authorization|proxy-authorization)\\s*:\\s*.+$",
       "(?i)authorization\\s*[:=]\\s*\\S+",
-      "(?i)(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITHUB_PAT_TOKEN|GH_TOKEN|GITHUB_TOKEN|AWS_SECRET_ACCESS_KEY|DATABASE_URL)\\s*[:=]\\s*\\S+",
+      "(?i)bearer\\s+[A-Za-z0-9._~+/-]{8,}=*",
+      "(?im)^\\s*(set-)?cookie\\s*:\\s*.+$",
+      "(?i)(cookie|set-cookie)\\s*[:=]\\s*\\S+",
+      "(?i)([A-Z0-9_]*(?:secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|session)[A-Z0-9_]*)\\s*[:=]\\s*\\S+",
+      "(?i)\\b(password|passwd|pwd)\\b\\s*[:=]\\s*\\S+",
+      "(?i)database_url\\s*[:=]\\s*\\S+",
+      "(?i)[a-z]+://[^\\s:/@]+:[^\\s:/@]+@[^\\s/]+",
+      "(?im)^\\s*[A-Z][A-Z0-9_]{2,}\\s*=\\s*.+$",
       "eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*",
       "sk-[A-Za-z0-9_-]{16,}",
       "gh[pousr]_[A-Za-z0-9]{20,}",
       "xox[baprs]-[A-Za-z0-9-]{10,}",
-      "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+      "AKIA[0-9A-Z]{16}",
+      "AIza[0-9A-Za-z_-]{30,}",
+      "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----"
     ],
     "replacement": "[REDACTED]"
   }

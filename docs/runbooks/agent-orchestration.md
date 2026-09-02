@@ -1,229 +1,218 @@
 # Agent orchestration — Orcivo
 
 Smallest possible multi-agent execution layer for Orcivo. **Not a framework.** It
-wraps native primitives so Claude Code (primary) and Codex (fallback/reviewer)
-can execute GSD tasks in isolated git worktrees, with deterministic checks and
-provider failover.
+wraps native primitives so Claude Code (primary) and Codex (fallback + cross-
+reviewer) can execute GSD tasks in isolated git worktrees, with deterministic
+checks, cross-review and a safe merge into `main`.
 
-> Status (2026-09-02): **SETUP + POC only.** Not wired to real GSD tasks.
-> Failover is implemented and POC-proven; the continuous scheduler loop is
-> designed, not built. See `.planning/AGENT-HANDOFF.md`.
-
----
-
-## Architecture
-
-```
-.planning / GSD                         <- source of truth (phases, gates, decisions)
-      |
-config.json + execution-index.json      <- thin, reconcilable pointer layer
-      |
-scripts/orchestration/supervisor.ps1    <- pick READY task, deps, Level-C gate, dispatch
-      |
-  git worktree add  (per run)           <- isolation; branch orch/<runid>
-      |
-  run-agent.ps1  ->  claude -p (headless)      primary
-                     codex exec (headless)     fallback / reviewer
-      |
-  verify.ps1  ->  deterministic checks scoped to task risk (config.checkProfiles)
-      |
-  checkpoint.ps1  ->  portable redacted checkpoint (before failover / on pause)
-      |
-  commit on the run branch  (POC: never merged to main)
-```
-
-**Ownership**
-
-| Concern                                                  | Owner                                                        |
-| -------------------------------------------------------- | ------------------------------------------------------------ |
-| phases, requirements, tasks, gates, decisions, GSD state | `.planning` (authoritative)                                  |
-| canonical implementation state                           | git                                                          |
-| task isolation                                           | native `git worktree`                                        |
-| run/worktree/retry/failover/scheduler state              | `.orchestration/` (runtime, gitignored)                      |
-| portable Claude<->Codex checkpoint                       | `.planning/AGENT-HANDOFF.md` + `.orchestration/checkpoints/` |
-| auxiliary context (decisions, history, gaps)             | ai-memory — **never** source of truth                        |
+> Status (2026-09-02): **supervisor is production-ready and covered by a
+> deterministic test suite (23 cases, no real model calls).** It is **not yet
+> wired to real GSD tasks** — P03 stays blocked by P02's human gates. Enable it
+> only after a first real wave passes review. See `.planning/AGENT-HANDOFF.md`.
 
 ---
 
-## Files
+## Source of truth
 
-### Tracked
+| Concern                                       | Owner                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| phases, tasks, gates, decisions, GSD state    | `.planning/STATE.md` (+ `ROADMAP.md`, `phases/*/`) — authoritative |
+| operational checkpoint between sessions       | `.planning/AGENT-HANDOFF.md`                                       |
+| policy / autonomy rules                       | `CLAUDE.md`, `docs/AUTONOMY_POLICY.md`, `docs/DECISION_MATRIX.md`  |
+| canonical implementation state                | git                                                                |
+| task isolation                                | native `git worktree`                                              |
+| derived task index, run/lock/checkpoint state | `.orchestration/` (runtime, gitignored)                            |
 
-```
-scripts/orchestration/
-  lib.ps1           shared helpers: json io, redaction, locks, failure classification
-  supervisor.ps1    the loop: index | status | next | run | cleanup
-  run-agent.ps1     launch ONE agent against ONE worktree, once. classify. no commit/merge.
-  verify.ps1        run the check profile in the worktree. PASS iff every check exits 0.
-  checkpoint.ps1    build a redacted checkpoint from git + run metadata
-  poc-verify.mjs    disposable POC artifact check
-.orchestration/config.json   minimal tracked config (providers, check profiles, redaction, Level-C triggers)
-```
-
-### Runtime (gitignored — `.orchestration/*` except `config.json`)
-
-```
-.orchestration/
-  execution-index.json   generated pointer list, rebuilt from .planning on demand
-  queue/<taskId>.json     task specs the supervisor executes
-  runs/<runId>/           run.json, prompts, logs, results, verify verdicts
-  checkpoints/            portable checkpoints
-  logs/                   supervisor.log + per-run consoles
-  locks/<runId>.lock      worktree writer lock (one writer at a time)
-  worktrees/<runId>/       the git worktree for the run
-```
+`.orchestration/execution-index.json` is **derived** — rebuilt from `.planning`
+on demand, never hand-edited. `config.json` holds knobs, never status.
 
 ---
 
-## Install / prerequisites
+## Pipeline
 
-Everything is already on this machine (verified 2026-09-01):
-
-| Tool        | Version | Notes                                               |
-| ----------- | ------- | --------------------------------------------------- |
-| Claude Code | 2.1.257 | `claude.exe`, subscription auth                     |
-| Codex CLI   | 0.145.0 | npm shim; auth = "Logged in using ChatGPT"          |
-| git         | 2.52.0  | native worktrees                                    |
-| Node        | 24.11.1 | checks + poc-verify                                 |
-| pnpm        | 9.15.0  | monorepo checks                                     |
-| PowerShell  | 5.1     | Windows-native; no pwsh 7, no WSL, no Docker needed |
-
-No install step. No new dependency. No third-party orchestrator.
+```
+.planning ──reconcile──▶ execution-index.json  (tasks, deps, gates, status, scopes)
+                               │
+              supervisor.ps1 loop / run
+                               │  pick READY (deps satisfied, not Level C, scope-safe)
+                               ▼
+        git worktree add  ─ branch orch/<runid>  (main never touched here)
+                               │
+   run-agent.ps1 ─▶ claude -p (primary)  ──PROVIDER_* only──▶ codex exec (same worktree, continues)
+                               │
+   verify.ps1 ─▶ deterministic checks scoped to task risk (config.checkProfiles)
+                               │  PASS
+   review.ps1 ─▶ the OTHER provider reviews the diff
+                               │  APPROVE   (REQUEST_CHANGES → back to executor, ≤2 cycles)
+   merge.ps1 ─▶ integrate main into branch → re-verify → merge --no-ff → push
+                               │
+   task → MERGED / WAITING_HUMAN / NEEDS_REVIEW   (branch always kept until cleanup)
+```
 
 ---
 
 ## Commands
 
 ```powershell
-# rebuild the pointer index from .planning (status = NEEDS_RECONCILE until a human/agent confirms)
+# rebuild + validate the task index from .planning
 powershell -File scripts\orchestration\supervisor.ps1 index
 
-# show queue + runs + index + main HEAD
+# queue + workers + providers + main sync
 powershell -File scripts\orchestration\supervisor.ps1 status
 
-# print the next READY task (respects deps + Level-C gates)
+# the next auto-runnable task (deps + Level-C aware)
 powershell -File scripts\orchestration\supervisor.ps1 next
 
-# run one task (worktree -> agent -> verify -> checkpoint; POC mode never merges)
-powershell -File scripts\orchestration\supervisor.ps1 run -Task <taskId>
+# run ONE task end to end (worktree → agent → verify → cross-review → safe merge)
+powershell -File scripts\orchestration\supervisor.ps1 run -Task <taskId> [-NoMerge]
 
-# archive a run: remove worktree, keep branch + logs + checkpoints
+# continuous scheduler — reconcile → run READY → repeat; sleeps when idle/blocked/gated
+powershell -File scripts\orchestration\supervisor.ps1 loop
+#   stop it: New-Item .orchestration\loop.stop
+
+# after a crash / closed terminal / reboot — detect orphans, never delete dirty work
+powershell -File scripts\orchestration\supervisor.ps1 recover        # read-only report
+powershell -File scripts\orchestration\supervisor.ps1 recover -Apply # clear provably-safe orphans
+
+# archive a finished run: remove its worktree, keep branch + logs + checkpoints
 powershell -File scripts\orchestration\supervisor.ps1 cleanup -Task <taskId>
 ```
 
-### Fault injection (POC / testing only — never exhausts real quota)
+### Config knobs (`.orchestration/config.json`)
 
-```powershell
-$env:ORCH_INJECT_FAIL = "claude:PROVIDER_QUOTA"   # provider:CLASS
-powershell -File scripts\orchestration\supervisor.ps1 run -Task <taskId>
-Remove-Item Env:\ORCH_INJECT_FAIL
-```
-
----
-
-## Failover — Claude -> Codex
-
-**Switch providers ONLY for provider-level failure**, classified from exit code +
-stderr + stdout (raw evidence stored in `runs/<id>/logs/` and `results/`):
-
-| Class                                                                                      | Failover?                           |
-| ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| `PROVIDER_QUOTA` `PROVIDER_RATE_LIMIT` `PROVIDER_AUTH_EXPIRED` `PROVIDER_TEMP_UNAVAILABLE` | **yes**                             |
-| `CHECK_FAILURE` `AGENT_ERROR` `TIMEOUT` `MERGE_CONFLICT` `HUMAN_GATE`                      | no — retry / recover / stop / pause |
-
-Sequence on a provider failure:
-
-1. stop; the writer lock is released (no concurrent writers, ever).
-2. `checkpoint.ps1` captures: task id, run id, branch, base SHA, HEAD, dirty
-   files, `diff --stat`, bounded redacted diff, commands run, checks run, agent
-   results, failure class, next action.
-3. supervisor sets `spec.continueFromCheckpoint` + `spec.previousProvider`.
-4. Codex launches in the **same worktree**, told explicitly to CONTINUE the
-   partial work, not restart.
-5. verify -> commit on branch. If Codex also hits a provider failure -> run
-   pauses `BLOCKED_PROVIDER` for a human.
-
-No "mental context transfer": filesystem + git + task spec + checkpoint are the
-whole truth.
+- `scheduler.maxParallel` = **1** (ceiling 2). Keep 1 until a real wave passes.
+- `scheduler.refuseRunWhenNotReconciled` = true — the loop will not run against a
+  broken index.
+- `merge.enabled`, `merge.requireReviewApprove`, `merge.pushAfterMerge`.
+- `review.enabled`, `review.maxCycles` = 2.
+- `providers.failoverOn` — the only four classes that trigger Claude→Codex.
 
 ---
 
-## Level C (human gates)
+## Reconciliation & validation
 
-`WAITING_HUMAN` is a **terminal paused state, not a failure**. Triggers: the
-CLAUDE.md matrix — stack change, paid service, billing/fiscal/LGPD, multi-tenant
-strategy, money handling, deploy/DNS, secrets/API keys, destructive data ops,
-force push / history rewrite, business-requirement change, subjective visual
-judgement. Detected from the task spec (`level: "C"` / `humanGate: true`) and by
-scanning title/notes/objective against `config.levelCGuards.triggers`. The agent
-prompt also instructs the model to emit `HUMAN_GATE: <why>` and stop.
+`supervisor.ps1 index` parses every `*-PLAN.md`, reconciles each task's status
+against its `*-SUMMARY.md`, and validates:
 
-The scheduler may continue _other_ independent SAFE tasks only if doing so cannot
-cross or invalidate the gate; otherwise the pipeline pauses.
+| Check                                                    | Result                   |
+| -------------------------------------------------------- | ------------------------ |
+| task in a SUMMARY that the plan table doesn't declare    | ERROR                    |
+| dependency on a plan that doesn't exist (in-scope)       | ERROR                    |
+| plan dependency cycle                                    | ERROR                    |
+| plan `status: complete` but a task is still PENDING      | ERROR                    |
+| in-plan predecessor not resolved but the task is DONE    | ERROR                    |
+| DONE with an empty SUMMARY note                          | NEEDS_RECONCILE (blocks) |
+| task DONE while a dependency _plan_ isn't fully resolved | warning (`ran-ahead`)    |
+| plan vs SUMMARY frontmatter status disagree              | warning                  |
+
+Validation covers the **active phase (from `STATE.md`) and later**; historical
+phases trust `STATE.md`. If `reconciled=false`, `loop` refuses to run.
+
+---
+
+## Failover — Claude → Codex
+
+Switch providers **only** for a corroborated provider-level failure:
+
+| Class                                                                                                                | Failover?                           |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `PROVIDER_QUOTA` `PROVIDER_RATE_LIMIT` `PROVIDER_AUTH_EXPIRED` `PROVIDER_TEMP_UNAVAILABLE`                           | **yes**                             |
+| `AGENT_ERROR` `CHECK_FAILURE` `BUILD_FAILURE` `TEST_FAILURE` `MERGE_CONFLICT` `INFRA_FAILURE` `HUMAN_GATE` `UNKNOWN` | no — retry / recover / stop / pause |
+
+`UNKNOWN` never fails over (conservative). On failover: checkpoint → Codex
+launches in the **same worktree**, told to CONTINUE the partial work. If Codex
+also hits a provider failure → run pauses `BLOCKED_PROVIDER` for a human.
+
+---
+
+## Cross-review
+
+Claude implements → Codex reviews. Codex implements → Claude reviews. The reviewer
+gets the task spec + acceptance criteria + the git diff + the check results, runs
+**read-only**, and emits `VERDICT: APPROVE | REQUEST_CHANGES | HUMAN_REVIEW_REQUIRED`.
+
+`REQUEST_CHANGES` → feedback goes back to the executor in the same worktree
+(≤ `review.maxCycles`). `HUMAN_REVIEW_REQUIRED` → task pauses `WAITING_HUMAN`,
+branch kept.
+
+---
+
+## Safe merge
+
+1. preconditions: verify PASS + review APPROVE + branch committed & clean
+2. `git merge <target>` into the branch — conflict → `NEEDS_REVIEW`, stop
+3. re-run the check profile on the integrated branch (= the post-merge tree)
+4. `main` checkout must be clean, on `main`, and unmoved since the run started
+5. `git merge --no-ff <branch>` into `main` (branch already contains `main` → clean)
+6. `git push` (normal) if `merge.pushAfterMerge`
+
+**Never**: force push, `reset --hard`, deleting a branch before its work is
+merged, merging a red branch. `Assert-SafeGitArgs` blocks those literally.
+
+---
+
+## Level C — human gates
+
+`WAITING_HUMAN` is a **terminal paused state, not a failure**. Detected from the
+task class (`HUMAN_APPROVAL` / `MANUAL_UAT`) and by scanning the task text against
+`config.levelCGuards.triggers` (persistent DB, secrets, billing, deploy, DNS,
+money handling, destructive data, force push, business-requirement change…). The
+supervisor prints the gate (task / why / instructions / what happens after) and
+never tries to work around it. Clear the gate by doing the step manually and
+recording it in the plan's SUMMARY, then re-run `index`.
+
+---
+
+## Crash recovery
+
+Everything is reconstructable from git + `.planning` + `.orchestration/`.
+`supervisor.ps1 recover` detects: orphan locks (dead pid), stale worktrees,
+interrupted `RUNNING` runs, dirty branches, checkpoints. It marks interrupted
+runs `RECOVERABLE` (has a checkpoint) or `NEEDS_REVIEW` (dirty, no checkpoint) and
+**never deletes dirty work**. `-Apply` only clears provably-safe orphan locks and
+prunes empty worktrees.
 
 ---
 
 ## Security / redaction
 
-- Every file that can carry CLI/agent output (`logs/`, `checkpoints/`,
-  `prompts`) is passed through `Protect-Secrets` (regex denylist in
-  `config.redaction`): api keys, tokens, bearer/authorization, cookies,
-  `sk-...`, `ghp_...`, PEM private keys.
-- Checkpoints never contain `.env`, auth files, or environment dumps.
-- Prompts to the fallback agent carry the checkpoint (redacted) + task spec —
-  never a raw environment or the primary's credentials.
-- The agent prompt forbids touching secrets / persistent DB / production.
+Every file that can carry CLI/agent output (`logs/`, `checkpoints/`, prompts,
+review findings, merge conflict dumps) passes through `Protect-Secrets`:
+`Authorization`/`Bearer`/cookies, `*_SECRET` / `*_TOKEN` / `*_PASSWORD` /
+`*_KEY`, `DATABASE_URL`, `scheme://user:pass@host`, JWTs, `sk-…`, `ghp_…`, AWS
+keys, PEM keys — plus a structural guard that collapses any `.env`-style
+`KEY=VALUE` dump wholesale. No environment dumps are ever persisted.
 
 ---
 
-## Recovery — rebuild context from scratch
-
-Everything is reconstructable without this tool's runtime:
-
-```
-git -C <repo> log --oneline <baseSha>..orch/<runId>     # what the run did
-.planning/AGENT-HANDOFF.md                              # portable checkpoint
-.planning/STATE.md  .planning/ROADMAP.md                # GSD truth
-.orchestration/checkpoints/<runId>-*.json               # last known run state
-.orchestration/runs/<runId>/                            # prompts, logs, verdicts
-```
-
-If `.orchestration/` is wiped: `supervisor.ps1 index` rebuilds the pointer list;
-run branches (`orch/*`) still hold the work; checkpoints are gone but the diff
-is in git.
-
----
-
-## Turn it all off
+## Tests
 
 ```powershell
-# stop: nothing runs on a schedule yet. Just don't invoke supervisor.ps1.
+powershell -File scripts\orchestration\tests\run-tests.ps1
+```
 
-# remove all run worktrees + branches, keep nothing:
-git worktree list | Select-String 'orchestration\\worktrees' | ForEach-Object {
-  ($_ -split '\s+')[0]
-} | ForEach-Object { git worktree remove --force $_ }
+23 deterministic cases against throwaway git repos under `$env:TEMP` — real
+`main` and real `.planning` are never touched. `fake-agent.ps1` stands in for
+`claude -p` / `codex exec` (no quota, no network). Covers: reconciliation,
+dependency gating, scope conflict, `maxParallel`, `WAITING_HUMAN`, both
+executors, Claude→Codex failover, both reviewers, review-reject→correction,
+check-failure ≠ provider-failure, crash recovery, orphan lock, dirty-worktree
+preservation, redaction, main-changed-during-run, safe merge, post-merge verify.
+
+---
+
+## Turn it off
+
+```powershell
+New-Item .orchestration\loop.stop        # stops the loop at the next tick
+
+# remove run worktrees + branches (keeps nothing), safe for main:
+git worktree list | Select-String 'orchestration\\worktrees' | ForEach-Object { ($_ -split '\s+')[0] } |
+  ForEach-Object { git worktree remove --force $_ }
 git branch --list 'orch/*' | ForEach-Object { git branch -D ($_.Trim()) }
 git worktree prune
-
-# wipe runtime (keeps tracked config.json + this doc):
-Remove-Item -Recurse -Force .orchestration\runs, .orchestration\queue, `
-  .orchestration\checkpoints, .orchestration\logs, .orchestration\locks, `
-  .orchestration\worktrees, .orchestration\execution-index.json
 ```
 
-## Remove Orca-style orchestration entirely, without damaging the repo
-
-```powershell
-git rm -r scripts/orchestration
-git rm .orchestration/config.json
-# remove the .gitignore block for .orchestration/
-Remove-Item -Recurse -Force .orchestration
-# revert docs
-git rm docs/runbooks/agent-orchestration.md
-git commit -m "chore: remove agent orchestration layer"
-```
-
-No production, DB, `.planning`, or app code is touched by any of the above.
-`main` is unaffected — the orchestration layer only ever writes to `orch/*`
-branches and `.orchestration/` runtime.
+`main`, production, the DB and `.planning` are never touched by the orchestration
+layer — it only ever writes `orch/*` branches, `.orchestration/` runtime, and (on
+a successful reviewed merge) a `--no-ff` merge commit on `main`.

@@ -49,10 +49,10 @@ em DB persistente — `HUMAN_APPROVAL`) e T12 (setup manual em Windows limpo —
 
 | Item | Estado |
 |---|---|
-| Standalone | `main` em `c1cb048d1d01767b6cc36ca7709c4afe88f82483`, 171 commits (2026-09-01) |
-| Remote | repositório privado; `origin/main` ahead/behind `0/0` |
-| Working tree | limpa; staged e untracked não ignorado em zero |
-| Git pai | detach local em `1449b648fcf6da14dc2d7ad082915ddccd578cf7` |
+| Standalone | `main` ativo — HEAD/contagem via `git log -1` / `git rev-list --count HEAD` (não fixar SHA aqui) |
+| Remote | repositório privado; sync via `git status` / `supervisor.ps1 status` |
+| Working tree | ver `git status` |
+| Git pai | detach local preservado (recuperação P00) |
 | Recuperação | P00 complete; archive, backup e bundle preservados |
 
 ## Snapshot histórico — cobertura Web auditada em 2026-06-05
