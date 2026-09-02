@@ -47,13 +47,15 @@ cp apps/mobile/.env.example apps/mobile/.env
 **Requer Docker Desktop rodando.**
 
 ```bash
-# Subir Postgres (porta 5432) + Redis (porta 6379)
+# Postgres (host 5544 -> 5432), Redis (6379), MinIO (9000/9001)
 pnpm dev:infra
-
-# Verificar se os containers estão healthy
-docker ps
-# Esperado: orcivo_postgres_dev (healthy) + orcivo_redis_dev (healthy)
+docker ps   # orcivo_postgres_dev / orcivo_redis_dev / orcivo_minio_dev  (healthy)
 ```
+
+> Postgres publica **5544** no host (5432 costuma colidir com um PostgreSQL
+> nativo do Windows). `apps/backend/.env.example` e `prisma/.env` já usam 5544.
+> Se o `.env` antigo apontar para `/orcivo` na 5432, copie o example de novo:
+> `copy apps\backend\.env.example apps\backend\.env`
 
 ---
 
