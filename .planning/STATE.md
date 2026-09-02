@@ -21,6 +21,15 @@ progress:
 **Data:** 2026-09-01
 **Próximo:** gates humanos de P02 — ver `phases/03.1-.../03.1-P02-T12-T13-HANDOFF.md`. Agente NÃO executa T12/T13. P03 bloqueada até P02 = PASS.
 
+**Discovery de produto (2026-09-01):** sessão de exploração local do produto
+pelo owner, formalizada em `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md`.
+9 achados (D-1..D-9) classificados e encaixados nas waves existentes de 03.1 +
+Fase 4 sem alterar o plano (só addenda). Wave nova **03.1-P07.5** (trilha de
+auditoria de negócio). ADRs novas: 015 (audit trail), 016 (transições de estado
+explícitas / histórico imutável), 017 (billing provider-agnostic / Mercado Pago
+para P06). **Nada implementado** — respeitando os gates de P02/P03.
+Ver `AGENT-HANDOFF.md` para continuidade entre agentes.
+
 P02 (T01–T10): TenantGuard global + RoleGuard, ownership de IDs relacionados,
 `company_id` em quote_items/quote_approvals, 35 testes de integração A/B verdes
 (cross-tenant read/list/detail/update/delete/nested/related-IDs/invites + RBAC +

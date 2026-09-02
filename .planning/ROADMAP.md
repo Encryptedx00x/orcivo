@@ -1,6 +1,8 @@
 # Orcivo — ROADMAP.md
 
-> **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00/Wave 0 está concluída; P01 é a próxima wave permitida. Fase 4 permanece bloqueada.
+> **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00 e P01 concluídas (auto); P02 aguardando gates humanos T12/T13; P03 é a próxima wave após P02 = PASS. Fase 4 permanece bloqueada.
+>
+> **Discovery de produto 2026-09-01:** `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md` — sessão real de exploração do produto pelo owner. 9 achados (D-1..D-9) classificados e encaixados nas waves de 03.1 e na Fase 4 sem alterar o plano existente. ADRs novas: 015 (audit trail), 016 (transições de estado), 017 (billing provider-agnostic / Mercado Pago).
 
 ---
 
@@ -277,7 +279,7 @@ Plans:
 aprovação, auth, billing, contratos, qualidade e UAT reproduzíveis antes da Fase
 4.
 
-**Status:** **EM ANDAMENTO — 2/12 waves verificadas**
+**Status:** **EM ANDAMENTO — 2/13 waves verificadas** (P07.5 adicionada pelo discovery de 2026-09-01)
 
 **Estado de saída atual:**
 
@@ -293,10 +295,11 @@ Planos:
 - [x] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — auto PASS; T11/T12 humanos pendentes)
 - [ ] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2 — READY)
 - [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3)
-- [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4)
+- [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4) — **escopo expandido pelo discovery: máquina de estados completa de Quote + WorkOrder, ações `cancelar`/`reabrir`/`corrigir`, fim da sobrescrita de `notes`, audit em toda transição (ADR-016, D-4)**
 - [ ] 03.1-P05-PLAN.md — Auth e sessões (Wave 5)
-- [ ] 03.1-P06-PLAN.md — Billing e limites (Wave 6)
-- [ ] 03.1-P07-PLAN.md — Contratos funcionais (Wave 7)
+- [ ] 03.1-P06-PLAN.md — Billing e limites (Wave 6) — **+ arquitetura billing provider-agnostic (`PaymentProvider`) e refatoração dos placeholders Asaas; Mercado Pago fica desenhado, não implementado (ADR-017, D-8)**
+- [ ] 03.1-P07-PLAN.md — Contratos funcionais (Wave 7) — **escopo expandido pelo discovery: remover todo CTA morto; `PATCH /company/me` (perfil + PIX); `PATCH`/`DELETE /customers/:id`; modal "Registrar recebimento"; sidebar/topbar com dados reais da sessão (D-1, D-2, D-3, D-9)**
+- [ ] 03.1-P07.5-PLAN.md — **Trilha de auditoria de negócio (nova wave, discovery)** — `AuditService` central, migration `actor_user_id` (aditiva), cobertura quote/OS/payment/company/invite, `GET /audit-logs`, aba "Histórico" no web (ADR-015, D-5)
 - [ ] 03.1-P08-PLAN.md — Baseline de qualidade (Wave 8)
 - [ ] 03.1-P09-PLAN.md — Preparação de UAT (Wave 9)
 - [ ] 03.1-P10-PLAN.md — Fidelidade visual (Wave 10)
@@ -313,7 +316,23 @@ P01-T11 (aplicar migration em DB persistente) segue como gate humano `H-DB`.
 
 Ver `PROJECT.md` para descrição de cada fase.
 
+**Itens do discovery 2026-09-01 encaixados na Fase 4:**
+
+- **Mobile catch-up (D-6):** `InicioScreen` deixa de ser stub — Home útil para o
+  técnico em campo (KPIs do dia, agenda do dia, ações rápidas); tela de
+  **detalhe do cliente** no mobile. Agenda/Financeiro/Configurações/Equipe/Plano
+  no mobile permanecem **fora de escopo** (dual-surface: web = gestão) até
+  decisão de produto em contrário.
+- **Agenda web completa:** views mês/dia/lista, filtros, editar evento
+  (`OPERATIONS_UI_MISSING_SPECS.md` já tem a spec).
+- **Documentos:** recibos (a partir de `Payment`) e contratos.
+- **Trilha de auditoria — leitura/UI completa** caso não finalize em 03.1-P07.5.
+
+**Fase 7:** Notificações (modelo `Notification`/`DeviceToken`, push, e-mail,
+in-app) — hoje o ícone de sino no TopBar é placeholder (D-1b).
+
 ---
 *Criado: 2026-05-21 — Fase 0 planejada*
 *Atualizado: 2026-05-22 — Fase 2A planejada (12 plans, 7 waves)*
 *Atualizado: 2026-07-23 — Fase 03.1 em andamento; P00 concluída*
+*Atualizado: 2026-09-01 — Discovery de produto incorporado; P02 aguardando gates humanos; wave P07.5 (audit trail) adicionada; ADRs 015/016/017*
