@@ -1,6 +1,6 @@
 {
-  "$comment": "Orcivo orchestration SECURITY SPINE (V2) config. V2 is a clean-room rebuild after the independent review REJECTED V1. This file holds knobs, NEVER status. V2 runtime state lives under .orchestration/v2/ and is authoritative for V2 only. V1 runtime state is never read by V2.",
-  "schemaVersion": "orcivo.orchestration.v2.config/1",
+  "$comment": "Orcivo orchestration SECURITY SPINE (V2) config. V2 is a clean-room rebuild after the independent review REJECTED V1, then a second review REJECTED the V1 spine. This file holds knobs, NEVER status. V2 runtime state lives under .orchestration/v2/ and is authoritative for V2 only. V1 runtime state is never read by V2. Nothing here is controllable by a task spec.",
+  "schemaVersion": "orcivo.orchestration.v2.config/2",
   "spineStatus": "UNDER_REVIEW_NOT_READY",
   "target": {
     "branch": "main",
@@ -8,11 +8,14 @@
     "requireFetchWithinSec": 900
   },
   "ledger": {
+    "$comment": "C-01: WAITING_HUMAN is NOT dispatchable - a task parked for a human is resumed only by an explicit gate approval event, never by the scheduler. Any ledger corruption -> QUARANTINED (fail closed), never a 'plausible' rebuild.",
     "terminalStates": ["PUBLISHED", "QUARANTINED"],
-    "dispatchableStates": ["DISCOVERED", "READY", "WAITING_HUMAN", "FAILED"],
-    "maxAttemptsPerVersion": 3
+    "dispatchableStates": ["DISCOVERED", "READY", "FAILED"],
+    "maxAttemptsPerVersion": 3,
+    "hashChainVersion": "orcivo.orchestration.v2.ledger-event/2"
   },
   "contract": {
+    "$comment": "H-06/M-01: an empty declaredScope FAILS CLOSED (no changed file is in scope). An unrestricted executor needs the explicit risk-C grant 'unrestrictedScope', which is a different thing from [].",
     "protectedPaths": [
       ".planning/",
       ".orchestration/",
@@ -25,15 +28,65 @@
       ".github/workflows/"
     ],
     "authoritativeAcceptanceGlobs": ["**/*.isolation.spec.ts", "prisma/schema.prisma"],
-    "protectedPathElevatedRisks": ["C"]
+    "protectedPathElevatedRisks": ["C"],
+    "emptyScopeFailsClosed": true
   },
   "review": {
     "schemaVersion": "orcivo.orchestration.v2.review-envelope/1",
+    "schemaFile": "schemas/review-envelope.schema.json",
     "beginMarker": "<<<ORCIVO_REVIEW_ENVELOPE_V1",
     "endMarker": "ORCIVO_REVIEW_ENVELOPE_V1>>>",
     "verdicts": ["APPROVE", "REQUEST_CHANGES", "HUMAN_REVIEW_REQUIRED", "INCOMPLETE_REVIEW"],
     "maxCycles": 2,
-    "promptTemplateVersion": "v2-review-1"
+    "promptTemplateVersion": "v2-review-2",
+    "limits": {
+      "$comment": "C-02/H-03: hard bounds enforced BEFORE and DURING schema validation. Anything over the bound fails closed to HUMAN_REVIEW_REQUIRED.",
+      "maxEnvelopeBytes": 262144,
+      "maxFindings": 200,
+      "maxFindingDetailChars": 4000,
+      "maxEvidenceChars": 4000,
+      "maxCriteria": 200,
+      "maxChangedFilesReviewed": 2000,
+      "maxStdoutBytes": 1048576
+    }
+  },
+  "verification": {
+    "$comment": "NH-02: verification is DECLARATIVE and lives here, outside any task. A task names a profileId; it cannot supply commands, executables, args, cwd or env. The frozen contract binds verificationDefinitionHash = canonical hash of the resolved profile object below.",
+    "profiles": {
+      "A": {
+        "profileId": "A",
+        "profileVersion": 2,
+        "description": "docs / copy / fixture - structural checks only, no build",
+        "workingDirPolicy": "worktree-root",
+        "environmentPolicy": "inherit-minus-secrets",
+        "timeoutSec": 300,
+        "checks": [{ "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" }]
+      },
+      "B": {
+        "profileId": "B",
+        "profileVersion": 2,
+        "description": "contained code change - structural + lint-shape checks (no network)",
+        "workingDirPolicy": "worktree-root",
+        "environmentPolicy": "inherit-minus-secrets",
+        "timeoutSec": 900,
+        "checks": [
+          { "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" },
+          { "id": "no-large-binary", "kind": "builtin", "builtin": "no-large-binary" }
+        ]
+      },
+      "C": {
+        "profileId": "C",
+        "profileVersion": 2,
+        "description": "security / tenant / money / schema - full checks, human gate required elsewhere",
+        "workingDirPolicy": "worktree-root",
+        "environmentPolicy": "inherit-minus-secrets",
+        "timeoutSec": 1800,
+        "checks": [
+          { "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" },
+          { "id": "no-large-binary", "kind": "builtin", "builtin": "no-large-binary" }
+        ]
+      }
+    }
   },
   "classification": {
     "$comment": "H-01: provider failover is allowed ONLY for these classes, and ONLY when the class comes from the CLI's own structured control channel - never from application/task/test stdout.",
@@ -62,9 +115,14 @@
     "killSwitchFile": "KILL_SWITCH"
   },
   "leases": {
-    "namespaces": ["scheduler", "taskversion", "workspace", "integration"],
-    "heartbeatSec": 30,
-    "staleAfterSec": 180
+    "namespaces": ["scheduler", "taskversion", "workspace", "integration", "ledger"],
+    "heartbeatSec": 20,
+    "staleAfterSec": 180,
+    "$comment": "H-05: a lease whose holder process is provably alive is NEVER an orphan, regardless of heartbeat age. A stale heartbeat alone quarantines the lease record; it does not hand the key to a second writer."
+  },
+  "gates": {
+    "$comment": "#13: on read, gateHash is recomputed over {gateId, taskVersionId, specHash, decision, approvalIdentity, approvalTimestamp, nonce}. Synthetic approvals are permitted ONLY from the isolated test harness (Assert-DisposableRoot).",
+    "hashVersion": "orcivo.orchestration.v2.gate/2"
   },
   "providers": {
     "primary": "claude",
@@ -75,6 +133,7 @@
   "redaction": {
     "maxEnvLikeLines": 6,
     "replacement": "[REDACTED]",
+    "$comment": "H-11: `patterns` redact (streaming, line + multiline buffered); `multilinePatterns` need a state buffer (PEM); `scanPatterns` are the final artifact sweep. Redactor and scanner share this library.",
     "patterns": [
       "(?im)^\\s*(authorization|proxy-authorization)\\s*:\\s*.+$",
       "(?i)authorization\\s*[:=]\\s*\\S+",
@@ -92,15 +151,23 @@
       "xox[baprs]-[A-Za-z0-9-]{10,}",
       "AKIA[0-9A-Z]{16}",
       "AIza[0-9A-Za-z_-]{30,}",
-      "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+      "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}"
     ],
+    "multilinePatterns": [
+      "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+      "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\\s\\S]{0,4000}"
+    ],
+    "multilineTriggers": ["-----BEGIN "],
+    "multilineBufferLines": 200,
     "scanPatterns": [
       "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+",
       "sk-[A-Za-z0-9_-]{16,}",
       "gh[pousr]_[A-Za-z0-9]{20,}",
       "AKIA[0-9A-Z]{16}",
-      "-----BEGIN [A-Z ]*PRIVATE KEY-----",
-      "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}"
+      "-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+      "ORCIVO_SYNTHETIC_SECRET_[A-Za-z0-9]{8,}",
+      "(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]{16,}",
+      "(?i)database_url\\s*[:=]\\s*\\S+"
     ]
   }
 }

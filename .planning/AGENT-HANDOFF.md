@@ -10,34 +10,45 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
-## Orquestração — REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
+## Orquestração — SEGUNDA REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
 
-**O supervisor V1 foi REJEITADO** por revisão adversarial independente do Codex
-(`.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md`, VERDICT:
-REJECT). V1 é agora `LEGACY_REJECTED_REFERENCE_ONLY` — preservado só para
-comparação e como baseline de regressão (23/23). `run`/`loop`/`cleanup` do V1
-estão bloqueados (guard em `supervisor.ps1`); `index`/`status`/`next`/`recover`
-seguem disponíveis só para inspeção.
+**Duas revisões independentes REJEITARAM o trabalho até agora:** o supervisor V1
+(`.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md`) e a primeira
+espinha V2 (`.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW.md`,
+`SECURITY_SPINE_REVIEW = FAIL`, `NEXT_REMEDIATION_STAGE_ALLOWED = NO`). O segundo
+review reproduziu de forma independente: corrupção de ledger sob concorrência,
+APPROVE de review schema-inválido, attestation "fresh" após mutação de contrato,
+publicação sem push, quebra de lease vivo, protected dot-path quebrado, preflight
+aceitando versão ausente do índice, e secret sintético cru em caminhos de falha.
 
-**V2 — `scripts/orchestration/v2/`** (clean-room, namespace próprio
-`.orchestration/v2/`, não faz dot-source do V1, não migra artefato V1 para
-confiança V2). Esta sessão construiu e **provou adversarialmente** a espinha de
-segurança:
+**Esta sessão fez a segunda remediação:** cada exploit reproduzido pelo Codex
+virou teste de regressão versionado. Ver `.planning/reviews/`, `spine.ps1 explain`
+e o relatório `SECOND_SPINE_REMEDIATION` na sessão.
 
-- `SECURITY_SPINE_V2 = PASS` — suíte `v2/tests/run-spine-tests.ps1` **40/40 verde**,
-  repositórios git descartáveis, sem chamadas de modelo.
-- Fixados + testados: **C-01, C-02, C-03, H-01, H-03, H-04, H-05, H-06, H-07,
-  H-11, H-12, M-01, M-03, M-05**; **C-04 e H-02 parciais**.
-- Deferidos (próxima sessão, cada um precisa de revisão própria): **C-05, C-06,
-  H-08, H-09, H-10** + smoke real Claude/Codex descartável.
-- `SECURITY_SPINE_V2` docs: `docs/agents/ORCHESTRATION-THREAT-MODEL.md`,
-  `docs/agents/ORCHESTRATION-ATTESTATIONS.md`.
-- **NÃO** é production-ready. **NÃO** declarado READY_FOR_CANARY. Nenhuma task
-  real / P03 / T12 / T13 / DB persistente tocada.
-- `READY_FOR_SECOND_SECURITY_REVIEW = YES` (para a espinha; C-05/C-06/H-08..H-10
-  ficam para depois desse review).
+- V1 `run`/`loop`/`cleanup` **permanentemente desabilitados, sem override**
+  (`ORCH_V1_REGRESSION_HARNESS` removido). Suíte de primitivas V1 reduzida para
+  os checks que ainda têm valor e só usam `index`/`next`/`recover`/`status`
+  (**8/8 verde**). Os testes behaviorais de `run`/`loop`/`merge` foram removidos
+  porque o code path não existe mais.
+- V2 pipeline (`Invoke-SpineRun`) movido para `scripts/orchestration/v2/tests/`
+  e protegido por `Assert-DisposableRoot` (NC-01: estrutural, sem env var).
+  `spine.ps1` não tem verbo `run`.
+- Suítes: V1 primitivas **8/8**; V2 adversarial **86/86** (`spine.ps1 selftest`),
+  repos descartáveis, sem chamadas de modelo.
+- Fixados + re-testados adversarialmente: **C-01, C-02, C-03, H-01, H-03, H-04,
+  H-05, H-06, H-07, H-11, H-12, M-01, M-03, M-05** + novos findings **NC-01,
+  NH-01, NH-02, NM-01, NM-02** (NL-01 coberto). **C-04 e H-02 parciais.**
+- Deferidos (cada um precisa de revisão própria; **não** viraram PASS): **C-05,
+  C-06, H-08, H-09 completo, H-10** + smoke real Claude/Codex. Nenhum entrypoint
+  de task real.
+- **NÃO** production-ready. **NÃO** READY_FOR_CANARY. Nenhuma task real / P03 /
+  T12 / T13 / DB persistente tocada.
+- `READY_FOR_THIRD_SECURITY_REVIEW = YES`. Só o Codex independente pode declarar
+  `SECURITY_SPINE_REVIEW = PASS`.
 
-Detalhe da matriz e arquitetura: `docs/runbooks/agent-orchestration.md`.
+Detalhe: `docs/agents/ORCHESTRATION-THREAT-MODEL.md`,
+`docs/agents/ORCHESTRATION-ATTESTATIONS.md`,
+`docs/runbooks/agent-orchestration.md`.
 
 ---
 

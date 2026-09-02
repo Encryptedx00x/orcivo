@@ -30,42 +30,53 @@
     },
     "criteria": {
       "type": "array",
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "met", "evidence"],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$"
+          },
           "met": { "type": "boolean" },
-          "evidence": { "type": "string" }
+          "evidence": { "type": "string", "maxLength": 4000 }
         }
       }
     },
     "findings": {
       "type": "array",
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["severity", "detail"],
         "properties": {
           "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
-          "file": { "type": "string" },
+          "file": { "type": "string", "maxLength": 512 },
           "line": { "type": "integer" },
-          "detail": { "type": "string", "minLength": 1 }
+          "detail": { "type": "string", "minLength": 1, "maxLength": 4000 }
         }
       }
     },
-    "filesReviewed": { "type": "array", "items": { "type": "string" } },
+    "filesReviewed": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": { "type": "string", "maxLength": 512 }
+    },
     "reviewerMeta": {
       "type": "object",
       "additionalProperties": false,
       "required": ["provider", "model", "effort", "toolPolicy", "promptTemplateVersion"],
       "properties": {
-        "provider": { "type": "string" },
-        "model": { "type": "string" },
-        "effort": { "type": "string" },
-        "toolPolicy": { "type": "string" },
-        "promptTemplateVersion": { "type": "string" }
+        "provider": { "type": "string", "maxLength": 64 },
+        "model": { "type": "string", "maxLength": 128 },
+        "effort": { "type": "string", "maxLength": 32 },
+        "toolPolicy": { "type": "string", "maxLength": 64 },
+        "promptTemplateVersion": { "type": "string", "maxLength": 64 }
       }
     }
   }

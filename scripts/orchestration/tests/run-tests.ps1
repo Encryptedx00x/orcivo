@@ -1,9 +1,14 @@
 <#
-run-tests.ps1 - deterministic test suite for the Orcivo orchestration layer.
+run-tests.ps1 - V1 PRIMITIVE regression suite (LEGACY_REJECTED_REFERENCE_ONLY).
 
-No real model calls (fake-agent.ps1), no real DB, no touching the real repo or
-real main. Each e2e test builds a throwaway git repo under $env:TEMP and drives
-the REAL scripts/orchestration/*.ps1 against it as child processes.
+The V1 supervisor's run/loop/cleanup/merge pipeline was rejected by two
+independent reviews and is permanently disabled - there is no env-var override
+(NC-01). This suite therefore keeps ONLY the primitive/reconciliation checks that
+still guard shared logic and only exercises the inspection verbs that remain
+available (index / next / recover / status): redaction, failure classification,
+scope-conflict, index reconciliation, reconcile validation, dependency gating,
+crash-recovery reporting, status. The behavioural run/loop/merge cases were
+removed because the code path they tested no longer exists.
 
   powershell -NoProfile -File scripts\orchestration\tests\run-tests.ps1
 #>
@@ -300,180 +305,6 @@ Check 'dependency gating: task blocked until its dependency is DONE' {
     AssertMatch $r2.out 'DEP-B' 'B should be selectable once A is DONE'
 }
 
-# ======================================================================
-# E2E - drive the real pipeline against throwaway repos
-# ======================================================================
-
-Check 'Claude executor: worktree -> verify -> review -> merge' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'EXE-CL' @{}
-    $r = RunSup $fx @('run', '-Task', 'EXE-CL') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.provider -eq 'claude')  "provider was $($run.provider)"
-    Assert ($run.status -eq 'MERGED')    "status was $($run.status): $($r.out)"
-    $parents = (git -C $fx rev-list --parents -n 1 HEAD).Trim().Split(' ').Count
-    Assert ($parents -eq 3) 'main HEAD should be a --no-ff merge commit (2 parents)'
-}
-
-Check 'Codex executor: primaryProvider=codex runs on codex' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'EXE-CX' @{ primaryProvider = 'codex' }
-    $r = RunSup $fx @('run', '-Task', 'EXE-CX') @{ ORCH_FAKE_CODEX = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.provider -eq 'codex')  "provider was $($run.provider)"
-    Assert ($run.status  -eq 'MERGED')  "status was $($run.status): $($r.out)"
-}
-
-Check 'Claude -> Codex failover: same worktree, continuation, completes' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'FO-1' @{}
-    $r = RunSup $fx @('run', '-Task', 'FO-1') @{ ORCH_FAKE_CLAUDE = 'partial-then-quota'; ORCH_FAKE_CODEX = 'ok-continue'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.provider -eq 'codex')  "should have failed over to codex, was $($run.provider)"
-    Assert ($run.status -in @('MERGED','REVIEW_APPROVED')) "status $($run.status): $($r.out)"
-    $cps = Get-ChildItem (Join-Path $fx '.orchestration\checkpoints') -Filter '*.json' -ErrorAction SilentlyContinue
-    Assert ($cps.Count -ge 1) 'a checkpoint should be written before failover'
-    AssertMatch $r.out 'fail over to codex' 'failover not logged'
-}
-
-Check 'check failure is NOT a provider failure: no failover, stops for human' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'CF-1' @{}
-    $r = RunSup $fx @('run', '-Task', 'CF-1', '-MaxRetries', '0') @{ ORCH_FAKE_CLAUDE = 'partial' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.provider -eq 'claude') "must NOT fail over on a check failure (was $($run.provider))"
-    Assert ($run.status -eq 'CHECK_FAILED') "status $($run.status)"
-    $v = Get-ChildItem (Join-Path $fx ".orchestration\runs\$($run.runId)") -Filter 'verify-*.json' | Select-Object -Last 1
-    $vj = Get-Content -Raw $v.FullName | ConvertFrom-Json
-    Assert ($vj.failureClass -eq 'CHECK_FAILURE') "verify failureClass was $($vj.failureClass)"
-}
-
-Check 'Codex reviewer reviews Claude; verdict recorded' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'RV-1' @{}
-    $null = RunSup $fx @('run', '-Task', 'RV-1') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    $rev = Get-ChildItem (Join-Path $fx ".orchestration\runs\$($run.runId)") -Filter 'review-*.json' | Select-Object -Last 1
-    $rj = Get-Content -Raw $rev.FullName | ConvertFrom-Json
-    Assert ($rj.executor -eq 'claude' -and $rj.reviewer -eq 'codex') "wrong pairing: $($rj.executor)/$($rj.reviewer)"
-    Assert ($rj.verdict -eq 'APPROVE') "verdict $($rj.verdict)"
-}
-
-Check 'Claude reviewer reviews Codex' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'RV-2' @{ primaryProvider = 'codex' }
-    $null = RunSup $fx @('run', '-Task', 'RV-2') @{ ORCH_FAKE_CODEX = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    $rev = Get-ChildItem (Join-Path $fx ".orchestration\runs\$($run.runId)") -Filter 'review-*.json' | Select-Object -Last 1
-    $rj = Get-Content -Raw $rev.FullName | ConvertFrom-Json
-    Assert ($rj.executor -eq 'codex' -and $rj.reviewer -eq 'claude') "wrong pairing: $($rj.executor)/$($rj.reviewer)"
-}
-
-Check 'review REQUEST_CHANGES -> executor correction -> APPROVE -> merge' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'RC-1' @{}
-    $r = RunSup $fx @('run', '-Task', 'RC-1') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'REQUEST_CHANGES,APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.reviewCycle -eq 1) "reviewCycle $($run.reviewCycle)"
-    Assert ($run.status -eq 'MERGED') "status $($run.status): $($r.out)"
-    $art = git -C $fx show HEAD:poc/poc-artifact.md | Out-String
-    AssertMatch $art 'review fixes applied' 'correction not applied'
-}
-
-Check 'review HUMAN_REVIEW_REQUIRED pauses, does not merge' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'HR-1' @{}
-    $r = RunSup $fx @('run', '-Task', 'HR-1') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'HUMAN' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Assert ($run.status -eq 'WAITING_HUMAN') "status $($run.status)"
-    $branches = git -C $fx branch --list 'orch/*' | Out-String
-    Assert ($branches.Trim().Length -gt 0) 'branch should be kept for the human'
-}
-
-Check 'WAITING_HUMAN: Level C task pauses, prints the gate, is not a failure' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'LC-1' @{ humanGate = $true; objective = 'Apply the tenant migration to the persistent database.' }
-    $r = RunSup $fx @('run', '-Task', 'LC-1') @{ ORCH_FAKE_CLAUDE = 'ok' }
-    AssertMatch $r.out 'HUMAN GATE' 'gate banner not printed'
-    AssertMatch $r.out 'WHY HUMAN'  'gate banner incomplete'
-    Assert ((Get-Runs $fx).Count -eq 0 -or ((Get-Runs $fx)[0].status -eq 'WAITING_HUMAN')) 'must not execute a Level C task'
-}
-
-Check 'maxParallel=1: scheduler will not start a 2nd task while one runs' {
-    $fx = New-Fixture -MaxParallel 1
-    Add-QueueTask $fx 'MP-A' @{ status = 'RUNNING' }   # pretend one is already running
-    New-Item -ItemType Directory -Force -Path (Join-Path $fx '.orchestration\runs\MP-A-x') | Out-Null
-    @{ runId = 'MP-A-x'; taskId = 'MP-A'; status = 'RUNNING'; provider = 'claude'; pid = $PID; baseSha = 'x'; scopes = @('poc/MP-A'); branch = 'orch/MP-A-x'; worktreePath = 'nope' } |
-        ConvertTo-Json | Set-Content (Join-Path $fx '.orchestration\runs\MP-A-x\run.json')
-    Add-QueueTask $fx 'MP-B' @{ status = 'READY'; scopes = @('poc/MP-B') }
-    $r = RunSup $fx @('loop', '-Once')
-    AssertMatch $r.out 'workers busy' 'loop should report the worker as busy and wait'
-    Assert ((Get-ChildItem (Join-Path $fx '.orchestration\runs') -Directory).Name -notcontains 'MP-B') 'MP-B must not have started'
-}
-
-Check 'safe merge: --no-ff, branch kept, no force, no reset' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'SM-1' @{}
-    $null = RunSup $fx @('run', '-Task', 'SM-1') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $branchExists = (git -C $fx branch --list 'orch/SM-1*' | Out-String).Trim().Length -gt 0
-    $reflog = git -C $fx reflog | Out-String
-    $merge = Get-ChildItem (Join-Path $fx '.orchestration\runs\*\merge-*.json') | Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
-    Assert $branchExists 'run branch must be kept until cleanup'
-    Assert ($reflog -notmatch 'reset: moving') 'no destructive reset in reflog'
-    Assert ($merge.status -eq 'MERGED') "merge status $($merge.status)"
-}
-
-Check 'main changed during run (clean): integrate + post-merge verify + merge' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'MC-1' @{}
-    # start the run manually so we can move main underneath it
-    $null = RunSup $fx @('run', '-Task', 'MC-1', '-NoMerge') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Set-Content -LiteralPath (Join-Path $fx 'poc/unrelated.txt') -Value 'main moved' -Encoding ascii
-    git -C $fx add -A; git -C $fx commit -q -m 'unrelated main change'
-    $mainBefore = (git -C $fx rev-parse HEAD).Trim()
-    $mp = (MergePs $fx $run.runId).out
-    $mainAfter = (git -C $fx rev-parse HEAD).Trim()
-    $parents = (git -C $fx rev-list --parents -n 1 HEAD).Trim().Split(' ').Count
-    Assert ($mainAfter -ne $mainBefore) "main should advance past the unrelated commit ($mp)"
-    Assert ($parents -eq 3) "main HEAD should be a merge commit ($mp)"
-    Assert ((Get-Run $fx $run.runId).status -eq 'MERGED') "run status $((Get-Run $fx $run.runId).status)"
-}
-
-Check 'post-merge verification failure: main NOT advanced, run NEEDS_REVIEW' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'PM-1' @{}
-    $null = RunSup $fx @('run', '-Task', 'PM-1', '-NoMerge') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    # main tightens the check so the branch tree fails AFTER integration
-    $tighter = (Get-Content -Raw (Join-Path $fx 'poc/check.mjs')) -replace "'## Conclusion'\]", "'## Conclusion', '## Extra']"
-    Set-Content -LiteralPath (Join-Path $fx 'poc/check.mjs') -Value $tighter -Encoding ascii
-    git -C $fx add -A; git -C $fx commit -q -m 'tighten check'
-    $mainBefore = (git -C $fx rev-parse HEAD).Trim()
-    $mp = (MergePs $fx $run.runId).out
-    $mainAfter = (git -C $fx rev-parse HEAD).Trim()
-    $runNow = Get-Run $fx $run.runId
-    Assert ($mainAfter -eq $mainBefore) "main must NOT advance on post-merge verify failure ($mp)"
-    Assert ($runNow.status -eq 'NEEDS_REVIEW') "run status $($runNow.status)"
-    AssertMatch $mp 'NEEDS_REVIEW' 'merge should report NEEDS_REVIEW'
-}
-
-Check 'merge conflict integrating target: STOP, main untouched' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'CN-1' @{}
-    $null = RunSup $fx @('run', '-Task', 'CN-1', '-NoMerge') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Select-Object -First 1
-    Set-Content -LiteralPath (Join-Path $fx 'poc/poc-artifact.md') -Value "## Intro`nCONFLICTING main version`n`n## Body`nx`n`n## Conclusion`ny`n" -Encoding ascii
-    git -C $fx add -A; git -C $fx commit -q -m 'conflicting main change'
-    $mainBefore = (git -C $fx rev-parse HEAD).Trim()
-    $mp = (MergePs $fx $run.runId).out
-    $mainAfter = (git -C $fx rev-parse HEAD).Trim()
-    $clean = (git -C $fx status --porcelain | Out-String).Trim().Length -eq 0
-    Assert ($mainAfter -eq $mainBefore) "main untouched on conflict ($mp)"
-    Assert $clean 'main checkout must be left clean after an aborted merge'
-    Assert ((Get-Run $fx $run.runId).status -eq 'NEEDS_REVIEW') 'run -> NEEDS_REVIEW'
-}
-
 Check 'crash recovery: orphan lock + interrupted run detected, dirty work preserved' {
     $fx = New-Fixture
     # fabricate an interrupted run: worktree with a dead pid, a lock, an uncommitted file
@@ -498,17 +329,6 @@ Check 'crash recovery: orphan lock + interrupted run detected, dirty work preser
     $runNow = Get-Run $fx $rid
     Assert ($runNow.status -in @('RECOVERABLE','NEEDS_REVIEW')) "interrupted run should be RECOVERABLE or NEEDS_REVIEW, was $($runNow.status)"
     Assert (Test-Path (Join-Path $fx "$wt/poc/wip.txt")) 'dirty work MUST be preserved'
-}
-
-Check 'orphan lock does not block a new writer' {
-    $fx = New-Fixture
-    Add-QueueTask $fx 'OL-1' @{}
-    New-Item -ItemType Directory -Force -Path (Join-Path $fx '.orchestration\locks') | Out-Null
-    @{ owner = 'ghost'; acquired = '2026-01-01T00:00:00'; pid = 999999 } |
-        ConvertTo-Json | Set-Content (Join-Path $fx '.orchestration\locks\OL-1-old.lock')
-    $r = RunSup $fx @('run', '-Task', 'OL-1') @{ ORCH_FAKE_CLAUDE = 'ok'; ORCH_FAKE_REVIEW = 'APPROVE' }
-    $run = Get-Runs $fx | Where-Object { $_.taskId -eq 'OL-1' } | Select-Object -First 1
-    Assert ($run.status -in @('MERGED','REVIEW_APPROVED')) "new run should proceed despite a stale lock ($($run.status))"
 }
 
 Check 'status: shows tasks, workers, providers, main sync' {

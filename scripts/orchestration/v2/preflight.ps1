@@ -1,12 +1,16 @@
 <#
-preflight.ps1 - the mandatory gate BEFORE any model is spent.  (H-07)
+preflight.ps1 - the mandatory gate BEFORE any model is spent.  (H-07, C-04 partial, #11-#13)
 
-Fixes H-07: V1 used the current local HEAD as the base without proving the target
-branch, a clean tree, remote sync, or that the reconciled index matched that HEAD;
-dirty/stale conditions were only discovered after checks and models were spent.
-
-Every V2 dispatch entrypoint MUST call Test-Preflight and refuse to dispatch on
-ANY failure. Nothing here is controllable by a task spec.
+Second-review remediation:
+  * H-07/#11 - a requested taskVersionId that is NOT present in the reconciled
+    index is REJECTED unconditionally (empty index, stale index, wrong
+    planningHead, missing task -> all reject).
+  * #12 - remote freshness is PROVEN by running a real fetch through
+    Invoke-GitFetchProven and binding preflight to that observation. A
+    task-provided "fetchedAt" is never trusted.
+  * #13 - a human gate's gateHash is recomputed on read over
+    {gateId, taskVersionId, specHash, decision, approvalIdentity,
+     approvalTimestamp, nonce}; any field tamper fails the gate.
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
@@ -24,13 +28,14 @@ function Get-V2Index {
     return (Read-V2Json $p)
 }
 
-# recorded after a real `git fetch` so preflight can prove remote freshness
-function Register-Fetch {
-    param([string]$Remote = 'origin')
-    Write-V2Json (Join-Path $script:V2State 'last-fetch.json') ([ordered]@{
-        remote = $Remote; at = (Get-Date).ToUniversalTime().ToString('o')
-        head = (Get-GitHeadV2)
-    })
+# #12: run a REAL fetch and persist the structured observation preflight binds to.
+function Invoke-PreflightFetch {
+    param([string]$RepoDir = '', [string]$Remote = 'origin')
+    if (-not $RepoDir) { $RepoDir = (Get-RepoRoot) }
+    $cfg = Get-V2Config
+    $obs = Invoke-GitFetchProven -Dir $RepoDir -Remote $Remote -Target $cfg.target.branch
+    Write-V2Json (Join-Path $script:V2State 'last-fetch.json') $obs
+    return $obs
 }
 
 function Test-Preflight {
@@ -41,9 +46,6 @@ function Test-Preflight {
     if (-not $RepoDir) { $RepoDir = (Get-RepoRoot) }
     $cfg  = Get-V2Config
     $fail = @()
-
-    # 0. never against the real repo
-    try { Assert-NotRealRepo 'preflight' } catch { $fail += $_.Exception.Message }
 
     # 1. kill switch
     $ks = Join-Path (Get-V2Dir) $cfg.budgets.killSwitchFile
@@ -56,50 +58,67 @@ function Test-Preflight {
 
     # 3. planning committed
     $planDirty = @(& git -C $RepoDir status --porcelain=v1 -- .planning CLAUDE.md AGENTS.md)
-    if ($planDirty.Count -gt 0) { $fail += "uncommitted planning/policy changes ($($planDirty.Count) path(s)) - commit before dispatch" }
+    if ($planDirty.Count -gt 0) { $fail += "uncommitted planning/policy changes ($($planDirty.Count) path(s))" }
 
-    # 4. remote fetch freshness
+    # 4. proven remote fetch freshness (#12)
     $lf = Join-Path $script:V2State 'last-fetch.json'
-    if (-not (Test-Path $lf)) { $fail += "no recorded git fetch (call Register-Fetch after fetching origin)" }
+    if (-not (Test-Path $lf)) { $fail += "no proven git fetch (call Invoke-PreflightFetch)" }
     else {
-        $age = ((Get-Date).ToUniversalTime() - [datetime]::Parse((Read-V2Json $lf).at).ToUniversalTime()).TotalSeconds
-        if ($age -gt [int]$cfg.target.requireFetchWithinSec) { $fail += "git fetch is stale ($([int]$age)s > $($cfg.target.requireFetchWithinSec)s)" }
+        $obs = Read-V2Json $lf
+        if ("$($obs.result)" -notin @('OK','NO_REMOTE')) { $fail += "last fetch did not succeed ($($obs.result))" }
+        if (-not $obs.at) { $fail += "fetch observation has no timestamp" }
+        else {
+            $age = ((Get-Date).ToUniversalTime() - [datetime]::Parse($obs.at).ToUniversalTime()).TotalSeconds
+            if ($age -gt [int]$cfg.target.requireFetchWithinSec) { $fail += "proven fetch is stale ($([int]$age)s)" }
+        }
+        if ($obs.result -eq 'OK' -and $obs.observedRemoteSHA) {
+            $localTarget = (Get-GitHeadV2 $RepoDir)
+            if ($obs.observedRemoteSHA -ne $localTarget) { $fail += "observed remote $($cfg.target.branch) ($($obs.observedRemoteSHA.Substring(0,10))) != local ($($localTarget.Substring(0,10)))" }
+        }
     }
 
     # 5. index reconciled + pinned to this HEAD
     $idx = $null
     try { $idx = Get-V2Index } catch { $fail += $_.Exception.Message }
+    $me = $null
     if ($idx) {
         if (-not $idx.reconciled) { $fail += "V2 index not reconciled" }
         $head = (Get-GitHeadV2 $RepoDir)
         if ($idx.planningHead -ne $head) { $fail += "index planningHead ($($idx.planningHead)) != authority HEAD ($head)" }
+        # #11: the requested version MUST be in the reconciled index. No condition.
+        $me = @($idx.tasks | Where-Object { $_.taskVersionId -eq $TaskVersionId }) | Select-Object -First 1
+        if (-not $me) { $fail += "requested taskVersionId $($TaskVersionId.Substring(0,12)) is NOT in the reconciled index (reject)" }
+    } else {
+        $fail += "no reconciled index - cannot verify the requested taskVersionId exists (reject)"
     }
 
     # 6. contract frozen + consistent with the index
     $contract = $null
-    try { $contract = Get-Contract $TaskVersionId } catch { $fail += "contract not frozen for $TaskVersionId" }
+    try { $contract = Get-Contract $TaskVersionId } catch { $fail += $_.Exception.Message }
     if ($contract -and $idx -and $contract.planningHead -ne $idx.planningHead) {
         $fail += "contract planningHead != index planningHead (spec frozen against a different tree)"
     }
 
-    # 7. ledger: exactly-once
+    # 7. ledger: exactly-once + not corrupt
     $disp = Test-CanDispatch $TaskVersionId
     if (-not $disp.ok) { $fail += "ledger refuses dispatch: $($disp.reasons -join '; ')" }
 
-    # 8. dependency gates satisfied (dep taskVersionIds must be PUBLISHED)
-    if ($idx) {
-        $me = @($idx.tasks | Where-Object { $_.taskVersionId -eq $TaskVersionId }) | Select-Object -First 1
-        if ($me) {
-            foreach ($dep in @($me.deps)) {
-                if (($dep -isnot [string]) -or -not $dep) { continue }
-                if ($dep -notmatch '^[0-9a-f]{64}$') { $fail += "dependency '$dep' is not a taskVersionId"; continue }
-                $ds = Get-LedgerState $dep
-                if (-not $ds.published) { $fail += "dependency $($dep.Substring(0,12)) is not PUBLISHED (state $($ds.state))" }
-            }
-            if ($me.gate -and $me.gate -ne 'none') {
-                $g = Get-HumanGateStatus $TaskVersionId $me.gate
-                if (-not $g.satisfied) { $fail += "human gate '$($me.gate)' not satisfied: $($g.reason)" }
-            }
+    # 8. dependency gates satisfied
+    if ($me) {
+        foreach ($dep in @($me.deps)) {
+            if (($dep -isnot [string]) -or -not $dep) { continue }
+            if ($dep -notmatch '^[0-9a-f]{64}$') { $fail += "dependency '$dep' is not a taskVersionId"; continue }
+            $ds = Get-LedgerState $dep
+            if ($ds.corrupt) { $fail += "dependency $($dep.Substring(0,12)) ledger is CORRUPT" }
+            elseif (-not $ds.published) { $fail += "dependency $($dep.Substring(0,12)) is not PUBLISHED (state $($ds.state))" }
+        }
+        # WAITING_HUMAN tasks resume ONLY via a satisfied gate
+        $st = Get-LedgerState $TaskVersionId
+        if ($me.gate -and $me.gate -ne 'none') {
+            $g = Get-HumanGateStatus $TaskVersionId $me.gate
+            if (-not $g.satisfied) { $fail += "human gate '$($me.gate)' not satisfied: $($g.reason)" }
+        } elseif ($st.state -eq 'WAITING_HUMAN') {
+            $fail += "task is WAITING_HUMAN with no declared gate - a human must act outside the spine"
         }
     }
 
@@ -113,52 +132,68 @@ function Test-Preflight {
     $lp = Join-Path (Get-V2Dir) "leases\taskversion\$($TaskVersionId).lease"
     if (Test-Path $lp) {
         $held = Read-Lease $lp
-        if (-not (Test-LeaseOrphan $held)) { $fail += "an active taskversion lease already exists (leaseId $($held.leaseId))" }
+        if ($held -and -not (Test-LeaseOrphan $held)) { $fail += "an active taskversion lease already exists (leaseId $($held.leaseId))" }
     }
 
     return [ordered]@{ ok = ($fail.Count -eq 0); failures = @($fail); checkedAt = (Get-Date).ToUniversalTime().ToString('o') }
 }
 
-# ---- human gates: durable, not planning text (partial - C-04 full is deferred) ----
-# The spine models a gate decision as a signed-ish JSON event file, so a task
-# cannot un-gate itself by editing planning prose. Full first-class gates
-# (approvalNonce chain, external identity) land with C-04 in the next session.
+# ---- human gates: durable, hash-bound decisions (#13; C-04 full still deferred) ----
+$script:GateHashKeys = @('gateId','taskVersionId','specHash','decision','approvalIdentity','approvalTimestamp','nonce')
+
 function Get-HumanGatePath {
     param([string]$TaskVersionId, [string]$GateId)
     Assert-SafeId $GateId 'gateId'
     return (Join-Path (Get-V2Dir) "gates\$TaskVersionId\$GateId.json")
 }
 
+function _GateHash {
+    param($G)
+    $h = [ordered]@{}
+    foreach ($k in $script:GateHashKeys) { $h[$k] = [string]$G.$k }
+    $h.v = (Get-V2Config).gates.hashVersion
+    return (New-ContentHash $h)
+}
+
 function Get-HumanGateStatus {
     param([string]$TaskVersionId, [string]$GateId)
     $p = Get-HumanGatePath $TaskVersionId $GateId
     if (-not (Test-Path $p)) { return [ordered]@{ satisfied = $false; reason = 'no approval event' } }
-    $g = Read-V2Json $p
+    $g = $null
+    try { $g = Read-V2Json $p } catch { return [ordered]@{ satisfied = $false; reason = 'gate file not readable' } }
+
+    if ((_GateHash $g) -ne $g.gateHash) { return [ordered]@{ satisfied = $false; reason = 'gateHash mismatch (tampered)' } }
+    if ("$($g.taskVersionId)" -ne $TaskVersionId) { return [ordered]@{ satisfied = $false; reason = 'gate is for a different taskVersionId' } }
+    if ("$($g.gateId)" -ne $GateId) { return [ordered]@{ satisfied = $false; reason = 'gateId mismatch' } }
+    if ("$($g.decision)" -ne 'APPROVED') { return [ordered]@{ satisfied = $false; reason = "decision $($g.decision)" } }
+
     $c = $null
     try { $c = Get-Contract $TaskVersionId } catch { }
-    if ($g.status -ne 'APPROVED') { return [ordered]@{ satisfied = $false; reason = "status $($g.status)" } }
-    if ($c -and $g.approvedSpecHash -ne $c.specHash) { return [ordered]@{ satisfied = $false; reason = 'approval was for a different spec hash (stale)' } }
-    return [ordered]@{ satisfied = $true; reason = 'approved'; approvedBy = $g.approvedBy; approvedAt = $g.approvedAt }
+    if ($c -and "$($g.specHash)" -ne "$($c.specHash)") { return [ordered]@{ satisfied = $false; reason = 'approval was for a different spec hash (stale)' } }
+
+    return [ordered]@{ satisfied = $true; reason = 'approved'; approvedBy = $g.approvalIdentity; approvedAt = $g.approvalTimestamp }
 }
 
-# test-only synthetic approval (never approve a real gate)
+# test-only synthetic approval. Requires the isolated disposable-repo harness -
+# there is no env var and no code path to approve a real gate.
 function New-SyntheticGateApproval {
-    param([string]$TaskVersionId, [string]$GateId, [string]$ApprovedBy = 'synthetic-test')
-    Assert-NotRealRepo 'approve a gate'
+    param([string]$TaskVersionId, [string]$GateId, [string]$RepoDir = '', [string]$ApprovedBy = 'synthetic-test-harness')
+    if (-not $RepoDir) { $RepoDir = (Get-RepoRoot) }
+    Assert-DisposableRoot -RepoDir $RepoDir -Why 'approve a synthetic gate'
     $c = Get-Contract $TaskVersionId
     $g = [ordered]@{
-        schemaVersion   = 'orcivo.orchestration.v2.gate/1'
-        taskVersionId   = $TaskVersionId
-        gateId          = $GateId
-        status          = 'APPROVED'
-        reason          = 'synthetic approval for the deterministic test harness'
+        schemaVersion     = 'orcivo.orchestration.v2.gate/2'
+        gateId            = $GateId
+        taskVersionId     = $TaskVersionId
+        specHash          = $c.specHash
+        decision          = 'APPROVED'
+        reason            = 'synthetic approval for the isolated deterministic test harness'
         requiredApprovalType = 'human'
-        approvedBy      = $ApprovedBy
-        approvedAt      = (Get-Date).ToUniversalTime().ToString('o')
-        approvedSpecHash = $c.specHash
-        approvalNonce   = [guid]::NewGuid().ToString('N')
+        approvalIdentity  = $ApprovedBy
+        approvalTimestamp = (Get-Date).ToUniversalTime().ToString('o')
+        nonce             = (New-Nonce)
     }
-    $g.gateHash = New-ContentHash $g
-    Write-V2Json (Get-HumanGatePath $TaskVersionId $GateId) $g
+    $g.gateHash = _GateHash $g
+    Write-V2JsonCanonical (Get-HumanGatePath $TaskVersionId $GateId) $g
     return $g
 }

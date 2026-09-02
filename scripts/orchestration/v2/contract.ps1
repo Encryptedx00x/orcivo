@@ -1,36 +1,78 @@
 <#
-contract.ps1 - freeze the task contract, then enforce it against the real diff.
-                (H-06, M-01, M-03)
+contract.ps1 - freeze the task contract deterministically, then enforce it.
+                (H-06, M-01, M-03, NH-01)
 
-Fixes H-06: V1 had no protected paths and never compared declared scope to the
-real diff, so an executor could rewrite .planning, acceptance tests, orchestration
-scripts or policy and the merge would still `git add -A` it.
-
-Fixes M-01: scope conflict was a fuzzy planning approximation; here the check runs
-on the ACTUAL changed-file list produced by the executor's commit.
-
-Fixes M-03: an empty diff is not "done". A no-op needs an explicit
-NO_CHANGE_JUSTIFIED contract with evidence per acceptance criterion.
-
-Contract lifecycle:
-  1. Freeze-Contract  (BEFORE dispatch)  -> immutable file outside the worktree,
-     keyed by taskVersionId, with specHash / acceptanceHash / configHash /
-     verificationProfileHash / planningHead + declared scope + protected-path
-     grants + risk. The executor cannot see or edit this file.
-  2. executor produces an immutable commit in its worktree.
-  3. Test-ContractCompliance  (AFTER the commit, BEFORE check/review) -> compares
-     the commit's changed files to the frozen scope + protected paths.
-     Out of scope / protected path without an explicit grant  ->  POLICY_BLOCK.
+Second-review remediation:
+  * NH-01 - the freeze is now IDEMPOTENT. `frozenAt` and other audit metadata are
+    NOT part of contractHash; re-freezing the same logical contract returns the
+    same object/hash. contractHash covers content only.
+  * C-03/H-06 - stored hashes are NEVER trusted on read. Get-Contract recomputes
+    specHash from specText, acceptanceHash from acceptanceText,
+    verificationProfileHash + verificationDefinitionHash from the real config
+    profile, configHash from the file, and contractHash from the canonical object.
+    Any mismatch throws (tamper), fail closed.
+  * H-06/M-01 - protected-path / scope matching uses ConvertTo-RelPathKey /
+    Test-RelPathUnder (canonical, Windows case-insensitive, dot-directory safe).
+    An EMPTY declaredScope FAILS CLOSED. "Unrestricted" is an explicit risk-C
+    grant (`unrestrictedScope`), a different thing from [].
+  * M-03 - NO_CHANGE evidence must match the FROZEN acceptance criteria exactly
+    (same id set, every one with a nonempty reason). Terminal state is
+    NO_CHANGE_ACCEPTED (monotonic), not a perpetual APPROVED.
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
+. (Join-Path $PSScriptRoot 'verification.ps1')
 
 $script:ContractDir = Join-Path (Get-V2Dir) 'contracts'
+$script:ContractContentKeys = @(
+    'schemaVersion','taskVersionId','taskId','planningHead',
+    'specText','acceptanceText','specHash','acceptanceHash','configHash',
+    'verificationProfile','verificationProfileHash','verificationDefinitionHash',
+    'declaredScope','protectedPathGrants','risk','gate','acceptanceCriteriaIds','bindings'
+)
 
 function Get-ContractPath {
     param([string]$TaskVersionId)
     if ($TaskVersionId -notmatch '^[0-9a-f]{64}$') { throw "v2 contract: bad taskVersionId" }
     return (Join-Path $script:ContractDir "$TaskVersionId.json")
+}
+
+# canonical acceptance-criteria ID extraction: lines beginning "AC1:", "AC12 :" ...
+function Get-AcceptanceCriteriaIds {
+    param([string]$AcceptanceText)
+    $ids = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($AcceptanceText -split "`n")) {
+        $m = [regex]::Match($line, '^\s*([A-Za-z][A-Za-z0-9_-]{0,31})\s*[:\)]')
+        if ($m.Success) {
+            $id = $m.Groups[1].Value
+            if (-not $ids.Contains($id)) { [void]$ids.Add($id) }
+        }
+    }
+    return @($ids.ToArray())
+}
+
+# Canonicalise every field to a fixed shape so the hash is identical whether it
+# comes from the freeze-time [ordered] object or from JSON round-trip (PS 5.1
+# unrolls single-element arrays and turns [] into "" / {}).
+$script:ContractArrayKeys = @('declaredScope','protectedPathGrants','acceptanceCriteriaIds')
+function _ComputeContentHash {
+    param($Obj)
+    $get = { param($k) if ($Obj -is [System.Collections.IDictionary]) { return $Obj[$k] } else { return $Obj.$k } }
+    $h = [ordered]@{}
+    foreach ($k in $script:ContractContentKeys) {
+        $v = & $get $k
+        if ($script:ContractArrayKeys -contains $k) {
+            $h[$k] = @($v | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ })
+        } elseif ($k -eq 'bindings') {
+            $b = [ordered]@{}
+            if ($v -is [System.Collections.IDictionary]) { foreach ($bk in ($v.Keys | Sort-Object { [string]$_ })) { $b[[string]$bk] = [string]$v[$bk] } }
+            elseif ($v -is [System.Management.Automation.PSCustomObject]) { foreach ($p in ($v.PSObject.Properties | Sort-Object Name)) { $b[$p.Name] = [string]$p.Value } }
+            $h[$k] = $b
+        } else {
+            $h[$k] = [string]$v
+        }
+    }
+    return (New-ContentHash $h)
 }
 
 function Freeze-Contract {
@@ -43,104 +85,152 @@ function Freeze-Contract {
         [string[]]$ProtectedPathGrants = @(),
         [ValidateSet('A','B','C')][string]$Risk = 'B',
         [string]$Gate = 'none',
-        [string]$VerificationProfile = 'B',
+        [ValidateSet('A','B','C')][string]$VerificationProfile = 'B',
         [hashtable]$ExtraBindings = @{}
     )
+    $cfg = Get-V2Config
+
+    # secrets never persisted raw (H-11) - redact spec/acceptance before they touch disk
+    $SpecText       = Protect-ArtifactText $SpecText
+    $AcceptanceText = Protect-ArtifactText $AcceptanceText
+
     $specHash       = New-StringHash $SpecText
     $acceptanceHash = New-StringHash $AcceptanceText
     $configHash     = New-FileHash (Join-Path (Get-V2Dir) 'config.v2.json')
     $profileHash    = New-StringHash $VerificationProfile
+    $defHash        = New-VerificationDefinitionHash $VerificationProfile
+    $critIds        = Get-AcceptanceCriteriaIds $AcceptanceText
 
     $tvid = (New-ContentHash ([ordered]@{
         taskId = $TaskId; planningHead = $PlanningHead
         specHash = $specHash; acceptanceHash = $acceptanceHash; v = 'orcivo.taskversion/1'
     })) -replace '^sha256:', ''
 
-    # a protected-path grant is only honoured if the task's risk is elevated
-    $cfg = Get-V2Config
-    if (@($ProtectedPathGrants).Count -gt 0 -and $Risk -notin @($cfg.contract.protectedPathElevatedRisks)) {
+    $grants = @($ProtectedPathGrants)
+    if ($grants.Count -gt 0 -and $Risk -notin @($cfg.contract.protectedPathElevatedRisks)) {
         throw "v2 contract H-06: protected-path grants require an elevated risk ($($cfg.contract.protectedPathElevatedRisks -join '/')); task risk is '$Risk'"
+    }
+    if (($grants -contains 'unrestrictedScope') -and $Risk -notin @($cfg.contract.protectedPathElevatedRisks)) {
+        throw "v2 contract H-06: 'unrestrictedScope' is a risk-elevated grant"
     }
 
     $contract = [ordered]@{
-        schemaVersion       = 'orcivo.orchestration.v2.contract/1'
+        schemaVersion       = 'orcivo.orchestration.v2.contract/2'
         taskVersionId       = $tvid
         taskId              = $TaskId
         planningHead        = $PlanningHead
-        frozenAt            = (Get-Date).ToUniversalTime().ToString('o')
         specText            = $SpecText
         acceptanceText      = $AcceptanceText
         specHash            = $specHash
         acceptanceHash      = $acceptanceHash
         configHash          = $configHash
         verificationProfile = $VerificationProfile
-        verificationProfileHash = $profileHash
+        verificationProfileHash    = $profileHash
+        verificationDefinitionHash = $defHash
         declaredScope       = @($DeclaredScope)
-        protectedPathGrants = @($ProtectedPathGrants)
+        protectedPathGrants = $grants
         risk                = $Risk
         gate                = $Gate
+        acceptanceCriteriaIds = @($critIds)
         bindings            = ([ordered]@{} + $ExtraBindings)
     }
-    $contract.contractHash = New-ContentHash (Remove-HashKeys $contract @('contractHash'))
+    $contract.contractHash = _ComputeContentHash $contract
+    # audit metadata is OUTSIDE the hash (NH-01: idempotent freeze)
+    $contract.audit = [ordered]@{
+        frozenAt   = (Get-Date).ToUniversalTime().ToString('o')
+        frozenBy   = (Get-ProcessIdentity)
+    }
 
     $path = Get-ContractPath $tvid
     if (Test-Path $path) {
         $existing = Read-V2Json $path
         if ($existing.contractHash -ne $contract.contractHash) {
-            throw "v2 contract H-06: a DIFFERENT contract is already frozen for $tvid. Contracts are immutable; a change of spec/acceptance must produce a new taskVersionId."
+            throw "v2 contract NH-01: a DIFFERENT contract is already frozen for $tvid. Contracts are immutable; a content change must produce a new taskVersionId."
         }
-        return $existing
+        return $existing        # idempotent: same content -> same contract
     }
-    # write exclusively so two dispatchers cannot freeze different contracts
-    if (-not (New-ExclusiveFile $path (($contract | ConvertTo-Json -Depth 30)))) {
+    if (-not (New-ExclusiveFile $path (ConvertTo-CanonicalJson $contract))) {
         $existing = Read-V2Json $path
-        if ($existing.contractHash -ne $contract.contractHash) { throw "v2 contract H-06: lost a freeze race with a different contract for $tvid" }
+        if ($existing.contractHash -ne $contract.contractHash) { throw "v2 contract NH-01: lost a freeze race with a different contract for $tvid" }
         return $existing
     }
-    Write-V2Log "contract: frozen $($tvid.Substring(0,12)) ($TaskId) risk=$Risk scope=$(@($DeclaredScope).Count) grants=$(@($ProtectedPathGrants).Count)"
+    Write-V2Log "contract: frozen $($tvid.Substring(0,12)) ($TaskId) risk=$Risk scope=$(@($DeclaredScope).Count) grants=$($grants.Count) crit=$($critIds.Count)"
     return $contract
 }
 
+# NEVER trust stored hashes - recompute everything from the real inputs.
 function Get-Contract {
-    param([string]$TaskVersionId)
+    param([string]$TaskVersionId, [switch]$AllowConfigDrift)
     $path = Get-ContractPath $TaskVersionId
     if (-not (Test-Path $path)) { throw "v2 contract: not frozen for $TaskVersionId" }
-    return (Read-V2Json $path)
-}
+    $c = Read-V2Json $path
 
-# is $file under one of $prefixes (dir prefix or exact file)?
-function _PathUnder {
-    param([string]$File, [string[]]$Prefixes)
-    $f = ($File -replace '\\','/').TrimStart('./')
-    foreach ($p in $Prefixes) {
-        $pp = ($p -replace '\\','/')
-        if ($pp.EndsWith('/')) { if ($f.StartsWith($pp, [System.StringComparison]::OrdinalIgnoreCase)) { return $true } }
-        elseif ($pp -match '[*?]') { if ($f -like $pp) { return $true } }
-        else { if ($f -eq $pp -or $f.StartsWith($pp.TrimEnd('/') + '/', [System.StringComparison]::OrdinalIgnoreCase)) { return $true } }
+    $problems = @()
+    $reSpec = New-StringHash ([string]$c.specText)
+    $reAcc  = New-StringHash ([string]$c.acceptanceText)
+    if ($reSpec -ne $c.specHash) { $problems += "specHash: stored $($c.specHash) != recomputed $reSpec" }
+    if ($reAcc  -ne $c.acceptanceHash) { $problems += "acceptanceHash: stored $($c.acceptanceHash) != recomputed $reAcc" }
+
+    $reProfHash = New-StringHash ([string]$c.verificationProfile)
+    if ($reProfHash -ne $c.verificationProfileHash) { $problems += "verificationProfileHash mismatch" }
+    try {
+        $reDef = New-VerificationDefinitionHash ([string]$c.verificationProfile)
+        if ($reDef -ne $c.verificationDefinitionHash) { $problems += "verificationDefinitionHash: profile '$($c.verificationProfile)' content changed since freeze" }
+    } catch { $problems += "verification profile '$($c.verificationProfile)' no longer resolvable" }
+
+    $reCrit = Get-AcceptanceCriteriaIds ([string]$c.acceptanceText)
+    if ((($reCrit -join '|')) -ne ((@($c.acceptanceCriteriaIds) -join '|'))) { $problems += "acceptanceCriteriaIds drift" }
+
+    $reTvid = (New-ContentHash ([ordered]@{
+        taskId = [string]$c.taskId; planningHead = [string]$c.planningHead
+        specHash = $reSpec; acceptanceHash = $reAcc; v = 'orcivo.taskversion/1'
+    })) -replace '^sha256:', ''
+    if ($reTvid -ne $TaskVersionId) { $problems += "taskVersionId does not derive from the frozen spec/acceptance" }
+
+    $reContract = _ComputeContentHash $c
+    if ($reContract -ne $c.contractHash) { $problems += "contractHash: stored $($c.contractHash) != recomputed $reContract" }
+
+    $reConfig = New-FileHash (Join-Path (Get-V2Dir) 'config.v2.json')
+    if (-not $AllowConfigDrift -and $reConfig -ne $c.configHash) {
+        $problems += "configHash: config.v2.json changed since freeze (stored $($c.configHash) != now $reConfig)"
     }
-    return $false
+
+    if ($problems.Count -gt 0) {
+        throw "v2 contract TAMPERED for $TaskVersionId (fail closed): $($problems -join ' ; ')"
+    }
+    return $c
 }
 
-# M-03: classify the change against the acceptance contract
+# ---- change classification against the FROZEN acceptance contract (M-03) ----
 function Get-ChangeClass {
     param(
+        [string]$TaskVersionId,
         [string]$WorktreeDir, [string]$BaseSha, [string]$HeadSha,
         [string]$NoChangeEvidenceFile = ''
     )
     $changed = Get-GitChangedFiles -Dir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha
     if (@($changed).Count -gt 0) { return [ordered]@{ class = 'CHANGED'; changedFiles = @($changed) } }
+
+    $c = Get-Contract $TaskVersionId
+    $expected = @($c.acceptanceCriteriaIds)
     if ($NoChangeEvidenceFile -and (Test-Path $NoChangeEvidenceFile)) {
         $ev = $null
         try { $ev = Read-V2Json $NoChangeEvidenceFile } catch { }
-        $crits = @($ev.criteria)
-        if ($crits.Count -gt 0 -and (@($crits | Where-Object { -not $_.reason }).Count -eq 0)) {
+        $entries = @($ev.criteria)
+        $gotIds = @($entries | ForEach-Object { "$($_.id)" } | Where-Object { $_ })
+        $allHaveReason = (@($entries | Where-Object { -not ([string]$_.reason).Trim() }).Count -eq 0)
+        $sameSet = (($gotIds | Sort-Object) -join '|') -eq (($expected | Sort-Object) -join '|')
+        $boundToContract = ("$($ev.contractHash)" -eq "$($c.contractHash)")
+        if ($expected.Count -gt 0 -and $sameSet -and $allHaveReason -and $boundToContract) {
             return [ordered]@{ class = 'NO_CHANGE_JUSTIFIED'; changedFiles = @(); evidence = $ev }
         }
+        return [ordered]@{ class = 'NO_CHANGE_UNJUSTIFIED'; changedFiles = @()
+            why = "evidence must cover exactly {$($expected -join ',')} each with a reason and carry contractHash $($c.contractHash)" }
     }
-    return [ordered]@{ class = 'NO_CHANGE_UNJUSTIFIED'; changedFiles = @() }
+    return [ordered]@{ class = 'NO_CHANGE_UNJUSTIFIED'; changedFiles = @(); why = 'no evidence artifact' }
 }
 
-# H-06 / M-01: the real diff must live inside the frozen contract
+# ---- H-06 / M-01: the real diff must live inside the frozen contract ----
 function Test-ContractCompliance {
     param(
         [Parameter(Mandatory)][string]$TaskVersionId,
@@ -153,23 +243,33 @@ function Test-ContractCompliance {
     $cfg = Get-V2Config
     $violations = @()
 
-    $cc = Get-ChangeClass -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha -NoChangeEvidenceFile $NoChangeEvidenceFile
+    $cc = Get-ChangeClass -TaskVersionId $TaskVersionId -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha -NoChangeEvidenceFile $NoChangeEvidenceFile
     if ($cc.class -eq 'NO_CHANGE_UNJUSTIFIED') {
-        $violations += 'NO_CHANGE without a justified evidence artifact (M-03: absence of diff is not completion)'
-        return [ordered]@{ compliant = $false; verdict = 'POLICY_BLOCK'; changeClass = $cc.class; changedFiles = @(); violations = @($violations) }
+        return [ordered]@{ compliant = $false; verdict = 'POLICY_BLOCK'; changeClass = $cc.class; changedFiles = @()
+            violations = @("NO_CHANGE without justified evidence (M-03): $($cc.why)") }
     }
     if ($cc.class -eq 'NO_CHANGE_JUSTIFIED') {
         return [ordered]@{ compliant = $true; verdict = 'NO_CHANGE_JUSTIFIED'; changeClass = $cc.class; changedFiles = @(); violations = @() }
     }
 
-    $declared  = @($c.declaredScope)
+    $declared = @($c.declaredScope | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $grants   = @($c.protectedPathGrants | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $unrestricted   = ($grants -contains 'unrestrictedScope')
+    $explicitGrants = @($grants | Where-Object { $_ -ne 'unrestrictedScope' })   # real protected-path grants only
     $protected = @($cfg.contract.protectedPaths) + @($cfg.contract.authoritativeAcceptanceGlobs)
-    $grants    = @($c.protectedPathGrants)
+
+    # H-06: empty declared scope FAILS CLOSED unless explicitly unrestricted (risk C)
+    if ($declared.Count -eq 0 -and -not $unrestricted) {
+        return [ordered]@{ compliant = $false; verdict = 'POLICY_BLOCK'; changeClass = 'CHANGED'; changedFiles = @($cc.changedFiles)
+            violations = @("declaredScope is empty - fail closed (M-01). Use an explicit 'unrestrictedScope' grant at risk C for a genuinely unrestricted task.") }
+    }
 
     foreach ($f in $cc.changedFiles) {
-        $inScope     = ($declared.Count -eq 0) -or (_PathUnder $f $declared)
-        $isProtected = _PathUnder $f $protected
-        $isGranted   = ($grants.Count -gt 0) -and (_PathUnder $f $grants)
+        $inScope     = $unrestricted -or (Test-RelPathUnder $f $declared)
+        $isProtected = Test-RelPathUnder $f $protected
+        # an unrestricted scope does NOT reach protected paths - those always need
+        # their own explicit protected-path grant (#10).
+        $isGranted   = ($explicitGrants.Count -gt 0) -and (Test-RelPathUnder $f $explicitGrants)
 
         if ($isProtected -and -not $isGranted) {
             $violations += "PROTECTED path modified without a contract grant: $f"

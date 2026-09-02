@@ -35,28 +35,30 @@ param(
     [switch]$DryRun
 )
 
-. (Join-Path $PSScriptRoot 'lib.ps1')
-. (Join-Path $PSScriptRoot 'reconcile.ps1')
-$cfg = Get-OrchConfig
-
 # ======================================================================
 # LEGACY_REJECTED_REFERENCE_ONLY
-# The independent Codex review (.planning/reviews/ORCHESTRATION-SUPERVISOR-
-# INDEPENDENT-REVIEW.md) REJECTED this supervisor. It is kept ONLY for
-# comparison and regression evidence. The security remediation lives in
-# scripts/orchestration/v2/ (run: scripts\orchestration\v2\spine.ps1).
+# Two independent adversarial reviews REJECTED this supervisor and the first V2
+# spine. It is kept ONLY for comparison and primitive regression evidence. The
+# security remediation lives in scripts/orchestration/v2/.
 # V1 must not execute tasks. index/status/next/recover stay available for
-# inspection; run/loop/cleanup are blocked.
+# inspection; run/loop/cleanup are HARD-DISABLED with NO runtime override - and
+# this guard runs BEFORE any config/lib load so it cannot be sidestepped by a
+# missing/renamed config.
 # ======================================================================
-if ($Command -in @('run','loop','cleanup') -and $env:ORCH_V1_REGRESSION_HARNESS -ne '1') {
+if ($Command -in @('run','loop','cleanup')) {
     Write-Host ""
-    Write-Host "  V1 supervisor is LEGACY_REJECTED_REFERENCE_ONLY - '$Command' is disabled." -ForegroundColor Red
-    Write-Host "  Reason: .planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md (VERDICT: REJECT)"
+    Write-Host "  V1 supervisor is LEGACY_REJECTED_REFERENCE_ONLY - '$Command' is permanently disabled." -ForegroundColor Red
+    Write-Host "  Reason: two independent adversarial reviews REJECTED the V1 supervisor and the V1 spine."
+    Write-Host "  There is no environment variable or flag that re-enables it."
     Write-Host "  Use the V2 security spine:  powershell -File scripts\orchestration\v2\spine.ps1 selftest"
     Write-Host "  (V1 index/status/next/recover remain available for inspection only.)"
     Write-Host ""
     exit 2
 }
+
+. (Join-Path $PSScriptRoot 'lib.ps1')
+. (Join-Path $PSScriptRoot 'reconcile.ps1')
+$cfg = Get-OrchConfig
 
 $QueueDir  = Join-Path $script:OrchDir 'queue'
 $StopFile  = Join-Path $script:OrchDir ($cfg.scheduler.stopFile)

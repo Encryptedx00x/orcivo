@@ -1,25 +1,25 @@
 <#
-lease.ps1 - atomic writer / integration leases for the V2 spine.  (H-05, H-04)
+lease.ps1 - atomic leases with real heartbeats + compare-and-swap.  (H-05, H-04)
 
-Fixes H-05: V1 Acquire-WriterLock did Test-Path, then read/remove, then write -
-three separate operations, so two processes could both "acquire". The owner was a
-bare PID, so a reused PID looked like the same holder.
+Second-review remediation of H-05. The first V2 lease declared a live process
+"orphaned" once its heartbeat aged past four stale intervals, and the pipeline
+never refreshed heartbeats - so a supported long-running operation lost its lease
+and a second writer took it.
 
-Fixes H-04 (lock half): there is a dedicated global 'integration' namespace so
-target/main integration is strictly serial across supervisors.
+This version:
+  * Acquisition stays a single atomic op (New-ExclusiveFile -> NTFS CreateNew).
+  * ORPHAN = the holder process is PROVABLY dead or PROVABLY a different process
+    (PID reuse: start time mismatch). A live holder is NEVER an orphan, no matter
+    how old its heartbeat is.
+  * A stale heartbeat on a live holder does not hand the key over. A structurally
+    MALFORMED lease record is QUARANTINED (renamed aside) and NOT granted to a
+    second writer.
+  * heartbeat update / release / break are compare-and-swap on the exact lease
+    bytes + leaseId + owner identity. No blind read-then-delete.
+  * Invoke-WithLease runs a background heartbeat runspace for the duration of the
+    body, and callers that hold a lease explicitly can Start/Stop one.
 
-Design:
-  * Acquisition is a single atomic filesystem op (New-ExclusiveFile -> NTFS
-    CreateNew). Exactly one racer creates the file; everyone else fails.
-  * A lease records leaseId (UUID) + full process identity (host, pid, PROCESS
-    START TIME) + taskVersionId + runId + scope + heartbeat. PID reuse is
-    detected because the start time will not match.
-  * Release is compare-and-delete: only the holder whose leaseId matches may
-    delete the lease.
-  * A lease whose holder is provably dead (or whose heartbeat is stale AND pid
-    dead) is an ORPHAN and may be broken by another acquirer, which is logged.
-
-Namespaces (config.leases.namespaces): scheduler | taskversion | workspace | integration
+Namespaces (config.leases.namespaces): scheduler | taskversion | workspace | integration | ledger
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
@@ -30,31 +30,56 @@ function Get-LeasePath {
     param([string]$Namespace, [string]$Key)
     $cfg = Get-V2Config
     if ($Namespace -notin @($cfg.leases.namespaces)) { throw "v2 lease: unknown namespace '$Namespace'" }
-    Assert-SafeId $Key 'lease key'
+    if ($Key -match '^[0-9a-f]{64}$') { }        # a taskVersionId is a valid key
+    elseif (-not (Test-SafeId $Key)) { throw "v2 lease: unsafe lease key '$Key'" }
     return (Join-Path $script:LeaseDir "$Namespace\$Key.lease")
+}
+
+# read the lease and its exact on-disk bytes hash (for CAS). Returns
+# @{ lease=<obj|$null>; contentHash=<sha256|absent>; malformed=<bool> }
+function Read-LeaseRaw {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return @{ lease = $null; contentHash = 'sha256:absent'; malformed = $false } }
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            $raw = [System.IO.File]::ReadAllText($Path)
+            $obj = $null
+            try { $obj = _ToHashtable ($raw | ConvertFrom-Json) } catch { return @{ lease = $null; contentHash = (New-StringHash $raw); malformed = $true } }
+            if (-not $obj -or -not $obj.leaseId -or -not $obj.holder) { return @{ lease = $null; contentHash = (New-StringHash $raw); malformed = $true } }
+            return @{ lease = $obj; contentHash = (New-StringHash $raw); malformed = $false }
+        } catch { Start-Sleep -Milliseconds 15 }
+    }
+    return @{ lease = $null; contentHash = 'sha256:unknown'; malformed = $true }
 }
 
 function Read-Lease {
     param([string]$Path)
-    if (-not (Test-Path -LiteralPath $Path)) { return $null }
-    for ($i = 0; $i -lt 20; $i++) {
-        try { return (_ToHashtable ([System.IO.File]::ReadAllText($Path) | ConvertFrom-Json)) }
-        catch { Start-Sleep -Milliseconds 15 }
-    }
-    return $null
+    return (Read-LeaseRaw $Path).lease
 }
 
+# ORPHAN only if the holder is provably not the current live process.
+# A stale heartbeat on a live holder is NOT an orphan.
 function Test-LeaseOrphan {
     param($Lease)
-    if (-not $Lease) { return $true }
-    $cfg = Get-V2Config
-    $holderLive = Test-HolderLive $Lease.holder
-    if ($holderLive) {
-        # holder alive & same process: orphan only if heartbeat is very stale
-        $ageSec = ((Get-Date).ToUniversalTime() - [datetime]::Parse($Lease.heartbeat).ToUniversalTime()).TotalSeconds
-        return ($ageSec -gt ([int]$cfg.leases.staleAfterSec * 4))
-    }
-    return $true
+    if (-not $Lease) { return $true }          # no/blank lease -> free
+    if (-not $Lease.holder) { return $false }  # malformed -> NOT an orphan (must be quarantined, not taken)
+    return (-not (Test-HolderLive $Lease.holder))
+}
+
+function _LeaseBody {
+    param([string]$LeaseId, [string]$Namespace, [string]$Key, [string]$TaskVersionId, [string]$RunId, [string]$Scope)
+    return ([ordered]@{
+        schemaVersion = 'orcivo.orchestration.v2.lease/2'
+        leaseId       = $LeaseId
+        namespace     = $Namespace
+        key           = $Key
+        taskVersionId = $TaskVersionId
+        runId         = $RunId
+        scope         = $Scope
+        holder        = (Get-ProcessIdentity)
+        createdAt     = (Get-Date).ToUniversalTime().ToString('o')
+        heartbeat     = (Get-Date).ToUniversalTime().ToString('o')
+    })
 }
 
 function New-Lease {
@@ -67,69 +92,114 @@ function New-Lease {
     )
     $path = Get-LeasePath $Namespace $Key
     $leaseId = New-LeaseId
-    $body = ([ordered]@{
-        schemaVersion = 'orcivo.orchestration.v2.lease/1'
-        leaseId       = $leaseId
-        namespace     = $Namespace
-        key           = $Key
-        taskVersionId = $TaskVersionId
-        runId         = $RunId
-        scope         = $Scope
-        holder        = (Get-ProcessIdentity)
-        createdAt     = (Get-Date).ToUniversalTime().ToString('o')
-        heartbeat     = (Get-Date).ToUniversalTime().ToString('o')
-    })
-    $json = ($body | ConvertTo-Json -Depth 10)
+    $json = (ConvertTo-CanonicalJson (_LeaseBody $leaseId $Namespace $Key $TaskVersionId $RunId $Scope))
 
     if (New-ExclusiveFile $path $json) {
         Write-V2Log "lease: acquired $Namespace/$Key ($($leaseId.Substring(0,14)))"
         return [ordered]@{ ok = $true; leaseId = $leaseId; path = $path; broke = $false }
     }
 
-    # someone holds it - is it an orphan we may break?
-    $held = Read-Lease $path
+    $rawInfo = Read-LeaseRaw $path
+    if ($rawInfo.malformed) {
+        # NEVER grant on a malformed record. Quarantine it and fail closed.
+        $q = "$path.quarantine-$((New-Nonce).Substring(0,8))"
+        try { [System.IO.File]::Move($path, $q) } catch { }
+        Write-V2Log "lease: QUARANTINED malformed lease record $Namespace/$Key (-> $(Split-Path -Leaf $q)); not granting" 'ERROR'
+        return [ordered]@{ ok = $false; leaseId = $null; path = $path; broke = $false; quarantined = $true; heldBy = $null }
+    }
+
+    $held = $rawInfo.lease
     if (Test-LeaseOrphan $held) {
-        # break-and-retake, but do it atomically: rename the orphan aside first,
-        # and only the process that wins the rename may recreate the lease.
-        $tomb = "$path.orphan-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-        try { [System.IO.File]::Move($path, $tomb) } catch { return (New-Lease -Namespace $Namespace -Key $Key -TaskVersionId $TaskVersionId -RunId $RunId -Scope $Scope) }
-        Remove-Item -LiteralPath $tomb -Force -ErrorAction SilentlyContinue
-        if (New-ExclusiveFile $path $json) {
-            Write-V2Log "lease: BROKE orphan $Namespace/$Key (dead holder pid $($held.holder.pid)) and retook it" 'WARN'
-            return [ordered]@{ ok = $true; leaseId = $leaseId; path = $path; broke = $true }
+        # break-and-retake atomically: CAS-delete the exact orphan bytes, then CreateNew.
+        if (Invoke-FileCas -Path $path -ExpectedHash $rawInfo.contentHash -NewContent '' -Delete) {
+            if (New-ExclusiveFile $path $json) {
+                Write-V2Log "lease: BROKE orphan $Namespace/$Key (dead/reused holder pid $($held.holder.pid)) and retook it" 'WARN'
+                return [ordered]@{ ok = $true; leaseId = $leaseId; path = $path; broke = $true }
+            }
         }
+        # lost the break race - fall through and report held
     }
     $held = Read-Lease $path
     return [ordered]@{ ok = $false; leaseId = $null; path = $path; broke = $false; heldBy = $held }
 }
 
+# Blocking acquire: retry until the lease is free or $TimeoutSec elapses.
+# Used for short serialised sections (the ledger append) where the right
+# behaviour under contention is to WAIT, not to error.
+function New-LeaseWait {
+    param(
+        [Parameter(Mandatory)][string]$Namespace,
+        [Parameter(Mandatory)][string]$Key,
+        [string]$TaskVersionId = '', [string]$RunId = '', [string]$Scope = '',
+        [int]$TimeoutSec = 60
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ($true) {
+        $l = New-Lease -Namespace $Namespace -Key $Key -TaskVersionId $TaskVersionId -RunId $RunId -Scope $Scope
+        if ($l.ok) { return $l }
+        if ($l.quarantined) { return $l }   # never spin on a quarantined record
+        if ((Get-Date) -ge $deadline) { return $l }
+        Start-Sleep -Milliseconds (15 + (Get-Random -Maximum 40))
+    }
+}
+
+# CAS: only the exact holder (leaseId + same on-disk bytes) may renew.
 function Update-LeaseHeartbeat {
     param([string]$Namespace, [string]$Key, [string]$LeaseId)
     $path = Get-LeasePath $Namespace $Key
-    $held = Read-Lease $path
-    if (-not $held -or $held.leaseId -ne $LeaseId) { return $false }
-    $held.heartbeat = (Get-Date).ToUniversalTime().ToString('o')
-    [System.IO.File]::WriteAllText($path, ($held | ConvertTo-Json -Depth 10), (New-Utf8NoBom))
-    return $true
+    $info = Read-LeaseRaw $path
+    if (-not $info.lease -or $info.lease.leaseId -ne $LeaseId) { return $false }
+    $updated = $info.lease
+    $updated.heartbeat = (Get-Date).ToUniversalTime().ToString('o')
+    $new = (ConvertTo-CanonicalJson ([ordered]@{} + $updated))
+    return (Invoke-FileCas -Path $path -ExpectedHash $info.contentHash -NewContent $new)
 }
 
-# compare-and-delete: only the matching leaseId may release
+# CAS: only the exact holder (leaseId + same on-disk bytes) may release.
 function Remove-Lease {
     param([string]$Namespace, [string]$Key, [string]$LeaseId)
     $path = Get-LeasePath $Namespace $Key
-    $held = Read-Lease $path
-    if (-not $held) { return $true }
-    if ($held.leaseId -ne $LeaseId) {
-        Write-V2Log "lease: refusing to release $Namespace/$Key - held by $($held.leaseId), not $LeaseId" 'WARN'
+    $info = Read-LeaseRaw $path
+    if (-not (Test-Path -LiteralPath $path)) { return $true }
+    if ($info.malformed) {
+        Write-V2Log "lease: refusing to release malformed $Namespace/$Key" 'WARN'
         return $false
     }
-    Remove-Item -LiteralPath $path -Force
-    Write-V2Log "lease: released $Namespace/$Key"
-    return $true
+    if (-not $info.lease -or $info.lease.leaseId -ne $LeaseId) {
+        Write-V2Log "lease: refusing to release $Namespace/$Key - held by $($info.lease.leaseId), not $LeaseId" 'WARN'
+        return $false
+    }
+    if (Invoke-FileCas -Path $path -ExpectedHash $info.contentHash -NewContent '' -Delete) {
+        Write-V2Log "lease: released $Namespace/$Key"
+        return $true
+    }
+    Write-V2Log "lease: release CAS lost a race for $Namespace/$Key" 'WARN'
+    return $false
 }
 
-# run a scriptblock while holding a lease; always released (unless we time out and
-# cannot prove the child tree is dead -> caller decides quarantine, C-05)
+# Heartbeat helpers.
+#
+# NOTE (H-05): a background heartbeat is NOT load-bearing in this spine, because
+# Test-LeaseOrphan treats ANY live holder as non-orphan regardless of heartbeat
+# age - a second writer can never take a live owner's lease. Heartbeats are kept
+# as freshness telemetry and as a hook for the deferred budget/circuit-breaker
+# work (H-09). Callers that hold a lease across a long section call
+# Update-LeaseHeartbeat at natural checkpoints; there is no per-lease runspace.
+
+function Start-LeaseHeartbeat {
+    param([string]$Namespace, [string]$Key, [string]$LeaseId)
+    return @{ ns = $Namespace; key = $Key; lid = $LeaseId }
+}
+
+function Stop-LeaseHeartbeat {
+    param($Beat)   # no-op: nothing to tear down
+}
+
+function Beat-Lease {
+    param($Beat)
+    if ($Beat -and $Beat.lid) { [void](Update-LeaseHeartbeat -Namespace $Beat.ns -Key $Beat.key -LeaseId $Beat.lid) }
+}
+
 function Invoke-WithLease {
     param(
         [string]$Namespace, [string]$Key, [scriptblock]$Body,
@@ -137,9 +207,11 @@ function Invoke-WithLease {
     )
     $l = New-Lease -Namespace $Namespace -Key $Key -TaskVersionId $TaskVersionId -RunId $RunId -Scope $Scope
     if (-not $l.ok) { throw "v2 lease: $Namespace/$Key is held (leaseId $($l.heldBy.leaseId), pid $($l.heldBy.holder.pid))" }
+    $beat = Start-LeaseHeartbeat -Namespace $Namespace -Key $Key -LeaseId $l.leaseId
     try {
         return (& $Body $l.leaseId)
     } finally {
+        Stop-LeaseHeartbeat $beat
         [void](Remove-Lease -Namespace $Namespace -Key $Key -LeaseId $l.leaseId)
     }
 }

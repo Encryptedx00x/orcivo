@@ -1,50 +1,54 @@
 # Agent orchestration — Orcivo
 
-> **Status (2026-09-02): V1 is `LEGACY_REJECTED_REFERENCE_ONLY`.**
-> An independent adversarial review rejected the V1 supervisor
-> (`.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md`,
-> VERDICT: REJECT — plausible paths to re-run an integrated task, approve/
-> integrate a different tree than reviewed, bypass human gates, and keep a
-> writer process alive after releasing its lock).
+> **Status (2026-09-02): V1 is `LEGACY_REJECTED_REFERENCE_ONLY`; the V2 spine is
+> in its 2nd remediation and awaiting a THIRD independent review.**
 >
-> The security remediation is being rebuilt clean-room in
-> **`scripts/orchestration/v2/`** (the "security spine"). It is **NOT
-> production-ready** and is `UNDER_REVIEW / NOT_READY`. Neither V1 nor V2
-> executes real GSD tasks. `run` / `loop` / `cleanup` on the V1 supervisor are
-> disabled. See `docs/agents/ORCHESTRATION-THREAT-MODEL.md`.
+> Two independent adversarial reviews rejected the work so far:
+> `.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md` (V1) and
+> `.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW.md` (the first V2
+> spine — the reviewer independently reproduced ledger corruption under
+> concurrency, schema-invalid review approvals, stale attestations after
+> contract mutation, publication without a push, a broken live lease, broken
+> protected dot-paths, preflight accepting an absent version, and raw synthetic
+> secrets on failure paths).
+>
+> V2 is **NOT production-ready** and is `UNDER_REVIEW / NOT_READY`. Neither V1 nor
+> V2 executes real GSD tasks. V1 `run` / `loop` / `cleanup` are **permanently
+> disabled with no override**. See `docs/agents/ORCHESTRATION-THREAT-MODEL.md`.
 
 ---
 
 ## V2 security spine (`scripts/orchestration/v2/`)
 
-Clean-room rebuild of the load-bearing security primitives after the V1
-rejection. Own state namespace (`.orchestration/v2/`), no dot-sourcing of V1, no
-migration of V1 artifacts into V2 trust.
+Own state namespace (`.orchestration/v2/`), no dot-sourcing of V1, no migration
+of V1 artifacts into V2 trust.
 
 ```powershell
 powershell -File scripts\orchestration\v2\spine.ps1 status     # boundary + status
 powershell -File scripts\orchestration\v2\spine.ps1 explain     # finding coverage
-powershell -File scripts\orchestration\v2\spine.ps1 selftest    # 40-case adversarial suite (no models)
+powershell -File scripts\orchestration\v2\spine.ps1 selftest    # adversarial suite (no models)
 ```
 
-| file                  | concern                                                                                               | findings               |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------- |
-| `lib-v2.ps1`          | canonical JSON + SHA-256, atomic `CreateNew`, streaming redaction, Win32 argv quoting, safe IDs/paths | C-03, H-11, H-12, L-01 |
-| `ledger.ps1`          | monotonic content-addressed execution ledger; `PUBLISHED` terminal; exactly-once                      | C-01                   |
-| `contract.ps1`        | freeze immutable contract; protected paths; post-diff scope + no-change classification                | H-06, M-01, M-03       |
-| `attest.ps1`          | content-addressed attestations + staleness re-verification                                            | C-03, L-01             |
-| `lease.ps1`           | atomic leases in 4 namespaces; `pid + start time`; compare-and-delete                                 | H-05, H-04             |
-| `classify.ps1`        | failure class from the provider control channel only; negative corpus                                 | H-01                   |
-| `review-envelope.ps1` | fenced JSON review envelope; schema-validated; fail-closed; untrusted-data fencing                    | C-02, H-03, M-05       |
-| `preflight.ps1`       | mandatory pre-dispatch gate; durable human-gate decisions                                             | H-07, C-04 (partial)   |
-| `integrate.ps1`       | the only path to the target branch; global serial lease; fetch/CAS; `PUSH_FAILED` != `PUBLISHED`      | H-04, C-03             |
-| `pipeline.ps1`        | composes the above into one synthetic run (fake agent only; refuses the real repo)                    | —                      |
-| `spine.ps1`           | the only V2 entrypoint                                                                                | —                      |
+| file                         | concern                                                                                                                                                        | findings                             |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `lib-v2.ps1`                 | canonical JSON + SHA-256, atomic `CreateNew` + `Invoke-FileCas`, streaming + multiline redaction, Win32 argv quoting, canonical paths, `Assert-DisposableRoot` | C-03, H-11, H-12, NC-01, NH-01, L-01 |
+| `ledger.ps1`                 | hash-chained monotonic ledger under an atomic ledger lease; sealed head; corruption → QUARANTINED                                                              | C-01                                 |
+| `contract.ps1`               | idempotent freeze; recompute-on-read; canonical protected paths; empty scope fails closed; NO_CHANGE bound to frozen criteria                                  | H-06, M-01, M-03, NH-01              |
+| `verification.ps1`           | declarative verification profiles (config, not task); `verificationDefinitionHash` + effective invocation                                                      | NH-02                                |
+| `attest.ps1`                 | content-addressed attestations; integrity covers producer/payload; latest-authoritative-result                                                                 | C-03, NM-01                          |
+| `lease.ps1`                  | atomic leases in 5 namespaces; live holder never orphan; CAS heartbeat/release/break; malformed → quarantine                                                   | H-05, H-04                           |
+| `classify.ps1`               | failure class from the provider control channel only; negative corpus                                                                                          | H-01                                 |
+| `review-envelope.ps1`        | fenced JSON envelope validated against the authoritative schema; size/count bounds; criteria = frozen set                                                      | C-02, H-03, M-05                     |
+| `preflight.ps1`              | mandatory gate; requested version must exist in the index; proven fetch; hash-bound gate decisions                                                             | H-07, C-04 (partial), NC-01          |
+| `integrate.ps1`              | the only path to the target; publication = remote-confirmed; no post-review target merge; every failure closes the ledger                                      | H-04, C-03, NM-02                    |
+| `spine.ps1`                  | the only V2 entrypoint — **no `run` verb**                                                                                                                     | —                                    |
+| `tests/pipeline-harness.ps1` | composes the above into one synthetic run; `Assert-DisposableRoot`; fake agent only                                                                            | NC-01                                |
 
-Deferred to the next session (each needs its own review): **C-05** (verified
-process-tree kill), **C-06** (OS-enforced executor isolation), **H-08** (crash-
-resume protocol), **H-09** (per-check timeouts / circuit breaker / budgets),
-**H-10** (machine-readable GSD parser), and real Claude/Codex disposable smoke.
+Deferred (each needs its own review; **not** downgraded to PASS): **C-05**
+(verified process-tree kill), **C-06** (OS-enforced executor isolation), **H-08**
+(full crash-resume protocol), **H-09** (per-check hard timeouts / circuit breaker
+/ budgets), **H-10** (machine-readable GSD parser), and real Claude/Codex
+disposable smoke.
 
 ---
 
@@ -98,6 +102,9 @@ on demand, never hand-edited. `config.json` holds knobs, never status.
 ---
 
 ## Commands
+
+> `run` / `loop` / `cleanup` below are **permanently disabled** (no override).
+> Only `index` / `status` / `next` / `recover` remain, for inspection.
 
 ```powershell
 # rebuild + validate the task index from .planning

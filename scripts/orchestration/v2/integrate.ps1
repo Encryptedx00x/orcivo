@@ -1,162 +1,203 @@
 <#
-integrate.ps1 - the ONLY path that touches the target branch.  (H-04, C-03, part of H-10)
+integrate.ps1 - the ONLY path that touches the target branch.  (H-04, C-03, NM-02, #6, #7)
 
-Fixes H-04: V1 locks were per-runId; there was no target/main mutex, no fetch/CAS
-against origin, and a failed push was a warning while the run was still MERGED.
+Second-review remediation:
+  * H-04/#6 - PUBLICATION MEANS REMOTE-CONFIRMED. There is no optional push and no
+    local-only PUBLISHED. If there is no reachable remote, integration fails
+    closed. PUBLISHED is appended ONLY after: global integration lease, real
+    fetch, expected-remote-SHA CAS, exact reviewed candidate, deterministic
+    merge, post-integration verification, push, and remote ancestry proof.
+  * #7 - the integrator publishes EXACTLY the candidate commit/tree that was
+    frozen, checked and reviewed. It does NOT merge a newer target after review.
+    If origin/<target> has moved off the expected SHA the candidate was built on,
+    integration STOPS with REMOTE_DIVERGED and a rebuild/re-review is required.
+  * NM-02 - every remote-CAS / ancestry / push failure appends a durable ledger
+    transition (PUSH_FAILED / REMOTE_DIVERGED / INTEGRATION_FAILED). The ledger
+    never sits in INTEGRATING because a function returned.
 
-Fixes C-03 (integration half): the integrator re-verifies every attestation
-binding against the exact commit right before integrating, and integrates that
-immutable commit - never `git add -A`.
+Deterministic process, no LLM.
 
-State machine for the target-facing side:
-   APPROVED -> INTEGRATING -> (INTEGRATED_LOCAL) -> PUSHING -> PUBLISHED
-                           \-> FAILED (branch preserved, target untouched)
-   Push failure => PUSH_FAILED / BLOCKED, never PUBLISHED.
-
-This is a DETERMINISTIC process (no LLM). In the full design it runs under a
-minimal-credential integrator identity (C-06, deferred).
+Merge-local-only tests use Test-MergeCandidateLocally, a separate primitive that
+NEVER transitions the ledger to PUBLISHED.
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'ledger.ps1')
 . (Join-Path $PSScriptRoot 'attest.ps1')
 . (Join-Path $PSScriptRoot 'lease.ps1')
+. (Join-Path $PSScriptRoot 'verification.ps1')
+
+# Build the candidate integration commit: merge the current target into the run
+# branch, in the worktree. The candidate tree is what gets frozen/checked/reviewed.
+# Returns @{ ok; candidateSha; expectedTargetSha; reason }
+function New-IntegrationCandidate {
+    param(
+        [Parameter(Mandatory)][string]$RepoDir,
+        [Parameter(Mandatory)][string]$WorktreeDir,
+        [Parameter(Mandatory)][string]$Branch
+    )
+    $cfg = Get-V2Config
+    $target = $cfg.target.branch
+    $branchNow = (& git -C $RepoDir rev-parse --abbrev-ref HEAD).Trim()
+    if ($branchNow -ne $target) { return @{ ok = $false; reason = "authority checkout on '$branchNow' not '$target'" } }
+    $expectedTargetSha = (Get-GitHeadV2 $RepoDir)
+
+    Assert-SafeGitV2 @('merge', $target)
+    & git -C $WorktreeDir merge $expectedTargetSha --no-edit -m "candidate: integrate $target@$($expectedTargetSha.Substring(0,10))" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        & git -C $WorktreeDir merge --abort 2>$null | Out-Null
+        return @{ ok = $false; reason = "conflict merging $target into the run branch" }
+    }
+    $candidateSha = (Get-GitHeadV2 $WorktreeDir)
+    return @{ ok = $true; candidateSha = $candidateSha; expectedTargetSha = $expectedTargetSha; reason = 'ok' }
+}
+
+# merge-local-only primitive for tests. NEVER touches the ledger / PUBLISHED.
+function Test-MergeCandidateLocally {
+    param([string]$RepoDir, [string]$WorktreeDir, [string]$Branch, [string]$CandidateSha)
+    $cfg = Get-V2Config; $target = $cfg.target.branch
+    $before = (Get-GitHeadV2 $RepoDir)
+    Assert-SafeGitV2 @('merge','--no-ff',$Branch)
+    & git -C $RepoDir merge --no-ff -m "LOCAL-ONLY test merge $CandidateSha" $Branch 2>&1 | Out-Null
+    $ok = ($LASTEXITCODE -eq 0)
+    if (-not $ok) { & git -C $RepoDir merge --abort 2>$null | Out-Null }
+    return @{ ok = $ok; before = $before; after = (Get-GitHeadV2 $RepoDir) }
+}
 
 function Invoke-Integration {
     param(
         [Parameter(Mandatory)][string]$TaskVersionId,
         [Parameter(Mandatory)][string]$RunId,
-        [Parameter(Mandatory)][string]$RepoDir,       # the authority checkout (on target)
-        [Parameter(Mandatory)][string]$WorktreeDir,   # the run's worktree
-        [Parameter(Mandatory)][string]$Branch,        # the run branch
-        [Parameter(Mandatory)][string]$BaseSha,
-        [Parameter(Mandatory)][string]$HeadSha,       # the immutable validated commit
-        [scriptblock]$PostIntegrationCheck = $null,   # returns $true on PASS
-        [switch]$Push
+        [Parameter(Mandatory)][string]$RepoDir,
+        [Parameter(Mandatory)][string]$WorktreeDir,
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string]$BaseSha,           # expectedTargetSha the candidate was built on
+        [Parameter(Mandatory)][string]$HeadSha,           # the immutable reviewed candidate commit
+        [scriptblock]$PostIntegrationCheck = $null
     )
     $cfg = Get-V2Config
     $target = $cfg.target.branch
-    $result = [ordered]@{ status = 'FAILED'; reason = ''; state = ''; targetBefore = ''; targetAfter = ''; mergeCommit = ''; pushed = $false }
+    $result = [ordered]@{ status = 'INTEGRATION_FAILED'; reason = ''; state = ''; targetBefore = ''; targetAfter = ''; mergeCommit = ''; pushed = $false }
 
-    # global serial integration lease (H-04)
     $lease = New-Lease -Namespace 'integration' -Key $target -TaskVersionId $TaskVersionId -RunId $RunId
     if (-not $lease.ok) {
-        $result.reason = "integration lease for '$target' held by $($lease.heldBy.leaseId) (pid $($lease.heldBy.holder.pid)) - serial only"
+        $result.reason = "integration lease for '$target' held by $($lease.heldBy.leaseId) - serial only"
         $result.status = 'BLOCKED'
         return $result
     }
-
+    $beat = Start-LeaseHeartbeat -Namespace 'integration' -Key $target -LeaseId $lease.leaseId
     try {
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'integrate-start' -ToState 'INTEGRATING' -RunId $RunId | Out-Null
 
         # 1. authority checkout sane
         $branchNow = (& git -C $RepoDir rev-parse --abbrev-ref HEAD).Trim()
-        if ($branchNow -ne $target) { $result.reason = "authority checkout on '$branchNow' not '$target'"; return (_fail $TaskVersionId $RunId $result) }
-        if (-not (Test-GitCleanV2 $RepoDir)) { $result.reason = "authority tree dirty"; return (_fail $TaskVersionId $RunId $result) }
+        if ($branchNow -ne $target) { return (_fail $TaskVersionId $RunId $result "authority checkout on '$branchNow' not '$target'" 'INTEGRATION_FAILED') }
+        if (-not (Test-GitCleanV2 $RepoDir)) { return (_fail $TaskVersionId $RunId $result "authority tree dirty" 'INTEGRATION_FAILED') }
 
         $localTarget = (Get-GitHeadV2 $RepoDir)
         $result.targetBefore = $localTarget
 
-        # 2. fetch + remote CAS (H-04)
-        $hasRemote = [bool](& git -C $RepoDir remote)
-        $expectedRemote = $null
-        if ($hasRemote) {
-            & git -C $RepoDir fetch origin --quiet 2>&1 | Out-Null
-            $expectedRemote = (& git -C $RepoDir rev-parse "origin/$target" 2>$null)
-            if ($expectedRemote) {
-                $expectedRemote = $expectedRemote.Trim()
-                if ($expectedRemote -ne $localTarget) {
-                    $result.reason = "remote origin/$target ($($expectedRemote.Substring(0,10))) is ahead of local ($($localTarget.Substring(0,10))) - re-sync before integrating"
-                    return (_fail $TaskVersionId $RunId $result)
-                }
-            }
+        # 2. MUST have a remote. Real fetch + expected-SHA CAS. (#6, #7)
+        $hasRemote = [bool](& git -C $RepoDir remote 2>$null)
+        if (-not $hasRemote) { return (_fail $TaskVersionId $RunId $result "no remote configured - publication requires a confirmed remote" 'INTEGRATION_FAILED') }
+        & git -C $RepoDir fetch origin --prune --quiet 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { return (_fail $TaskVersionId $RunId $result "git fetch origin failed" 'INTEGRATION_FAILED') }
+        $expectedRemote = (& git -C $RepoDir rev-parse "origin/$target" 2>$null)
+        if (-not $expectedRemote) { return (_fail $TaskVersionId $RunId $result "origin/$target not found after fetch" 'INTEGRATION_FAILED') }
+        $expectedRemote = $expectedRemote.Trim()
+        if ($expectedRemote -ne $BaseSha) {
+            return (_fail $TaskVersionId $RunId $result "origin/$target ($($expectedRemote.Substring(0,10))) has moved off the SHA the reviewed candidate was built on ($($BaseSha.Substring(0,10))) - rebuild + re-review required" 'REMOTE_DIVERGED')
+        }
+        if ($expectedRemote -ne $localTarget) {
+            return (_fail $TaskVersionId $RunId $result "local $target ($($localTarget.Substring(0,10))) != origin/$target ($($expectedRemote.Substring(0,10)))" 'REMOTE_DIVERGED')
         }
 
-        # 3. attestations fresh against the EXACT commit (C-03)
+        # 3. attestations fresh against the EXACT reviewed candidate (C-03)
         $att = Assert-IntegrationAttestations -TaskVersionId $TaskVersionId -RunId $RunId -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha
-        if (-not $att.ok) { $result.reason = "attestation gate: $($att.problems -join '; ')"; return (_fail $TaskVersionId $RunId $result) }
+        if (-not $att.ok) { return (_fail $TaskVersionId $RunId $result "attestation gate: $($att.problems -join '; ')" 'INTEGRATION_FAILED') }
 
-        # 4. the run branch must actually point at the validated commit
+        # 4. the run branch must point EXACTLY at the reviewed candidate
         $branchHead = (& git -C $RepoDir rev-parse $Branch 2>$null)
         if (-not $branchHead -or $branchHead.Trim() -ne $HeadSha) {
-            $result.reason = "run branch $Branch ($($branchHead)) != validated commit $HeadSha - branch moved after review"
-            return (_fail $TaskVersionId $RunId $result)
+            return (_fail $TaskVersionId $RunId $result "run branch $Branch ($branchHead) != reviewed candidate $HeadSha - branch moved after review" 'INTEGRATION_FAILED')
         }
+        $candTree = (Get-GitTreeHash -Dir $WorktreeDir -Ref $HeadSha)
 
-        # 5. integrate target INTO the branch first (in the worktree), re-check, then merge --no-ff
-        Assert-SafeGitV2 @('merge', $target)
-        $mi = (& git -C $WorktreeDir merge $target --no-edit 2>&1) -join "`n"
-        if ($LASTEXITCODE -ne 0) {
-            & git -C $WorktreeDir merge --abort 2>$null | Out-Null
-            $result.reason = "conflict integrating $target into branch"; $result.status = 'NEEDS_REVIEW'
-            return (_fail $TaskVersionId $RunId $result 'NEEDS_REVIEW')
-        }
-        $integratedCommit = (Get-GitHeadV2 $WorktreeDir)
-
+        # 5. post-integration verification on the candidate tree (== future target tree),
+        #    BEFORE the target branch is touched, so no undo is ever needed.
         if ($PostIntegrationCheck) {
             $ok = & $PostIntegrationCheck $WorktreeDir
-            if (-not $ok) { $result.reason = "post-integration check failed"; $result.status = 'NEEDS_REVIEW'; return (_fail $TaskVersionId $RunId $result 'NEEDS_REVIEW') }
+            if (-not $ok) { return (_fail $TaskVersionId $RunId $result "post-integration check failed" 'INTEGRATION_FAILED') }
         }
 
-        # 6. target must not have moved under us
-        if ((Get-GitHeadV2 $RepoDir) -ne $localTarget) {
-            $result.reason = "$target moved during integration"; $result.status = 'NEEDS_REVIEW'
-            return (_fail $TaskVersionId $RunId $result 'NEEDS_REVIEW')
-        }
-
-        # 7. merge the branch into target (fast-forward-free, deterministic)
+        # 6. deterministic merge of the reviewed candidate into target.
+        #    the candidate already contains target as a parent -> no new content.
         Assert-SafeGitV2 @('merge', '--no-ff', $Branch)
         $msg = "$($TaskVersionId.Substring(0,12)): integrated run $RunId (V2 spine)"
-        & git -C $RepoDir merge --no-ff -m $msg $Branch 2>&1 | Out-Null
+        & git -C $RepoDir merge --no-ff -m $msg $HeadSha 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             & git -C $RepoDir merge --abort 2>$null | Out-Null
-            $result.reason = "unexpected conflict merging branch into $target"; $result.status = 'NEEDS_REVIEW'
-            return (_fail $TaskVersionId $RunId $result 'NEEDS_REVIEW')
+            return (_fail $TaskVersionId $RunId $result "unexpected conflict merging the reviewed candidate into $target" 'INTEGRATION_FAILED')
         }
         $mergeCommit = (Get-GitHeadV2 $RepoDir)
+        $mergeTree = (Get-GitTreeHash -Dir $RepoDir -Ref $mergeCommit)
+        if ($mergeTree -ne $candTree) {
+            return (_fail $TaskVersionId $RunId $result "merge tree $mergeTree != reviewed candidate tree $candTree (content drift); local $target advanced but NOT pushed" 'INTEGRATION_FAILED')
+        }
         $result.mergeCommit = $mergeCommit
         $result.targetAfter = $mergeCommit
         $result.state = 'INTEGRATED_LOCAL'
 
-        # 8. push (normal only) + verify remote ancestry (H-04)
-        if ($Push -and $hasRemote) {
-            Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'push-start' -ToState 'INTEGRATING' -RunId $RunId -Note 'PUSHING' | Out-Null
-            Assert-SafeGitV2 @('push', 'origin', $target)
-            & git -C $RepoDir push origin $target 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                $result.status = 'PUSH_FAILED'
-                $result.reason = "git push origin $target failed - target advanced locally but NOT published; branch preserved"
-                Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'push-failed' -ToState 'FAILED' -RunId $RunId -Note 'PUSH_FAILED' | Out-Null
-                return $result
-            }
-            $remoteAfter = (& git -C $RepoDir rev-parse "origin/$target").Trim()
-            & git -C $RepoDir merge-base --is-ancestor $mergeCommit $remoteAfter 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                $result.status = 'PUSH_FAILED'
-                $result.reason = "remote origin/$target does not contain the merge commit after push"
-                return $result
-            }
-            $result.pushed = $true
+        # 7. push (mandatory) + remote ancestry proof (#6)
+        Beat-Lease $beat
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'push-start' -ToState 'INTEGRATING' -RunId $RunId -Note 'PUSHING' | Out-Null
+        Assert-SafeGitV2 @('push', 'origin', $target)
+        & git -C $RepoDir push origin "HEAD:$target" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return (_fail $TaskVersionId $RunId $result "git push origin $target rejected - target advanced locally but NOT published; branch preserved" 'PUSH_FAILED')
         }
+        & git -C $RepoDir fetch origin --quiet 2>&1 | Out-Null
+        $remoteAfter = (& git -C $RepoDir rev-parse "origin/$target" 2>$null)
+        if (-not $remoteAfter) { return (_fail $TaskVersionId $RunId $result "cannot read origin/$target after push" 'PUSH_FAILED') }
+        $remoteAfter = $remoteAfter.Trim()
+        & git -C $RepoDir merge-base --is-ancestor $mergeCommit $remoteAfter 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return (_fail $TaskVersionId $RunId $result "remote origin/$target does not contain the merge commit after push" 'PUSH_FAILED')
+        }
+        $remoteTree = (Get-GitTreeHash -Dir $RepoDir -Ref $remoteAfter)
+        if ($remoteTree -ne $candTree) {
+            return (_fail $TaskVersionId $RunId $result "remote tree after push != reviewed candidate tree" 'REMOTE_DIVERGED')
+        }
+        $result.pushed = $true
 
-        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'published' -ToState 'PUBLISHED' -RunId $RunId -Evidence @{ headSHA = $mergeCommit; pushed = $result.pushed } | Out-Null
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'published' -ToState 'PUBLISHED' -RunId $RunId `
+            -Evidence @{ headSHA = $mergeCommit; remoteSHA = $remoteAfter; pushed = $true } | Out-Null
         New-Attestation -Kind integration -TaskVersionId $TaskVersionId -RunId $RunId `
             -Bindings (Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $WorktreeDir -BaseSha $BaseSha -HeadSha $HeadSha) `
-            -Result 'PASS' -Payload @{ mergeCommit = $mergeCommit; pushed = $result.pushed } | Out-Null
+            -Result 'PASS' -Payload @{ mergeCommit = $mergeCommit; remoteSHA = $remoteAfter; pushed = $true } `
+            -ProducerMeta @{ integrator = 'v2-deterministic'; host = $env:COMPUTERNAME } | Out-Null
 
         $result.status = 'PUBLISHED'
         $result.reason = 'ok'
         return $result
     }
     finally {
+        Stop-LeaseHeartbeat $beat
         [void](Remove-Lease -Namespace 'integration' -Key $target -LeaseId $lease.leaseId)
     }
 }
 
 function _fail {
-    param($TaskVersionId, $RunId, $result, [string]$LedgerState = 'FAILED')
-    try { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'integrate-failed' -ToState $LedgerState -RunId $RunId -Note $result.reason | Out-Null } catch { }
-    if (-not $result.status -or $result.status -eq 'FAILED') { $result.status = $(if ($LedgerState -eq 'NEEDS_REVIEW') { 'NEEDS_REVIEW' } else { 'FAILED' }) }
-    Write-V2Log "integrate: $($TaskVersionId.Substring(0,12)) -> $($result.status): $($result.reason)" 'WARN'
+    param($TaskVersionId, $RunId, $result, [string]$Reason, [string]$LedgerState)
+    $result.reason = $Reason
+    $result.status = $(switch ($LedgerState) {
+        'REMOTE_DIVERGED'    { 'REMOTE_DIVERGED' }
+        'PUSH_FAILED'        { 'PUSH_FAILED' }
+        default              { 'INTEGRATION_FAILED' }
+    })
+    try { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'integrate-failed' -ToState $LedgerState -RunId $RunId -Note $Reason | Out-Null } catch {
+        Write-V2Log "integrate: could not record $LedgerState ledger event: $($_.Exception.Message)" 'ERROR'
+    }
+    Write-V2Log "integrate: $($TaskVersionId.Substring(0,12)) -> $($result.status): $Reason" 'WARN'
     return $result
 }

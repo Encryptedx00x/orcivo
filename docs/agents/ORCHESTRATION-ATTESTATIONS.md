@@ -1,7 +1,7 @@
-# Orchestration attestations — V2 (C-03)
+# Orchestration attestations — V2 (C-03, NM-01, NH-02)
 
-Every gate in the V2 pipeline produces a **content-addressed attestation** that is
-bound to the exact repository content it covers. The integrator re-verifies all
+Every gate in the V2 pipeline produces a **content-addressed attestation** bound
+to the exact repository content it covers. The integrator re-verifies all
 bindings immediately before touching the target branch; any drift = stale =
 refused. There is no "most recent PASS by timestamp" path.
 
@@ -13,56 +13,96 @@ taskVersionId = sha256_canonical({
 })
 ```
 
-`specHash` / `acceptanceHash` are SHA-256 of the frozen spec and acceptance text.
 Change any input → new `taskVersionId` → new ledger, new contract, new
-attestations. A `PUBLISHED` version is terminal.
+attestations. `PUBLISHED`, `NO_CHANGE_ACCEPTED` and `QUARANTINED` are terminal.
+
+## Contract freeze is deterministic (NH-01)
+
+`contractHash` covers **content only** — `specText`, `acceptanceText`,
+`specHash`, `acceptanceHash`, `configHash`, `verificationProfile`,
+`verificationProfileHash`, `verificationDefinitionHash`, `declaredScope`,
+`protectedPathGrants`, `risk`, `gate`, `acceptanceCriteriaIds`, `bindings`.
+`frozenAt` / `frozenBy` live in a separate `audit` block and are **not** hashed,
+so re-freezing the same logical contract returns the same object and hash.
+
+`Get-Contract` never trusts stored hashes: on read it recomputes `specHash` from
+`specText`, `acceptanceHash` from `acceptanceText`, `verificationProfileHash` and
+`verificationDefinitionHash` from the real config profile, `configHash` from the
+file, `acceptanceCriteriaIds` from the acceptance text, `taskVersionId` from the
+recomputed spec/acceptance hashes, and `contractHash` from the canonical object.
+Any mismatch throws — fail closed.
+
+## Declarative verification (NH-02)
+
+A task names a `verificationProfile` id (`A` / `B` / `C`). The profile — working
+dir policy, environment policy, timeout, the ordered check list — is a fixed
+object in `.orchestration/v2/config.v2.json`. The task cannot supply commands,
+executables, arguments, cwd or env.
+
+```
+verificationProfileHash    = sha256(profileId)
+verificationDefinitionHash = sha256_canonical(resolved profile object)
+```
+
+Each check run records an `effectiveInvocationHash` over
+`{profileId, profileVersion, definitionHash, workingDirPolicy, environmentPolicy,
+timeoutSec, checksExecuted}` which the check attestation's payload carries.
+Changing the real verification procedure after freeze → definition-hash drift →
+stale.
 
 ## Binding set
 
-Each attestation (`kind` ∈ `check | review | approval | integration`) records:
+| Binding                                                 | Source                                                   |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| `taskVersionId`                                         | identity above                                           |
+| `baseSHA`                                               | the SHA the integration candidate was built on           |
+| `headSHA`                                               | the immutable reviewed candidate commit                  |
+| `treeHash`                                              | `git rev-parse <headSHA>^{tree}`                         |
+| `diffHash`                                              | `sha256(git diff base..head)`                            |
+| `specHash`, `acceptanceHash`                            | recomputed from the frozen contract text                 |
+| `configHash`                                            | `sha256(.orchestration/v2/config.v2.json)`               |
+| `verificationProfileHash`, `verificationDefinitionHash` | from the config profile                                  |
+| `contractHash`                                          | recomputed canonical hash of the frozen contract content |
 
-| Binding                      | Source                                     |
-| ---------------------------- | ------------------------------------------ |
-| `taskVersionId`              | identity above                             |
-| `baseSHA`                    | run base commit                            |
-| `headSHA`                    | the executor's immutable commit            |
-| `treeHash`                   | `git rev-parse <headSHA>^{tree}`           |
-| `diffHash`                   | `sha256(git diff base..head)`              |
-| `specHash`, `acceptanceHash` | frozen contract                            |
-| `configHash`                 | `sha256(.orchestration/v2/config.v2.json)` |
-| `verificationProfileHash`    | `sha256(profile name)`                     |
-| `contractHash`               | canonical hash of the frozen contract      |
+## Integrity hash (NM-01)
 
-## Integrity hash
+```
+attestationHash = sha256_canonical({
+  v, kind, taskVersionId, runId, result, createdAt, bindings,
+  producerHash = sha256_canonical(producer),
+  payloadHash  = sha256_canonical(payload)
+})
+```
 
-`attestationHash = sha256_canonical({ kind, taskVersionId, runId, result, bindings })`
+`producer` (reviewer/check/integrator provenance) and `payload` (findings,
+evidence, effective invocation) are **inside** the integrity envelope. They
+cannot be mutated without breaking `attestationHash`.
 
-Only the security-relevant immutable fields are covered (all round-trip through
-JSON unambiguously). `payload` / `producer` metadata (reviewer model, effort,
-tool policy, prompt template version — M-05) are recorded but advisory.
+## Freshness + latest-authoritative-result
 
-## Freshness check (`Test-AttestationFresh`)
+`Test-AttestationFresh` recomputes the full binding set now, compares every
+binding, and recomputes `attestationHash` (tamper check).
 
-1. Recompute the full binding set against the worktree **now**.
-2. Compare every binding to what the attestation claims.
-3. Recompute `attestationHash` and compare (tamper check).
-4. Any mismatch → `fresh = $false` with a `drift` list naming the field.
+`Assert-IntegrationAttestations` requires, for each required kind
+(`check`, `review`):
 
-## Integrator gate (`Assert-IntegrationAttestations`)
+- the **latest** attestation bound to this run + this exact head, ordered by
+  `createdAt`, has the correct positive result for its kind (`PASS` for check,
+  `APPROVE` for review) — an earlier positive result is **not** sufficient;
+- and it is **fresh** against the exact commit about to be integrated.
 
-Before merging, for each required kind (`check`, `review`):
-
-- there is an attestation for **this run**,
-- with a positive result (`PASS` / `APPROVE`),
-- that is **fresh** against the exact commit about to be integrated.
-
-Then, and only then: fetch + remote CAS, merge the validated commit (no
-`git add -A`), post-integration check, push, verify remote ancestry, and finally
-append the `PUBLISHED` ledger event.
+Then, and only then: fetch + expected-remote-SHA CAS, merge the reviewed
+candidate (no `git add -A`), post-integration check, push, remote ancestry +
+tree proof, and finally the `PUBLISHED` ledger event.
 
 ## Proven by the adversarial suite
 
 - attestation goes stale when the worktree tree changes after the check
 - attestation goes stale when `config.v2.json` changes
-- a commit amended after review → integration refused (stale / branch moved)
-- `origin/main` advanced under the run → integration blocked, ledger not `PUBLISHED`
+- mutating `producer` / `payload` breaks `attestationHash`
+- old `PASS` + later `FAIL` → integration refused
+- old `APPROVE` + later `REQUEST_CHANGES` → integration refused
+- tampered `specText` / `acceptanceText` / verification profile / contract field
+  with the stored hash kept → `Get-Contract` throws
+- verification profile content mutated after freeze → stale
+- contract re-freeze is idempotent

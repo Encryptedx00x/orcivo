@@ -1,16 +1,19 @@
 <#
 lib-v2.ps1 - safe low-level helpers for the Orcivo orchestration SECURITY SPINE (V2).
 
-V2 is a clean-room rebuild after the independent Codex review REJECTED V1
-(.planning/reviews/ORCHESTRATION-SUPERVISOR-INDEPENDENT-REVIEW.md). This file
-deliberately does NOT dot-source scripts/orchestration/lib.ps1. Every helper here
-was written or re-audited against that review:
+V2 is a clean-room rebuild after the independent Codex review REJECTED V1, and a
+SECOND independent review then REJECTED the first V2 spine
+(.planning/reviews/ORCHESTRATION-V2-SPINE-SECURITY-REVIEW.md). This file is part
+of the second remediation. It deliberately does NOT dot-source
+scripts/orchestration/lib.ps1.
 
-  - Protect-SecretsStreaming   replaces V1 Protect-Secrets (H-11: streaming, fail-safe)
-  - New-ContentHash / canonical replaces nothing in V1 (C-03: content addressing)
-  - Test-SafeId / Resolve-SafePath / ConvertTo-Win32Arg / Invoke-NativeCaptured
-                                replaces V1 Start-Process arg building (H-12)
-  - New-ExclusiveFile          replaces V1 Test-Path+write lock (H-05: atomic)
+  - Protect-SecretsStreaming / Copy-StreamRedacted   H-11 (streaming + multiline PEM buffer)
+  - New-ContentHash / canonical                      C-03 / NH-01 (content addressing, no volatile fields)
+  - Test-SafeId / Resolve-SafePath / ConvertTo-Win32Arg / Resolve-Executable   H-12
+  - New-ExclusiveFile / Invoke-FileCas               H-05 (atomic create + compare-and-write/delete)
+  - ConvertTo-RelPathKey / Test-RelPathUnder         H-06 / M-01 (canonical Windows-aware path match)
+  - Assert-DisposableRoot                            NC-01 (structural, NO env-var bypass)
+  - Invoke-GitFetchProven                            H-07 / #12 (a real fetch, not a timestamp)
 
 V2 state lives under .orchestration/v2/ ONLY. V1 runtime state is never read here.
 #>
@@ -30,23 +33,46 @@ function Get-RepoRootV2 {
 $script:RepoRootV2 = Get-RepoRootV2
 $script:V2Dir      = Join-Path $script:RepoRootV2 '.orchestration\v2'
 $script:V2Config   = Join-Path $script:RepoRootV2 '.orchestration\v2\config.v2.json'
+# the authority repo is the one that physically contains THIS script file.
+$script:AuthorityRoot = ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))).TrimEnd('\')
 
 function Get-V2Dir { return $script:V2Dir }
 function Get-RepoRoot { return $script:RepoRootV2 }
+function Get-AuthorityRoot { return $script:AuthorityRoot }
 
-# Hard guard: the spine must never run against the real Orcivo application repo
-# unless a test harness explicitly opts in. V1 and V2 both stay wired away from
-# real GSD tasks (constraints 1 & 2 of the remediation brief).
-function Assert-NotRealRepo {
-    param([string]$Why = 'operation')
-    $stateMd = Join-Path $script:RepoRootV2 '.planning\STATE.md'
-    $backend = Join-Path $script:RepoRootV2 'apps\backend'
-    $isReal  = (Test-Path $stateMd) -and (Test-Path $backend)
-    if ($isReal -and $env:ORCH_V2_TESTING -ne '1') {
-        throw "v2 SAFETY: refusing to $Why against the real Orcivo repo. " +
-              "V2 is a security spine under review and must not execute real tasks. " +
-              "(set ORCH_V2_TESTING=1 only inside the deterministic test harness on a throwaway repo)"
+# ----------------------------------------------------------------------------
+# NC-01: structural real-task disablement. NO environment variable can flip this.
+# A "disposable root" is a throwaway repo that is provably NOT the authority repo
+# and carries a marker file the test harness drops. Production-capable code paths
+# never call the pipeline; only tests/ do, and only against a disposable root.
+# ----------------------------------------------------------------------------
+
+function Test-PathIsAncestorOrSelf {
+    param([string]$Ancestor, [string]$Candidate)
+    $a = ([System.IO.Path]::GetFullPath($Ancestor)).TrimEnd('\').ToLowerInvariant()
+    $c = ([System.IO.Path]::GetFullPath($Candidate)).TrimEnd('\').ToLowerInvariant()
+    return ($c -eq $a -or $c.StartsWith($a + '\'))
+}
+
+function Assert-DisposableRoot {
+    param([Parameter(Mandatory)][string]$RepoDir, [string]$Why = 'operation')
+    if (-not (Test-Path -LiteralPath $RepoDir)) { throw "v2 NC-01: disposable root '$RepoDir' does not exist" }
+    $full = ([System.IO.Path]::GetFullPath($RepoDir)).TrimEnd('\')
+
+    # 1. must not be, contain, or live inside the authority repo
+    if ((Test-PathIsAncestorOrSelf $script:AuthorityRoot $full) -or (Test-PathIsAncestorOrSelf $full $script:AuthorityRoot)) {
+        throw "v2 NC-01: refusing to $Why - '$full' overlaps the authority repo '$script:AuthorityRoot'. The pipeline only runs on a throwaway repo."
     }
+    # 2. must carry the harness marker (dropped by New-V2Fixture, never committed)
+    $marker = Join-Path $full '.orch-v2-fixture'
+    if (-not (Test-Path -LiteralPath $marker)) {
+        throw "v2 NC-01: refusing to $Why - '$full' is missing the disposable-fixture marker (.orch-v2-fixture). Only the isolated test harness may create it."
+    }
+    # 3. defence in depth: the real Orcivo app tree must not be present
+    if ((Test-Path (Join-Path $full '.planning\STATE.md')) -and (Test-Path (Join-Path $full 'apps\backend'))) {
+        throw "v2 NC-01: refusing to $Why - '$full' looks like the real Orcivo application repo."
+    }
+    return $true
 }
 
 function Get-V2Config {
@@ -55,13 +81,11 @@ function Get-V2Config {
 }
 
 # ----------------------------------------------------------------------------
-# canonical JSON + content hashing  (C-03, L-01)
+# canonical JSON + content hashing  (C-03, NH-01, L-01)
 # ----------------------------------------------------------------------------
 
 function New-Utf8NoBom { return (New-Object System.Text.UTF8Encoding($false)) }
 
-# Deterministic serialization: object keys sorted, no insignificant whitespace,
-# arrays kept in order. Two structurally-equal objects always hash identically.
 function ConvertTo-CanonicalJson {
     param($InputObject)
     $sb = New-Object System.Text.StringBuilder
@@ -129,8 +153,7 @@ function _JsonString {
     return $sb.ToString()
 }
 
-# return a NEW ordered hashtable with $Keys removed. (Piping [ordered]@{} to
-# Select-Object -ExcludeProperty enumerates DictionaryEntries instead - do not do that.)
+# return a NEW ordered hashtable with $Keys removed.
 function Remove-HashKeys {
     param($Hash, [string[]]$Keys)
     $h = [ordered]@{}
@@ -151,10 +174,31 @@ function New-StringHash {
     } finally { $sha.Dispose() }
 }
 
-# Content hash of an arbitrary structure via canonical JSON.
 function New-ContentHash {
     param($InputObject)
     return (New-StringHash (ConvertTo-CanonicalJson $InputObject))
+}
+
+# Deep-convert every scalar leaf to a string, keeping dict / array structure.
+# Used so a value hashed in memory and the same value after a JSON round-trip
+# (which may retype numbers/booleans) canonicalise identically.
+function ConvertTo-DeepString {
+    param($o)
+    if ($null -eq $o) { return $null }
+    if ($o -is [string]) { return $o }
+    if ($o -is [bool] -or $o -is [int] -or $o -is [long] -or $o -is [double] -or $o -is [decimal]) { return ([string]$o) }
+    if ($o -is [System.Collections.IDictionary]) {
+        $h = [ordered]@{}
+        foreach ($k in $o.Keys) { $h[[string]$k] = ConvertTo-DeepString $o[$k] }
+        return $h
+    }
+    if ($o -is [System.Management.Automation.PSCustomObject]) {
+        $h = [ordered]@{}
+        foreach ($p in $o.PSObject.Properties) { $h[$p.Name] = ConvertTo-DeepString $p.Value }
+        return $h
+    }
+    if ($o -is [System.Collections.IEnumerable]) { return @($o | ForEach-Object { ConvertTo-DeepString $_ }) }
+    return ([string]$o)
 }
 
 function New-FileHash {
@@ -164,24 +208,83 @@ function New-FileHash {
 }
 
 # ----------------------------------------------------------------------------
+# canonical Windows-aware relative path matching  (H-06, M-01)
+# ----------------------------------------------------------------------------
+#
+# The V1 spine used `.TrimStart('./')`, which strips the leading dot from
+# `.planning` / `.orchestration` and defeated protected-path matching. Here a path
+# is reduced to a canonical segment list: `\`->`/`, a single leading `./` removed,
+# `.` and `..` segments collapsed lexically, empty segments dropped. Comparison is
+# OrdinalIgnoreCase (NTFS is case-insensitive).
+
+function ConvertTo-RelPathKey {
+    param([string]$Path)
+    $p = ([string]$Path -replace '\\', '/').Trim()
+    while ($p.StartsWith('./')) { $p = $p.Substring(2) }
+    $segs = New-Object System.Collections.Generic.List[string]
+    foreach ($s in ($p -split '/')) {
+        if ($s -eq '' -or $s -eq '.') { continue }
+        if ($s -eq '..') { if ($segs.Count -gt 0) { $segs.RemoveAt($segs.Count - 1) } ; continue }
+        [void]$segs.Add($s)
+    }
+    return ($segs.ToArray() -join '/')
+}
+
+# is the (canonicalized) $File equal to, or under, any of $Prefixes?
+# a trailing '/' on a prefix means "directory prefix"; a '*'/'?' means glob.
+function Test-RelPathUnder {
+    param([string]$File, [string[]]$Prefixes)
+    $f = ConvertTo-RelPathKey $File
+    if (-not $f) { return $false }
+    foreach ($p in @($Prefixes)) {
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        $pn = ([string]$p -replace '\\', '/')
+        if ($pn -match '[*?]') {
+            $glob = ($pn -replace '\*\*/', '*')
+            if ($f -like $glob) { return $true }
+            if ($f -like ($glob.TrimStart('*'))) { return $true }
+            continue
+        }
+        $pk = ConvertTo-RelPathKey $pn
+        if (-not $pk) { continue }
+        if ($f.Equals($pk, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+        if ($f.StartsWith($pk + '/', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+# ----------------------------------------------------------------------------
 # JSON state files  (V2 namespace only)
 # ----------------------------------------------------------------------------
 
 $script:V2ListFields = @('deps','declaredScope','protectedPathGrants','tasks','criteria','findings',
-    'filesReviewed','failures','problems','violations','changedFiles','drift','history','reasons','hits')
+    'filesReviewed','failures','problems','violations','changedFiles','drift','history','reasons','hits','checks','events',
+    'acceptanceCriteriaIds','checksExecuted','required','order_by')
+
+function ConvertTo-V2JsonString {
+    param($Object)
+    $json = $Object | ConvertTo-Json -Depth 40
+    foreach ($f in $script:V2ListFields) {
+        $json = [regex]::Replace($json, ('"{0}":\s*(\{{\s*\}}|"")' -f [regex]::Escape($f)), ('"{0}": []' -f $f))
+    }
+    return $json
+}
 
 function Write-V2Json {
     param([string]$Path, $Object)
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    # pretty for humans, but the AUTHORITATIVE form for hashing is ConvertTo-CanonicalJson
-    $json = $Object | ConvertTo-Json -Depth 40
-    # PS 5.1 serializes an empty array as "{}" - repair known list fields so they
-    # round-trip as [] and never become a phantom empty object.
-    foreach ($f in $script:V2ListFields) {
-        $json = [regex]::Replace($json, ('"{0}":\s*\{{\s*\}}' -f [regex]::Escape($f)), ('"{0}": []' -f $f))
-    }
-    [System.IO.File]::WriteAllText($Path, $json, (New-Utf8NoBom))
+    [System.IO.File]::WriteAllText($Path, (ConvertTo-V2JsonString $Object), (New-Utf8NoBom))
+}
+
+# hash-critical artifacts (contract, attestation, gate) are written in canonical
+# form so a JSON round-trip is lossless (PS 5.1 pretty-print turns [] into null,
+# which would break every recompute-on-read tamper check).
+function Write-V2JsonCanonical {
+    param([string]$Path, $Object)
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    [System.IO.File]::WriteAllText($Path, (ConvertTo-CanonicalJson $Object), (New-Utf8NoBom))
 }
 
 function Read-V2Json {
@@ -192,6 +295,10 @@ function Read-V2Json {
 function _ToHashtable {
     param($o)
     if ($null -eq $o) { return $null }
+    # PS 5.1 ConvertFrom-Json coerces ISO-8601-looking strings to [datetime].
+    # Normalise back to a canonical UTC ISO string so hashes recomputed on read
+    # match hashes computed at write time (NH-01 / C-03 / #13).
+    if ($o -is [datetime]) { return ($o.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffffK')) }
     if ($o -is [System.Management.Automation.PSCustomObject]) {
         $h = [ordered]@{}
         foreach ($p in $o.PSObject.Properties) { $h[$p.Name] = _ToHashtable $p.Value }
@@ -201,7 +308,6 @@ function _ToHashtable {
     return $o
 }
 
-# Append one JSON line atomically (shared-read, exclusive-append). Used by the ledger.
 function Add-JsonLine {
     param([string]$Path, $Object)
     $dir = Split-Path -Parent $Path
@@ -230,12 +336,16 @@ function Read-JsonLines {
     return @($out)
 }
 
+# raw bytes of a jsonl file (for tamper/truncation detection)
+function Read-RawText {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return '' }
+    return [System.IO.File]::ReadAllText($Path)
+}
+
 # ----------------------------------------------------------------------------
-# atomic exclusive file creation  (H-05: replaces V1 Test-Path + write)
+# atomic exclusive file creation + compare-and-swap  (H-05)
 # ----------------------------------------------------------------------------
-#
-# CreateNew is atomic on NTFS: exactly one racer wins, the rest get IOException.
-# Returns $true if THIS call created the file, $false if it already existed.
 
 function New-ExclusiveFile {
     param([string]$Path, [string]$Content = '')
@@ -254,6 +364,44 @@ function New-ExclusiveFile {
     }
 }
 
+# Compare-and-write: rewrite $Path only if its current content hash matches
+# $ExpectedHash. Uses an exclusive open so no other writer can interleave.
+# Returns $true on success, $false if the precondition failed.
+function Invoke-FileCas {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedHash,   # 'sha256:...' of current content, or 'sha256:absent'
+        [AllowEmptyString()][string]$NewContent = '',
+        [switch]$Delete
+    )
+    for ($try = 0; $try -lt 60; $try++) {
+        try {
+            if (-not (Test-Path -LiteralPath $Path)) {
+                if ($ExpectedHash -ne 'sha256:absent') { return $false }
+                if ($Delete) { return $true }
+                return (New-ExclusiveFile $Path $NewContent)
+            }
+            $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            try {
+                $sr = New-Object System.IO.StreamReader($fs, (New-Utf8NoBom))
+                $cur = $sr.ReadToEnd()
+                if ((New-StringHash $cur) -ne $ExpectedHash) { return $false }
+                if ($Delete) {
+                    $fs.Dispose(); Remove-Item -LiteralPath $Path -Force
+                    return $true
+                }
+                $fs.SetLength(0); $fs.Position = 0
+                $sw = New-Object System.IO.StreamWriter($fs, (New-Utf8NoBom))
+                $sw.Write($NewContent); $sw.Flush()
+                return $true
+            } finally { $fs.Dispose() }
+        } catch [System.IO.IOException] {
+            Start-Sleep -Milliseconds (8 + (Get-Random -Maximum 20))
+        }
+    }
+    throw "v2: Invoke-FileCas could not obtain exclusive access to $Path"
+}
+
 # ----------------------------------------------------------------------------
 # process identity  (H-05: PID alone is not enough - guard PID reuse)
 # ----------------------------------------------------------------------------
@@ -270,98 +418,141 @@ function Get-ProcessIdentity {
     }
 }
 
-# A recorded holder is still live only if the pid is alive AND it is the SAME
-# process (start time matches). PID reuse -> not the same holder -> stale.
+# Is the recorded holder still the SAME live process?
+#   $true  = alive and identity matches (or on another host: cannot disprove -> live)
+#   $false = provably dead OR provably a different process (PID reuse)
 function Test-HolderLive {
     param($Holder)
     if (-not $Holder) { return $false }
-    if ($Holder.host -and $env:COMPUTERNAME -and $Holder.host -ne $env:COMPUTERNAME) {
-        # cannot prove liveness of a process on another host -> treat as live (conservative)
-        return $true
-    }
+    if ($Holder.host -and $env:COMPUTERNAME -and $Holder.host -ne $env:COMPUTERNAME) { return $true }
     $now = Get-ProcessIdentity -ProcessId ([int]$Holder.pid)
     if (-not $now.alive) { return $false }
     if ($Holder.startTime -and $now.startTime -and $Holder.startTime -ne $now.startTime) { return $false }
+    if ($Holder.startTime -and -not $now.startTime) { return $false }
     return $true
 }
 
 # ----------------------------------------------------------------------------
-# streaming secret redaction  (H-11: replaces V1 Protect-Secrets)
+# streaming + multiline secret redaction  (H-11)
 # ----------------------------------------------------------------------------
-#
-# V1 wrote raw stdout/stderr to disk and redacted afterwards, so a crash left the
-# raw file. V2 redacts each line BEFORE it is ever persisted, and the raw stream
-# is never written to disk at all.
 
-function Get-RedactionPatterns {
-    $cfg = Get-V2Config
-    return @($cfg.redaction.patterns)
-}
+function Get-RedactionPatterns   { return @((Get-V2Config).redaction.patterns) }
+function Get-MultilinePatterns    { return @((Get-V2Config).redaction.multilinePatterns) }
+function Get-AllRedactionPatterns { $c = Get-V2Config; return (@($c.redaction.patterns) + @($c.redaction.scanPatterns)) }
 
-function Get-AllRedactionPatterns {
-    $cfg = Get-V2Config
-    return (@($cfg.redaction.patterns) + @($cfg.redaction.scanPatterns))
-}
+$script:MaxRedactLine = 16384   # lines longer than this are refused, not regex'd
 
 function Protect-Line {
     param([string]$Line)
+    # an over-long line is a redaction-DoS vector (catastrophic backtracking) and
+    # is never legitimate agent output - drop it wholesale, fail closed.
+    if ($Line.Length -gt $script:MaxRedactLine) {
+        return "[REDACTED: over-long line withheld ($($Line.Length) chars > $script:MaxRedactLine)]"
+    }
     $cfg = Get-V2Config
     $repl = $cfg.redaction.replacement
     $out = $Line
-    # apply the denylist AND the secret-shape scan patterns: the scanner that
-    # verifies artifacts afterwards uses the same rules, so redaction must too.
     foreach ($pat in (Get-AllRedactionPatterns)) {
         try { $out = [regex]::Replace($out, $pat, $repl) }
-        catch { $out = '[REDACTED: line withheld - redaction pattern error, failing closed]' ; break }
+        catch { return '[REDACTED: line withheld - redaction pattern error, failing closed]' }
     }
     return $out
 }
 
-# Redact a whole blob line-by-line with the structural env-dump guard.
+# Whole-blob redaction: single-line patterns per line, THEN multiline patterns
+# (PEM blocks etc.) across the whole text. Used for anything about to be persisted.
 function Protect-SecretsStreaming {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return $Text }
     $cfg = Get-V2Config
+    $repl = $cfg.redaction.replacement
     $maxEnv = [int]$cfg.redaction.maxEnvLikeLines
     $envRx  = '^\s*(export\s+)?[A-Z][A-Z0-9_]{2,}\s*=\s*\S'
     $lines  = $Text -split "`n"
     $envLike = @($lines | Where-Object { $_ -match $envRx }).Count
-    $result = New-Object System.Text.StringBuilder
     $dropEnv = ($envLike -gt $maxEnv)
+    $result = New-Object System.Text.StringBuilder
     foreach ($l in $lines) {
         if ($dropEnv -and $l -match $envRx) { continue }
         [void]$result.AppendLine((Protect-Line $l))
     }
-    $s = $result.ToString().TrimEnd("`r","`n")
+    $s = $result.ToString()
+    foreach ($pat in (Get-MultilinePatterns)) {
+        try { $s = [regex]::Replace($s, $pat, $repl, [System.Text.RegularExpressions.RegexOptions]::Singleline) } catch { }
+    }
+    $s = $s.TrimEnd("`r", "`n")
     if ($dropEnv) { $s += "`n[REDACTED: $envLike env-style lines withheld - no environment dumps persisted]" }
     return $s
 }
 
-# Consume a process's stdout/stderr streams line-by-line, redact each line, and
-# append it to $LogPath. The undreacted text NEVER touches disk. Returns the
-# redacted transcript as a string (bounded).
+# Consume a StreamReader line-by-line. Single-line secrets are redacted before the
+# line is written. When a multiline trigger (e.g. "-----BEGIN ") appears, lines are
+# BUFFERED (not written) until the block closes or the buffer cap is hit, then the
+# buffered block is redacted with the multiline patterns and flushed. The raw text
+# never reaches disk.
 function Copy-StreamRedacted {
     param(
         [System.IO.StreamReader]$Reader,
         [string]$LogPath,
         [int]$MaxChars = 200000
     )
+    $cfg = Get-V2Config
+    $repl = $cfg.redaction.replacement
+    $triggers = @($cfg.redaction.multilineTriggers)
+    $bufCap   = [int]$cfg.redaction.multilineBufferLines
+    $mlPats   = Get-MultilinePatterns
+
     $dir = Split-Path -Parent $LogPath
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     $sw = New-Object System.IO.StreamWriter($LogPath, $true, (New-Utf8NoBom))
     $collected = New-Object System.Text.StringBuilder
+    $buffer = $null   # $null = not buffering; otherwise a StringBuilder
+
+    $flushBlock = {
+        param($blockText)
+        $red = $blockText
+        foreach ($p in $mlPats) {
+            try { $red = [regex]::Replace($red, $p, $repl, [System.Text.RegularExpressions.RegexOptions]::Singleline) } catch { }
+        }
+        # if a BEGIN marker survived (block never closed / cap hit), scrub from it on
+        foreach ($t in $triggers) {
+            $idx = $red.IndexOf($t)
+            if ($idx -ge 0) { $red = $red.Substring(0, $idx) + '[REDACTED: multiline secret block]' ; break }
+        }
+        $sw.Write($red); $sw.Flush()
+        if ($collected.Length -lt $MaxChars) { [void]$collected.Append($red) }
+    }
+
     try {
         while ($null -ne ($line = $Reader.ReadLine())) {
-            $red = Protect-Line $line
-            $sw.WriteLine($red); $sw.Flush()
-            if ($collected.Length -lt $MaxChars) { [void]$collected.AppendLine($red) }
+            $isTrigger = $false
+            foreach ($t in $triggers) { if ($line.Contains($t)) { $isTrigger = $true; break } }
+
+            if ($null -eq $buffer -and -not $isTrigger) {
+                $red = Protect-Line $line
+                $sw.WriteLine($red); $sw.Flush()
+                if ($collected.Length -lt $MaxChars) { [void]$collected.AppendLine($red) }
+                continue
+            }
+            if ($null -eq $buffer -and $isTrigger) {
+                $buffer = New-Object System.Text.StringBuilder
+                [void]$buffer.AppendLine($line)
+                continue
+            }
+            # currently buffering
+            [void]$buffer.AppendLine($line)
+            $closed = ($line -match 'END [A-Z0-9 ]*PRIVATE KEY-----')
+            if ($closed -or $buffer.Length -gt ($bufCap * 200)) {
+                & $flushBlock $buffer.ToString()
+                $buffer = $null
+            }
         }
+        if ($null -ne $buffer) { & $flushBlock $buffer.ToString() }
     } finally { $sw.Dispose() }
     return $collected.ToString()
 }
 
-# Scan a finished artifact tree for anything that still looks like a live secret.
-# A single hit fails the run closed (H-11).
+# Final sweep of a finished artifact tree. One hit fails the run closed (H-11).
 function Test-ArtifactsClean {
     param([string]$Root)
     $cfg = Get-V2Config
@@ -370,11 +561,20 @@ function Test-ArtifactsClean {
     foreach ($f in (Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue)) {
         $txt = ''
         try { $txt = Get-Content -Raw -LiteralPath $f.FullName -ErrorAction Stop } catch { continue }
+        if ($null -eq $txt) { continue }
         foreach ($pat in $cfg.redaction.scanPatterns) {
-            if ($txt -match $pat) { $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat) }
+            try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+                $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
+            } } catch { }
         }
     }
     return [ordered]@{ clean = ($hits.Count -eq 0); hits = @($hits) }
+}
+
+# Redact a value about to be written to a state/JSON artifact (contract, prompt).
+function Protect-ArtifactText {
+    param([string]$Text)
+    return (Protect-SecretsStreaming $Text)
 }
 
 # ----------------------------------------------------------------------------
@@ -394,8 +594,6 @@ function Assert-SafeId {
     if (-not (Test-SafeId $Id)) { throw "v2 H-12: unsafe $What '$Id' (grammar: ^[A-Za-z0-9][A-Za-z0-9._-]*$, <=128, no '..')" }
 }
 
-# Canonicalize a path and prove it stays inside $Root. Rejects traversal, ADS,
-# and absolute escapes.
 function Resolve-SafePath {
     param([string]$Root, [string]$Relative)
     if ($Relative -match ':' -and $Relative -notmatch '^[A-Za-z]:\\') { throw "v2 H-12: suspicious path '$Relative'" }
@@ -408,9 +606,6 @@ function Resolve-SafePath {
     return $joined
 }
 
-# Microsoft C runtime / CommandLineToArgvW quoting rules. One string -> one argv
-# element on the other side, for ANY content. (.NET Framework 4.x has no
-# ProcessStartInfo.ArgumentList, so we must build the string ourselves.)
 function ConvertTo-Win32Arg {
     param([string]$Arg)
     if ($Arg -eq '') { return '""' }
@@ -438,20 +633,49 @@ function ConvertTo-Win32CommandLine {
     return (($ArgList | ForEach-Object { ConvertTo-Win32Arg $_ }) -join ' ')
 }
 
-# Resolve an executable explicitly (never let the shell guess). Rejects .cmd/.bat
-# shims where possible in favour of the real interpreter.
+# Resolve an executable explicitly. -NativeOnly rejects script/wrapper shims
+# (.cmd/.bat/.ps1/.vbs/.js/.wsf/.msi). -Root proves containment and refuses to
+# follow a symlink/junction that points outside the root.
+$script:WrapperExts = @('.cmd', '.bat', '.ps1', '.psm1', '.vbs', '.js', '.wsf', '.msi', '.lnk')
+
 function Resolve-Executable {
-    param([string]$Name)
+    param([string]$Name, [switch]$NativeOnly, [string]$Root)
     $c = Get-Command $Name -ErrorAction SilentlyContinue
     if (-not $c) { throw "v2 H-12: executable '$Name' not found on PATH" }
     $src = $c.Source
     if (-not $src) { throw "v2 H-12: '$Name' resolved to a non-file command" }
-    return $src
+    $full = [System.IO.Path]::GetFullPath($src)
+    if (-not (Test-Path -LiteralPath $full)) { throw "v2 H-12: resolved path '$full' does not exist" }
+
+    $ext = [System.IO.Path]::GetExtension($full).ToLowerInvariant()
+    if ($NativeOnly -and $script:WrapperExts -contains $ext) {
+        throw "v2 H-12: '$Name' resolves to a wrapper/script ('$full'); a native executable is required"
+    }
+
+    if ($Root) {
+        # reparse point / junction check only matters when containment is required
+        $item = Get-Item -LiteralPath $full -Force -ErrorAction Stop
+        if (($item.Attributes.ToString() -match 'ReparsePoint') -or $item.LinkType) {
+            $target = @($item.Target) | Select-Object -First 1
+            if (-not $target) { throw "v2 H-12: '$full' is a reparse point with no resolvable target - cannot prove containment" }
+            if ([System.IO.Path]::IsPathRooted($target)) { $tfull = [System.IO.Path]::GetFullPath($target) }
+            else { $tfull = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $full) $target)) }
+            if (-not (Test-PathIsAncestorOrSelf $Root $tfull)) {
+                throw "v2 H-12: '$full' links outside the allowed root ('$tfull')"
+            }
+            $full = $tfull
+        }
+        if (-not (Test-PathIsAncestorOrSelf $Root $full)) {
+            throw "v2 H-12: executable '$full' is outside the allowed root '$Root'"
+        }
+    }
+    return $full
 }
 
-# Launch a native process with fully-controlled argv, stdin from a file, and
-# streaming-redacted stdout/stderr. No shell, no string interpolation. Enforces a
-# timeout and returns exit code + redacted transcripts + timing.
+# ----------------------------------------------------------------------------
+# native process launch with redacted capture + timeout
+# ----------------------------------------------------------------------------
+
 function Invoke-NativeCaptured {
     param(
         [string]$Exe,
@@ -480,44 +704,65 @@ function Invoke-NativeCaptured {
     $started = Get-Date
     [void]$proc.Start()
 
-    # feed stdin
     if ($StdinFile -and (Test-Path $StdinFile)) {
         $in = [System.IO.File]::ReadAllText($StdinFile)
         $proc.StandardInput.Write($in)
     }
     $proc.StandardInput.Close()
 
-    # drain stderr on a runspace so a full pipe can't deadlock us
     $errJob = [System.Management.Automation.PowerShell]::Create()
     [void]$errJob.AddScript({
-        param($reader, $logPath, $patterns, $repl, $max)
+        param($reader, $logPath, $patterns, $mlPatterns, $repl, $max)
         $sw = New-Object System.IO.StreamWriter($logPath, $true, (New-Object System.Text.UTF8Encoding($false)))
         $sb = New-Object System.Text.StringBuilder
+        $buf = $null
         try {
             while ($null -ne ($l = $reader.ReadLine())) {
-                $r = $l
-                foreach ($p in $patterns) { try { $r = [regex]::Replace($r, $p, $repl) } catch { $r = '[REDACTED]' } }
+                if ($null -eq $buf -and $l.Contains('-----BEGIN ')) { $buf = New-Object System.Text.StringBuilder; [void]$buf.AppendLine($l); continue }
+                if ($null -ne $buf) {
+                    [void]$buf.AppendLine($l)
+                    if ($l -match 'END [A-Z0-9 ]*PRIVATE KEY-----' -or $buf.Length -gt 40000) {
+                        $blk = $buf.ToString()
+                        foreach ($p in $mlPatterns) { try { $blk = [regex]::Replace($blk, $p, $repl, [System.Text.RegularExpressions.RegexOptions]::Singleline) } catch {} }
+                        $i = $blk.IndexOf('-----BEGIN '); if ($i -ge 0) { $blk = $blk.Substring(0,$i) + '[REDACTED]' }
+                        $sw.Write($blk); $sw.Flush(); if ($sb.Length -lt $max) { [void]$sb.Append($blk) }
+                        $buf = $null
+                    }
+                    continue
+                }
+                if ($l.Length -gt 16384) { $r = "[REDACTED: over-long line withheld ($($l.Length) chars)]" }
+                else { $r = $l; foreach ($p in $patterns) { try { $r = [regex]::Replace($r, $p, $repl) } catch { $r = '[REDACTED]' } } }
                 $sw.WriteLine($r); $sw.Flush()
                 if ($sb.Length -lt $max) { [void]$sb.AppendLine($r) }
+            }
+            if ($null -ne $buf) {
+                $blk = $buf.ToString()
+                foreach ($p in $mlPatterns) { try { $blk = [regex]::Replace($blk, $p, $repl, [System.Text.RegularExpressions.RegexOptions]::Singleline) } catch {} }
+                $i = $blk.IndexOf('-----BEGIN '); if ($i -ge 0) { $blk = $blk.Substring(0,$i) + '[REDACTED]' }
+                $sw.Write($blk); $sw.Flush(); if ($sb.Length -lt $max) { [void]$sb.Append($blk) }
             }
         } finally { $sw.Dispose() }
         return $sb.ToString()
     })
-    [void]$errJob.AddParameters(@{ reader = $proc.StandardError; logPath = $StderrLog; patterns = (Get-AllRedactionPatterns); repl = (Get-V2Config).redaction.replacement; max = 100000 })
+    $cfgR = (Get-V2Config).redaction
+    [void]$errJob.AddParameters(@{ reader = $proc.StandardError; logPath = $StderrLog; patterns = (Get-AllRedactionPatterns); mlPatterns = @($cfgR.multilinePatterns); repl = $cfgR.replacement; max = 100000 })
     $errHandle = $errJob.BeginInvoke()
 
     $stdout = Copy-StreamRedacted -Reader $proc.StandardOutput -LogPath $StdoutLog
     $timedOut = $false
     if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
         $timedOut = $true
-        # best-effort tree kill lives in V2 process.ps1 (C-05, deferred); here we
-        # at least kill the direct child and mark the run non-integratable.
+        # C-05 (verified process-tree kill) is deferred; here we kill the direct
+        # child and the run is marked non-integratable + the lease quarantined.
         try { $proc.Kill() } catch { }
         $proc.WaitForExit(5000) | Out-Null
     }
     $stderr = ''
-    try { $stderr = $errJob.EndInvoke($errHandle) } catch { }
-    $errJob.Dispose()
+    try {
+        if ($errHandle.AsyncWaitHandle.WaitOne(15000)) { $stderr = $errJob.EndInvoke($errHandle) }
+        else { try { $errJob.Stop() } catch { } }
+    } catch { }
+    try { $errJob.Dispose() } catch { }
 
     $exit = $(if ($timedOut) { 124 } else { $proc.ExitCode })
     $ended = Get-Date
@@ -552,6 +797,36 @@ function Get-GitChangedFiles {
     return @(& git -C $Dir diff --name-only "$BaseSha..$HeadSha" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
+# H-07 / #12: perform a REAL fetch and return a structured observation that
+# preflight binds to. Not a timestamp.
+function Invoke-GitFetchProven {
+    param([string]$Dir, [string]$Remote = 'origin', [string]$Target = 'main')
+    $beforeLocal  = (Get-GitHeadV2 $Dir)
+    $hasRemote = [bool](& git -C $Dir remote 2>$null)
+    if (-not $hasRemote) {
+        return [ordered]@{
+            performed = $false; remote = $Remote; target = $Target
+            beforeSHA = $beforeLocal; observedRemoteSHA = $null
+            at = (Get-Date).ToUniversalTime().ToString('o')
+            invocation = "git -C <dir> remote (none)"
+            result = 'NO_REMOTE'
+        }
+    }
+    $beforeRemote = (& git -C $Dir rev-parse "$Remote/$Target" 2>$null)
+    & git -C $Dir fetch $Remote --prune --quiet 2>&1 | Out-Null
+    $code = $LASTEXITCODE
+    $afterRemote = (& git -C $Dir rev-parse "$Remote/$Target" 2>$null)
+    return [ordered]@{
+        performed = $true; remote = $Remote; target = $Target
+        beforeSHA = $beforeLocal
+        beforeRemoteSHA = $(if ($beforeRemote) { $beforeRemote.Trim() } else { $null })
+        observedRemoteSHA = $(if ($afterRemote) { $afterRemote.Trim() } else { $null })
+        at = (Get-Date).ToUniversalTime().ToString('o')
+        invocation = "git -C $Dir fetch $Remote --prune"
+        result = $(if ($code -eq 0) { 'OK' } else { "FETCH_EXIT_$code" })
+    }
+}
+
 $script:ForbiddenGit = @('--force','--force-with-lease','reset --hard','push --force','clean -fd','clean -fdx','filter-branch','reflog delete','update-ref -d','branch -D','branch -d','rebase -i')
 
 function Assert-SafeGitV2 {
@@ -576,7 +851,8 @@ function Write-V2Log {
     Add-Content -LiteralPath $logFile -Value (Protect-Line $line) -Encoding utf8
 }
 
-function New-RunId    { return ('run-' + [guid]::NewGuid().ToString('N')) }
-function New-AttemptId { return ('att-' + [guid]::NewGuid().ToString('N')) }
-function New-AttestId  { return ('att-' + [guid]::NewGuid().ToString('N')) }
-function New-LeaseId   { return ('lease-' + [guid]::NewGuid().ToString('N')) }
+function New-RunId     { return ('run-' + [guid]::NewGuid().ToString('N')) }
+function New-AttemptId  { return ('att-' + [guid]::NewGuid().ToString('N')) }
+function New-AttestId   { return ('atn-' + [guid]::NewGuid().ToString('N')) }
+function New-LeaseId    { return ('lease-' + [guid]::NewGuid().ToString('N')) }
+function New-Nonce      { return [guid]::NewGuid().ToString('N') }
