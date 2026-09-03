@@ -21,6 +21,43 @@
 
 ---
 
+## PRAGMATIC V2.1 (2026-09-03) — `THREAT_MODEL = LOCAL_TRUSTED_HOST`
+
+The owner fixed the threat model (the four prior reviews were run against an
+implicit zero-trust-of-the-host model). The pragmatic autonomy layer is now built
+on top of the V2 spine. `HOST_SAME_USER_ATTACKER = OUT_OF_SCOPE`;
+`ZONE_A_D_SEPARATE_WINDOWS_IDENTITIES = NOT_REQUIRED`. Findings whose only
+exploit is same-user host tampering are `ACCEPTED_RISK_OUT_OF_SCOPE` (AR-01..06).
+
+```powershell
+powershell -File scripts\orchestration\v2\v2.1.ps1 status      # threat model + autonomy layer
+powershell -File scripts\orchestration\v2\v2.1.ps1 explain      # module coverage vs PARTE 8-19
+powershell -File scripts\orchestration\v2\v2.1.ps1 selftest     # 8 module selftests (fast)
+powershell -File scripts\orchestration\v2\v2.1.ps1 wave0        # deterministic Wave 0 (W0-01..W0-30, no models)
+```
+
+| module             | concern                                                                                                                          | owner brief    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `taskclass.ps1`    | semantic task classifier (blast radius / reversibility / domain), safety floors only                                             | PARTE 11       |
+| `router.ps1`       | adaptive profile→capability router (no pinned model), `Select-Reviewer`                                                          | PARTE 12/16/28 |
+| `providers.ps1`    | Claude↔Codex failover (control channel only), `WAITING_PROVIDER`, durable wait record, backoff poll, auto-resume, restart-resume | PARTE 13/14    |
+| `continuation.ps1` | context-window rollover, closed whitelist, no hidden reasoning                                                                   | PARTE 15       |
+| `fence.ps1`        | run generation fencing; prove prior run inactive → fence → RECOVERED → new generation                                            | PARTE 9        |
+| `intent.ps1`       | `INTEGRATION_INTENT` + `Resolve-RemoteTruth`; origin is truth; `AMBIGUOUS_REMOTE` not a false NOT_PUBLISHED; no re-publish       | PARTE 8        |
+| `correction.ps1`   | bounded correction loop; new candidate + new review each cycle; `FAILED_REVIEW_BUDGET`                                           | PARTE 17       |
+| `taskgraph.ps1`    | cycles / missing deps / malformed states / Level C / blocked deps                                                                | PARTE 19       |
+
+New ledger states: `WAITING_PROVIDER`, `FAILED_REVIEW_BUDGET`,
+`REMOTE_RECONCILING`, `NOT_PUBLISHED_CONFIRMED`, `AMBIGUOUS_REMOTE`.
+
+Real-task execution stays **structurally disabled** (NC-01) — there is no `run`
+verb and no production entrypoint. Wave 0 proves each autonomy behaviour against
+the real spine + real ledger + real git with no model calls. Full write-up:
+`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md`. Product batch (proposal only):
+`.planning/product/MVP-PRODUCT-BATCH-1.md`.
+
+---
+
 ## V2 security spine (`scripts/orchestration/v2/`)
 
 Own state namespace (`.orchestration/v2/`), no dot-sourcing of V1, no migration

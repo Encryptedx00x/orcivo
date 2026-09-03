@@ -10,6 +10,72 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Orquestração — PRAGMATIC V2.1 (2026-09-03) — THREAT_MODEL = LOCAL_TRUSTED_HOST
+
+**O OWNER fixou o threat model.** As quatro revisões anteriores (V1, spine 1/3/4,
+V2.1 architecture) rodaram contra um modelo zero-trust-do-host *implícito*. Agora:
+
+- `THREAT_MODEL = LOCAL_TRUSTED_HOST` — o Windows local do owner e o usuário
+  Windows são TRUSTED.
+- `HOST_SAME_USER_ATTACKER = OUT_OF_SCOPE`;
+  `ZONE_A_D_SEPARATE_WINDOWS_IDENTITIES = NOT_REQUIRED`.
+- Findings cujo único exploit é adulteração same-user do host →
+  `ACCEPTED_RISK_OUT_OF_SCOPE` (AR-01..AR-06): C-05, C-06, H4-01, H4-02(junction),
+  H4-05, M4-02, M4-03, Zone A/D SID, docker daemon launch authority.
+- Findings de correção genuína aplicados (não aceitos): **H4-06** (INTEGRATION_INTENT
+  + Resolve-RemoteTruth substitui o seam pós-push que falsificava a verdade remota),
+  **M4-04** (todo caminho de falha de integração grava evento durável), **H4-04**
+  (`createdAt` entra no hash da attestation), **H4-03 parcial** (scan de secret
+  decodifica UTF-8/UTF-16LE/UTF-16BE + bytes do candidate commitado).
+
+Config: `.orchestration/v2/config.v2.json` → `threatModel` / `acceptedRisks` +
+`taskClassifier` / `router` / `providerFailover` / `correctionLoop` /
+`integrationIntent` / `generation`. Threat model completo:
+`docs/agents/ORCHESTRATION-THREAT-MODEL.md` (reescrito). Closeout completo:
+`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md`.
+
+**Camada de autonomia construída** (sobre a spine V2, `scripts/orchestration/v2/`):
+
+| módulo | responsabilidade | PARTE |
+|---|---|---|
+| `taskclass.ps1` | classifier semântico (blast radius / reversibilidade / domínio) + safety floors; agent opcional só eleva | 11 |
+| `router.ps1` | router adaptativo profile→capability (sem modelo pinado; sonda `--help` real) + `Select-Reviewer` (provider oposto) | 12/16/28 |
+| `providers.ps1` | failover Claude↔Codex (só control channel), `WAITING_PROVIDER`, wait record durável, poll backoff, auto-resume, restart-resume | 13/14 |
+| `continuation.ps1` | rollover de contexto (whitelist fechada, sem raciocínio oculto); context exhaustion ≠ quota ≠ failover | 15 |
+| `fence.ps1` | run generation fencing; provar run anterior inativo → fence → RECOVERED → nova generation; indeterminável → WAITING_HUMAN | 9 |
+| `intent.ps1` | `INTEGRATION_INTENT` + `Resolve-RemoteTruth`; origin é a verdade; `AMBIGUOUS_REMOTE` em vez de falso NOT_PUBLISHED; nunca re-publica | 8 |
+| `correction.ps1` | loop de correção bounded; novo candidate + nova review por ciclo; budget → `FAILED_REVIEW_BUDGET` | 17 |
+| `taskgraph.ps1` | ciclos / deps ausentes / estados malformados / Level C / deps bloqueadas | 19 |
+| `v2.1.ps1` | entrypoint (`status` / `selftest` / `wave0` / `explain`) | — |
+
+Novos estados do ledger: `WAITING_PROVIDER`, `FAILED_REVIEW_BUDGET`,
+`REMOTE_RECONCILING`, `NOT_PUBLISHED_CONFIRMED`, `AMBIGUOUS_REMOTE`.
+
+**Suítes (sem chamadas de modelo):**
+- V1 primitivas **8/8** · V2 adversarial **108/108** (`spine.ps1 selftest`) — sem regressão.
+- 8 module selftests **8/8** (`v2.1.ps1 selftest`).
+- **Deterministic Wave 0 30/30** (`v2.1.ps1 wave0` — W0-01..W0-30, repos descartáveis, NC-01).
+
+**Real provider smoke:** trivial one-shot com autenticação JÁ EXISTENTE (temp dir,
+sem repo, sem secrets). `codex exec` → PONG (gpt-5.6-sol, sandbox read-only).
+`claude -p --output-format json` → `{"result":"PONG","is_error":false}` (claude-sonnet-5).
+Ambos `PASS`.
+
+**Não** ligado a task real: NC-01 mantém execução real estruturalmente desabilitada
+(sem verbo `run`). A Docker Linux containment é a mecânica pretendida, ainda não
+construída — sob LOCAL_TRUSTED_HOST o worktree é scope boundary aceitável para o
+piloto e candidate code nunca roda no supervisor (Wave 0 W0-02).
+
+**Product Batch:** `.planning/product/MVP-PRODUCT-BATCH-1.md` — **PROPOSAL ONLY**,
+P-01..P-23 reconciliados com discovery D-1..D-9 + roadmap + ADR-015/016/017.
+Para em `OWNER_APPROVAL`. Nada implementado.
+
+**Próximo passo do OWNER:** revisar o MVP Product Batch #1; resolver P02 T12/T13
+quando apropriado; autorizar o primeiro lote de desenvolvimento real. P03 continua
+bloqueada até P02 = PASS (não alterado).
+
+---
+
 ## Orquestração — TERCEIRA REMEDIAÇÃO DE SEGURANÇA (2026-09-02) — V2 SECURITY SPINE
 
 **Três revisões independentes REJEITARAM o trabalho.** O terceiro review

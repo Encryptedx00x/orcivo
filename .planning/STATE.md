@@ -21,6 +21,15 @@ progress:
 **Data:** 2026-09-01
 **Próximo:** gates humanos de P02 — ver `phases/03.1-.../03.1-P02-T12-T13-HANDOFF.md`. Agente NÃO executa T12/T13. P03 bloqueada até P02 = PASS.
 
+**Ferramenta de orquestração (2026-09-03):** `THREAT_MODEL = LOCAL_TRUSTED_HOST`
+fixado pelo owner; camada de autonomia pragmática V2.1 construída sobre a spine V2
+(classifier semântico, router adaptativo, failover Claude↔Codex, WAITING_PROVIDER
++ auto-resume, context rollover, correction loop, generation fencing,
+INTEGRATION_INTENT). Deterministic Wave 0 30/30; spine 108/108; smoke real
+Claude/Codex PASS. **Não ligado a task real (NC-01).** Ver
+`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md` e `AGENT-HANDOFF.md`. Gerado (só
+proposta): `.planning/product/MVP-PRODUCT-BATCH-1.md` — aguarda OWNER_APPROVAL.
+
 **Discovery de produto (2026-09-01):** sessão de exploração local do produto
 pelo owner, formalizada em `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md`.
 9 achados (D-1..D-9) classificados e encaixados nas waves existentes de 03.1 +

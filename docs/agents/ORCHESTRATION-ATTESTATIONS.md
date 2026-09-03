@@ -89,6 +89,13 @@ attestationHash = sha256_canonical({
 evidence, effective invocation) are **inside** the integrity envelope. They
 cannot be mutated without breaking `attestationHash`.
 
+`createdAt` is now inside the core hash (`orcivo.orchestration.v2.attestation-core/3`)
+— review-4 **H4-04**: `Get-LatestAuthoritative` orders by `createdAt`, so an
+unhashed timestamp let a naive rewrite promote an earlier positive result over a
+later negative one. A _coherent_ rewrite of the whole attestation file on the
+trusted host remains `AR-04` (`ACCEPTED_RISK_OUT_OF_SCOPE` under
+`THREAT_MODEL = LOCAL_TRUSTED_HOST`).
+
 ## Freshness + latest-authoritative-result
 
 `Test-AttestationFresh` recomputes the full binding set now, compares every

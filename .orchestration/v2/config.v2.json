@@ -10,7 +10,8 @@
   "ledger": {
     "$comment": "C-01: WAITING_HUMAN is NOT dispatchable - a task parked for a human is resumed only by an explicit gate approval event, never by the scheduler. Any ledger corruption -> QUARANTINED (fail closed), never a 'plausible' rebuild.",
     "terminalStates": ["PUBLISHED", "QUARANTINED"],
-    "dispatchableStates": ["DISCOVERED", "READY", "FAILED"],
+    "dispatchableStates": ["DISCOVERED", "READY", "FAILED", "WAITING_PROVIDER"],
+    "autoResumableStates": ["WAITING_PROVIDER"],
     "maxAttemptsPerVersion": 3,
     "hashChainVersion": "orcivo.orchestration.v2.ledger-event/2"
   },
@@ -140,6 +141,306 @@
     "claude": { "bin": "claude" },
     "codex": { "bin": "codex" }
   },
+  "threatModel": {
+    "$comment": "PRAGMATIC V2.1 - OWNER DECISION (2026-09-03). The owner's local Windows host and Windows user account are TRUSTED. The harness defends against what the LLM agents and candidate-controlled code do wrong, NOT against an attacker who already holds the owner's access. This is a knob only in the sense that code reads `id` and `outOfScope`; the authoritative narrative lives in docs/agents/ORCHESTRATION-THREAT-MODEL.md and .planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md.",
+    "id": "LOCAL_TRUSTED_HOST",
+    "decidedBy": "owner",
+    "decidedAt": "2026-09-03",
+    "trusted": [
+      "windows-os",
+      "windows-user-account",
+      "owner",
+      "developer-shell",
+      "filesystem-and-acls",
+      "docker-daemon-on-host",
+      "local-git-and-credentials"
+    ],
+    "outOfScope": [
+      "HOST_SAME_USER_ATTACKER",
+      "malware-already-compromising-the-windows-user",
+      "arbitrary-malicious-process-running-as-the-same-user",
+      "owner-locally-tampering-with-authority-artifacts",
+      "compromised-administrator-or-root",
+      "compromised-kernel",
+      "compromised-host-docker-daemon",
+      "local-attacker-with-full-access-to-the-owner-profile-and-credentials"
+    ],
+    "zoneSeparation": {
+      "separateWindowsIdentities": "NOT_REQUIRED",
+      "dedicatedWindowsServiceOrUser": "NOT_REQUIRED",
+      "requireSID": false,
+      "requireTPM": false,
+      "requireCNGBoundary": false,
+      "requireCredentialBroker": false,
+      "zoneAAndZoneDMayShareUser": true,
+      "containment": "disposable Docker Linux for implementer/test/reviewer when execution is technically possible; the worktree/clone is a scope boundary, not a claimed host security boundary"
+    },
+    "protects": [
+      "llm-changes-outside-task-scope",
+      "prompt-injection",
+      "agent-hallucination",
+      "dangerous-agent-action",
+      "unauthorized-policy-or-planning-change",
+      "accidental-secret-exposure",
+      "llm-holding-a-push-credential",
+      "duplicate-task",
+      "stale-task",
+      "stale-candidate",
+      "review-of-bytes-other-than-those-published",
+      "secret-published-by-accident",
+      "crash",
+      "supervisor-restart",
+      "context-exhaustion",
+      "quota-exhaustion",
+      "provider-rate-limit",
+      "provider-outage",
+      "provider-auth-temporarily-unavailable",
+      "bad-review",
+      "claude-codex-disagreement",
+      "ambiguous-integration",
+      "push-whose-local-result-diverges-from-origin",
+      "repeated-execution-after-publish",
+      "level-c-executed-without-owner",
+      "auto-generated-product-change-without-commercial-approval"
+    ]
+  },
+  "acceptedRisks": [
+    {
+      "id": "AR-01",
+      "supersedes": ["C-05"],
+      "title": "verified process-tree kill on timeout",
+      "reason": "same-user trusted host; a surviving child of a timed-out agent is a reliability nuisance, not privilege escalation. Kept: direct-child kill + lease quarantine + run marked non-integratable.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    },
+    {
+      "id": "AR-02",
+      "supersedes": ["C-06"],
+      "title": "OS-enforced host isolation of executor/reviewer/integrator by SID/service",
+      "reason": "LOCAL_TRUSTED_HOST: executor already runs as the trusted owner. Docker Linux is the containment mechanism when execution is possible; the worktree is a scope boundary only.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    },
+    {
+      "id": "AR-03",
+      "supersedes": ["H4-01", "M4-03"],
+      "title": "coherently self-hashed rewrite of a frozen contract file / closed-world schema",
+      "reason": "requires writing .orchestration/v2/contracts/*.json on the trusted host = HOST_SAME_USER_ATTACKER. Contract immutability still blocks the LLM, which cannot reach the authority namespace.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    },
+    {
+      "id": "AR-04",
+      "supersedes": ["H4-05", "M4-02"],
+      "title": "in-process authority-token / lease-quarantine-recovery forgery from a hostile same-user process",
+      "reason": "mutating the supervisor's in-memory PowerShell scope or replaying a recovery token requires code execution as the owner. Cheap hardening (atomic recovery, token hashing) kept.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    },
+    {
+      "id": "AR-05",
+      "supersedes": ["arch-zone-A-D-SID", "H4-02-junction"],
+      "title": "Zone A/D single Windows SID; NTFS junction redirection of the authority's own out-of-band files",
+      "reason": "OWNER: ZONE_A_D_SEPARATE_WINDOWS_IDENTITIES = NOT_REQUIRED. Redirecting the authority's own files is host tampering.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    },
+    {
+      "id": "AR-06",
+      "supersedes": ["docker-daemon-launch-authority"],
+      "title": "host Docker daemon launch authority not modeled",
+      "reason": "trusted host Docker daemon.",
+      "status": "ACCEPTED_RISK_OUT_OF_SCOPE"
+    }
+  ],
+  "taskClassifier": {
+    "$comment": "PARTE 11. Difficulty is SEMANTIC, not counted from LOC / path / extension / function count. A classifier agent with structured output is preferred; the deterministic scorer is the fallback and the Wave 0 authority. The rules below are ONLY safety floors / caps.",
+    "mode": "deterministic-with-optional-agent",
+    "complexityLevels": ["TRIVIAL", "STANDARD", "COMPLEX", "CRITICAL", "LEVEL_C"],
+    "riskLevels": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+    "reviewStrengths": ["NORMAL", "STRONG", "CROSS_PROVIDER_REQUIRED"],
+    "safetyFloors": [
+      {
+        "when": "securitySensitive",
+        "minComplexity": "COMPLEX",
+        "minProfile": "REASONING",
+        "minReview": "STRONG"
+      },
+      {
+        "when": "tenantIsolationFundamental",
+        "minComplexity": "CRITICAL",
+        "minReview": "CROSS_PROVIDER_REQUIRED"
+      },
+      {
+        "when": "moneyArchitecture",
+        "minComplexity": "CRITICAL",
+        "minReview": "CROSS_PROVIDER_REQUIRED"
+      },
+      { "when": "persistentDbMigration", "minComplexity": "LEVEL_C" },
+      { "when": "production", "minComplexity": "LEVEL_C" },
+      { "when": "forcePush", "verdict": "PROHIBITED" }
+    ],
+    "signalKeywords": {
+      "tenant": [
+        "tenant",
+        "company_id",
+        "multi-tenant",
+        "multitenant",
+        "isolation",
+        "cross-tenant",
+        "rls"
+      ],
+      "money": [
+        "decimal",
+        "money",
+        "price",
+        "pricing",
+        "billing",
+        "payment",
+        "invoice",
+        "refund",
+        "prisma.decimal"
+      ],
+      "security": [
+        "auth",
+        "jwt",
+        "rbac",
+        "permission",
+        "secret",
+        "token",
+        "credential",
+        "cors",
+        "csrf",
+        "sql injection"
+      ],
+      "migration": [
+        "migration",
+        "prisma migrate",
+        "schema.prisma",
+        "alter table",
+        "backfill",
+        "drop column"
+      ],
+      "concurrency": [
+        "concurren",
+        "race condition",
+        "lock",
+        "idempoten",
+        "queue",
+        "transaction",
+        "deadlock"
+      ],
+      "external": [
+        "webhook",
+        "provider",
+        "api key",
+        "third-party",
+        "integration",
+        "callback",
+        "oauth"
+      ],
+      "production": ["production", "deploy to prod", "release to production", "prod database"],
+      "forcePush": [
+        "force push",
+        "force-with-lease",
+        "--force",
+        "rewrite history",
+        "git reset --hard"
+      ]
+    }
+  },
+  "router": {
+    "$comment": "PARTE 12. Abstract profiles resolve at RUNTIME against the actually-installed CLIs. NO permanent hardcoded model version. Discovered capabilities cache in state/cli-capabilities.json, refreshed when the CLI --version string changes. If a CLI cannot select reasoning/effort explicitly, use the best supported mechanism and record the limitation.",
+    "profiles": ["FAST", "BALANCED", "REASONING", "CRITICAL"],
+    "profileIntent": {
+      "FAST": { "reasoning": "min", "preferProvider": "EITHER" },
+      "BALANCED": { "reasoning": "normal", "preferProvider": "EITHER" },
+      "REASONING": { "reasoning": "high", "preferProvider": "EITHER" },
+      "CRITICAL": { "reasoning": "max", "preferProvider": "EITHER" }
+    },
+    "complexityToProfile": {
+      "TRIVIAL": "FAST",
+      "STANDARD": "BALANCED",
+      "COMPLEX": "REASONING",
+      "CRITICAL": "CRITICAL",
+      "LEVEL_C": "CRITICAL"
+    },
+    "capabilityProbe": {
+      "claude": { "versionArgs": ["--version"], "helpArgs": ["--help"], "subHelpArgs": [] },
+      "codex": {
+        "versionArgs": ["--version"],
+        "helpArgs": ["--help"],
+        "subHelpArgs": [["exec", "--help"]]
+      }
+    },
+    "knownCapabilities": {
+      "$comment": "PARTE 12 fallback ONLY. Used to fill a gap the live --help probe could not read (e.g. codex exec --help needing a TTY). The probe result always wins when it is non-null; anything filled from here is listed in the route limitations.",
+      "codex": {
+        "reasoningConfigKey": "model_reasoning_effort",
+        "outputJson": true,
+        "outputSchemaFlag": "--output-schema",
+        "headlessFlag": "exec"
+      },
+      "claude": {}
+    }
+  },
+  "providerFailover": {
+    "$comment": "PARTE 13/14/15. Automatic provider switch ONLY for a class in classification.providerClasses coming from the control channel. TEST_FAILED / BUG / BUILD_FAILED / REVIEW_REQUEST_CHANGES / INVALID_IMPLEMENTATION never fail over. Both providers unavailable -> WAITING_PROVIDER; the supervisor keeps polling and auto-resumes with no human action.",
+    "order": ["claude", "codex"],
+    "maxCrossProviderFailoversPerLineage": 1,
+    "bothUnavailableState": "WAITING_PROVIDER",
+    "pollBackoffSec": [30, 60, 120, 300, 600],
+    "pollMaxIntervalSec": 900,
+    "healthProbeTimeoutSec": 20,
+    "resumeRequiresHealthyProbe": true,
+    "contextExhaustion": {
+      "$comment": "PARTE 15. Context exhaustion is NOT quota and NEVER fails over. A context limit -> structured continuation checkpoint + fresh invocation, same task lineage, no hidden chain-of-thought carried.",
+      "isFailover": false,
+      "checkpointKeys": [
+        "taskIdentity",
+        "acceptance",
+        "decisions",
+        "candidate",
+        "diffSummary",
+        "verificationResults",
+        "openFindings",
+        "nextAction",
+        "importantArtifacts"
+      ]
+    }
+  },
+  "correctionLoop": {
+    "$comment": "PARTE 17. REQUEST_CHANGES -> structured findings -> implementer -> NEW candidate -> rerun checks -> new review. Bounded; no infinite loop.",
+    "maxCycles": 2,
+    "budgetExceededLedgerState": "FAILED_REVIEW_BUDGET"
+  },
+  "integrationIntent": {
+    "$comment": "PARTE 8. A durable INTEGRATION_INTENT is written BEFORE any git publication. origin is the FINAL truth of publication. After timeout / connection drop / push failure / crash / uncertain exit / post-push ledger failure -> FETCH REMOTE, compare SHA/tree, reconstruct truth, THEN set a terminal state. Never report NOT_PUBLISHED while remote truth is unknown. Never auto-republish something already confirmed in origin.",
+    "states": [
+      "INTEGRATION_PREPARED",
+      "PUSH_ATTEMPTED",
+      "REMOTE_RECONCILING",
+      "PUBLISHED",
+      "NOT_PUBLISHED_CONFIRMED",
+      "AMBIGUOUS_REMOTE"
+    ],
+    "requiredFields": [
+      "runId",
+      "taskId",
+      "taskVersionId",
+      "attemptId",
+      "candidateCommit",
+      "candidateTree",
+      "baseRemoteSha",
+      "remoteName",
+      "repoIdentity",
+      "targetRef",
+      "expectedResultCommit",
+      "expectedResultTree",
+      "createdAt",
+      "state"
+    ]
+  },
+  "generation": {
+    "$comment": "PARTE 9. Each execution gets a fencing generation. Before RECOVERED: detect stale/failed owner -> stop / verify inactive -> fence old generation -> RECOVERED -> new generation. Never RECOVERED then check. If undeterminable -> QUARANTINED or WAITING_HUMAN.",
+    "fenceOnRecover": true,
+    "undeterminableState": "WAITING_HUMAN"
+  },
   "redaction": {
     "maxEnvLikeLines": 6,
     "replacement": "[REDACTED]",
@@ -168,6 +469,10 @@
     ],
     "multilineScanPatterns": ["-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"],
     "multilineTriggers": ["-----BEGIN "],
-    "multilineBufferLines": 200
+    "multilineBufferLines": 200,
+    "$comment2": "H4-03 (in-scope under LOCAL_TRUSTED_HOST: secret-published-by-accident). The pre-publication scan decodes UTF-8 / UTF-16LE / UTF-16BE (BOM and no-BOM) and also scans the exact COMMITTED candidate blob bytes via git, not only worktree files. Unknown / unreadable dangerous input fails closed.",
+    "scanEncodings": ["utf-8", "utf-16le", "utf-16be"],
+    "scanCommittedCandidateTree": true,
+    "failClosedOnUnreadable": true
   }
 }

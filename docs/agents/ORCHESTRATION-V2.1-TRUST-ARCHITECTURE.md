@@ -1,6 +1,31 @@
-# Orchestration V2.1 — trust architecture (proposal, pre-remediation)
+# Orchestration V2.1 — trust architecture
 
-Status: **ARCHITECTURE / THREAT-MODEL SESSION ONLY. NOT IMPLEMENTED. NO PASS.**
+> ## SUPERSEDED IN PART — `THREAT_MODEL = LOCAL_TRUSTED_HOST` (2026-09-03)
+>
+> The OWNER has fixed the threat model. The zero-trust-of-the-host framing that
+> most of this document is written to is **no longer the target**. Read this
+> document for the _directional_ trust split (Zone B/C cannot seal or publish;
+> Zone D alone publishes; `origin` wins over local push belief; candidate
+> identity is content-addressed; the implementer never holds a push credential;
+> candidate code never runs in the supervisor). Everything below that assumes
+> `HOST_SAME_USER_ATTACKER` is in scope — separate Windows SIDs, a credential
+> broker between Zone A and Zone D, TPM/CNG boundaries, defence against a
+> coherently self-hashed rewrite of a frozen authority artifact — is now
+> **`ACCEPTED_RISK_OUT_OF_SCOPE`**.
+>
+> Authoritative now:
+>
+> - `docs/agents/ORCHESTRATION-THREAT-MODEL.md` — the pragmatic threat model
+> - `.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md` — what was built + accepted risks
+> - `.orchestration/v2/config.v2.json` → `threatModel` / `acceptedRisks`
+>
+> `ZONE_A_D_SEPARATE_WINDOWS_IDENTITIES = NOT_REQUIRED`.
+> `PRINCIPAL_BOUNDARY = disposable Docker Linux when execution is technically
+possible; the worktree is a scope boundary, not a host security boundary.`
+
+---
+
+Status (historical): **ARCHITECTURE / THREAT-MODEL SESSION ONLY. NOT IMPLEMENTED. NO PASS.**
 
 Baseline: `3829442c7999a1cb18431ea3656266c94a6083eb` (`3829442 docs(orchestration):
 fourth independent spine security review`).

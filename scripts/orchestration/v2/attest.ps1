@@ -41,12 +41,13 @@ function _AttestationCore {
     $producerHash = New-ContentHash (ConvertTo-DeepString $Att.producer)
     $payloadHash  = New-ContentHash (ConvertTo-DeepString $Att.payload)
     return (New-ContentHash ([ordered]@{
-        v             = 'orcivo.orchestration.v2.attestation-core/2'
+        v             = 'orcivo.orchestration.v2.attestation-core/3'
         attestationId = [string]$Att.attestationId
         kind          = [string]$Att.kind
         taskVersionId = [string]$Att.taskVersionId
         runId         = [string]$Att.runId
         result        = [string]$Att.result
+        createdAt     = [string]$Att.createdAt   # H4-04: order-of-authority can't be forged by rewriting an unhashed timestamp
         bindings      = $b
         producerHash  = $producerHash
         payloadHash   = $payloadHash
