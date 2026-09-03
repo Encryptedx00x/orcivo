@@ -1,24 +1,73 @@
 ---
-type: product-batch-proposal
+type: product-batch
 batch: MVP Product Batch #1
 date: 2026-09-03
-status: PROPOSAL_ONLY  —  STOPS AT OWNER_APPROVAL
+status: OWNER_APPROVED  —  SCHEDULED, blocked by P02 gates + P03
+approved_at: 2026-09-03
+approved_by: owner
+machine_readable: .planning/product/MVP-PRODUCT-BATCH-1.tasks.json  (+ .plan.json after reconcile)
+execution_plan: .planning/product/MVP-PRODUCT-BATCH-1-EXECUTION.md
 generated_by: pragmatic V2.1 harness (task generation / reconciler)
 sources: owner brief P-01..P-23 · 03.1-DISCOVERY-UAT-2026-09-01 (D-1..D-9) · ROADMAP.md · ADR-015/016/017
 constraints:
-  - GENERATING THIS BATCH IS NOT IMPLEMENTING IT.
-  - No item is READY / SCHEDULED until the owner approves it (per item or in bulk).
-  - P02 gates T12/T13 (human) and P03 stay as-is; P03 does not start until P02 = PASS.
-  - Nothing here touches production, DNS, VPS, billing credentials, persistent migrations or LGPD without a Level C owner gate.
+  - APPROVAL IS NOT EXECUTION. No product task ran in the approval session.
+  - Every approved task is blockedByGates [P02-T12, P02-T13, P03] — nothing runs before P03.
+  - P02 gates T12/T13 stay HUMAN; P03 does not start until P02 = PASS. Not changed.
+  - Level C items (6) still stop for the owner inside the harness.
 ---
 
-# MVP Product Batch #1 — PROPOSAL ONLY
+# MVP Product Batch #1 — OWNER APPROVED (2026-09-03)
 
-This is the full list the owner asked to see **before** authorising any real
+## OWNER APPROVAL
+
+The owner approved the batch on 2026-09-03 with the per-item decisions below.
+Approved items are now `SCHEDULED` in `MVP-PRODUCT-BATCH-1.tasks.json` and will
+become `READY` only as GSD dependencies allow — **all of them are downstream of
+the P02 human gates + P03**, so none is runnable yet.
+
+| item | decision |
+|---|---|
+| **P-01** | APPROVED. reopen/correct = `@AdminOnly`. cancel/reject preserve reason + history. **never** overwrite `notes` as audit history. |
+| **P-02** | APPROVED — **MVP core** audit coverage now: quote send/approve/reject/cancel/correct/reopen, OS important status, payment create/settle/change, customer important, company/profile important, appointment create/edit/delete where relevant. Human-readable contextual activity. **Not** exhaustive per-field enterprise audit yet. |
+| **P-03** | APPROVED. |
+| **P-04** | APPROVED. company/profile/PIX persistence now. Logo upload stays POST-MVP. |
+| **P-05** | APPROVED. |
+| **P-06** | APPROVED. |
+| **P-07** | APPROVED. UX = **quick-create modal**; preserve the current quote draft/context. |
+| **P-08** | APPROVED. |
+| **P-09** | APPROVED. MVP-lite = **edit + delete**. month/day/list/full agenda views → later / Fase 4. |
+| **P-10** | APPROVED. **Reusable technician signature**, applied during quote send. Simple + secure. No unrelated signature infrastructure. |
+| **P-11** | APPROVED. |
+| **P-12** | APPROVED. |
+| **P-13** | APPROVED. Agents may **auto-generate candidate tasks for OBJECTIVE functional findings**; business/commercial/product decisions still require a future owner batch. |
+| **P-14** | APPROVED. customer delete = **soft delete**. |
+| **P-15** | APPROVED **AND PROMOTED TO MVP**. Scope: CSV/JSON catalogue import; stock/quantity; cost price; final/sale price; simple low-stock. Not now: distributor API (FUTURE), advanced barcode, advanced photos. Schedule **before production MVP but after core operational blockers** → new phase **F3.2**. |
+| **P-16** | ALREADY APPROVED. `FREE_PLAN_OS_MONTHLY_BASELINE = 15`. |
+| **P-17** | APPROVED. MVP = **in-app notifications / activity**; bell must become functional. push/email later + separate. |
+| **P-18** | ALREADY APPROVED. Web MVP first; mobile parallel; mobile parity does not block Web MVP. (strategy — no task) |
+| **P-19** | APPROVED. mobile Home + customer detail catch-up. Not a Web MVP blocker. |
+| **P-20** | APPROVED. |
+| **P-21** | KEEP DEFERRED POST-MVP. No NFS-e / fiscal now. (no task) |
+| **P-22** | APPROVED. Provider-agnostic billing **architecture only**. No Mercado Pago activation/credential/account work now. Real provider activation = Level C. |
+| **P-23** | APPROVED. Run the Product Completeness Audit after meaningful batches / before release / after phase completion / after important new screens. `DISCOVER` / `TRIAGE` / `PROPOSE` only; never auto-approve new business requirements. (recurring process — no product task) |
+
+**Generated tasks:** 23 `PB1-*` tasks in `MVP-PRODUCT-BATCH-1.tasks.json`
+(6 Level C: `PB1-P02-audit-service`, `PB1-P01-quote-state-machine`,
+`PB1-P01-os-state-machine`, `PB1-P05-payment-registration`,
+`PB1-P22-billing-provider-agnostic`, `PB1-P15-inventory-lite-backend`).
+**Not scheduled outside the batch; not executed.** Execution order + gate
+analysis: `MVP-PRODUCT-BATCH-1-EXECUTION.md`.
+
+`P02-T12 = WAITING_HUMAN` · `P02-T13 = WAITING_HUMAN` · `P03 = BLOCKED_BY_P02` —
+unchanged.
+
+---
+
+## Original proposal (for reference)
+
+This is the full list the owner reviewed **before** authorising any real
 development. It reconciles the 23 backlog items in the owner brief with what
-already exists in the roadmap and the 2026-09-01 discovery. Nothing is
-scheduled. **Batch approval is never blind approval** — approve per item, by
-type, or all.
+already exists in the roadmap and the 2026-09-01 discovery.
 
 ## Backlog lifecycle
 

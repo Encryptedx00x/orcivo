@@ -356,3 +356,42 @@ W0-30 asserts no code path auto-approves a batch.
 `FREE_PLAN_OS_MONTHLY_BASELINE = 15` (P-16) and `NFS-e = FUTURE` (P-21) are
 recorded as owner decisions already given; they still enter controlled
 execution, not this batch's implementation.
+
+---
+
+## 20. Owner approval + PILOT MODE (2026-09-03 addendum)
+
+The owner **approved MVP Product Batch #1** with per-item decisions
+(`.planning/product/MVP-PRODUCT-BATCH-1.md` → OWNER APPROVAL). Reconciled into
+`MVP-PRODUCT-BATCH-1.tasks.json` (23 `PB1-*` tasks, 6 Level C) +
+`MVP-PRODUCT-BATCH-1.plan.json` (`batch-reconcile.ps1`, reconcile OK). Execution
+order + gate analysis: `MVP-PRODUCT-BATCH-1-EXECUTION.md`.
+
+- Every `PB1-*` carries `blockedByGates: [P02-T12, P02-T13, P03]` — the reconciler
+  rejects any task that does not. **Nothing runs before P03.**
+- Roadmap deltas: new phase **F3.2 (inventory-lite)** (P-15 promoted); new wave
+  **P17-wave** (P-17 subset promoted). `PB1-P02-audit-service` promoted to the
+  P04 lead task (P-01 depends on it).
+- Recurring process `PROC-product-completeness-audit` (P-23): DISCOVER / TRIAGE /
+  PROPOSE only.
+
+**PILOT MODE** (`scripts/orchestration/v2/pilot.ps1`) is the guarded composed
+lifecycle. Guards in `config.pilot`: `maxParallel=1`, `forcePush=false`,
+`levelCStop=true`, bounded retries + review cycles, durable checkpoints, failover
++ auto-resume + restart-resume, opposite-provider review, exact candidate, secret
+gate, remote-truth reconciliation. `runnerMode` default `inproc-fake` (synthetic,
+no models). Docker composition: `infra/orchestration/Dockerfile.agent-runner` +
+`runner-docker.ps1` (read-only candidate, `--network none` test stage, no
+docker.sock / HOME / secrets, non-root, caps) — daemon is up; the one remaining
+action is a single `docker build` (base-image pull, no credential).
+
+Synthetic pilot validation: `pilot.ps1 selftest` → PS-01..PS-11
+(classify→route→implement→verify→secret→opposite-review→integrate→checkpoint;
+Level C → WAITING_HUMAN; both-down → WAITING_PROVIDER → auto-resume; failover;
+bounded correction → FAILED_REVIEW_BUDGET; crash → fence → recover; durable
+checkpoint; no force-push; real PB1 refused; docker invariants). No model calls,
+no Orcivo product task.
+
+**Real execution is still gated shut:** a `PB1-*` task needs
+`.orchestration/v2/REAL_EXECUTION_AUTHORIZED` + P02/P03 satisfied + (Level C) an
+owner gate. None exist, and there is still no `run` verb for a real task.

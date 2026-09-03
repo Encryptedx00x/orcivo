@@ -27,8 +27,16 @@ fixado pelo owner; camada de autonomia pragmática V2.1 construída sobre a spin
 + auto-resume, context rollover, correction loop, generation fencing,
 INTEGRATION_INTENT). Deterministic Wave 0 30/30; spine 108/108; smoke real
 Claude/Codex PASS. **Não ligado a task real (NC-01).** Ver
-`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md` e `AGENT-HANDOFF.md`. Gerado (só
-proposta): `.planning/product/MVP-PRODUCT-BATCH-1.md` — aguarda OWNER_APPROVAL.
+`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md` e `AGENT-HANDOFF.md`.
+
+**MVP Product Batch #1 APROVADO pelo owner (2026-09-03)** com decisões por item —
+`.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` /
+`-EXECUTION.md`). 23 tasks `PB1-*` (6 Level C), todas `blockedByGates:
+[P02-T12, P02-T13, P03]` — **nada roda antes de P03**. Deltas: nova fase **F3.2
+(inventory-lite)**, nova wave **P17-wave**. `P02-T12`/`P02-T13` seguem
+`WAITING_HUMAN`; `P03 = BLOCKED_BY_P02` — inalterados. **PILOT MODE** construído
+(`scripts/orchestration/v2/pilot.ps1`, `runnerMode` default sintético; sem verbo
+`run` para task real; token `REAL_EXECUTION_AUTHORIZED` não existe).
 
 **Discovery de produto (2026-09-01):** sessão de exploração local do produto
 pelo owner, formalizada em `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md`.

@@ -53,8 +53,46 @@ New ledger states: `WAITING_PROVIDER`, `FAILED_REVIEW_BUDGET`,
 Real-task execution stays **structurally disabled** (NC-01) — there is no `run`
 verb and no production entrypoint. Wave 0 proves each autonomy behaviour against
 the real spine + real ledger + real git with no model calls. Full write-up:
-`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md`. Product batch (proposal only):
-`.planning/product/MVP-PRODUCT-BATCH-1.md`.
+`.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md`.
+
+---
+
+## PILOT MODE (2026-09-03)
+
+The guarded pilot supervisor (`scripts/orchestration/v2/pilot.ps1`) composes the
+autonomy layer into one lifecycle: fence → classify → route → [Level C →
+WAITING_HUMAN] → [no provider → WAITING_PROVIDER] → implement → verify → secret
+scan → opposite-provider review → bounded correction → integrate (remote-truth
+confirmed) → durable checkpoint → next.
+
+```powershell
+powershell -File scripts\orchestration\v2\pilot.ps1 status            # config, guards, runner mode, last checkpoint
+powershell -File scripts\orchestration\v2\pilot.ps1 selftest          # SYNTHETIC validation (PS-01..PS-11, no models)
+powershell -File scripts\orchestration\v2\pilot.ps1 docker-preflight  # can the Docker agent composition run right now?
+powershell -File scripts\orchestration\v2\pilot.ps1 start             # (this build: prints the real-task gating only)
+powershell -File scripts\orchestration\v2\pilot.ps1 stop              # writes .orchestration/v2/PILOT_STOP
+```
+
+Guards (`config.v2.json` → `pilot`): `maxParallel=1`, `forcePush=false`,
+`levelCStop=true`, bounded retries + review cycles, durable checkpoints,
+automatic provider failover + resume + restart-resume, opposite-provider review,
+exact candidate, secret gate, remote-truth reconciliation.
+
+`runnerMode` (default `inproc-fake`): SYNTHETIC disposable validation, no model
+calls. `docker` runs real agents / candidate code in a disposable Linux container
+(`infra/orchestration/`, `runner-docker.ps1` — read-only candidate,
+`--network none` test stage, no docker.sock / HOME / secrets, non-root, caps).
+`host-trusted` runs real agents on the trusted host (AR-02); candidate build/test
+still never runs in the supervisor process.
+
+**A real `PB1-*` task additionally requires:** `.orchestration/v2/REAL_EXECUTION_AUTHORIZED`
+present, that task's P02/P03 gates satisfied, and (for Level C) an owner gate.
+None exist. There is still **no `run` verb** that dispatches a real Orcivo task.
+
+Batch inputs: `.planning/product/MVP-PRODUCT-BATCH-1.tasks.json` (+ `.plan.json`
+from `scripts/orchestration/v2/batch-reconcile.ps1`). Owner approval +
+per-item decisions + execution waves: `MVP-PRODUCT-BATCH-1.md` /
+`MVP-PRODUCT-BATCH-1-EXECUTION.md`.
 
 ---
 

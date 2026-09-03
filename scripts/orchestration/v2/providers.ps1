@@ -135,7 +135,8 @@ function Enter-WaitingProvider {
     )
     $now = (Get-Date).ToUniversalTime()
     $st = Get-LedgerState $TaskVersionId
-    if ($st.state -in @('RUNNING', 'DISPATCHED')) {
+    if ($st.state -eq 'DISCOVERED') { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'ready' -ToState 'READY' | Out-Null; $st = Get-LedgerState $TaskVersionId }
+    if ($st.state -in @('RUNNING', 'DISPATCHED', 'READY')) {
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'provider-unavailable' -ToState 'WAITING_PROVIDER' -RunId $RunId -Note ([string]$Context.lastErrorClass) | Out-Null
     }
     $rec = [ordered]@{

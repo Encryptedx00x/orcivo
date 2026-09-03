@@ -14,7 +14,7 @@ returned as ready.
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 
-$script:TaskStatuses = @('PENDING', 'READY', 'BLOCKED', 'RUNNING', 'DONE', 'FAILED', 'OWNER_GATE', 'LEVEL_C_HOLD', 'WAITING_PROVIDER')
+$script:TaskStatuses = @('DISCOVERED', 'TRIAGED', 'PROPOSED_BATCH', 'SCHEDULED', 'PENDING', 'READY', 'BLOCKED', 'RUNNING', 'DONE', 'FAILED', 'OWNER_GATE', 'LEVEL_C_HOLD', 'WAITING_PROVIDER', 'PRODUCT_UAT_PASS')
 $script:RequiredTaskFields = @('taskId', 'title', 'type', 'description', 'acceptance', 'dependencies', 'scope', 'risk', 'verificationProfile', 'status')
 
 function Test-TaskWellFormed {

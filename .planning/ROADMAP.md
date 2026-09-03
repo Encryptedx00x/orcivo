@@ -3,6 +3,8 @@
 > **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00 e P01 concluídas (auto); P02 aguardando gates humanos T12/T13; P03 é a próxima wave após P02 = PASS. Fase 4 permanece bloqueada.
 >
 > **Discovery de produto 2026-09-01:** `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md` — sessão real de exploração do produto pelo owner. 9 achados (D-1..D-9) classificados e encaixados nas waves de 03.1 e na Fase 4 sem alterar o plano existente. ADRs novas: 015 (audit trail), 016 (transições de estado), 017 (billing provider-agnostic / Mercado Pago).
+>
+> **MVP Product Batch #1 APROVADO 2026-09-03:** `.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` / `-EXECUTION.md`). 23 tasks `PB1-*` encaixadas nas waves 03.1 (P04/P06/P07/P07.5/P10) + duas novas: **F3.2 — inventory-lite** (P-15 promovido; distributor API = FUTURE), inserida entre 03.1 e Fase 4; **P17-wave — notificações in-app** (P-17 subset), perto de P07.5. `PB1-P02-audit-service` é lead task de P04. Todas `blockedByGates: [P02-T12, P02-T13, P03]` — nada roda antes de P03.
 
 ---
 

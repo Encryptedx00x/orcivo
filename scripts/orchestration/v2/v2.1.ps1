@@ -17,7 +17,7 @@ Commands:
   wave0      run the full deterministic Wave 0 suite (W0-01..W0-30, child procs)
   explain    what each module addresses
 #>
-param([Parameter(Position=0)][ValidateSet('status','selftest','wave0','explain')][string]$Command = 'status')
+param([Parameter(Position=0)][ValidateSet('status','selftest','wave0','pilot','explain')][string]$Command = 'status', [Parameter(Position=1)][string]$Sub = 'status')
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 
@@ -64,6 +64,10 @@ switch ($Command) {
     }
     'wave0' {
         & (Join-Path $PSScriptRoot 'tests\wave0\run-wave0.ps1')
+        exit $LASTEXITCODE
+    }
+    'pilot' {
+        & (Join-Path $PSScriptRoot 'pilot.ps1') $Sub
         exit $LASTEXITCODE
     }
     'explain' {

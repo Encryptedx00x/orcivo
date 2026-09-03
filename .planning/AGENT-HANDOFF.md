@@ -10,6 +10,60 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## MVP Product Batch #1 — OWNER APPROVED + PILOT MODE (2026-09-03)
+
+**O owner aprovou o MVP Product Batch #1** com decisões por item
+(`.planning/product/MVP-PRODUCT-BATCH-1.md` seção "OWNER APPROVAL"). Decisões
+notáveis: P-07 = quick-create modal; P-09 = MVP-lite edit/delete; P-10 =
+assinatura reutilizável do técnico; P-14 = soft delete; P-13 = auto-gerar tasks
+só para achados funcionais OBJETIVOS; P-15 PROMOVIDO ao MVP (nova fase **F3.2**,
+distributor API = FUTURE); P-17 subset in-app (nova wave **P17-wave**); P-02 =
+cobertura MVP core (não enterprise field-level).
+
+**Máquina-legível:** `.planning/product/MVP-PRODUCT-BATCH-1.tasks.json` (23 tasks
+`PB1-*`, 6 Level C) + `.plan.json` (gerado por
+`scripts/orchestration/v2/batch-reconcile.ps1` — reconcile OK). Ordem de execução
++ análise de gates: `.planning/product/MVP-PRODUCT-BATCH-1-EXECUTION.md`.
+
+**Nada roda antes de P03.** Todos os 23 `PB1-*` carregam
+`blockedByGates: [P02-T12, P02-T13, P03]` (o reconciler recusa qualquer task que
+não carregue os três). `P02-T12 = WAITING_HUMAN`, `P02-T13 = WAITING_HUMAN`,
+`P03 = BLOCKED_BY_P02` — inalterados. Primeira ação do agente após os gates:
+`03.1-P03` → wave da fase P04 (`PB1-P02-audit-service` promovido a lead task).
+
+Deltas de roadmap: nova fase **F3.2 (inventory-lite)** entre 03.1 e Fase 4; nova
+wave **P17-wave** perto de P07.5. Processo recorrente registrado:
+`PROC-product-completeness-audit` (P-23) — DISCOVER/TRIAGE/PROPOSE only.
+
+**PILOT MODE construído** (`scripts/orchestration/v2/pilot.ps1`): loop de
+supervisor guardado que compõe fence → classify → route → [Level C →
+WAITING_HUMAN] → [no provider → WAITING_PROVIDER] → implement → verify → secret
+scan → opposite-provider review → bounded correction → integrate (remote-truth) →
+durable checkpoint. Guards (`config.pilot`): maxParallel=1, forcePush=false,
+levelCStop=true, bounded retries/reviews, durable checkpoints, failover +
+auto-resume + restart-resume, opposite-provider review, exact candidate, secret
+gate, remote-truth reconciliation.
+
+`runnerMode` default = `inproc-fake` (validação SINTÉTICA, sem modelo). `docker` /
+`host-trusted` para agentes reais (Docker composition em `infra/orchestration/` +
+`runner-docker.ps1` — read-only candidate, `--network none` no test, sem
+docker.sock/HOME/secrets, non-root). **Execução real de uma task `PB1-*` exige
+adicionalmente:** token `REAL_EXECUTION_AUTHORIZED` em `.orchestration/v2/` +
+gates P02/P03 satisfeitos + (Level C) owner gate. Nenhum existe. **Ainda não há
+verbo `run` que despache task real do Orcivo.**
+
+Comandos: `pilot.ps1 status|selftest|docker-preflight|start|stop`. `start` neste
+build só imprime o gating (sem loop real). `v2.1.ps1` inclui `pilot` passthrough.
+
+**Docker:** daemon rodando; imagem `orcivo-agent-runner:v1` ainda não construída
+(1 comando `docker build`, pull de `node:22-bookworm-slim` ~75MB, sem
+credencial). `pilot.ps1 docker-preflight` reporta exatamente isso. Sob
+LOCAL_TRUSTED_HOST o Docker **não é necessário** para o pilot sintético nem para
+uma task real com os profiles A/B/C atuais (declarativos, não rodam build/test);
+vira necessário quando um profile executar build/test de candidate.
+
+---
+
 ## Orquestração — PRAGMATIC V2.1 (2026-09-03) — THREAT_MODEL = LOCAL_TRUSTED_HOST
 
 **O OWNER fixou o threat model.** As quatro revisões anteriores (V1, spine 1/3/4,

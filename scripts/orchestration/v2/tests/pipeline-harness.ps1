@@ -260,6 +260,13 @@ function _readControlChannel {
     try {
         $obj = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json
         Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+        # normalise the raw claude-shaped result object to the classifier's shape
+        # (isError / errorType / httpStatus / message). ConvertFrom-ClaudeResult
+        # lives in classify.ps1. A control file that already carries `isError`
+        # (pre-normalised) is passed through untouched.
+        if ($obj -and $null -eq $obj.isError -and ($null -ne $obj.is_error -or $null -ne $obj.subtype -or $null -ne $obj.error)) {
+            return (_ToHashtable (ConvertFrom-ClaudeResult $obj))
+        }
         return (_ToHashtable $obj)
     } catch { return $null }
 }
