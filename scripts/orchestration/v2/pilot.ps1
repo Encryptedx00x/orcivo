@@ -363,7 +363,7 @@ switch ($Command) {
         if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }
         $r = Invoke-DispatcherLoop -RunOnce:($Command -eq 'run-once') -TaskFile $TaskFile -ProviderOverride $ProviderOverride
         $r | ConvertTo-Json -Depth 20
-        exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
+        exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
     }
     'stop' {
         $f = Join-Path (Get-V2Dir) (Get-PilotConfig).stopFile

@@ -112,6 +112,61 @@ try{
             Write-Utf8 (Join-Path $clone 'outside.txt') 'bad';& git -C $clone add .;& git -C $clone -c user.name=rd -c user.email=rd@local commit -m bad --quiet
             Assert-True ((& git -C $Fixture rev-parse HEAD).Trim() -eq $head -and -not (Test-Path (Join-Path $Fixture 'outside.txt'))) 'failed candidate touched main authority'
         }
+        Check 'RG-01' {
+            $pwsh=(Get-Command powershell.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
+            $p=Invoke-NativeCaptured -Exe $pwsh -Arguments @('-NoProfile','-Command','[Console]::Error.WriteLine("benign progress"); exit 0') -WorkingDirectory $Fixture -StdoutLog (Join-Path $Root 'rg01.stdout.log') -StderrLog (Join-Path $Root 'rg01.stderr.log') -TimeoutSec 30
+            Assert-True ($p.exitCode -eq 0 -and $p.stderr -match 'benign progress') 'exit 0 plus stderr was not preserved as success'
+        }
+        Check 'RG-02' {
+            $pwsh=(Get-Command powershell.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
+            $p=Invoke-NativeCaptured -Exe $pwsh -Arguments @('-NoProfile','-Command','[Console]::Error.WriteLine("real failure"); exit 17') -WorkingDirectory $Fixture -StdoutLog (Join-Path $Root 'rg02.stdout.log') -StderrLog (Join-Path $Root 'rg02.stderr.log') -TimeoutSec 30
+            Assert-True ($p.exitCode -eq 17 -and $p.stderr -match 'real failure') 'nonzero exit plus stderr was not classified as failure'
+        }
+        Check 'RG-03' {
+            $fx=Join-Path $Root 'rg03';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'work.txt') "base`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'work.txt') "candidate`n"
+            Write-Utf8 (Join-Path $fx '.git\hooks\pre-commit') "#!/bin/sh`nprintf '[STARTED] Backing up original state...\\n' >&2`nexit 0`n"
+            $s=[ordered]@{workspace=$fx;baseSha=$base;branch='main';taskId='RG-03';runId='run-rg03';cycle=0}
+            $r=Complete-DispatcherCandidateCommit -State $s
+            Assert-True ($r.ok -and $r.created -and $r.exitCode -eq 0 -and $r.stderr -match '\[STARTED\]') 'benign hook stderr prevented candidate commit'
+            Assert-True ((& git -C $fx rev-parse HEAD).Trim() -ne $base) 'dispatcher did not continue after benign hook stderr'
+            Assert-True ((& git -C $fx log -1 --pretty=%s) -eq 'feat: rg-03') 'dispatcher candidate message is not Conventional Commits-compatible'
+        }
+        Check 'RG-04' {
+            $fx=Join-Path $Root 'rg04';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'work.txt') "base`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'work.txt') "candidate`n"
+            Write-Utf8 (Join-Path $fx '.git\hooks\pre-commit') "#!/bin/sh`nprintf 'hook rejected candidate\\n' >&2`nexit 23`n"
+            $s=[ordered]@{workspace=$fx;baseSha=$base;branch='main';taskId='RG-04';runId='run-rg04';cycle=0}
+            $r=Complete-DispatcherCandidateCommit -State $s
+            Assert-True (-not $r.ok -and $r.exitCode -ne 0 -and $r.stderr -match 'hook rejected') 'failing hook was not a classified candidate failure'
+            Assert-True ((& git -C $fx rev-parse HEAD).Trim() -eq $base) 'failing hook advanced the candidate'
+            $s.status='RESUMABLE';$s.stage='IMPLEMENT';$s.reason=$r.reason;$s.candidateHead='';$s.providerHistory=@([ordered]@{role='IMPLEMENTER';resultClass='SUCCESS'})
+            Assert-True (Test-DispatcherCandidateResumeEligible $s) 'durable hook failure was not eligible for same-lineage restart'
+        }
+        Check 'RG-05' {
+            $fx=Join-Path $Root 'rg05';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'work.txt') "base`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'work.txt') "candidate`n"
+            $s=[ordered]@{workspace=$fx;baseSha=$base;branch='main';taskId='RG-05';runId='run-rg05';cycle=0}
+            $first=Complete-DispatcherCandidateCommit -State $s;$head=(& git -C $fx rev-parse HEAD).Trim();$count=(& git -C $fx rev-list --count HEAD).Trim()
+            $second=Complete-DispatcherCandidateCommit -State $s
+            Assert-True ($first.ok -and $first.created -and $second.ok -and -not $second.created -and $second.reused) 'restart did not reuse the existing candidate'
+            Assert-True ((& git -C $fx rev-parse HEAD).Trim() -eq $head -and (& git -C $fx rev-list --count HEAD).Trim() -eq $count) 'restart duplicated the candidate commit'
+
+            $sourcePath=Join-Path $Fixture 'rg05-tasks.json';Write-Utf8 $sourcePath ((Source @((Task 'RG05-CONTRACT')))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$contract=New-DispatcherContract -Task ([hashtable]$source.tasks[0]) -TaskSource $source
+            Write-Utf8 (Join-Path $Fixture 'head-advanced.txt') "harness fix`n";& git -C $Fixture add head-advanced.txt;& git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'advance authority head' --quiet
+            $durable=[ordered]@{taskId='RG05-CONTRACT';taskVersionId=$contract.taskVersionId;taskSourceHash=$source.hash;status='RUNNING'}
+            $resumed=Resolve-DispatcherContract -Task ([hashtable]$source.tasks[0]) -TaskSource $source -State $durable
+            Assert-True ($resumed.taskVersionId -eq $contract.taskVersionId -and $resumed.planningHead -eq $contract.planningHead) 'restart derived a duplicate lineage after authority HEAD advanced'
+        }
+        Check 'RD-21' {
+            $path=Join-Path $Root 'utf8-state.json';$expected='ação — orçamento';Write-V2JsonCanonical $path ([ordered]@{text=$expected})
+            $actual=Read-V2Json $path
+            Assert-True ($actual.text -ceq $expected) 'durable UTF-8 state did not round-trip across the JSON reader'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
@@ -132,5 +187,5 @@ try{
 $ordered=@($results.ToArray()|Sort-Object { [string]$_['id'] })
 $ordered|ForEach-Object{Write-Host "$($_.id): $($_.status) - $($_.detail)" -ForegroundColor $(if($_.status-eq'PASS'){'Green'}elseif($_.status-eq'SKIP'){'Yellow'}else{'Red'})}
 $failed=@($ordered|Where-Object status -eq 'FAIL')
-Write-Host "REAL_DISPATCHER_TESTS: $(if($failed.Count){'FAIL'}else{'PASS'}) ($(@($ordered|Where-Object status -eq 'PASS').Count)/20 PASS, $(@($ordered|Where-Object status -eq 'SKIP').Count) SKIP)"
+    Write-Host "REAL_DISPATCHER_TESTS: $(if($failed.Count){'FAIL'}else{'PASS'}) ($(@($ordered|Where-Object status -eq 'PASS').Count)/$($ordered.Count) PASS, $(@($ordered|Where-Object status -eq 'SKIP').Count) SKIP)"
 if($failed.Count){exit 1}

@@ -54,15 +54,17 @@ function New-IntegrationCandidate {
     )
     $cfg = Get-V2Config
     $target = $cfg.target.branch
-    $branchNow = (& git -C $RepoDir rev-parse --abbrev-ref HEAD).Trim()
+    $branchResult = Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'integrate-authority-branch'
+    if ($branchResult.exitCode -ne 0) { return @{ ok = $false; reason = (Get-GitFailureSummaryV2 $branchResult 'inspect authority branch') } }
+    $branchNow = $branchResult.stdout.Trim()
     if ($branchNow -ne $target) { return @{ ok = $false; reason = "authority checkout on '$branchNow' not '$target'" } }
     $expectedTargetSha = (Get-GitHeadV2 $RepoDir)
 
     Assert-SafeGitV2 @('merge', $target)
-    & git -C $WorktreeDir merge $expectedTargetSha --no-edit -m "candidate: integrate $target@$($expectedTargetSha.Substring(0,10))" 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        & git -C $WorktreeDir merge --abort 2>$null | Out-Null
-        return @{ ok = $false; reason = "conflict merging $target into the run branch" }
+    $merge = Invoke-GitV2 -Dir $WorktreeDir -Arguments @('merge',$expectedTargetSha,'--no-edit','-m',"candidate: integrate $target@$($expectedTargetSha.Substring(0,10))") -LogLabel 'integrate-build-candidate'
+    if ($merge.exitCode -ne 0) {
+        [void](Invoke-GitV2 -Dir $WorktreeDir -Arguments @('merge','--abort') -LogLabel 'integrate-build-abort')
+        return @{ ok = $false; reason = "conflict merging $target into the run branch: $(Get-GitFailureSummaryV2 $merge 'git merge')" }
     }
     $candidateSha = (Get-GitHeadV2 $WorktreeDir)
     return @{ ok = $true; candidateSha = $candidateSha; expectedTargetSha = $expectedTargetSha; reason = 'ok' }
@@ -74,9 +76,9 @@ function Test-MergeCandidateLocally {
     $cfg = Get-V2Config; $target = $cfg.target.branch
     $before = (Get-GitHeadV2 $RepoDir)
     Assert-SafeGitV2 @('merge','--no-ff',$Branch)
-    & git -C $RepoDir merge --no-ff -m "LOCAL-ONLY test merge $CandidateSha" $Branch 2>&1 | Out-Null
-    $ok = ($LASTEXITCODE -eq 0)
-    if (-not $ok) { & git -C $RepoDir merge --abort 2>$null | Out-Null }
+    $merge = Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--no-ff','-m',"LOCAL-ONLY test merge $CandidateSha",$Branch) -LogLabel 'local-test-merge'
+    $ok = ($merge.exitCode -eq 0)
+    if (-not $ok) { [void](Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--abort') -LogLabel 'local-test-abort') }
     return @{ ok = $ok; before = $before; after = (Get-GitHeadV2 $RepoDir) }
 }
 
@@ -106,7 +108,9 @@ function Invoke-Integration {
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'integrate-start' -ToState 'INTEGRATING' -RunId $RunId | Out-Null
 
         # 1. authority checkout sane
-        $branchNow = (& git -C $RepoDir rev-parse --abbrev-ref HEAD).Trim()
+        $branchResult = Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'publish-authority-branch'
+        if ($branchResult.exitCode -ne 0) { return (_fail $TaskVersionId $RunId $result (Get-GitFailureSummaryV2 $branchResult 'inspect authority branch') 'INTEGRATION_FAILED') }
+        $branchNow = $branchResult.stdout.Trim()
         if ($branchNow -ne $target) { return (_fail $TaskVersionId $RunId $result "authority checkout on '$branchNow' not '$target'" 'INTEGRATION_FAILED') }
         if (-not (Test-GitCleanV2 $RepoDir)) { return (_fail $TaskVersionId $RunId $result "authority tree dirty" 'INTEGRATION_FAILED') }
 
@@ -114,13 +118,14 @@ function Invoke-Integration {
         $result.targetBefore = $localTarget
 
         # 2. MUST have a remote. Real fetch + expected-SHA CAS. (#6, #7)
-        $hasRemote = [bool](& git -C $RepoDir remote 2>$null)
+        $remoteList = Invoke-GitV2 -Dir $RepoDir -Arguments @('remote') -LogLabel 'publish-remotes'
+        $hasRemote = ($remoteList.exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($remoteList.stdout))
         if (-not $hasRemote) { return (_fail $TaskVersionId $RunId $result "no remote configured - publication requires a confirmed remote" 'INTEGRATION_FAILED') }
-        & git -C $RepoDir fetch origin --prune --quiet 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { return (_fail $TaskVersionId $RunId $result "git fetch origin failed" 'INTEGRATION_FAILED') }
-        $expectedRemote = (& git -C $RepoDir rev-parse "origin/$target" 2>$null)
-        if (-not $expectedRemote) { return (_fail $TaskVersionId $RunId $result "origin/$target not found after fetch" 'INTEGRATION_FAILED') }
-        $expectedRemote = $expectedRemote.Trim()
+        $fetch = Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'publish-fetch-before'
+        if ($fetch.exitCode -ne 0) { return (_fail $TaskVersionId $RunId $result (Get-GitFailureSummaryV2 $fetch 'git fetch origin') 'INTEGRATION_FAILED') }
+        $expectedRemoteResult = Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'publish-origin-before'
+        if ($expectedRemoteResult.exitCode -ne 0) { return (_fail $TaskVersionId $RunId $result "origin/$target not found after fetch: $(Get-GitFailureSummaryV2 $expectedRemoteResult 'git rev-parse')" 'INTEGRATION_FAILED') }
+        $expectedRemote = $expectedRemoteResult.stdout.Trim()
         if ($expectedRemote -ne $BaseSha) {
             return (_fail $TaskVersionId $RunId $result "origin/$target ($($expectedRemote.Substring(0,10))) has moved off the SHA the reviewed candidate was built on ($($BaseSha.Substring(0,10))) - rebuild + re-review required" 'REMOTE_DIVERGED')
         }
@@ -133,8 +138,9 @@ function Invoke-Integration {
         if (-not $att.ok) { return (_fail $TaskVersionId $RunId $result "attestation gate: $($att.problems -join '; ')" 'INTEGRATION_FAILED') }
 
         # 4. the run branch must point EXACTLY at the reviewed candidate
-        $branchHead = (& git -C $RepoDir rev-parse $Branch 2>$null)
-        if (-not $branchHead -or $branchHead.Trim() -ne $HeadSha) {
+        $branchHeadResult = Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',$Branch) -LogLabel 'publish-candidate-ref'
+        $branchHead = $(if($branchHeadResult.exitCode -eq 0){$branchHeadResult.stdout.Trim()}else{''})
+        if (-not $branchHead -or $branchHead -ne $HeadSha) {
             return (_fail $TaskVersionId $RunId $result "run branch $Branch ($branchHead) != reviewed candidate $HeadSha - branch moved after review" 'INTEGRATION_FAILED')
         }
         $candTree = (Get-GitTreeHash -Dir $WorktreeDir -Ref $HeadSha)
@@ -161,10 +167,10 @@ function Invoke-Integration {
         #    the candidate already contains target as a parent -> no new content.
         Assert-SafeGitV2 @('merge', '--no-ff', $Branch)
         $msg = "$($TaskVersionId.Substring(0,12)): integrated run $RunId (V2 spine)"
-        & git -C $RepoDir merge --no-ff -m $msg $HeadSha 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            & git -C $RepoDir merge --abort 2>$null | Out-Null
-            return (_fail $TaskVersionId $RunId $result "unexpected conflict merging the reviewed candidate into $target" 'INTEGRATION_FAILED')
+        $merge = Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--no-ff','-m',$msg,$HeadSha) -LogLabel 'publish-merge-candidate'
+        if ($merge.exitCode -ne 0) {
+            [void](Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--abort') -LogLabel 'publish-merge-abort')
+            return (_fail $TaskVersionId $RunId $result "unexpected conflict merging the reviewed candidate into ${target}: $(Get-GitFailureSummaryV2 $merge 'git merge')" 'INTEGRATION_FAILED')
         }
         $mergeCommit = (Get-GitHeadV2 $RepoDir)
         $mergeTree = (Get-GitTreeHash -Dir $RepoDir -Ref $mergeCommit)
@@ -181,17 +187,17 @@ function Invoke-Integration {
         Assert-SafeGitV2 @('push', 'origin', $target)
         $publishLogDir=Join-Path (Get-V2Dir) "runs\$RunId\integrator"
         New-Item -ItemType Directory -Force -Path $publishLogDir|Out-Null
-        $gitExe=(Get-Command git.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
-        $pushProc=Invoke-NativeCaptured -Exe $gitExe -Arguments @('-C',$RepoDir,'push','origin',"HEAD:$target") -WorkingDirectory $RepoDir -StdoutLog (Join-Path $publishLogDir 'push.stdout.log') -StderrLog (Join-Path $publishLogDir 'push.stderr.log') -TimeoutSec 300
+        $pushProc=Invoke-GitV2 -Dir $RepoDir -Arguments @('push','origin',"HEAD:$target") -LogLabel "publish-$RunId" -TimeoutSec 300
         if (($pushProc.exitCode -ne 0) -or (_fault 'afterCasPushReject')) {
-            return (_fail $TaskVersionId $RunId $result "git push origin $target rejected - target advanced locally but NOT published; branch preserved" 'PUSH_FAILED')
+            return (_fail $TaskVersionId $RunId $result "git push origin $target rejected - target advanced locally but NOT published; branch preserved: $(Get-GitFailureSummaryV2 $pushProc 'git push')" 'PUSH_FAILED')
         }
-        & git -C $RepoDir fetch origin --quiet 2>&1 | Out-Null
-        $remoteAfter = (& git -C $RepoDir rev-parse "origin/$target" 2>$null)
-        if (-not $remoteAfter) { return (_fail $TaskVersionId $RunId $result "cannot read origin/$target after push" 'PUSH_FAILED') }
-        $remoteAfter = $remoteAfter.Trim()
-        & git -C $RepoDir merge-base --is-ancestor $mergeCommit $remoteAfter 2>$null
-        if (($LASTEXITCODE -ne 0) -or (_fault 'ancestryFail')) {
+        $fetchAfter = Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--quiet') -LogLabel 'publish-fetch-after'
+        if ($fetchAfter.exitCode -ne 0) { return (_fail $TaskVersionId $RunId $result (Get-GitFailureSummaryV2 $fetchAfter 'post-push fetch') 'PUSH_FAILED') }
+        $remoteAfterResult = Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'publish-origin-after'
+        if ($remoteAfterResult.exitCode -ne 0) { return (_fail $TaskVersionId $RunId $result "cannot read origin/$target after push" 'PUSH_FAILED') }
+        $remoteAfter = $remoteAfterResult.stdout.Trim()
+        $ancestry = Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$mergeCommit,$remoteAfter) -LogLabel 'publish-ancestry'
+        if (($ancestry.exitCode -ne 0) -or (_fault 'ancestryFail')) {
             return (_fail $TaskVersionId $RunId $result "remote origin/$target does not contain the merge commit after push" 'PUSH_FAILED')
         }
         $remoteTree = (Get-GitTreeHash -Dir $RepoDir -Ref $remoteAfter)

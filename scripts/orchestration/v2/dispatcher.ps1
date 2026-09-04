@@ -134,7 +134,7 @@ function Get-NextDispatcherDecision {
 }
 
 function New-DispatcherContract {
-    param([hashtable]$Task, $TaskSource)
+    param([hashtable]$Task, $TaskSource, [string]$PlanningHeadOverride='')
     $depVersions = @()
     foreach ($d in @($Task.dependencies)) {
         $dr = Get-DispatcherTaskRecord ([string]$d)
@@ -145,7 +145,7 @@ function New-DispatcherContract {
         # bind its canonical record as a synthetic immutable dependency id.
         $depVersions += (New-StringHash (ConvertTo-CanonicalJson $sourceDep)).Substring(7)
     }
-    $planningHead = "$(Get-GitHeadV2 (Get-RepoRoot))@$($TaskSource.hash)"
+    $planningHead = $(if($PlanningHeadOverride){$PlanningHeadOverride}else{"$(Get-GitHeadV2 (Get-RepoRoot))@$($TaskSource.hash)"})
     $spec = @("TASK $($Task.taskId)","TITLE $($Task.title)","TYPE $($Task.type)","DESCRIPTION",[string]$Task.description,"CONSTRAINTS",(ConvertTo-CanonicalJson $Task.candidateConstraints)) -join "`n"
     return (Freeze-Contract -TaskId $Task.taskId -PlanningHead $planningHead -SpecText $spec -AcceptanceText ([string]$Task.acceptance) `
         -DeclaredScope @($Task.scope) -ProtectedPathGrants @($Task.protectedPathGrants) -Dependencies $depVersions `
@@ -160,19 +160,16 @@ function New-DispatcherWorkspace {
     $workspace = Join-Path $tempRoot $RunId
     if (Test-Path -LiteralPath $workspace) { throw "dispatcher: workspace already exists: $workspace" }
     Assert-SafeGitV2 @('clone','--no-hardlinks','--no-local',(Get-RepoRoot),$workspace)
-    & git -c core.autocrlf=false -c core.safecrlf=false clone --no-hardlinks --no-local --quiet (Get-RepoRoot) $workspace 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'dispatcher: isolated clone failed' }
+    $clone = Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('-c','core.autocrlf=false','-c','core.safecrlf=false','clone','--no-hardlinks','--no-local','--quiet',(Get-RepoRoot),$workspace) -LogLabel 'dispatcher-clone'
+    Assert-GitSucceededV2 $clone 'dispatcher isolated clone' | Out-Null
     # Candidate bytes are the reviewed authority.  Disable platform newline
     # conversion in this disposable clone so staging cannot mutate them or
     # emit native warnings that PowerShell 5.1 promotes to terminating errors.
-    & git -C $workspace config core.autocrlf false
-    if ($LASTEXITCODE -ne 0) { throw 'dispatcher: could not disable candidate newline conversion' }
-    & git -C $workspace config core.safecrlf false
-    if ($LASTEXITCODE -ne 0) { throw 'dispatcher: could not configure candidate safecrlf' }
-    & git -C $workspace remote remove origin 2>&1 | Out-Null
+    Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('config','core.autocrlf','false') -LogLabel 'dispatcher-config-autocrlf') 'dispatcher candidate core.autocrlf config' | Out-Null
+    Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('config','core.safecrlf','false') -LogLabel 'dispatcher-config-safecrlf') 'dispatcher candidate core.safecrlf config' | Out-Null
+    Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('remote','remove','origin') -LogLabel 'dispatcher-remove-origin') 'dispatcher remove candidate origin' | Out-Null
     $branch = "orch-v2/$RunId"
-    & git -C $workspace checkout -b $branch $BaseSha --quiet 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'dispatcher: candidate branch creation failed' }
+    Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('checkout','-b',$branch,$BaseSha,'--quiet') -LogLabel 'dispatcher-checkout') 'dispatcher candidate branch creation' | Out-Null
     return @{ workspace=$workspace; branch=$branch }
 }
 
@@ -199,6 +196,71 @@ function Get-DispatcherLogicalProjectId {
     try { $p = (Get-AuthorityV2Config).memoryAdapter.project } catch { $p = $null }
     if ($p) { return [string]$p }
     return 'orcivo'
+}
+
+function Test-DispatcherImplementationCompleted {
+    param($State)
+    if ([bool]$State.implementationComplete) { return $true }
+    $history = @($State.providerHistory)
+    if ($history.Count -eq 0) { return $false }
+    $last = $history[$history.Count - 1]
+    return ("$($last.resultClass)" -eq 'SUCCESS' -and "$($last.role)" -in @('IMPLEMENTER','CORRECTOR'))
+}
+
+function Test-DispatcherCandidateResumeEligible {
+    param($State)
+    if(-not $State -or "$($State.status)" -notin @('RESUMABLE','BLOCKED')){return $false}
+    if("$($State.stage)" -ne 'IMPLEMENT' -or -not (Test-DispatcherImplementationCompleted $State)){return $false}
+    if(-not "$($State.reason)".StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)){return $false}
+    return [bool]($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)) -and -not $State.candidateHead)
+}
+
+function Complete-DispatcherCandidateCommit {
+    param([Parameter(Mandatory)]$State)
+    $workspace = [string]$State.workspace
+    $out = [ordered]@{ ok=$false; created=$false; reused=$false; head=''; exitCode=-1; stdout=''; stderr=''; reason='' }
+    if (-not $workspace -or -not (Test-Path -LiteralPath $workspace)) { $out.reason='durable workspace is missing'; return $out }
+
+    $branchResult = Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'candidate-branch'
+    if ($branchResult.exitCode -ne 0) { $out.exitCode=$branchResult.exitCode;$out.stderr=$branchResult.stderr;$out.reason=Get-GitFailureSummaryV2 $branchResult 'candidate branch inspection';return $out }
+    if ($State.branch -and $branchResult.stdout.Trim() -ne [string]$State.branch) { $out.reason="candidate workspace is on '$($branchResult.stdout.Trim())', expected '$($State.branch)'";return $out }
+
+    $headBefore = Get-GitHeadV2 $workspace
+    if ($headBefore -ne [string]$State.baseSha) {
+        $ancestor = Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',[string]$State.baseSha,$headBefore) -LogLabel 'candidate-lineage'
+        if ($ancestor.exitCode -ne 0) { $out.exitCode=$ancestor.exitCode;$out.stderr=$ancestor.stderr;$out.reason='candidate HEAD is not descended from the durable base SHA';return $out }
+    }
+
+    $add = Invoke-GitV2 -Dir $workspace -Arguments @('add','-A') -LogLabel 'candidate-add'
+    if ($add.exitCode -ne 0) { $out.exitCode=$add.exitCode;$out.stdout=$add.stdout;$out.stderr=$add.stderr;$out.reason=Get-GitFailureSummaryV2 $add 'candidate git add';return $out }
+    $status = Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'candidate-status'
+    if ($status.exitCode -ne 0) { $out.exitCode=$status.exitCode;$out.stdout=$status.stdout;$out.stderr=$status.stderr;$out.reason=Get-GitFailureSummaryV2 $status 'candidate git status';return $out }
+
+    if ([string]::IsNullOrWhiteSpace($status.stdout)) {
+        $out.exitCode=0;$out.head=$headBefore;$out.ok=($headBefore -ne [string]$State.baseSha);$out.reused=$out.ok
+        $out.reason=$(if($out.ok){'existing candidate commit reused'}else{'implementer produced no candidate change'})
+        return $out
+    }
+
+    $message = "feat: $($State.taskId.ToLowerInvariant())"
+    $commit = Invoke-GitV2 -Dir $workspace -Arguments @('-c','user.name=orcivo-dispatcher','-c','user.email=dispatcher@orcivo.local','commit','-m',$message,'--quiet') -TimeoutSec 900 -LogLabel 'candidate-commit'
+    $out.exitCode=[int]$commit.exitCode;$out.stdout=$commit.stdout;$out.stderr=$commit.stderr
+    if ($commit.exitCode -ne 0) { $out.reason=Get-GitFailureSummaryV2 $commit 'candidate git commit';return $out }
+    $out.head=Get-GitHeadV2 $workspace
+    if ($out.head -eq $headBefore) { $out.reason='git commit returned exit 0 but candidate HEAD did not advance';return $out }
+    $out.ok=$true;$out.created=$true;$out.reason='candidate commit created'
+    return $out
+}
+
+function Resolve-DispatcherContract {
+    param([hashtable]$Task, $TaskSource, $State=$null)
+    if($null -eq $State){$State=Get-DispatcherState}
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $State)))
+    if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
+    $frozen=Get-Contract ([string]$State.taskVersionId)
+    $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
+    if($contract.taskVersionId -ne $State.taskVersionId){throw 'dispatcher: durable task state does not match its revalidated frozen contract'}
+    return $contract
 }
 
 function Get-DispatcherMemoryContext {
@@ -310,8 +372,18 @@ function Resume-DispatcherProviderWait {
 function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
-    $contract = New-DispatcherContract -Task $Task -TaskSource $TaskSource
+    $state=Get-DispatcherState
+    $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
+    if(Test-DispatcherCandidateResumeEligible $state){
+        $ledgerState=(Get-LedgerState $state.taskVersionId).state
+        if($ledgerState -eq 'FAILED'){
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-ready' -ToState 'READY' -RunId $state.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
+        }elseif($ledgerState -ne 'RUNNING'){throw "dispatcher: recoverable candidate has incompatible ledger state '$ledgerState'"}
+        $state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null
+    }
     $classification = Get-TaskClassification -Task $Task
     if("$($Task.taskId)" -like 'PB1-*'){
         $auth=Join-Path (Get-V2Dir) ([string]$pcfg.realExecutionAuthFile)
@@ -335,11 +407,10 @@ function Invoke-RealDispatcherTask {
     $healthy=@(Get-HealthyProviders)
     $route=Resolve-Route -Classification ([hashtable]$classification) -HealthyProviders $healthy -ForceProvider $ProviderOverride
     if(-not $route.ok){ throw "dispatcher: $($route.reason)" }
-    $state=Get-DispatcherState
     if(-not $state -or $state.taskVersionId -ne $contract.taskVersionId -or "$($state.status)" -in @('PUBLISHED','NO_CHANGE_ACCEPTED','FAILED','BLOCKED','WAITING_HUMAN')){
         $runId=New-RunId; $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
         $logicalProjectId=Get-DispatcherLogicalProjectId
-        $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId=$logicalProjectId;memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0}
+        $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$false;implementationCommit='';candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId=$logicalProjectId;memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0}
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' | Out-Null
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $runId -AttemptId (New-AttemptId) | Out-Null
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $runId | Out-Null
@@ -353,49 +424,52 @@ function Invoke-RealDispatcherTask {
     while($true){
         if(Test-Path (Join-Path (Get-V2Dir) $pcfg.stopFile)){ $state.status='STOPPED';$state.reason='explicit stop requested';Write-DispatcherState $state|Out-Null;return $state }
         if($state.stage -eq 'IMPLEMENT'){
-            $state.attempt=[int]$state.attempt+1; Write-DispatcherState $state|Out-Null
-            $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
-            $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
-            $mem=Get-DispatcherMemoryContext
-            $state.memoryEnabled=[bool]$mem.enabled; $state.memoryAvailable=[bool]$mem.available
-            $state.memoryRetrievedCount=[int]$mem.count; $state.memoryInjectedChars=[int]$mem.chars
-            $state.memoryFallbackUsed=[bool]$mem.fallbackUsed; $state.memoryLatencyMs=[int]$mem.latencyMs
-            $state.memoryWriteCount=[int]$mem.writeCount
-            if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
-            $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
-            $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
-            $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode}
-            $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
-            if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
-            Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
-            if($ar.contextRolloverRequired){
-                if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
-                $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
-            }
-            if(Test-IsCanonicalProviderClass $ar.providerClass){
-                $state.unavailableProviders=@($state.unavailableProviders)+$state.provider|Select-Object -Unique
-                $other=@($cfg.providerFailover.order|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
-                if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
-                    $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
-                    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
-                    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
-                    $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other ([string]$state.logicalProjectId)|Out-Null;Write-DispatcherState $state|Out-Null;continue
+            if(-not (Test-DispatcherImplementationCompleted $state)){
+                $state.attempt=[int]$state.attempt+1; Write-DispatcherState $state|Out-Null
+                $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
+                $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
+                $mem=Get-DispatcherMemoryContext
+                $state.memoryEnabled=[bool]$mem.enabled; $state.memoryAvailable=[bool]$mem.available
+                $state.memoryRetrievedCount=[int]$mem.count; $state.memoryInjectedChars=[int]$mem.chars
+                $state.memoryFallbackUsed=[bool]$mem.fallbackUsed; $state.memoryLatencyMs=[int]$mem.latencyMs
+                $state.memoryWriteCount=[int]$mem.writeCount
+                if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
+                $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
+                $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
+                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode}
+                $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
+                if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
+                Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
+                if($ar.contextRolloverRequired){
+                    if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
+                    $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
                 }
-                return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)
+                if(Test-IsCanonicalProviderClass $ar.providerClass){
+                    $state.unavailableProviders=@($state.unavailableProviders)+$state.provider|Select-Object -Unique
+                    $other=@($cfg.providerFailover.order|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
+                    if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
+                        $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
+                        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
+                        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
+                        $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other ([string]$state.logicalProjectId)|Out-Null;Write-DispatcherState $state|Out-Null;continue
+                    }
+                    return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)
+                }
+                if($ar.resultClass -ne 'SUCCESS'){
+                    if([int]$state.attempt -lt $maxAttempts){$state.findings=@("implementer result $($ar.resultClass): $($ar.structuredResult.summary)");Write-DispatcherState $state|Out-Null;continue}
+                    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $ar.resultClass|Out-Null
+                    $state.status=$ar.resultClass;$state.reason=[string]$ar.structuredResult.summary;Write-DispatcherState $state|Out-Null;return $state
+                }
+                $state.implementationComplete=$true;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
-            if($ar.resultClass -ne 'SUCCESS'){
-                if([int]$state.attempt -lt $maxAttempts){$state.findings=@("implementer result $($ar.resultClass): $($ar.structuredResult.summary)");Write-DispatcherState $state|Out-Null;continue}
-                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $ar.resultClass|Out-Null
-                $state.status=$ar.resultClass;$state.reason=[string]$ar.structuredResult.summary;Write-DispatcherState $state|Out-Null;return $state
-            }
-            & git -C $state.workspace add -A 2>&1|Out-Null
-            if(@(& git -C $state.workspace status --porcelain=v1).Count -gt 0){& git -C $state.workspace -c user.name='orcivo-dispatcher' -c user.email='dispatcher@orcivo.local' commit -m "$($state.taskId): candidate $($state.runId) cycle $($state.cycle)" --quiet 2>&1|Out-Null}
-            $execHead=Get-GitHeadV2 $state.workspace
-            if($execHead -eq $state.baseSha){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note 'no candidate change'|Out-Null;$state.status='AGENT_FAILURE';$state.reason='implementer produced no candidate change';Write-DispatcherState $state|Out-Null;return $state}
-            $target=(Get-V2Config).target.branch; & git -C $state.workspace fetch --no-tags --quiet (Get-RepoRoot) $target 2>&1|Out-Null
-            if($LASTEXITCODE -ne 0){throw 'dispatcher: could not fetch current target into candidate clone'}
-            $candBase=(& git -C $state.workspace rev-parse FETCH_HEAD).Trim(); & git -C $state.workspace merge $candBase --no-edit --quiet 2>&1|Out-Null
-            if($LASTEXITCODE -ne 0){& git -C $state.workspace merge --abort 2>$null|Out-Null;$state.status='BLOCKED';$state.reason='candidate conflicts with current target; rebuild required';Write-DispatcherState $state|Out-Null;return $state}
+            $candidate=Complete-DispatcherCandidateCommit -State $state
+            if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'RESUMABLE'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;return $state}
+            $execHead=$candidate.head;$state.implementationCommit=$execHead;Write-DispatcherState $state|Out-Null
+            $target=(Get-V2Config).target.branch;$fetch=Invoke-GitV2 -Dir $state.workspace -Arguments @('fetch','--no-tags','--quiet',(Get-RepoRoot),$target) -LogLabel 'candidate-fetch-target'
+            if($fetch.exitCode -ne 0){throw (Get-GitFailureSummaryV2 $fetch 'dispatcher fetch current target')}
+            $fetchHead=Invoke-GitV2 -Dir $state.workspace -Arguments @('rev-parse','FETCH_HEAD') -LogLabel 'candidate-fetch-head';Assert-GitSucceededV2 $fetchHead 'dispatcher resolve FETCH_HEAD'|Out-Null;$candBase=$fetchHead.stdout.Trim()
+            $merge=Invoke-GitV2 -Dir $state.workspace -Arguments @('merge',$candBase,'--no-edit','--quiet') -LogLabel 'candidate-merge-target'
+            if($merge.exitCode -ne 0){[void](Invoke-GitV2 -Dir $state.workspace -Arguments @('merge','--abort') -LogLabel 'candidate-merge-abort');$state.status='BLOCKED';$state.reason='candidate conflicts with current target; rebuild required';Write-DispatcherState $state|Out-Null;return $state}
             $candHead=Get-GitHeadV2 $state.workspace; $cc=Test-ContractCompliance -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
             if(-not $cc.compliant){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-block' -ToState 'FAILED' -RunId $state.runId -Note ($cc.violations -join '; ')|Out-Null;$state.status='BLOCKED';$state.reason=$cc.violations -join '; ';Write-DispatcherState $state|Out-Null;return $state}
             Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'checking' -ToState 'CHECKING' -RunId $state.runId|Out-Null
@@ -411,7 +485,7 @@ function Invoke-RealDispatcherTask {
 
         if($state.stage -eq 'REVIEW'){
             $reviewer=$(if($state.provider -eq 'claude'){'codex'}else{'claude'});$state.reviewerProvider=$reviewer
-            $diff=(& git -C $state.workspace diff --no-color "$($state.candidateBase)..$($state.candidateHead)") -join "`n";$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
+            $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff';Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
             $reviewDir=Join-Path (Get-V2Dir) "runs\$($state.runId)\review-$('{0:000}' -f ([int]$state.cycle))"
             $rp=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $state.taskVersionId -Head $state.candidateHead -TreeHash $state.candidateTree -DiffHash $state.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "PASS profile=$($contract.verificationProfile); secretScan=CLEAN" -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
             $reviewDataBefore=Get-ReviewDataSnapshot $reviewDir
@@ -429,7 +503,7 @@ function Invoke-RealDispatcherTask {
             $state.reviewVerdict=$parsed.verdict;$state.reviewInvocationId=$rr.invocationId;Write-DispatcherState $state|Out-Null
             if($parsed.verdict -eq 'REQUEST_CHANGES'){
                 if([int]$state.cycle -ge $maxCycles){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-budget-spent' -ToState 'FAILED_REVIEW_BUDGET' -RunId $state.runId|Out-Null;$state.status='WAITING_HUMAN';$state.reason='bounded correction budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
-                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.findings=@($parsed.envelope.findings|ForEach-Object{"$($_.severity): $($_.detail)"});$state.stage='IMPLEMENT';Write-DispatcherState $state|Out-Null;continue
+                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.findings=@($parsed.envelope.findings|ForEach-Object{"$($_.severity): $($_.detail)"});$state.stage='IMPLEMENT';$state.implementationComplete=$false;Write-DispatcherState $state|Out-Null;continue
             }
             if($parsed.verdict -ne 'APPROVE'){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note $parsed.verdict|Out-Null;$state.status='WAITING_HUMAN';$state.reason="$($parsed.verdict): $($parsed.reason)";$state.decisionNeeded='resolve reviewer block or Level C escalation';$state.resumes='new approved task version or explicit owner decision';Write-DispatcherState $state|Out-Null;return $state}
             Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'approved' -ToState 'APPROVED' -RunId $state.runId|Out-Null;$state.stage='INTEGRATE';Write-DispatcherState $state|Out-Null
@@ -437,9 +511,9 @@ function Invoke-RealDispatcherTask {
 
         if($state.stage -eq 'INTEGRATE'){
             Assert-SafeGitV2 @('fetch',$state.workspace,"HEAD:refs/heads/$($state.branch)")
-            & git -C (Get-RepoRoot) fetch --no-tags --quiet $state.workspace "HEAD:refs/heads/$($state.branch)" 2>&1|Out-Null
-            if($LASTEXITCODE -ne 0){$state.status='BLOCKED';$state.reason='integrator could not import approved candidate';Write-DispatcherState $state|Out-Null;return $state}
-            $imported=(& git -C (Get-RepoRoot) rev-parse $state.branch).Trim();if($imported -ne $state.candidateHead){$state.status='BLOCKED';$state.reason='imported ref is not the reviewed candidate';Write-DispatcherState $state|Out-Null;return $state}
+            $import=Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('fetch','--no-tags','--quiet',[string]$state.workspace,"HEAD:refs/heads/$($state.branch)") -LogLabel 'integrator-import-candidate'
+            if($import.exitCode -ne 0){$state.status='BLOCKED';$state.reason=Get-GitFailureSummaryV2 $import 'integrator import approved candidate';Write-DispatcherState $state|Out-Null;return $state}
+            $imported=Get-GitHeadV2ForRef -Dir (Get-RepoRoot) -Ref ([string]$state.branch);if($imported -ne $state.candidateHead){$state.status='BLOCKED';$state.reason='imported ref is not the reviewed candidate';Write-DispatcherState $state|Out-Null;return $state}
             $ir=Invoke-Integration -TaskVersionId $state.taskVersionId -RunId $state.runId -RepoDir (Get-RepoRoot) -WorktreeDir $state.workspace -Branch $state.branch -BaseSha $state.candidateBase -HeadSha $state.candidateHead -SecretScanRoots @((Join-Path (Get-V2Dir) "runs\$($state.runId)"))
             $state.integration=$ir;$state.status=$ir.status;$state.reason=$ir.reason;Write-DispatcherState $state|Out-Null
             if($ir.status -eq 'PUBLISHED'){memoryFinalize $Task ([string]$state.logicalProjectId)|Out-Null;Remove-DispatcherWorkspace $state.workspace}
@@ -462,9 +536,9 @@ function Invoke-DispatcherLoop {
             if(Test-Path $stop){return @{status='STOPPED';reason='explicit stop requested'}}
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
-            if($cur -and "$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -and $cur.taskSourceHash -eq $source.hash){$task=@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0];if(-not $task){throw 'dispatcher: active task disappeared from the immutable task source'};$r=Invoke-RealDispatcherTask -Task $task -TaskSource $source -ProviderOverride $ProviderOverride}
+            if($cur -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $cur)) -and $cur.taskSourceHash -eq $source.hash){$task=@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0];if(-not $task){throw 'dispatcher: active task disappeared from the immutable task source'};$r=Invoke-RealDispatcherTask -Task $task -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
-            if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
+            if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
             if($r.status -eq 'WAITING_PROVIDER'){Start-Sleep -Seconds ([Math]::Min(30,[int]$cfg.providerFailover.pollBackoffSec[0]));continue}
         }
     }finally{[void](Remove-Lease -Namespace 'scheduler' -Key $cfg.target.branch -LeaseId $lease.leaseId)}
