@@ -47,7 +47,14 @@
     "schemaFile": "schemas/review-envelope.schema.json",
     "beginMarker": "<<<ORCIVO_REVIEW_ENVELOPE_V1",
     "endMarker": "ORCIVO_REVIEW_ENVELOPE_V1>>>",
-    "verdicts": ["APPROVE", "REQUEST_CHANGES", "HUMAN_REVIEW_REQUIRED", "INCOMPLETE_REVIEW"],
+    "verdicts": [
+      "APPROVE",
+      "REQUEST_CHANGES",
+      "BLOCK",
+      "ESCALATE_LEVEL_C",
+      "HUMAN_REVIEW_REQUIRED",
+      "INCOMPLETE_REVIEW"
+    ],
     "maxCycles": 2,
     "promptTemplateVersion": "v2-review-2",
     "limits": {
@@ -105,7 +112,12 @@
       "PROVIDER_AUTH",
       "PROVIDER_QUOTA",
       "PROVIDER_RATE_LIMIT",
-      "PROVIDER_TRANSIENT"
+      "PROVIDER_TRANSIENT",
+      "QUOTA_EXHAUSTED",
+      "RATE_LIMIT",
+      "PROVIDER_UNAVAILABLE",
+      "TEMPORARY_AUTH_FAILURE",
+      "TRANSIENT_PROVIDER_NETWORK"
     ],
     "nonFailoverClasses": [
       "TOOL_ERROR",
@@ -454,13 +466,15 @@
     "automaticProviderResume": true,
     "restartResume": true,
     "oppositeProviderReview": true,
-    "runnerMode": "inproc-fake",
+    "runnerMode": "host-trusted",
     "runnerModes": ["inproc-fake", "docker", "host-trusted"],
     "contextRolloverBudget": 2,
     "idleSleepSec": 15,
     "stopFile": "PILOT_STOP",
     "realExecutionAuthFile": "REAL_EXECUTION_AUTHORIZED",
     "batchPlanFile": ".planning/product/MVP-PRODUCT-BATCH-1.plan.json",
+    "taskSourceFile": ".planning/product/MVP-PRODUCT-BATCH-1.tasks.json",
+    "realAgentTimeoutSec": 1800,
     "docker": {
       "image": "orcivo-agent-runner:v1",
       "baseImage": "node:22-bookworm-slim",
@@ -476,6 +490,11 @@
       "pidsLimit": 512,
       "autoRemove": true
     }
+  },
+  "memoryAdapter": {
+    "$comment": "Optional ai-memory adapter seam. Disabled by default; memory is auxiliary, never authority, and any adapter failure is ignored. Reviewers never receive this adapter.",
+    "enabled": false,
+    "script": ""
   },
   "redaction": {
     "maxEnvLikeLines": 6,

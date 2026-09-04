@@ -318,7 +318,12 @@ function _ToHashtable {
         foreach ($p in $o.PSObject.Properties) { $h[$p.Name] = _ToHashtable $p.Value }
         return $h
     }
-    if ($o -is [object[]]) { return @($o | ForEach-Object { _ToHashtable $_ }) }
+    # A zero-length array emits no pipeline objects in PowerShell and would be
+    # silently converted to $null inside a parent object.  Return it as one
+    # non-enumerated value so JSON schema arrays stay arrays after parsing.
+    if ($o -is [object[]]) {
+        return ,@($o | ForEach-Object { _ToHashtable $_ })
+    }
     return $o
 }
 
@@ -724,7 +729,8 @@ function Invoke-NativeCaptured {
         [string]$StdinFile,
         [string]$StdoutLog,
         [string]$StderrLog,
-        [int]$TimeoutSec = 900
+        [int]$TimeoutSec = 900,
+        [hashtable]$EnvironmentOverrides = @{}
     )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $Exe
@@ -738,6 +744,10 @@ function Invoke-NativeCaptured {
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     $psi.StandardOutputEncoding = $utf8
     $psi.StandardErrorEncoding = $utf8
+    foreach ($key in @($EnvironmentOverrides.Keys)) {
+        if ($null -eq $EnvironmentOverrides[$key]) { [void]$psi.EnvironmentVariables.Remove([string]$key) }
+        else { $psi.EnvironmentVariables[[string]$key] = [string]$EnvironmentOverrides[$key] }
+    }
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi

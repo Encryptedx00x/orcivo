@@ -83,7 +83,7 @@ function New-Attestation {
         [Parameter(Mandatory)][string]$TaskVersionId,
         [Parameter(Mandatory)][string]$RunId,
         [Parameter(Mandatory)][hashtable]$Bindings,
-        [Parameter(Mandatory)][ValidateSet('PASS','FAIL','APPROVE','REQUEST_CHANGES','HUMAN_REVIEW_REQUIRED','INCOMPLETE_REVIEW')][string]$Result,
+        [Parameter(Mandatory)][ValidateSet('PASS','FAIL','APPROVE','REQUEST_CHANGES','BLOCK','ESCALATE_LEVEL_C','HUMAN_REVIEW_REQUIRED','INCOMPLETE_REVIEW')][string]$Result,
         [hashtable]$Payload = @{},
         [hashtable]$ProducerMeta = @{}
     )

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "orcivo.orchestration.v2.agent-result/1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "role",
+    "resultClass",
+    "summary",
+    "decisions",
+    "tests",
+    "nextAction",
+    "importantArtifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "orcivo.orchestration.v2.agent-result/1" },
+    "role": { "type": "string", "enum": ["IMPLEMENTER", "CORRECTOR"] },
+    "resultClass": {
+      "type": "string",
+      "enum": ["SUCCESS", "BLOCK", "CONTEXT_ROLLOVER", "AGENT_FAILURE", "TEST_FAILURE"]
+    },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "decisions": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 2000 }
+    },
+    "tests": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "status", "evidence"],
+        "properties": {
+          "command": { "type": "string", "maxLength": 2000 },
+          "status": { "type": "string", "enum": ["PASS", "FAIL", "NOT_RUN"] },
+          "evidence": { "type": "string", "maxLength": 4000 }
+        }
+      }
+    },
+    "nextAction": { "type": "string", "maxLength": 2000 },
+    "importantArtifacts": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 1000 }
+    }
+  }
+}

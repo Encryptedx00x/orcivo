@@ -23,17 +23,23 @@ RUNNER MODES (config.pilot.runnerMode):
 REAL EXECUTION of a PB1-* task ALSO requires: (a) the auth token file
 (config.pilot.realExecutionAuthFile) present in .orchestration/v2/,
 (b) that task's P02/P03 gates satisfied, (c) for Level C, an owner gate. The
-pilot never lifts those on its own. There is still NO `run` verb that dispatches
-a real Orcivo task in this build.
+pilot never lifts those on its own. The `run` and `run-once` verbs dispatch real
+agents, but a blocked P03/P04 graph remains WAITING_HUMAN and starts no task.
 
 Commands:
   status           print pilot config, guards, runner mode, last checkpoint
   selftest         run the synthetic pilot validation suite
   docker-preflight report whether the Docker composition can run right now
-  start            (SYNTHETIC ONLY here) run the pilot loop over the synthetic queue
+  run              dispatch READY tasks until idle / wait / stop / budget failure
+  run-once         execute at most one READY task
+  start            deprecated alias for run
   stop             ask a running pilot loop to stop
 #>
-param([Parameter(Position = 0)][ValidateSet('status', 'selftest', 'docker-preflight', 'start', 'stop')][string]$Command = 'status')
+param(
+    [Parameter(Position = 0)][ValidateSet('status', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [string]$TaskFile = '',
+    [ValidateSet('','claude','codex')][string]$ProviderOverride = ''
+)
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
@@ -54,6 +60,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'intent.ps1')
 . (Join-Path $PSScriptRoot 'correction.ps1')
 . (Join-Path $PSScriptRoot 'runner-docker.ps1')
+. (Join-Path $PSScriptRoot 'dispatcher.ps1')
 
 function Get-PilotConfig { return (Get-V2Config).pilot }
 function Get-PilotCheckpointDir { return (Join-Path (Get-V2Dir) 'pilot') }
@@ -316,6 +323,9 @@ switch ($Command) {
         $cp = Get-PilotCheckpoint
         if ($cp) { Write-Host "  last checkpoint: run $($cp.runId.Substring(0,10)) task $($cp.taskId) -> $($cp.status) ($($cp.ledgerState)) at $($cp.writtenAt)" }
         else { Write-Host "  last checkpoint: (none)" }
+        $ds = Get-DispatcherState
+        if ($ds) { Write-Host "  dispatcher:    task $($ds.taskId) stage=$($ds.stage) status=$($ds.status) provider=$($ds.provider)" }
+        else { Write-Host "  dispatcher:    no durable task state" }
         $dpf = Test-DockerPreflight
         Write-Host "  docker composition: ready=$($dpf.ready) daemon=$($dpf.daemonRunning) image=$($dpf.imagePresent)"
         Write-Host ""
@@ -343,12 +353,11 @@ switch ($Command) {
         & (Join-Path $PSScriptRoot 'tests\pilot\run-pilot-selftest.ps1')
         exit $LASTEXITCODE
     }
-    'start' {
-        Write-Host "pilot start: this build ships SYNTHETIC validation only." -ForegroundColor Yellow
-        Write-Host "Run:  powershell -File scripts\orchestration\v2\pilot.ps1 selftest"
-        Write-Host "A real PB1-* loop is gated on: P02-T12 + P02-T13 + P03 satisfied, an owner"
-        Write-Host "gate for each Level C task, and the $($(Get-PilotConfig).realExecutionAuthFile) token. None exist."
-        exit 2
+    { $_ -in @('run','run-once','start') } {
+        if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }
+        $r = Invoke-DispatcherLoop -RunOnce:($Command -eq 'run-once') -TaskFile $TaskFile -ProviderOverride $ProviderOverride
+        $r | ConvertTo-Json -Depth 20
+        exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
     }
     'stop' {
         $f = Join-Path (Get-V2Dir) (Get-PilotConfig).stopFile
@@ -356,4 +365,3 @@ switch ($Command) {
         Write-Host "pilot stop file written: $f"
     }
 }
-

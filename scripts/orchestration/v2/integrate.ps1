@@ -179,8 +179,11 @@ function Invoke-Integration {
         Beat-Lease $beat
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'push-start' -ToState 'INTEGRATING' -RunId $RunId -Note 'PUSHING' | Out-Null
         Assert-SafeGitV2 @('push', 'origin', $target)
-        & git -C $RepoDir push origin "HEAD:$target" 2>&1 | Out-Null
-        if (($LASTEXITCODE -ne 0) -or (_fault 'afterCasPushReject')) {
+        $publishLogDir=Join-Path (Get-V2Dir) "runs\$RunId\integrator"
+        New-Item -ItemType Directory -Force -Path $publishLogDir|Out-Null
+        $gitExe=(Get-Command git.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
+        $pushProc=Invoke-NativeCaptured -Exe $gitExe -Arguments @('-C',$RepoDir,'push','origin',"HEAD:$target") -WorkingDirectory $RepoDir -StdoutLog (Join-Path $publishLogDir 'push.stdout.log') -StderrLog (Join-Path $publishLogDir 'push.stderr.log') -TimeoutSec 300
+        if (($pushProc.exitCode -ne 0) -or (_fault 'afterCasPushReject')) {
             return (_fail $TaskVersionId $RunId $result "git push origin $target rejected - target advanced locally but NOT published; branch preserved" 'PUSH_FAILED')
         }
         & git -C $RepoDir fetch origin --quiet 2>&1 | Out-Null

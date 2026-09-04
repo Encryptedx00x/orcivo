@@ -1,7 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "orcivo.orchestration.v2.review-envelope/1",
-  "title": "Orcivo V2 cross-review envelope",
+  "$id": "orcivo.orchestration.v2.review-agent-result/1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +17,7 @@
     "reviewerMeta"
   ],
   "properties": {
-    "schemaVersion": { "const": "orcivo.orchestration.v2.review-envelope/1" },
+    "schemaVersion": { "type": "string", "const": "orcivo.orchestration.v2.review-envelope/1" },
     "taskVersion": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "reviewedHead": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
     "treeHash": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
@@ -26,14 +25,7 @@
     "specHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "verdict": {
       "type": "string",
-      "enum": [
-        "APPROVE",
-        "REQUEST_CHANGES",
-        "BLOCK",
-        "ESCALATE_LEVEL_C",
-        "HUMAN_REVIEW_REQUIRED",
-        "INCOMPLETE_REVIEW"
-      ]
+      "enum": ["APPROVE", "REQUEST_CHANGES", "BLOCK", "ESCALATE_LEVEL_C"]
     },
     "criteria": {
       "type": "array",
@@ -43,12 +35,7 @@
         "additionalProperties": false,
         "required": ["id", "met", "evidence"],
         "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$"
-          },
+          "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$" },
           "met": { "type": "boolean" },
           "evidence": { "type": "string", "maxLength": 4000 }
         }
@@ -60,11 +47,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["severity", "detail"],
+        "required": ["severity", "file", "line", "detail"],
         "properties": {
           "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
-          "file": { "type": "string", "maxLength": 512 },
-          "line": { "type": "integer" },
+          "file": { "type": ["string", "null"] },
+          "line": { "type": ["integer", "null"] },
           "detail": { "type": "string", "minLength": 1, "maxLength": 4000 }
         }
       }
@@ -81,7 +68,7 @@
       "properties": {
         "provider": { "type": "string", "maxLength": 64 },
         "model": { "type": "string", "maxLength": 128 },
-        "effort": { "type": "string", "maxLength": 32 },
+        "effort": { "type": "string", "maxLength": 64 },
         "toolPolicy": { "type": "string", "maxLength": 64 },
         "promptTemplateVersion": { "type": "string", "maxLength": 64 }
       }

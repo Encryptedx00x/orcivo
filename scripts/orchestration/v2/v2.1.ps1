@@ -7,9 +7,8 @@ auto-resume, context rollover, bounded correction loop, run generation fencing,
 INTEGRATION_INTENT remote-truth reconciliation, task graph) on top of the V2
 security spine.
 
-Real-task execution stays STRUCTURALLY DISABLED (NC-01): there is no `run` verb.
-Wave 0 proves every autonomy behaviour deterministically against the real spine,
-real ledger and real git, with no model calls.
+Real-task execution is provided by pilot.ps1 run/run-once. Planning and Level C
+gates remain fail-closed; disposable real-CLI smoke tests do not run product work.
 
 Commands:
   status     print the pragmatic V2.1 layer status + threat model
@@ -40,7 +39,7 @@ switch ($Command) {
         Write-Host "    correction.ps1  bounded correction loop"
         Write-Host "    taskgraph.ps1   dependency graph validation"
         Write-Host ""
-        Write-Host "  real tasks:    STRUCTURALLY DISABLED (NC-01) - no 'run' verb, no production entrypoint"
+        Write-Host "  real tasks:    pilot.ps1 run/run-once (owner-approved graph + fail-closed gates)"
         Write-Host "  Wave 0:        scripts\orchestration\v2\tests\wave0\run-wave0.ps1  (deterministic, no models)"
         Write-Host "  closeout:      .planning\reviews\PRAGMATIC-V2.1-CLOSEOUT.md"
         Write-Host "  product batch: .planning\product\MVP-PRODUCT-BATCH-1.md  (PROPOSAL ONLY)"
