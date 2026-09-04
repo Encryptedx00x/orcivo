@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  StreamableFile,
+} from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ApproveQuoteSchema } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
@@ -16,6 +26,16 @@ export class QuotePublicController {
   @Get(':token')
   getPublicQuote(@Param('token') token: string) {
     return this.quoteService.getByApprovalToken(token);
+  }
+
+  // Serve o PDF ja gerado (nao regenera) para o token dado — mesmo escopo de
+  // acesso do GET acima: so o orcamento daquele token, sem guard de auth.
+  @Get(':token/pdf')
+  @Header('Content-Type', 'application/pdf')
+  @Header('Content-Disposition', 'inline; filename="orcamento.pdf"')
+  async getPublicQuotePdf(@Param('token') token: string): Promise<StreamableFile> {
+    const buffer = await this.quoteService.getPdfByApprovalToken(token);
+    return new StreamableFile(buffer);
   }
 
   @Post(':token/approve')

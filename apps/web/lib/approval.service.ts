@@ -20,7 +20,10 @@ export interface PublicQuote {
   notes?: string;
   customer: { name: string; phone?: string };
   items: PublicQuoteItem[];
-  company: { trade_name: string; allowed_approval_methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[] };
+  company: {
+    trade_name: string;
+    allowed_approval_methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[];
+  };
 }
 
 export interface ApproveDto {
@@ -36,6 +39,11 @@ export const approvalService = {
     return res.json() as Promise<PublicQuote>;
   },
 
+  /** URL do PDF já gerado deste orçamento — escopo restrito ao token da aprovação. */
+  getPdfUrl(token: string): string {
+    return `${API_URL}/quotes/public/${token}/pdf`;
+  },
+
   async approveQuote(token: string, dto: ApproveDto): Promise<{ status: string }> {
     const res = await fetch(`${API_URL}/quotes/public/${token}/approve`, {
       method: 'POST',
@@ -43,7 +51,7 @@ export const approvalService = {
       body: JSON.stringify(dto),
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { message?: string };
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
       throw new Error(body.message ?? 'Erro ao processar aprovação');
     }
     return res.json() as Promise<{ status: string }>;

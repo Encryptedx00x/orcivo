@@ -372,4 +372,29 @@ export class QuoteService {
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
     return quote;
   }
+
+  /**
+   * Serve o PDF já gerado (em `send()`/`approve()`) para o dono do approval_token.
+   * Resolucao do token -> id segue o mesmo caminho de getByApprovalToken() (Redis
+   * com fallback ao banco), garantindo que só o orçamento daquele token é acessível.
+   */
+  async getPdfByApprovalToken(token: string): Promise<Buffer> {
+    const cachedId = await this.redis.get(`quote:approval:${token}`);
+    const quote = cachedId
+      ? await this.prisma.quote.findFirst({
+          where: { id: cachedId },
+          select: { id: true, pdf_url: true },
+        })
+      : await this.prisma.quote.findFirst({
+          where: { approval_token: token },
+          select: { id: true, pdf_url: true },
+        });
+
+    if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
+
+    const key = this.storage.extractKey(PDF_BUCKET, quote.pdf_url);
+    if (!key) throw new NotFoundException('PDF ainda não foi gerado para este orçamento.');
+
+    return this.storage.getObjectBuffer(PDF_BUCKET, key);
+  }
 }

@@ -1,7 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { FileText, Calendar, Clock, ShieldCheck, CheckCircle, AlertCircle } from 'lucide-react';
+import {
+  FileText,
+  Calendar,
+  Clock,
+  ShieldCheck,
+  CheckCircle,
+  AlertCircle,
+  Download,
+} from 'lucide-react';
 import { approvalService, type PublicQuote } from '../../../lib/approval.service';
 import { formatMoney } from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
@@ -67,12 +75,20 @@ export default function ApprovePage(): JSX.Element {
   };
 
   // ─── Company initials from name ───
-  const companyInitials = quote?.company.trade_name
-    ?.split(' ').slice(0, 2).map((w: string) => w[0].toUpperCase()).join('') ?? 'OV';
+  const companyInitials =
+    quote?.company.trade_name
+      ?.split(' ')
+      .slice(0, 2)
+      .map((w: string) => w[0].toUpperCase())
+      .join('') ?? 'OV';
   const companyName = quote?.company.trade_name ?? 'Orcivo';
 
   const expiresDate = quote?.valid_until
-    ? new Date(quote.valid_until).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(quote.valid_until).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
     : '—';
 
   // ─── Approved state ───
@@ -81,16 +97,29 @@ export default function ApprovePage(): JSX.Element {
       <div className="pub">
         <div className="pub-bar">
           <div className="biz">{companyInitials}</div>
-          <div><div className="biz-name">{companyName}</div></div>
-          <div className="powered">Enviado via <strong>Orcivo</strong></div>
+          <div>
+            <div className="biz-name">{companyName}</div>
+          </div>
+          <div className="powered">
+            Enviado via <strong>Orcivo</strong>
+          </div>
         </div>
         <div className="pub-body" style={{ textAlign: 'center', paddingTop: 80 }}>
           <CheckCircle size={64} style={{ color: '#16A34A', margin: '0 auto 20px' }} />
-          <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.015em', color: '#0A0A0F', margin: '0 0 12px' }}>
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: '-0.015em',
+              color: '#0A0A0F',
+              margin: '0 0 12px',
+            }}
+          >
             Orçamento aprovado!
           </h1>
           <p style={{ fontSize: 15, color: '#64748B', maxWidth: 400, margin: '0 auto 8px' }}>
-            Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em contato.
+            Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em
+            contato.
           </p>
           <p style={{ fontSize: 13, color: '#94A3B8', maxWidth: 400, margin: '0 auto' }}>
             Uma ordem de serviço foi gerada automaticamente.
@@ -106,14 +135,30 @@ export default function ApprovePage(): JSX.Element {
       <div className="pub">
         <div className="pub-bar">
           <div className="biz">OV</div>
-          <div><div className="biz-name">Orcivo</div></div>
+          <div>
+            <div className="biz-name">Orcivo</div>
+          </div>
         </div>
         <div className="pub-body">
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 16, padding: '24px 26px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <div
+            style={{
+              background: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: 16,
+              padding: '24px 26px',
+              display: 'flex',
+              gap: 16,
+              alignItems: 'flex-start',
+            }}
+          >
             <AlertCircle size={24} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16, color: '#7F1D1D', marginBottom: 6 }}>Link inválido ou expirado</div>
-              <div style={{ fontSize: 14, color: '#991B1B' }}>{errorMsg || 'Este link de orçamento não é válido ou expirou.'}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#7F1D1D', marginBottom: 6 }}>
+                Link inválido ou expirado
+              </div>
+              <div style={{ fontSize: 14, color: '#991B1B' }}>
+                {errorMsg || 'Este link de orçamento não é válido ou expirou.'}
+              </div>
             </div>
           </div>
         </div>
@@ -127,11 +172,22 @@ export default function ApprovePage(): JSX.Element {
       <div className="pub">
         <div className="pub-bar">
           <div className="biz">OV</div>
-          <div><div className="biz-name">Orcivo</div></div>
+          <div>
+            <div className="biz-name">Orcivo</div>
+          </div>
         </div>
         <div className="pub-body">
           {[120, 80, 200].map((h, i) => (
-            <div key={i} style={{ height: h, background: '#E2E8F0', borderRadius: 16, marginBottom: 16, animation: 'pulse 1.5s infinite' }} />
+            <div
+              key={i}
+              style={{
+                height: h,
+                background: '#E2E8F0',
+                borderRadius: 16,
+                marginBottom: 16,
+                animation: 'pulse 1.5s infinite',
+              }}
+            />
           ))}
         </div>
       </div>
@@ -147,7 +203,32 @@ export default function ApprovePage(): JSX.Element {
         <div>
           <div className="biz-name">{companyName}</div>
         </div>
-        <div className="powered">Enviado via <strong>Orcivo</strong></div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() =>
+              window.open(approvalService.getPdfUrl(token), '_blank', 'noopener,noreferrer')
+            }
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '8px 14px',
+              borderRadius: 9999,
+              border: '1px solid var(--border-1)',
+              background: '#fff',
+              color: 'var(--ink)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            <Download size={14} /> Baixar PDF
+          </button>
+          <div className="powered">
+            Enviado via <strong>Orcivo</strong>
+          </div>
+        </div>
       </div>
 
       <div className="pub-body">
@@ -163,26 +244,62 @@ export default function ApprovePage(): JSX.Element {
               Confira os itens, valores e condições — você pode aprovar ou recusar abaixo.
             </div>
           </div>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '6px 12px', borderRadius: 9999, background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: '6px 12px',
+              borderRadius: 9999,
+              background: '#FEF3C7',
+              color: '#92400E',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }}
+            />
             Aguardando sua resposta
           </span>
         </div>
 
         {/* Meta row */}
         <div className="pub-meta-row">
-          <span><Calendar size={14} /> Validade: <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong></span>
-          <span><Clock size={14} /> Válido até <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong></span>
-          <span><ShieldCheck size={14} /> Você está num link seguro do Orcivo</span>
+          <span>
+            <Calendar size={14} /> Validade:{' '}
+            <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
+          </span>
+          <span>
+            <Clock size={14} /> Válido até{' '}
+            <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
+          </span>
+          <span>
+            <ShieldCheck size={14} /> Você está num link seguro do Orcivo
+          </span>
         </div>
 
         {/* Para (cliente) */}
         <div className="pub-card">
           <h2>Para</h2>
           <div className="pub-grid-2">
-            <div className="pub-kv"><div className="k">Cliente</div><div className="v">{quote?.customer.name}</div></div>
-            {quote?.title && <div className="pub-kv"><div className="k">Título</div><div className="v">{quote.title}</div></div>}
-            {quote?.valid_until && <div className="pub-kv"><div className="k">Validade</div><div className="v">{expiresDate}</div></div>}
+            <div className="pub-kv">
+              <div className="k">Cliente</div>
+              <div className="v">{quote?.customer.name}</div>
+            </div>
+            {quote?.title && (
+              <div className="pub-kv">
+                <div className="k">Título</div>
+                <div className="v">{quote.title}</div>
+              </div>
+            )}
+            {quote?.valid_until && (
+              <div className="pub-kv">
+                <div className="k">Validade</div>
+                <div className="v">{expiresDate}</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -206,7 +323,9 @@ export default function ApprovePage(): JSX.Element {
             </div>
             {quote && parseFloat(quote.discount_value) > 0 && (
               <div className="row" style={{ color: '#166534' }}>
-                <span>Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}</span>
+                <span>
+                  Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
+                </span>
                 <span>- {formatMoney(quote.discount_value)}</span>
               </div>
             )}
@@ -231,23 +350,38 @@ export default function ApprovePage(): JSX.Element {
             <h2>Como deseja aprovar?</h2>
 
             {/* Method tabs */}
-            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #E2E8F0', marginBottom: 20 }}>
-              {([
-                { key: 'APPROVE_BUTTON', label: 'Aprovação simples' },
-                { key: 'TYPED_NAME', label: 'Assinar com nome' },
-                { key: 'DRAWN_SIGNATURE', label: 'Assinar com desenho' },
-              ] as const)
-                .filter(t => quote?.company.allowed_approval_methods.includes(t.key))
-                .map(t => (
+            <div
+              style={{
+                display: 'flex',
+                gap: 0,
+                borderBottom: '1px solid #E2E8F0',
+                marginBottom: 20,
+              }}
+            >
+              {(
+                [
+                  { key: 'APPROVE_BUTTON', label: 'Aprovação simples' },
+                  { key: 'TYPED_NAME', label: 'Assinar com nome' },
+                  { key: 'DRAWN_SIGNATURE', label: 'Assinar com desenho' },
+                ] as const
+              )
+                .filter((t) => quote?.company.allowed_approval_methods.includes(t.key))
+                .map((t) => (
                   <button
                     key={t.key}
                     onClick={() => setActiveTab(t.key)}
                     style={{
-                      padding: '10px 16px', fontSize: 13, fontWeight: activeTab === t.key ? 600 : 500,
+                      padding: '10px 16px',
+                      fontSize: 13,
+                      fontWeight: activeTab === t.key ? 600 : 500,
                       color: activeTab === t.key ? '#0A0A0F' : '#64748B',
-                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
                       borderBottom: `2px solid ${activeTab === t.key ? '#6D28D9' : 'transparent'}`,
-                      marginBottom: -1, fontFamily: 'inherit', whiteSpace: 'nowrap',
+                      marginBottom: -1,
+                      fontFamily: 'inherit',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {t.label}
@@ -263,7 +397,19 @@ export default function ApprovePage(): JSX.Element {
                 <button
                   onClick={handleApprove}
                   disabled={submitting}
-                  style={{ width: '100%', height: 52, borderRadius: 14, background: '#6D28D9', color: '#fff', border: 'none', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.6 : 1 }}
+                  style={{
+                    width: '100%',
+                    height: 52,
+                    borderRadius: 14,
+                    background: '#6D28D9',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    opacity: submitting ? 0.6 : 1,
+                  }}
                 >
                   {submitting ? 'Processando...' : 'Aprovar orçamento ✓'}
                 </button>
@@ -272,20 +418,51 @@ export default function ApprovePage(): JSX.Element {
 
             {activeTab === 'TYPED_NAME' && (
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#334155',
+                    marginBottom: 8,
+                  }}
+                >
                   Seu nome completo
                 </label>
                 <input
                   type="text"
                   value={typedName}
-                  onChange={e => setTypedName(e.target.value)}
+                  onChange={(e) => setTypedName(e.target.value)}
                   placeholder="Digite seu nome completo"
-                  style={{ width: '100%', height: 48, border: '1px solid #E2E8F0', borderRadius: 12, padding: '0 14px', fontSize: 15, outline: 'none', boxSizing: 'border-box', marginBottom: 16, fontFamily: 'inherit' }}
+                  style={{
+                    width: '100%',
+                    height: 48,
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 12,
+                    padding: '0 14px',
+                    fontSize: 15,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    marginBottom: 16,
+                    fontFamily: 'inherit',
+                  }}
                 />
                 <button
                   onClick={handleApprove}
                   disabled={submitting || !typedName.trim()}
-                  style={{ width: '100%', height: 52, borderRadius: 14, background: '#6D28D9', color: '#fff', border: 'none', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit', opacity: (submitting || !typedName.trim()) ? 0.6 : 1 }}
+                  style={{
+                    width: '100%',
+                    height: 52,
+                    borderRadius: 14,
+                    background: '#6D28D9',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    opacity: submitting || !typedName.trim() ? 0.6 : 1,
+                  }}
                 >
                   {submitting ? 'Processando...' : 'Aprovar e assinar'}
                 </button>
@@ -294,12 +471,27 @@ export default function ApprovePage(): JSX.Element {
 
             {activeTab === 'DRAWN_SIGNATURE' && (
               <div>
-                <p style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>Desenhe sua assinatura no campo abaixo:</p>
+                <p style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                  Desenhe sua assinatura no campo abaixo:
+                </p>
                 <SignatureCanvas onSign={setSignature} />
                 <button
                   onClick={handleApprove}
                   disabled={submitting || !signature}
-                  style={{ width: '100%', height: 52, borderRadius: 14, background: '#6D28D9', color: '#fff', border: 'none', fontWeight: 700, fontSize: 16, cursor: 'pointer', fontFamily: 'inherit', marginTop: 16, opacity: (submitting || !signature) ? 0.6 : 1 }}
+                  style={{
+                    width: '100%',
+                    height: 52,
+                    borderRadius: 14,
+                    background: '#6D28D9',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    marginTop: 16,
+                    opacity: submitting || !signature ? 0.6 : 1,
+                  }}
                 >
                   {submitting ? 'Processando...' : 'Aprovar com assinatura'}
                 </button>
@@ -307,7 +499,20 @@ export default function ApprovePage(): JSX.Element {
             )}
 
             {submitError && (
-              <div style={{ marginTop: 14, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#991B1B' }}>
+              <div
+                style={{
+                  marginTop: 14,
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'flex-start',
+                  fontSize: 14,
+                  color: '#991B1B',
+                }}
+              >
                 <AlertCircle size={16} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
                 {submitError}
               </div>
@@ -325,7 +530,12 @@ export default function ApprovePage(): JSX.Element {
               <div className="v">{formatMoney(quote?.total ?? '0')}</div>
             </div>
             <div className="actions">
-              <button className="btn-reject" onClick={() => { /* reject flow TBD */ }}>
+              <button
+                className="btn-reject"
+                onClick={() => {
+                  /* reject flow TBD */
+                }}
+              >
                 Recusar
               </button>
               <button className="btn-accept" onClick={() => setPageState('show_form')}>

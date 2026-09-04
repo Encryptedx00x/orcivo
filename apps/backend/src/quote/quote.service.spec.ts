@@ -5,7 +5,7 @@ jest.mock('./quote-pdf.service', () => ({
   },
 }));
 
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { QuoteService } from './quote.service';
@@ -76,6 +76,7 @@ const mockStorage = {
   ),
   extractKey: jest.fn((_bucket: string, stored: string | null) => stored ?? null),
   assertUploadable: jest.fn(),
+  getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('PDF_BYTES')),
 };
 
 const mockWorkOrderService = {
@@ -335,6 +336,39 @@ describe('QuoteService', () => {
         status: 'SENT',
         total: '30.00',
       });
+    });
+  });
+
+  describe('getPdfByApprovalToken()', () => {
+    it('Test 8: retorna os bytes do PDF já armazenado para o token do orçamento', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({ id: 'q1', pdf_url: 'comp-1/quotes/q1.pdf' });
+
+      const result = await service.getPdfByApprovalToken('some-token');
+
+      expect(mockStorage.getObjectBuffer).toHaveBeenCalledWith(
+        'orcivo-pdfs',
+        'comp-1/quotes/q1.pdf',
+      );
+      expect(result).toEqual(Buffer.from('PDF_BYTES'));
+    });
+
+    it('Test 9: token inexistente lança NotFoundException (sem vazar orçamento de outro token)', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockPrisma.quote.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPdfByApprovalToken('token-invalido')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
+    });
+
+    it('Test 10: orçamento sem PDF gerado ainda lança NotFoundException', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({ id: 'q1', pdf_url: null });
+
+      await expect(service.getPdfByApprovalToken('some-token')).rejects.toThrow(NotFoundException);
+      expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
     });
   });
 });
