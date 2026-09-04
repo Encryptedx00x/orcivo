@@ -24,7 +24,10 @@ function Invoke-MemoryAdapterHook {
     $mcfg = $cfg.memoryAdapter
     if (-not $mcfg -or -not [bool]$mcfg.enabled -or -not $mcfg.script) { return @{ ok=$true; enabled=$false; reason='disabled' } }
     try {
-        $scriptPath = Resolve-SafePath -Root (Get-RepoRoot) -Relative ([string]$mcfg.script)
+        # The adapter is orchestration code: resolve it against the authority repo
+        # (where these scripts physically live), never against a task workspace or
+        # disposable fixture - a task can never swap the adapter script.
+        $scriptPath = Resolve-SafePath -Root (Get-AuthorityRoot) -Relative ([string]$mcfg.script)
         if (-not (Test-Path -LiteralPath $scriptPath)) { return @{ ok=$true; enabled=$true; reason='adapter unavailable; continuing' } }
         $safe = ConvertTo-MemorySafePayload $Payload
         & $scriptPath -Hook $Hook -PayloadJson (ConvertTo-CanonicalJson $safe) | Out-Null

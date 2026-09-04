@@ -492,9 +492,16 @@
     }
   },
   "memoryAdapter": {
-    "$comment": "Optional ai-memory adapter seam. Disabled by default; memory is auxiliary, never authority, and any adapter failure is ignored. Reviewers never receive this adapter.",
+    "$comment": "Optional ai-memory adapter seam. Disabled by default; memory is AUXILIARY, never authority, fail-soft (adapter failure is ignored, dispatch continues). Reviewers never receive this adapter. Flipping `enabled` to true is an owner-approval-gated change (see .planning/reviews/AI-MEMORY-2-A-B-EVALUATION.md). Reference adapter: scripts/orchestration/v2/memory-eval-adapter.ps1. Bounded retrieval: at most maxMemories pages / maxInjectChars characters injected as untrusted background into the implementer prompt only.",
     "enabled": false,
-    "script": ""
+    "script": "scripts/orchestration/v2/memory-eval-adapter.ps1",
+    "baseUrl": "http://127.0.0.1:49374",
+    "project": "orcivo",
+    "workspace": "default",
+    "maxMemories": 5,
+    "maxInjectChars": 2000,
+    "relevanceFloor": 0,
+    "timeoutSec": 6
   },
   "redaction": {
     "maxEnvLikeLines": 6,
