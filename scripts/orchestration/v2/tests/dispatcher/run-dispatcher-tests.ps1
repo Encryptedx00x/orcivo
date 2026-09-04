@@ -131,7 +131,7 @@ try{
             $r=Complete-DispatcherCandidateCommit -State $s
             Assert-True ($r.ok -and $r.created -and $r.exitCode -eq 0 -and $r.stderr -match '\[STARTED\]') 'benign hook stderr prevented candidate commit'
             Assert-True ((& git -C $fx rev-parse HEAD).Trim() -ne $base) 'dispatcher did not continue after benign hook stderr'
-            Assert-True ((& git -C $fx log -1 --pretty=%s) -eq 'feat: RG-03') 'dispatcher candidate message is not Conventional Commits-compatible'
+            Assert-True ((& git -C $fx log -1 --pretty=%s) -eq 'feat: rg-03') 'dispatcher candidate message is not Conventional Commits-compatible'
         }
         Check 'RG-04' {
             $fx=Join-Path $Root 'rg04';& git init -b main --quiet $fx

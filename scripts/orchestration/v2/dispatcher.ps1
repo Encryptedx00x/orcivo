@@ -242,7 +242,7 @@ function Complete-DispatcherCandidateCommit {
         return $out
     }
 
-    $message = "feat: $($State.taskId)"
+    $message = "feat: $($State.taskId.ToLowerInvariant())"
     $commit = Invoke-GitV2 -Dir $workspace -Arguments @('-c','user.name=orcivo-dispatcher','-c','user.email=dispatcher@orcivo.local','commit','-m',$message,'--quiet') -TimeoutSec 900 -LogLabel 'candidate-commit'
     $out.exitCode=[int]$commit.exitCode;$out.stdout=$commit.stdout;$out.stderr=$commit.stderr
     if ($commit.exitCode -ne 0) { $out.reason=Get-GitFailureSummaryV2 $commit 'candidate git commit';return $out }
