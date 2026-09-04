@@ -17,9 +17,16 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
-**Status:** `in_progress` — P00 PASS; P01 auto PASS; **P02/Wave 2 T01–T11 done + green; AGUARDANDO T12 (HUMAN_APPROVAL) e T13 (MANUAL_UAT)**
-**Data:** 2026-09-01
-**Próximo:** gates humanos de P02 — ver `phases/03.1-.../03.1-P02-T12-T13-HANDOFF.md`. Agente NÃO executa T12/T13. P03 bloqueada até P02 = PASS.
+**Status:** `in_progress` — P00 PASS; P01 auto PASS; **P02/Wave 2 = PASS** (T01–T13; T12/T13 autorizados pelo owner e executados 2026-09-03 — ver `phases/03.1-.../03.1-P02-T12-T13-RESULT.md`). **P03 (storage privado) UNBLOCKED.**
+**Data:** 2026-09-03
+**Próximo:** planejar/executar **03.1-P03** (storage privado). Depois seguir o task graph reconciliado do MVP Product Batch #1 (`.planning/product/MVP-PRODUCT-BATCH-1-EXECUTION.md`) a partir da fase P04.
+
+**P02 gates (2026-09-03):** T12 = PASS (migrations 1–6 confirmadas em `orcivo_dev`
+persistente, backup feito, backfill íntegro 0/0, zero drift, reseed). T13 = PASS
+(A/B funcional por automação de API — suíte backend 16/16, 100 passed; cross-tenant
+→ 404, RBAC → 403, fail-closed → 401, sem vazamento em corpo de negação). UI web/mobile
+A/B permanece no bloco UAT de P10. `REAL_EXECUTION_AUTHORIZED` token criado em
+`.orchestration/v2/`.
 
 **Ferramenta de orquestração (2026-09-03):** `THREAT_MODEL = LOCAL_TRUSTED_HOST`
 fixado pelo owner; camada de autonomia pragmática V2.1 construída sobre a spine V2
@@ -32,11 +39,15 @@ Claude/Codex PASS. **Não ligado a task real (NC-01).** Ver
 **MVP Product Batch #1 APROVADO pelo owner (2026-09-03)** com decisões por item —
 `.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` /
 `-EXECUTION.md`). 23 tasks `PB1-*` (6 Level C), todas `blockedByGates:
-[P02-T12, P02-T13, P03]` — **nada roda antes de P03**. Deltas: nova fase **F3.2
-(inventory-lite)**, nova wave **P17-wave**. `P02-T12`/`P02-T13` seguem
-`WAITING_HUMAN`; `P03 = BLOCKED_BY_P02` — inalterados. **PILOT MODE** construído
+[P02-T12, P02-T13, P03]`. Deltas: nova fase **F3.2 (inventory-lite)**, nova wave
+**P17-wave**. **`P02-T12` = PASS · `P02-T13` = PASS · `P02` = PASS · `P03`
+UNBLOCKED (2026-09-03)** — o primeiro trabalho READY é **03.1-P03** (storage
+privado); os `PB1-*` entram a partir de P04. **PILOT MODE**
 (`scripts/orchestration/v2/pilot.ps1`, `runnerMode` default sintético; sem verbo
-`run` para task real; token `REAL_EXECUTION_AUTHORIZED` não existe).
+`run` para task real). Token `REAL_EXECUTION_AUTHORIZED` **criado** em
+`.orchestration/v2/` (2026-09-03) — o loop real do pilot ainda é sintético neste
+build; o implementer/reviewer real do task graph é conduzido manualmente pelo
+agente (maxParallel=1).
 
 **Discovery de produto (2026-09-01):** sessão de exploração local do produto
 pelo owner, formalizada em `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md`.
@@ -50,14 +61,17 @@ Ver `AGENT-HANDOFF.md` para continuidade entre agentes.
 P02 (T01–T10): TenantGuard global + RoleGuard, ownership de IDs relacionados,
 `company_id` em quote_items/quote_approvals, 35 testes de integração A/B verdes
 (cross-tenant read/list/detail/update/delete/nested/related-IDs/invites + RBAC +
-fail-closed). Fecha G-1..G-4. T12 (migrations de tenant em DB
-persistente) e T13 (UAT A/B) são gates humanos. Ver `03.1-P02-SUMMARY.md`.
+fail-closed). Fecha G-1..G-4. **T12 (migrations em DB persistente) = PASS · T13
+(A/B por automação de API) = PASS** (2026-09-03, autorizados pelo owner). Ver
+`03.1-P02-SUMMARY.md` e `03.1-P02-T12-T13-RESULT.md`.
 
 P01 (T01–T10, `SAFE_AUTO`) concluída: migration versionada de Payment/Appointment,
 guard de DB efêmero, migrate-from-zero e upgrade verdes em DB descartável, imagem
-Docker sobe com `/health` 200. Pendências humanas de P01: T11 (aplicar migration
-em DB persistente — `HUMAN_APPROVAL`) e T12 (setup manual em Windows limpo —
-`MANUAL_UAT`). Ver `phases/03.1-.../03.1-P01-SUMMARY.md`.
+Docker sobe com `/health` 200. Pendências humanas de P01: **T11 (aplicar migration
+em DB persistente) — tecnicamente coberto pela execução de T12 de P02** (migration
+4 `20260901000000_phase_2b_payments_appointments` confirmada em `orcivo_dev`);
+T12 de P01 (setup manual em Windows limpo — `MANUAL_UAT`) segue pendente.
+Ver `phases/03.1-.../03.1-P01-SUMMARY.md`.
 
 `baseline_reproducible` agora `migrations_and_container_only`. UAT permanece
 `0/75` e a Fase 4 continua bloqueada.
@@ -164,14 +178,15 @@ Waves 1-3 concluídas. Pendentes:
 - Migration-from-zero, upgrade versionado e integração segura ainda dependem de
   P01.
 
-- Waves P01–P11 permanecem não verificadas.
-- Gate R e todos os 75 casos UAT permanecem pendentes.
+- Waves P00–P02 verificadas (P02 = PASS 2026-09-03). Waves P03–P11 não verificadas.
+- Gate R e todos os 75 casos UAT permanecem pendentes (execução pós-P10).
 - Fase 4 não pode começar antes do encerramento da fase 03.1.
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
+| 2026-09-03 | P02 = PASS: T12 (migrations em `orcivo_dev` persistente + backfill íntegro + backup) e T13 (A/B por automação de API, suíte 16/16) autorizados pelo owner e executados. P03 UNBLOCKED. `REAL_EXECUTION_AUTHORIZED` criado. |
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
 | 2026-05-22 | Fase 1 planejada e executada (P01-P07) |
 | 2026-05-22 | Gap closures: shared-types dist, @Public health, scripts dev:* |

@@ -10,6 +10,37 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## P02 = PASS — T12/T13 executados (2026-09-03)
+
+O owner autorizou **explicitamente** T12 e T13. Executados nesta sessão:
+
+- **T12 = PASS.** DB alvo = `orcivo_dev` (localhost:5544, volume `postgres_dev_data`,
+  dados fictícios, **não é produção** — produção é a VPS `/opt/orcivo` sem creds
+  neste host). Backup `~/orcivo-preP02-20260903-205329.sql.gz`. Migrations 1–6 já
+  aplicadas (2026-09-02) e confirmadas via `_prisma_migrations`; `migrate status`
+  limpo. Orphan precheck 0/0. Backfill íntegro: 0 null `company_id`, 0 mismatch em
+  `quote_items` e `quote_approvals`; `NOT NULL` ativo nas duas. `migrate diff
+  --exit-code` = 0 (zero drift). `request_idempotency` existe/vazia. Reseed
+  idempotente (`plan_limits`).
+- **T13 = PASS.** Validação funcional A/B por **automação de API**: `pnpm
+  --filter @orcivo/backend test:ci` no commit `66d5e5a`, DB `orcivo_test`
+  efêmero → **16 suites, 100 passed / 5 todo / 0 fail** (35 testes A/B tenant/RBAC
+  + 10 idempotência). Cross-tenant read/list/detail/update/delete/mutation/
+  related-ID → 404; RBAC → 403; fail-closed → 401; sem vazamento em corpo de
+  negação (inspeção de código). UI web/mobile A/B fica no bloco UAT de P10.
+
+Evidência: **`phases/03.1-.../03.1-P02-T12-T13-RESULT.md`**. Docs atualizados:
+`STATE.md`, `ROADMAP.md`, `03.1-P02-SUMMARY.md`, `03.1-VERIFICATION.md`,
+`03.1-UAT.md`, `03.1-P02-T12-T13-HANDOFF.md` (procedimento preservado).
+
+**P02 = PASS · P03 = UNBLOCKED.** `REAL_EXECUTION_AUTHORIZED` criado em
+`.orchestration/v2/` (autorização durável do owner; o loop real do pilot ainda é
+sintético neste build — o task graph real é conduzido pelo agente como implementer,
+maxParallel=1). Próximo trabalho READY: **03.1-P03 (storage privado)**; os `PB1-*`
+entram a partir de P04.
+
+---
+
 ## MVP Product Batch #1 — OWNER APPROVED + PILOT MODE (2026-09-03)
 
 **O owner aprovou o MVP Product Batch #1** com decisões por item
@@ -407,6 +438,7 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
+| 2026-09-03 | Claude | **P02 = PASS.** T12 (migrations em `orcivo_dev` persistente + backup + backfill íntegro 0/0 + zero drift + reseed) e T13 (A/B por automação de API, suíte 16/16) autorizados pelo owner e executados. P03 UNBLOCKED. `REAL_EXECUTION_AUTHORIZED` criado. Planning atualizado (STATE/ROADMAP/SUMMARY/VERIFICATION/UAT/HANDOFF + `03.1-P02-T12-T13-RESULT.md`). | (ver `git log -1`) |
 | 2026-09-02 | Claude | **Remediação de segurança da orquestração.** V1 marcado `LEGACY_REJECTED_REFERENCE_ONLY` (guard bloqueia run/loop/cleanup; regressão 23/23 preservada). V2 security spine clean-room em `scripts/orchestration/v2/` (namespace `.orchestration/v2/`): ledger monotônico content-addressed (C-01), contract freeze + protected paths + post-diff scope (H-06/M-01/M-03), attestations content-addressed + staleness (C-03), review envelope JSON fail-closed (C-02/H-03/M-05), leases atômicas 4 namespaces + integração serial + fetch/CAS (H-05/H-04), preflight obrigatório + human gate durável (H-07/C-04 parcial), classificação por control channel + corpus negativo (H-01), streaming redaction + secret scan (H-11), Win32 argv/ID grammar (H-12). Suíte adversarial 40/40 (`v2/tests/`, repos descartáveis, sem modelo). Docs: THREAT-MODEL + ATTESTATIONS. Deferidos: C-05/C-06/H-08/H-09/H-10 + smoke real. NÃO production-ready; NÃO READY_FOR_CANARY. `READY_FOR_SECOND_SECURITY_REVIEW = YES`. | (ver `git log -1`) |
 | 2026-09-02 | Claude | Supervisor de orquestração production-ready: reconciliador real (`reconcile.ps1`), scheduler `loop`, scope-conflict, `merge.ps1` (safe merge, sem force/reset), reviewer cruzado (`review.ps1`), classificação de falha (12 classes), redaction endurecida, `recover`. Suite determinística 23/23 (`tests/`, fake-agent, sem chamadas de modelo). Drift documental corrigido (CLAUDE.md deixa de afirmar Fase 0). Não ligado a tasks reais; P02/P03 inalterados. | (ver `git log -1`) |
 | 2026-09-02 | Claude | Camada de orquestração multi-agente: SETUP + POC (14/14). `scripts/orchestration/` + `docs/runbooks/agent-orchestration.md`. orca-cli descartado (esqueleto abandonado). Não ligado a tarefas reais. P02/P03 inalterados. | `ae668f4` |

@@ -1,10 +1,10 @@
 # Orcivo — ROADMAP.md
 
-> **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00 e P01 concluídas (auto); P02 aguardando gates humanos T12/T13; P03 é a próxima wave após P02 = PASS. Fase 4 permanece bloqueada.
+> **Planejamento atual:** Fase 03.1 em andamento, inserida entre as Fases 3 e 4. P00/P01 concluídas (auto); **P02 = PASS (2026-09-03 — T12/T13 autorizados pelo owner)**; **P03 (storage privado) é a próxima wave, UNBLOCKED**. Fase 4 permanece bloqueada.
 >
 > **Discovery de produto 2026-09-01:** `phases/03.1-.../03.1-DISCOVERY-UAT-2026-09-01.md` — sessão real de exploração do produto pelo owner. 9 achados (D-1..D-9) classificados e encaixados nas waves de 03.1 e na Fase 4 sem alterar o plano existente. ADRs novas: 015 (audit trail), 016 (transições de estado), 017 (billing provider-agnostic / Mercado Pago).
 >
-> **MVP Product Batch #1 APROVADO 2026-09-03:** `.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` / `-EXECUTION.md`). 23 tasks `PB1-*` encaixadas nas waves 03.1 (P04/P06/P07/P07.5/P10) + duas novas: **F3.2 — inventory-lite** (P-15 promovido; distributor API = FUTURE), inserida entre 03.1 e Fase 4; **P17-wave — notificações in-app** (P-17 subset), perto de P07.5. `PB1-P02-audit-service` é lead task de P04. Todas `blockedByGates: [P02-T12, P02-T13, P03]` — nada roda antes de P03.
+> **MVP Product Batch #1 APROVADO 2026-09-03:** `.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` / `-EXECUTION.md`). 23 tasks `PB1-*` encaixadas nas waves 03.1 (P04/P06/P07/P07.5/P10) + duas novas: **F3.2 — inventory-lite** (P-15 promovido; distributor API = FUTURE), inserida entre 03.1 e Fase 4; **P17-wave — notificações in-app** (P-17 subset), perto de P07.5. `PB1-P02-audit-service` é lead task de P04. Todas `blockedByGates: [P02-T12, P02-T13, P03]` — **P02-T12/T13 = PASS**; falta só **P03** para os `PB1-*` de P04 ficarem READY.
 
 ---
 
@@ -281,12 +281,13 @@ Plans:
 aprovação, auth, billing, contratos, qualidade e UAT reproduzíveis antes da Fase
 4.
 
-**Status:** **EM ANDAMENTO — 2/13 waves verificadas** (P07.5 adicionada pelo discovery de 2026-09-01)
+**Status:** **EM ANDAMENTO — 3/13 waves verificadas** (P02 = PASS 2026-09-03; P07.5 adicionada pelo discovery de 2026-09-01)
 
 **Estado de saída atual:**
 
 - P00/Wave 0: PASS;
-- P01/Wave 1: PASS (T01–T10, `SAFE_AUTO`); T11 (`HUMAN_APPROVAL`) e T12 (`MANUAL_UAT`) pendentes;
+- P01/Wave 1: PASS (T01–T10, `SAFE_AUTO`); T11 coberto por P02-T12; T12 (`MANUAL_UAT` Windows limpo) pendente;
+- **P02/Wave 2: PASS** (T01–T13; T12/T13 autorizados pelo owner e executados 2026-09-03);
 - `baseline_reproducible`: `migrations_and_container_only`;
 - UAT: 0/75;
 - Fase 4: bloqueada.
@@ -294,9 +295,9 @@ aprovação, auth, billing, contratos, qualidade e UAT reproduzíveis antes da F
 Planos:
 
 - [x] 03.1-P00-PLAN.md — Recuperação do repositório (Wave 0)
-- [x] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — auto PASS; T11/T12 humanos pendentes)
-- [ ] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2 — READY)
-- [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3)
+- [x] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — auto PASS; T12 manual pendente)
+- [x] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2 — **PASS** 2026-09-03; T12/T13 em `03.1-P02-T12-T13-RESULT.md`)
+- [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3 — **UNBLOCKED, próximo**)
 - [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4) — **escopo expandido pelo discovery: máquina de estados completa de Quote + WorkOrder, ações `cancelar`/`reabrir`/`corrigir`, fim da sobrescrita de `notes`, audit em toda transição (ADR-016, D-4)**
 - [ ] 03.1-P05-PLAN.md — Auth e sessões (Wave 5)
 - [ ] 03.1-P06-PLAN.md — Billing e limites (Wave 6) — **+ arquitetura billing provider-agnostic (`PaymentProvider`) e refatoração dos placeholders Asaas; Mercado Pago fica desenhado, não implementado (ADR-017, D-8)**
@@ -307,10 +308,11 @@ Planos:
 - [ ] 03.1-P10-PLAN.md — Fidelidade visual (Wave 10)
 - [ ] 03.1-P11-PLAN.md — Reconciliação GSD (Wave 11)
 
-**Próximo gate:** P02 — tenant isolation e RBAC. Só depois de P02 as colunas
-soltas de `payments`/`appointments` recebem FK/constraints compostas de tenant
-(deferido de P01 por decisão de escopo, ver `03.1-P01-T01-DRIFT-MATRIX.md`).
-P01-T11 (aplicar migration em DB persistente) segue como gate humano `H-DB`.
+**Próximo gate:** P02 = PASS (2026-09-03). Próxima wave: **P03 — storage privado**.
+As colunas soltas de `payments`/`appointments` (FK/constraints compostas de tenant,
+deferidas de P01, ver `03.1-P01-T01-DRIFT-MATRIX.md`) entram numa migration
+aditiva futura quando P04+ tocar esses recursos. P01-T11 (migration em DB
+persistente) foi coberto pela execução de P02-T12.
 
 ---
 
