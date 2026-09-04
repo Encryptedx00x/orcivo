@@ -91,7 +91,7 @@ function Assert-DisposableRoot {
 
 function Get-V2Config {
     if (-not (Test-Path $script:V2Config)) { throw "v2: missing $script:V2Config" }
-    return (Get-Content -Raw -LiteralPath $script:V2Config | ConvertFrom-Json)
+    return ([System.IO.File]::ReadAllText($script:V2Config, [System.Text.Encoding]::UTF8) | ConvertFrom-Json)
 }
 
 # Authority-scoped config: always the config that ships with THESE scripts,
@@ -100,7 +100,7 @@ function Get-V2Config {
 function Get-AuthorityV2Config {
     $p = Join-Path $script:AuthorityRoot '.orchestration\v2\config.v2.json'
     if (-not (Test-Path $p)) { throw "v2: missing authority config $p" }
-    return (Get-Content -Raw -LiteralPath $p | ConvertFrom-Json)
+    return ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8) | ConvertFrom-Json)
 }
 
 # ----------------------------------------------------------------------------
@@ -312,7 +312,7 @@ function Write-V2JsonCanonical {
 
 function Read-V2Json {
     param([string]$Path)
-    return (_ToHashtable (Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json))
+    return (_ToHashtable ([System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json))
 }
 
 function _ToHashtable {
@@ -595,7 +595,7 @@ function Test-ArtifactsClean {
     $mlPats   = Get-MultilineScanPatterns
     foreach ($f in (Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue)) {
         $txt = ''
-        try { $txt = Get-Content -Raw -LiteralPath $f.FullName -ErrorAction Stop } catch { continue }
+        try { $txt = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) } catch { continue }
         if ($null -eq $txt) { continue }
         foreach ($pat in $linePats) {
             try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
