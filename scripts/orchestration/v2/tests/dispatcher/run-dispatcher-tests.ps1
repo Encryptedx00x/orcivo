@@ -178,6 +178,16 @@ try{
             $bad=Test-DispatcherContractSupersessionEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$new} -TaskSource @{hash='sha256:new'}
             Assert-True ($ok -and -not $bad) 'contract supersession did not require an exact durable candidate binding'
         }
+        Check 'RD-23' {
+            $fx=Join-Path $Root 'rd23';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'work.txt') "candidate`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m candidate --quiet
+            $commit=(& git -C $fx rev-parse HEAD).Trim();$version='5'*64;$task=Task 'POLICY-RESUME';$source=@{hash='sha256:same'}
+            $state=[ordered]@{taskId='POLICY-RESUME';taskVersionId=$version;taskSourceHash=$source.hash;status='BLOCKED';stage='IMPLEMENT';reason='OUT OF SCOPE change';workspace=$fx;implementationCommit=$commit;candidateHead=''}
+            $ok=Test-DispatcherPolicyCorrectionResumeEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$version} -TaskSource $source
+            $state.implementationCommit='0'*40
+            $bad=Test-DispatcherPolicyCorrectionResumeEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$version} -TaskSource $source
+            Assert-True ($ok -and -not $bad) 'same-contract policy correction did not require the exact durable candidate'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

@@ -235,6 +235,26 @@ function Test-DispatcherContractSupersessionEligible {
     return ($ancestor.exitCode -eq 0)
 }
 
+function Test-DispatcherPolicyCorrectionResumeState {
+    param($State, [hashtable]$Task, $TaskSource)
+    return [bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and
+        "$($State.status)" -eq 'BLOCKED' -and "$($State.stage)" -eq 'IMPLEMENT' -and
+        "$($State.reason)" -match '(OUT OF SCOPE|PROTECTED path)' -and $State.workspace -and
+        (Test-Path -LiteralPath ([string]$State.workspace)) -and $State.implementationCommit -and -not $State.candidateHead)
+}
+
+function Test-DispatcherPolicyCorrectionResumeEligible {
+    param($State, [hashtable]$Task, $Contract, $TaskSource)
+    if(-not (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)){return $false}
+    if($State.taskVersionId -ne $Contract.taskVersionId){return $false}
+    $commit=[string]$State.implementationCommit
+    if($commit -notmatch '^[0-9a-f]{40}$'){return $false}
+    $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$commit^{commit}") -LogLabel 'policy-correction-candidate-object'
+    if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $commit){return $false}
+    $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$commit,(Get-GitHeadV2 ([string]$State.workspace))) -LogLabel 'policy-correction-candidate-lineage'
+    return ($ancestor.exitCode -eq 0)
+}
+
 function Complete-DispatcherCandidateCommit {
     param([Parameter(Mandatory)]$State)
     $workspace = [string]$State.workspace
@@ -275,7 +295,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $State)))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $State) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -407,6 +427,17 @@ function Invoke-RealDispatcherTask {
         $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
         Write-DispatcherState $state|Out-Null
         memoryBootstrap $Task ([string]$state.logicalProjectId)|Out-Null
+    }
+    if(Test-DispatcherPolicyCorrectionResumeEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource){
+        if([int]$state.cycle -ge [int]$cfg.correctionLoop.maxCycles){$state.status='WAITING_HUMAN';$state.reason='bounded policy correction budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
+        $previousReason=[string]$state.reason
+        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-correction-ready' -ToState 'READY' -RunId $state.runId|Out-Null
+        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-correction-dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-correction-running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
+        $state.status='RUNNING';$state.reason='';$state.cycle=[int]$state.cycle+1
+        $state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Restore every outside-scope file byte-for-byte from the current target; preserve the in-scope implementation and protected-test reversion.')
+        $state.requiresCorrection=$true;$state.implementationComplete=$false
+        Write-DispatcherState $state|Out-Null
     }
     if(Test-DispatcherCandidateResumeEligible $state){
         $ledgerState=(Get-LedgerState $state.taskVersionId).state
