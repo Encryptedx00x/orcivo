@@ -138,12 +138,21 @@
       "description": "Add a download button on approve/[token] serving the already-generated quote PDF for that token.",
       "acceptance": "AC1: the approval page has a working 'Baixar PDF' button; AC2: it serves the quote PDF for that token; AC3: no auth bypass — only that token's quote.",
       "dependencies": [],
-      "scope": ["apps/web/app/approve", "apps/backend/src/quotes"],
+      "scope": [
+        "apps/web/app/approve",
+        "apps/web/lib/approval.service.ts",
+        "apps/backend/src/quote",
+        "apps/backend/src/storage/storage.service.ts"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": {},
+      "candidateConstraints": {
+        "resumeFromTaskVersionId": "f03912f79adf1aa20db31e1b99e1bf75049fa8ac0904e69daeaa755f00768c50",
+        "resumeFromCandidateCommit": "4187d8e442f994962b5aafd84a7b16d9060919b1",
+        "recoveryInstruction": "Reuse the preserved candidate and revert every modification to protected acceptance tests such as **/*.isolation.spec.ts."
+      },
       "verificationProfile": "B",
       "phaseGate": "P04",
       "status": "SCHEDULED"
