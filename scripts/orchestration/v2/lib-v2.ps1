@@ -836,60 +836,6 @@ function Invoke-NativeCaptured {
     }
 }
 
-# ----------------------------------------------------------------------------
-# git helpers (read-only; V2 never force/reset/clean)
-# ----------------------------------------------------------------------------
-
-function Get-GitHeadV2       { param([string]$Dir = $script:RepoRootV2) return (& git -C $Dir rev-parse HEAD).Trim() }
-function Get-GitTreeHash     { param([string]$Dir = $script:RepoRootV2, [string]$Ref = 'HEAD') return (& git -C $Dir rev-parse "$Ref^{tree}").Trim() }
-function Get-GitPorcelainV2  { param([string]$Dir = $script:RepoRootV2) return @(& git -C $Dir status --porcelain=v1) }
-function Test-GitCleanV2     { param([string]$Dir = $script:RepoRootV2) return (@(Get-GitPorcelainV2 $Dir).Count -eq 0) }
-
-function Get-GitDiffHash {
-    param([string]$Dir, [string]$BaseSha, [string]$HeadSha = 'HEAD')
-    $d = (& git -C $Dir diff --no-color "$BaseSha..$HeadSha") -join "`n"
-    return (New-StringHash $d)
-}
-
-function Get-GitChangedFiles {
-    param([string]$Dir, [string]$BaseSha, [string]$HeadSha = 'HEAD')
-    return @(& git -C $Dir diff --name-only "$BaseSha..$HeadSha" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-}
-
-# H-07 / #12: perform a REAL fetch and return a structured observation that
-# preflight binds to. Not a timestamp.
-function Invoke-GitFetchProven {
-    param([string]$Dir, [string]$Remote = 'origin', [string]$Target = 'main', [string]$Nonce = '')
-    if (-not $Nonce) { $Nonce = (New-Nonce) }
-    $beforeLocal  = (Get-GitHeadV2 $Dir)
-    $hasRemote = [bool](& git -C $Dir remote 2>$null)
-    if (-not $hasRemote) {
-        # M3-03: NO_REMOTE is a real failure, not a dispatch path.
-        return [ordered]@{
-            performed = $false; remote = $Remote; target = $Target
-            beforeSHA = $beforeLocal; beforeRemoteSHA = $null; observedRemoteSHA = $null
-            at = (Get-Date).ToUniversalTime().ToString('o')
-            nonce = $Nonce
-            invocation = "git -C <dir> remote (none)"
-            result = 'NO_REMOTE'
-        }
-    }
-    $beforeRemote = (& git -C $Dir rev-parse "$Remote/$Target" 2>$null)
-    & git -C $Dir fetch $Remote --prune --quiet 2>&1 | Out-Null
-    $code = $LASTEXITCODE
-    $afterRemote = (& git -C $Dir rev-parse "$Remote/$Target" 2>$null)
-    return [ordered]@{
-        performed = $true; remote = $Remote; target = $Target
-        beforeSHA = $beforeLocal
-        beforeRemoteSHA = $(if ($beforeRemote) { $beforeRemote.Trim() } else { $null })
-        observedRemoteSHA = $(if ($afterRemote) { $afterRemote.Trim() } else { $null })
-        at = (Get-Date).ToUniversalTime().ToString('o')
-        nonce = $Nonce
-        invocation = "git -C $Dir fetch $Remote --prune"
-        result = $(if ($code -eq 0) { 'OK' } else { "FETCH_EXIT_$code" })
-    }
-}
-
 $script:ForbiddenGit = @('--force','--force-with-lease','reset --hard','push --force','clean -fd','clean -fdx','filter-branch','reflog delete','update-ref -d','branch -D','branch -d','rebase -i')
 
 function Assert-SafeGitV2 {
@@ -897,6 +843,118 @@ function Assert-SafeGitV2 {
     $joined = ($GitArgs -join ' ').ToLowerInvariant()
     foreach ($bad in $script:ForbiddenGit) {
         if ($joined -match [regex]::Escape($bad)) { throw "v2: BLOCKED unsafe git op: git $joined" }
+    }
+}
+
+# ----------------------------------------------------------------------------
+# git helpers - native stderr is diagnostic data, never success authority
+# ----------------------------------------------------------------------------
+
+function Invoke-GitV2 {
+    param(
+        [string]$Dir = $script:RepoRootV2,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [int]$TimeoutSec = 300,
+        [string]$LogLabel = 'git'
+    )
+    Assert-SafeGitV2 $Arguments
+    $gitExe = Resolve-Executable -Name 'git.exe' -NativeOnly
+    $logRoot = Join-Path (Get-V2Dir) 'logs\native'
+    New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+    $safeLabel = ([regex]::Replace($LogLabel, '[^A-Za-z0-9._-]', '-')).Trim('-')
+    if (-not $safeLabel) { $safeLabel = 'git' }
+    $tag = '{0}-{1}-{2}' -f $safeLabel, ([System.Diagnostics.Process]::GetCurrentProcess().Id), ([guid]::NewGuid().ToString('N').Substring(0,12))
+    $result = Invoke-NativeCaptured -Exe $gitExe -Arguments (@('-C', $Dir) + @($Arguments)) -WorkingDirectory $Dir `
+        -StdoutLog (Join-Path $logRoot "$tag.stdout.log") -StderrLog (Join-Path $logRoot "$tag.stderr.log") -TimeoutSec $TimeoutSec
+    $result.command = "git $($Arguments -join ' ')"
+    return $result
+}
+
+function Get-GitFailureSummaryV2 {
+    param($Result, [string]$Operation = 'git command')
+    $detail = "$($Result.stderr)`n$($Result.stdout)".Trim()
+    if ($detail.Length -gt 1200) { $detail = $detail.Substring(0,1200) + '...' }
+    if (-not $detail) { $detail = 'no process diagnostics' }
+    return "$Operation failed with exit $($Result.exitCode): $detail"
+}
+
+function Assert-GitSucceededV2 {
+    param($Result, [string]$Operation = 'git command')
+    if ([int]$Result.exitCode -ne 0) { throw (Get-GitFailureSummaryV2 -Result $Result -Operation $Operation) }
+    return $Result
+}
+
+function Get-GitHeadV2 {
+    param([string]$Dir = $script:RepoRootV2)
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('rev-parse','HEAD') -LogLabel 'rev-parse-head'
+    Assert-GitSucceededV2 $r 'git rev-parse HEAD' | Out-Null
+    return $r.stdout.Trim()
+}
+
+function Get-GitHeadV2ForRef {
+    param([string]$Dir = $script:RepoRootV2, [Parameter(Mandatory)][string]$Ref)
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('rev-parse',$Ref) -LogLabel 'rev-parse-ref'
+    Assert-GitSucceededV2 $r "git rev-parse $Ref" | Out-Null
+    return $r.stdout.Trim()
+}
+
+function Get-GitTreeHash {
+    param([string]$Dir = $script:RepoRootV2, [string]$Ref = 'HEAD')
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('rev-parse',"$Ref^{tree}") -LogLabel 'rev-parse-tree'
+    Assert-GitSucceededV2 $r "git rev-parse $Ref tree" | Out-Null
+    return $r.stdout.Trim()
+}
+
+function Get-GitPorcelainV2 {
+    param([string]$Dir = $script:RepoRootV2)
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('status','--porcelain=v1') -LogLabel 'status'
+    Assert-GitSucceededV2 $r 'git status' | Out-Null
+    return @($r.stdout -split '\r?\n' | ForEach-Object { $_.TrimEnd() } | Where-Object { $_ })
+}
+
+function Test-GitCleanV2 { param([string]$Dir = $script:RepoRootV2) return (@(Get-GitPorcelainV2 $Dir).Count -eq 0) }
+
+function Get-GitDiffHash {
+    param([string]$Dir, [string]$BaseSha, [string]$HeadSha = 'HEAD')
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('diff','--no-color',"$BaseSha..$HeadSha") -LogLabel 'diff-hash'
+    Assert-GitSucceededV2 $r 'git diff for hash' | Out-Null
+    return (New-StringHash $r.stdout.TrimEnd("`r","`n"))
+}
+
+function Get-GitChangedFiles {
+    param([string]$Dir, [string]$BaseSha, [string]$HeadSha = 'HEAD')
+    $r = Invoke-GitV2 -Dir $Dir -Arguments @('diff','--name-only',"$BaseSha..$HeadSha") -LogLabel 'diff-names'
+    Assert-GitSucceededV2 $r 'git diff --name-only' | Out-Null
+    return @($r.stdout -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+# H-07 / #12: perform a REAL fetch and return a structured observation that
+# preflight binds to. Not a timestamp.
+function Invoke-GitFetchProven {
+    param([string]$Dir, [string]$Remote = 'origin', [string]$Target = 'main', [string]$Nonce = '')
+    if (-not $Nonce) { $Nonce = (New-Nonce) }
+    $beforeLocal = Get-GitHeadV2 $Dir
+    $remoteResult = Invoke-GitV2 -Dir $Dir -Arguments @('remote') -LogLabel 'remote-list'
+    $hasRemote = ($remoteResult.exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($remoteResult.stdout))
+    if (-not $hasRemote) {
+        return [ordered]@{
+            performed = $false; remote = $Remote; target = $Target
+            beforeSHA = $beforeLocal; beforeRemoteSHA = $null; observedRemoteSHA = $null
+            at = (Get-Date).ToUniversalTime().ToString('o'); nonce = $Nonce
+            invocation = 'git -C <dir> remote (none)'; result = 'NO_REMOTE'
+        }
+    }
+    $beforeResult = Invoke-GitV2 -Dir $Dir -Arguments @('rev-parse',"$Remote/$Target") -LogLabel 'fetch-before'
+    $fetchResult = Invoke-GitV2 -Dir $Dir -Arguments @('fetch',$Remote,'--prune','--quiet') -LogLabel 'fetch-proven'
+    $afterResult = Invoke-GitV2 -Dir $Dir -Arguments @('rev-parse',"$Remote/$Target") -LogLabel 'fetch-after'
+    return [ordered]@{
+        performed = $true; remote = $Remote; target = $Target; beforeSHA = $beforeLocal
+        beforeRemoteSHA = $(if ($beforeResult.exitCode -eq 0) { $beforeResult.stdout.Trim() } else { $null })
+        observedRemoteSHA = $(if ($afterResult.exitCode -eq 0) { $afterResult.stdout.Trim() } else { $null })
+        at = (Get-Date).ToUniversalTime().ToString('o'); nonce = $Nonce
+        invocation = "git -C $Dir fetch $Remote --prune"
+        result = $(if ($fetchResult.exitCode -eq 0) { 'OK' } else { "FETCH_EXIT_$($fetchResult.exitCode)" })
+        diagnostics = $(if ($fetchResult.stderr) { $fetchResult.stderr.Trim() } else { '' })
     }
 }
 
