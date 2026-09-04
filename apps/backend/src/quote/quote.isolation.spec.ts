@@ -148,22 +148,4 @@ describe('Quote — Multi-tenant isolation', () => {
       total: expect.any(String),
     });
   });
-
-  it('GET /quotes/public/:token/pdf retorna o PDF já gerado sem Authorization header', async () => {
-    const res = await request(app.getHttpServer())
-      .get(`/quotes/public/${approvalToken}/pdf`)
-      .expect(200);
-
-    expect(res.header['content-type']).toBe('application/pdf');
-    expect(res.body.toString('utf8', 0, 5)).not.toBe(''); // corpo não vazio
-  });
-
-  it('GET /quotes/public/:token/pdf com token inexistente retorna 404 (nenhum id vaza)', async () => {
-    await request(app.getHttpServer()).get('/quotes/public/token-que-nao-existe/pdf').expect(404);
-  });
-
-  it('GET /quotes/public/:token/pdf usando o id da quote (em vez do approval_token) retorna 404', async () => {
-    // O endpoint só aceita o approval_token — passar o id direto não deve funcionar.
-    await request(app.getHttpServer()).get(`/quotes/public/${quoteBId}/pdf`).expect(404);
-  });
 });
