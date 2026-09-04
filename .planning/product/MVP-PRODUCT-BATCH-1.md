@@ -2,7 +2,7 @@
 type: product-batch
 batch: MVP Product Batch #1
 date: 2026-09-03
-status: OWNER_APPROVED  —  SCHEDULED, blocked by P02 gates + P03
+status: OWNER_APPROVED  —  SCHEDULED, GSD gates (P02 + P03) satisfied 2026-09-04
 approved_at: 2026-09-03
 approved_by: owner
 machine_readable: .planning/product/MVP-PRODUCT-BATCH-1.tasks.json  (+ .plan.json after reconcile)
@@ -58,8 +58,12 @@ the P02 human gates + P03**, so none is runnable yet.
 **Not scheduled outside the batch; not executed.** Execution order + gate
 analysis: `MVP-PRODUCT-BATCH-1-EXECUTION.md`.
 
-`P02-T12 = WAITING_HUMAN` · `P02-T13 = WAITING_HUMAN` · `P03 = BLOCKED_BY_P02` —
-unchanged.
+`P02-T12 = PASS` · `P02-T13 = PASS` · `P03 = PASS` (2026-09-04, owner-authorized
+— `03.1-P03-T10-T13-RESULT.md`). `dispatchableNow` per `.plan.json`:
+`PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
+`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
+`PB1-P11-customer-pdf-download`. `PB1-P02-audit-service` (P04 lead, Level C)
+still needs its own owner gate.
 
 ---
 

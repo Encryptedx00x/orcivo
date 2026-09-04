@@ -58,17 +58,26 @@ foreach ($t in $tasks) {
 $graph = New-TaskGraph -Tasks $graphTasks -DoneLookup { param($id) $false }
 $problems += @($graph.problems)
 
-# 4. GSD gate preservation
+# 4. GSD gate preservation. Gate state is read from the batch file (the human/
+# agent-verified source), not hardcoded - a gate PASSes exactly once, in the GSD
+# session that clears it (03.1-P02-T12-T13-RESULT.md / 03.1-P03-T10-T13-RESULT.md).
+$allowedGateStates = @('WAITING_HUMAN', 'PASS', 'BLOCKED', 'BLOCKED_BY_P02')
 $gateNames = @($batch.gates.PSObject.Properties.Name)
 foreach ($required in @('P02-T12', 'P02-T13', 'P03')) {
     if ($gateNames -notcontains $required) { $problems += "batch does not carry the required GSD gate '$required'" }
 }
-if ("$($batch.gates.'P02-T12'.state)" -ne 'WAITING_HUMAN') { $problems += "P02-T12 must stay WAITING_HUMAN (is '$($batch.gates.'P02-T12'.state)')" }
-if ("$($batch.gates.'P02-T13'.state)" -ne 'WAITING_HUMAN') { $problems += "P02-T13 must stay WAITING_HUMAN" }
-if ("$($batch.gates.P03.state)" -notmatch 'BLOCKED') { $problems += "P03 must stay BLOCKED_BY_P02" }
+foreach ($g in @('P02-T12', 'P02-T13', 'P02-PASS', 'P03')) {
+    $state = "$($batch.gates.$g.state)"
+    if ($state -and ($allowedGateStates -notcontains $state)) { $problems += "gate '$g' has unknown state '$state'" }
+}
+$gatesPassed = (
+    "$($batch.gates.'P02-T12'.state)" -eq 'PASS' -and
+    "$($batch.gates.'P02-T13'.state)" -eq 'PASS' -and
+    "$($batch.gates.P03.state)" -eq 'PASS'
+)
 
-# 5. every task must be blocked by the P02/P03 gates (nothing runs before P03)
-$runnableNow = @()
+# 5. every task must be blocked by the P02/P03 gates (structural - the gates a
+# task lists never shrink; whether they are currently satisfied is $gatesPassed)
 foreach ($t in $tasks) {
     $bg = @($t.blockedByGates)
     $gatesOk = ($bg -contains 'P03') -and ($bg -contains 'P02-T12') -and ($bg -contains 'P02-T13')
@@ -76,6 +85,10 @@ foreach ($t in $tasks) {
         $problems += "$($t.taskId) is NOT blockedByGates [P02-T12, P02-T13, P03] - a product task cannot be runnable before P03"
     }
 }
+# every task in this batch carries the identical 3-gate list (enforced above),
+# so once $gatesPassed is true every task's GSD gate is satisfied at once.
+$runnableNow = @()
+$dispatchableNow = $(if ($gatesPassed) { @($graph.readyTasks) } else { @() })
 
 # 6. Level C tasks must not claim to be dispatchable
 $levelC = @($graph.levelCTasks)
@@ -141,7 +154,7 @@ foreach ($ph in $phaseOrder) {
         phase   = $ph
         taskIds = @($inPhase | ForEach-Object { $_.taskId })
         levelC  = @($inPhase | Where-Object { $levelC -contains $_.taskId } | ForEach-Object { $_.taskId })
-        blocked = $true
+        blocked = -not $gatesPassed
         blockedBy = @('P02-T12', 'P02-T13', 'P03')
     })
 }
@@ -155,15 +168,17 @@ $plan = [ordered]@{
     taskCount       = $tasks.Count
     levelCTasks     = @($levelC)
     gates           = [ordered]@{
-        'P02-T12' = 'WAITING_HUMAN'
-        'P02-T13' = 'WAITING_HUMAN'
-        'P02-PASS' = 'BLOCKED (requires P02-T12 + P02-T13)'
-        'P03'      = 'BLOCKED_BY_P02'
+        'P02-T12'  = "$($batch.gates.'P02-T12'.state)"
+        'P02-T13'  = "$($batch.gates.'P02-T13'.state)"
+        'P02-PASS' = "$($batch.gates.'P02-PASS'.state)"
+        'P03'      = "$($batch.gates.P03.state)"
     }
-    runnableBeforeP03 = @($runnableNow)      # always empty - every product task is downstream of P03
+    gatesPassed     = $gatesPassed
+    runnableBeforeP03 = @($runnableNow)      # historical/definitional - always empty, nothing ran before P03
+    dispatchableNow = @($dispatchableNow)    # gate-satisfied AND task-dep-satisfied AND not Level C; Level C still needs its own owner gate
     phaseWaves      = @($phaseWaves.ToArray())     # GSD-accurate: phases run in order after the gates
     dependencyWaves = @($waves.ToArray())          # finer-grained task dependency layers within/across phases
-    firstAgentActionAfterGates = 'plan + execute 03.1-P03 (storage privado); then the P04 phase wave (PB1-P01-quote-state-machine, PB1-P01-os-state-machine, PB1-P12-pdf-status-semantics, PB1-P11-customer-pdf-download, PB1-P10-technician-signature)'
+    firstAgentActionAfterGates = 'plan + execute 03.1-P03 (storage privado); then the P04 phase wave (PB1-P02-audit-service is the Level C lead task and still parks at WAITING_HUMAN for its own owner gate even though P02/P03 are satisfied)'
 }
 
 $planPath = [System.IO.Path]::ChangeExtension($TasksFile, $null).TrimEnd('.') + '.plan.json'
@@ -176,9 +191,13 @@ if (-not $Quiet) {
     Write-Host "Reconcile: $(if ($plan.ok) { 'OK' } else { 'PROBLEMS' })" -ForegroundColor $(if ($plan.ok) { 'Green' } else { 'Red' })
     foreach ($p in $problems) { Write-Host "  - $p" -ForegroundColor DarkYellow }
     Write-Host ""
-    Write-Host "Gates: P02-T12 WAITING_HUMAN | P02-T13 WAITING_HUMAN | P03 BLOCKED_BY_P02"
+    Write-Host "Gates: P02-T12 $($plan.gates.'P02-T12') | P02-T13 $($plan.gates.'P02-T13') | P03 $($plan.gates.P03)"
     Write-Host "Level C tasks (owner gate): $(@($levelC) -join ', ')"
-    Write-Host "Runnable before P03: NONE (every product task is downstream of the P02->P03 chain)"
+    if ($gatesPassed) {
+        Write-Host "Dispatchable now (gates satisfied, not Level C, deps clear): $(if ($dispatchableNow.Count) { $dispatchableNow -join ', ' } else { 'NONE (remaining tasks depend on a Level C task)' })"
+    } else {
+        Write-Host "Runnable before P03: NONE (every product task is downstream of the P02->P03 chain)"
+    }
     Write-Host ""
     Write-Host "Execution waves (scheduler serialises; maxParallel=1):"
     foreach ($w in $waves) {

@@ -17,13 +17,19 @@ progress:
 ## Estado atual
 
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
-**Status:** `in_progress` — P00 PASS; P01 auto PASS; **P02/Wave 2 = PASS** (T01–T13; T12/T13 autorizados pelo owner e executados 2026-09-03 — ver `phases/03.1-.../03.1-P02-T12-T13-RESULT.md`). **P03 (storage privado) UNBLOCKED.**
-**Data:** 2026-09-03
-**Próximo:** **03.1-P03 (storage privado) EM EXECUÇÃO** — T01–T09/T11/T12 feitos
-(buckets privados, signed URLs de TTL curto, object keys, hardening de upload,
-suíte 17/112). Faltam **T10 (HUMAN_APPROVAL — policy no bucket de produção)** e
-**T13 (MANUAL_UAT)**. Ver `03.1-P03-PROGRESS.md`. Depois: task graph do MVP
-Product Batch #1 a partir de P04 (`MVP-PRODUCT-BATCH-1-EXECUTION.md`).
+**Status:** `in_progress` — P00 PASS; P01 auto PASS; **P02 = PASS**; **P03 (storage
+privado) = PASS** (T01–T13 completas; T10/T13 autorizados pelo owner e
+executados 2026-09-04 — ver `phases/03.1-.../03.1-P03-T10-T13-RESULT.md`).
+**P04 UNBLOCKED.**
+**Data:** 2026-09-04
+**Próximo:** task graph do MVP Product Batch #1 a partir de P04
+(`MVP-PRODUCT-BATCH-1-EXECUTION.md` / `.plan.json` reconciliado). Dispatchable
+agora (gates satisfeitos, não Level C, sem dependência pendente):
+`PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
+`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
+`PB1-P11-customer-pdf-download`. O lead de P04 (`PB1-P02-audit-service`) é
+Level C e permanece `WAITING_HUMAN` até owner gate próprio. Execução real
+segue pelo autopilot dispatcher, não implementada manualmente nesta sessão.
 
 **P02 gates (2026-09-03):** T12 = PASS (migrations 1–6 confirmadas em `orcivo_dev`
 persistente, backup feito, backfill íntegro 0/0, zero drift, reseed). T13 = PASS
@@ -44,9 +50,13 @@ Claude/Codex PASS. **Não ligado a task real (NC-01).** Ver
 `.planning/product/MVP-PRODUCT-BATCH-1.md` (+ `.tasks.json` / `.plan.json` /
 `-EXECUTION.md`). 23 tasks `PB1-*` (6 Level C), todas `blockedByGates:
 [P02-T12, P02-T13, P03]`. Deltas: nova fase **F3.2 (inventory-lite)**, nova wave
-**P17-wave**. **`P02-T12` = PASS · `P02-T13` = PASS · `P02` = PASS · `P03`
-UNBLOCKED (2026-09-03)** — o primeiro trabalho READY é **03.1-P03** (storage
-privado); os `PB1-*` entram a partir de P04. **PILOT MODE**
+**P17-wave**. **`P02-T12` = PASS · `P02-T13` = PASS · `P02` = PASS · `P03` = PASS
+(2026-09-04)** — `.plan.json` reconciliado com os gates reais (`batch-reconcile.ps1`
+passou de assertar gates fixos "sempre pendentes" para ler o estado do batch);
+`dispatchableNow`: `PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
+`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
+`PB1-P11-customer-pdf-download`. `PB1-P02-audit-service` (lead de P04) é Level C
+→ `WAITING_HUMAN` próprio, mesmo com P02/P03 satisfeitos. **PILOT MODE**
 (`scripts/orchestration/v2/pilot.ps1`, `runnerMode` default sintético; sem verbo
 `run` para task real). Token `REAL_EXECUTION_AUTHORIZED` **criado** em
 `.orchestration/v2/` (2026-09-03) — o loop real do pilot ainda é sintético neste
@@ -182,14 +192,17 @@ Waves 1-3 concluídas. Pendentes:
 - Migration-from-zero, upgrade versionado e integração segura ainda dependem de
   P01.
 
-- Waves P00–P02 verificadas (P02 = PASS 2026-09-03). Waves P03–P11 não verificadas.
+- Waves P00–P03 verificadas (P02 = PASS 2026-09-03; P03 = PASS 2026-09-04).
+  Waves P04–P11 não verificadas.
 - Gate R e todos os 75 casos UAT permanecem pendentes (execução pós-P10).
-- Fase 4 não pode começar antes do encerramento da fase 03.1.
+- Fase 4 não pode começar antes do encerramento da fase 03.1 (P04+ dos
+  `PB1-*` já pode começar — não é a Fase 4 do roadmap histórico).
 
 ## Histórico
 
 | Data | Evento |
 |---|---|
+| 2026-09-04 | P03 = PASS: T10 (policy privada aplicada/verificada em `LOCAL_DEV` — `orcivo_minio_dev`; produção real fica na VPS, sem creds neste host) e T13 (UAT automatizado, `storage.e2e.spec.ts`, 8/8) autorizados pelo owner e executados. Suite backend 18/125 (120 passed / 5 todo). `batch-reconcile.ps1` corrigido para ler o estado real dos gates em vez de assumir "sempre pendente"; `.plan.json` reconciliado com `gatesPassed=true`. P04 UNBLOCKED. |
 | 2026-09-03 | P02 = PASS: T12 (migrations em `orcivo_dev` persistente + backfill íntegro + backup) e T13 (A/B por automação de API, suíte 16/16) autorizados pelo owner e executados. P03 UNBLOCKED. `REAL_EXECUTION_AUTHORIZED` criado. |
 | 2026-05-21 | Projeto inicializado no GSD; Fase 0 planejada |
 | 2026-05-22 | Fase 1 planejada e executada (P01-P07) |

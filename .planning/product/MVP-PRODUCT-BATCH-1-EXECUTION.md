@@ -2,7 +2,8 @@
 type: product-batch-execution-plan
 batch: MVP Product Batch #1
 date: 2026-09-03
-state: OWNER_APPROVED — reconciled — nothing executed
+updated: 2026-09-04
+state: OWNER_APPROVED — reconciled — GSD gates satisfied — no PB1-* task executed yet
 machine_readable: .planning/product/MVP-PRODUCT-BATCH-1.plan.json
 regen: powershell -File scripts/orchestration/v2/batch-reconcile.ps1
 ---
@@ -10,24 +11,28 @@ regen: powershell -File scripts/orchestration/v2/batch-reconcile.ps1
 # MVP Product Batch #1 — execution plan
 
 Reconciled from `MVP-PRODUCT-BATCH-1.tasks.json` by
-`scripts/orchestration/v2/batch-reconcile.ps1`. **No task has been executed.**
+`scripts/orchestration/v2/batch-reconcile.ps1`. **No `PB1-*` task has been
+executed** — the GSD gates below are the only thing that changed this session
+(P03 = PASS); the product work itself is for the real autopilot dispatcher.
 
-## 1. Gate state (unchanged)
+## 1. Gate state (2026-09-04)
 
 | gate | state | meaning |
 |---|---|---|
-| `P02-T12` | `WAITING_HUMAN` | apply pending tenant migrations to the persistent DB with backup + pre-checks — **human, not an agent** |
-| `P02-T13` | `WAITING_HUMAN` | manual A/B two-tenant UAT (API / web / mobile) — **human** |
-| `P02-PASS` | `BLOCKED` | derived — clears when T12 **and** T13 clear |
-| `P03` | `BLOCKED_BY_P02` | storage privado — the next GSD wave after P02 = PASS. Not changed. |
+| `P02-T12` | `PASS` | tenant migrations applied to the persistent DB with backup + pre-checks (2026-09-03) |
+| `P02-T13` | `PASS` | manual A/B two-tenant UAT (2026-09-03) |
+| `P02-PASS` | `PASS` | derived |
+| `P03` | `PASS` | storage privado — T10 (private policy applied+verified) + T13 (automated UAT, 8/8) (2026-09-04, `03.1-P03-T10-T13-RESULT.md`) |
 
-## 2. Which approved items can run before P03
+## 2. Which approved items can run now
 
-**None.** Every one of the 23 `PB1-*` tasks lands in a GSD phase at or after
-`P03` (`P04`, `P06`, `P07`, `P07.5`, `P17-wave`, `P10`, `F3.2`, `F4`), and GSD
-phases are sequential. Every task carries
-`blockedByGates: [P02-T12, P02-T13, P03]`. The reconciler enforces this — a task
-that did **not** carry all three gates would fail reconciliation.
+All 23 `PB1-*` tasks are gate-satisfied. `dispatchableNow` (gates PASS, not
+Level C, no unmet task dependency), per `.plan.json`:
+`PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
+`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
+`PB1-P11-customer-pdf-download`. Everything else depends on
+`PB1-P02-audit-service`, the P04 lead task, which is **Level C** and parks at
+`WAITING_HUMAN` for its own owner gate regardless of the GSD gates above.
 
 Non-task items that are **not** blocked (because they are not product code):
 
@@ -38,10 +43,12 @@ Non-task items that are **not** blocked (because they are not product code):
   at any time to refresh `DISCOVERED` items, **but** it may not auto-schedule a
   business change, and per this session's constraints it is not run now.
 
-## 3. First agent action once the gates clear
+## 3. First agent action now that the gates are clear
 
-1. `03.1-P03` — storage privado (existing GSD plan, unchanged).
-2. Then the **P04 phase wave** below.
+`03.1-P03` (storage privado) is PASS. Next: the **P04 phase wave** below,
+starting with `PB1-P02-audit-service` (Level C — needs its own owner gate
+before any agent implements it) or, in parallel, the non-Level-C
+`dispatchableNow` items from section 2 that don't depend on it.
 
 ## 4. Phase waves (GSD-accurate — phases run in order after the gates)
 
@@ -109,8 +116,9 @@ auto-schedule a commercial change.
 ## 7. What the supervisor does with this
 
 `MVP-PRODUCT-BATCH-1.tasks.json` + `.plan.json` are the machine-readable inputs.
-The pilot supervisor (`scripts/orchestration/v2/pilot.ps1`) reads them, but in
-`PILOT` mode it runs **synthetic** tasks only. A real `PB1-*` task requires:
-(a) `P02-T12` + `P02-T13` + `P03` satisfied, (b) for a Level C task, an owner
-gate decision, and (c) the real-execution authorization token — none of which
-exist yet.
+A real `PB1-*` task requires: (a) `P02-T12` + `P02-T13` + `P03` satisfied —
+**done, 2026-09-04**; (b) for a Level C task, its own owner gate decision —
+still pending per task; (c) the `REAL_EXECUTION_AUTHORIZED` token in
+`.orchestration/v2/` — created 2026-09-03. Execution itself runs through the
+real autopilot dispatcher, not manually inside a planning/orchestration
+session.

@@ -10,6 +10,60 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## P03 = PASS — T10/T13 executados (2026-09-04)
+
+O owner autorizou **explicitamente** T10 e T13, incluindo a orientação para
+determinar o ambiente real antes de tratar como produção. Executados nesta
+sessão:
+
+- **Ambiente identificado primeiro:** `apps/backend/.env` aponta para
+  `localhost:9000`; `docker ps` mostra que o único MinIO de aplicação
+  alcançável deste host é `orcivo_minio_dev` (dev). `infra/docker-compose.yml`
+  (produção) é feito para rodar na VPS e não está em execução aqui — confirma
+  o que a sessão de P02-T12 já havia registrado (produção real = VPS
+  `/opt/orcivo`, sem creds neste host). **`STORAGE_ENVIRONMENT = LOCAL_DEV`.**
+- **T10 = PASS.** Os buckets `orcivo-pdfs`/`orcivo-photos` ainda carregavam a
+  policy pública legada (`Principal:"*"`, do build anterior ao T03). Snapshot
+  da policy salvo para rollback; `setBucketPolicy(bucket,'')` aplicado (mesma
+  operação do `onModuleInit`) — nenhum outro bucket tocado. Verificado depois:
+  policy = `NoSuchBucketPolicy` (privado), objetos preservados (2 PDFs + 6
+  fotos, contagem idêntica), GET anônimo → 403, signed URL → 200, assinatura
+  adulterada → 403. Rollback documentado, não usado.
+- **T13 = PASS.** Suite nova `apps/backend/src/storage/storage.e2e.spec.ts` —
+  app real + DB de teste efêmero + MinIO de teste real (sem mock de storage):
+  dono abre PDF/foto via signed URL resolvida (conteúdo byte-a-byte), signed
+  URL re-emitida continua válida, acesso anônimo direto negado, assinatura
+  adulterada negada, assinatura inválida negada, cross-tenant negado (quote e
+  fotos). **8/8 PASS.** TTL/expiração/magic-bytes/path-traversal já cobertos
+  por T11 (`storage.isolation.spec.ts`, 12 testes). Único item genuinamente
+  manual: confirmação visual de renderização na tela — não bloqueia T13.
+- Suite backend completa após a mudança: **18 suites, 120 passed / 5 todo / 0
+  fail** (`pnpm --filter @orcivo/backend test:ci`).
+- `scripts/orchestration/v2/batch-reconcile.ps1` **corrigido**: antes
+  assumia (hardcoded) que os gates `P02-T12`/`P02-T13`/`P03` ficariam
+  `WAITING_HUMAN`/`BLOCKED_BY_P02` para sempre; agora lê o estado real do
+  `.tasks.json` e calcula `gatesPassed` + `dispatchableNow` (tasks
+  gate-satisfeitas, não Level C, sem dependência de task pendente). Rodado
+  contra `MVP-PRODUCT-BATCH-1.tasks.json` (gates atualizados para `PASS`) →
+  `.plan.json` regenerado, `ok: true`.
+
+Evidência: **`phases/03.1-.../03.1-P03-T10-T13-RESULT.md`**. Docs
+atualizados: `STATE.md`, `ROADMAP.md`, `03.1-P03-PROGRESS.md`,
+`03.1-P03-PLAN.md`, `MVP-PRODUCT-BATCH-1.md`,
+`MVP-PRODUCT-BATCH-1-EXECUTION.md`, `MVP-PRODUCT-BATCH-1.tasks.json`,
+`MVP-PRODUCT-BATCH-1.plan.json`.
+
+**P03 = PASS · P04 = UNBLOCKED.** `dispatchableNow`:
+`PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
+`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
+`PB1-P11-customer-pdf-download`. `PB1-P02-audit-service` (P04 lead task) é
+Level C — `WAITING_HUMAN` para gate próprio, mesmo com P02/P03 satisfeitos.
+**Esta sessão não implementou nenhuma task `PB1-*`** — por instrução
+explícita do owner, a execução real do product batch é do autopilot
+dispatcher, não desta sessão de planejamento.
+
+---
+
 ## P02 = PASS — T12/T13 executados (2026-09-03)
 
 O owner autorizou **explicitamente** T12 e T13. Executados nesta sessão:
@@ -56,11 +110,11 @@ cobertura MVP core (não enterprise field-level).
 `scripts/orchestration/v2/batch-reconcile.ps1` — reconcile OK). Ordem de execução
 + análise de gates: `.planning/product/MVP-PRODUCT-BATCH-1-EXECUTION.md`.
 
-**Nada roda antes de P03.** Todos os 23 `PB1-*` carregam
-`blockedByGates: [P02-T12, P02-T13, P03]` (o reconciler recusa qualquer task que
-não carregue os três). `P02-T12 = WAITING_HUMAN`, `P02-T13 = WAITING_HUMAN`,
-`P03 = BLOCKED_BY_P02` — inalterados. Primeira ação do agente após os gates:
-`03.1-P03` → wave da fase P04 (`PB1-P02-audit-service` promovido a lead task).
+Todos os 23 `PB1-*` carregam `blockedByGates: [P02-T12, P02-T13, P03]` (o
+reconciler recusa qualquer task que não carregue os três). **Atualização
+2026-09-04: os três = `PASS`** (ver seção "P03 = PASS" acima). Primeira ação
+do agente após os gates: `03.1-P03` (feito) → wave da fase P04
+(`PB1-P02-audit-service` promovido a lead task, Level C).
 
 Deltas de roadmap: nova fase **F3.2 (inventory-lite)** entre 03.1 e Fase 4; nova
 wave **P17-wave** perto de P07.5. Processo recorrente registrado:
@@ -438,6 +492,7 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
+| 2026-09-04 | Claude | **P03 = PASS.** Ambiente identificado primeiro (`STORAGE_ENVIRONMENT = LOCAL_DEV`, único MinIO alcançável deste host). T10 (policy privada aplicada/verificada com rollback documentado) e T13 (UAT automatizado `storage.e2e.spec.ts`, 8/8: autenticado/anônimo/adulterado/cross-tenant) autorizados pelo owner e executados. Suite backend 18/125 (120 passed/5 todo/0 fail). `batch-reconcile.ps1` corrigido para ler gates reais em vez de assumir estado fixo; `.plan.json` reconciliado (`gatesPassed=true`, `dispatchableNow` com 5 tasks). P04 UNBLOCKED. Planning atualizado (STATE/ROADMAP/PROGRESS/PLAN/HANDOFF + product batch docs + `03.1-P03-T10-T13-RESULT.md`). Nenhuma task `PB1-*` implementada (execução real é do autopilot dispatcher). | (ver `git log -1`) |
 | 2026-09-03 | Claude | **P02 = PASS.** T12 (migrations em `orcivo_dev` persistente + backup + backfill íntegro 0/0 + zero drift + reseed) e T13 (A/B por automação de API, suíte 16/16) autorizados pelo owner e executados. P03 UNBLOCKED. `REAL_EXECUTION_AUTHORIZED` criado. Planning atualizado (STATE/ROADMAP/SUMMARY/VERIFICATION/UAT/HANDOFF + `03.1-P02-T12-T13-RESULT.md`). | (ver `git log -1`) |
 | 2026-09-02 | Claude | **Remediação de segurança da orquestração.** V1 marcado `LEGACY_REJECTED_REFERENCE_ONLY` (guard bloqueia run/loop/cleanup; regressão 23/23 preservada). V2 security spine clean-room em `scripts/orchestration/v2/` (namespace `.orchestration/v2/`): ledger monotônico content-addressed (C-01), contract freeze + protected paths + post-diff scope (H-06/M-01/M-03), attestations content-addressed + staleness (C-03), review envelope JSON fail-closed (C-02/H-03/M-05), leases atômicas 4 namespaces + integração serial + fetch/CAS (H-05/H-04), preflight obrigatório + human gate durável (H-07/C-04 parcial), classificação por control channel + corpus negativo (H-01), streaming redaction + secret scan (H-11), Win32 argv/ID grammar (H-12). Suíte adversarial 40/40 (`v2/tests/`, repos descartáveis, sem modelo). Docs: THREAT-MODEL + ATTESTATIONS. Deferidos: C-05/C-06/H-08/H-09/H-10 + smoke real. NÃO production-ready; NÃO READY_FOR_CANARY. `READY_FOR_SECOND_SECURITY_REVIEW = YES`. | (ver `git log -1`) |
 | 2026-09-02 | Claude | Supervisor de orquestração production-ready: reconciliador real (`reconcile.ps1`), scheduler `loop`, scope-conflict, `merge.ps1` (safe merge, sem force/reset), reviewer cruzado (`review.ps1`), classificação de falha (12 classes), redaction endurecida, `recover`. Suite determinística 23/23 (`tests/`, fake-agent, sem chamadas de modelo). Drift documental corrigido (CLAUDE.md deixa de afirmar Fase 0). Não ligado a tasks reais; P02/P03 inalterados. | (ver `git log -1`) |

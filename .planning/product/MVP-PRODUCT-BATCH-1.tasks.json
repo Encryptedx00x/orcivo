@@ -7,10 +7,10 @@
   "source": ".planning/product/MVP-PRODUCT-BATCH-1.md",
   "notes": "Machine-readable form for the supervisor. GENERATING/APPROVING THIS IS NOT EXECUTING IT. Every task is blockedByGates until the P02 human gates + P03 are satisfied. Level C items still stop for the owner. No task runs in this session.",
   "gates": {
-    "P02-T12": { "kind": "HUMAN_APPROVAL", "state": "WAITING_HUMAN", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-HANDOFF.md", "desc": "apply pending tenant migrations to the persistent DB with backup + pre-checks" },
-    "P02-T13": { "kind": "MANUAL_UAT", "state": "WAITING_HUMAN", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-HANDOFF.md", "desc": "manual A/B two-tenant UAT (API / web / mobile)" },
-    "P02-PASS": { "kind": "DERIVED", "state": "BLOCKED", "requires": ["P02-T12", "P02-T13"], "desc": "P02 = PASS once both human gates clear" },
-    "P03": { "kind": "GSD_PHASE", "state": "BLOCKED_BY_P02", "requires": ["P02-PASS"], "desc": "storage privado — next wave after P02 = PASS; not changed" }
+    "P02-T12": { "kind": "HUMAN_APPROVAL", "state": "PASS", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md", "desc": "apply pending tenant migrations to the persistent DB with backup + pre-checks", "resolvedAt": "2026-09-03" },
+    "P02-T13": { "kind": "MANUAL_UAT", "state": "PASS", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md", "desc": "manual A/B two-tenant UAT (API / web / mobile)", "resolvedAt": "2026-09-03" },
+    "P02-PASS": { "kind": "DERIVED", "state": "PASS", "requires": ["P02-T12", "P02-T13"], "desc": "P02 = PASS once both human gates clear" },
+    "P03": { "kind": "GSD_PHASE", "state": "PASS", "requires": ["P02-PASS"], "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md", "desc": "storage privado — T10 (private policy applied+verified) + T13 (automated UAT) PASS", "resolvedAt": "2026-09-04" }
   },
   "phaseOrder": ["P03", "P04", "P05", "P06", "P07", "P07.5", "P17-wave", "P08", "P09", "P10", "F3.2", "F4"],
   "ownerDecisions": {
