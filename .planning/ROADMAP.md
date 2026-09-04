@@ -297,7 +297,7 @@ Planos:
 - [x] 03.1-P00-PLAN.md — Recuperação do repositório (Wave 0)
 - [x] 03.1-P01-PLAN.md — Migrations e reprodutibilidade (Wave 1 — auto PASS; T12 manual pendente)
 - [x] 03.1-P02-PLAN.md — Tenant isolation e autorização (Wave 2 — **PASS** 2026-09-03; T12/T13 em `03.1-P02-T12-T13-RESULT.md`)
-- [ ] 03.1-P03-PLAN.md — Storage privado (Wave 3 — **UNBLOCKED, próximo**)
+- [~] 03.1-P03-PLAN.md — Storage privado (Wave 3 — **EM EXECUÇÃO**: T01–T09/T11/T12 feitos; T10 HUMAN_APPROVAL + T13 MANUAL_UAT pendentes — `03.1-P03-PROGRESS.md`)
 - [ ] 03.1-P04-PLAN.md — Aprovação atômica e idempotente (Wave 4) — **escopo expandido pelo discovery: máquina de estados completa de Quote + WorkOrder, ações `cancelar`/`reabrir`/`corrigir`, fim da sobrescrita de `notes`, audit em toda transição (ADR-016, D-4)**
 - [ ] 03.1-P05-PLAN.md — Auth e sessões (Wave 5)
 - [ ] 03.1-P06-PLAN.md — Billing e limites (Wave 6) — **+ arquitetura billing provider-agnostic (`PaymentProvider`) e refatoração dos placeholders Asaas; Mercado Pago fica desenhado, não implementado (ADR-017, D-8)**

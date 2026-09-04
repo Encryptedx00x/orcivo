@@ -19,7 +19,11 @@ progress:
 **Fase ativa:** 03.1 — Estabilização pós-Fase 3
 **Status:** `in_progress` — P00 PASS; P01 auto PASS; **P02/Wave 2 = PASS** (T01–T13; T12/T13 autorizados pelo owner e executados 2026-09-03 — ver `phases/03.1-.../03.1-P02-T12-T13-RESULT.md`). **P03 (storage privado) UNBLOCKED.**
 **Data:** 2026-09-03
-**Próximo:** planejar/executar **03.1-P03** (storage privado). Depois seguir o task graph reconciliado do MVP Product Batch #1 (`.planning/product/MVP-PRODUCT-BATCH-1-EXECUTION.md`) a partir da fase P04.
+**Próximo:** **03.1-P03 (storage privado) EM EXECUÇÃO** — T01–T09/T11/T12 feitos
+(buckets privados, signed URLs de TTL curto, object keys, hardening de upload,
+suíte 17/112). Faltam **T10 (HUMAN_APPROVAL — policy no bucket de produção)** e
+**T13 (MANUAL_UAT)**. Ver `03.1-P03-PROGRESS.md`. Depois: task graph do MVP
+Product Batch #1 a partir de P04 (`MVP-PRODUCT-BATCH-1-EXECUTION.md`).
 
 **P02 gates (2026-09-03):** T12 = PASS (migrations 1–6 confirmadas em `orcivo_dev`
 persistente, backup feito, backfill íntegro 0/0, zero drift, reseed). T13 = PASS
