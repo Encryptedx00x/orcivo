@@ -151,6 +151,13 @@ try{
             $second=Complete-DispatcherCandidateCommit -State $s
             Assert-True ($first.ok -and $first.created -and $second.ok -and -not $second.created -and $second.reused) 'restart did not reuse the existing candidate'
             Assert-True ((& git -C $fx rev-parse HEAD).Trim() -eq $head -and (& git -C $fx rev-list --count HEAD).Trim() -eq $count) 'restart duplicated the candidate commit'
+
+            $sourcePath=Join-Path $Fixture 'rg05-tasks.json';Write-Utf8 $sourcePath ((Source @((Task 'RG05-CONTRACT')))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$contract=New-DispatcherContract -Task ([hashtable]$source.tasks[0]) -TaskSource $source
+            Write-Utf8 (Join-Path $Fixture 'head-advanced.txt') "harness fix`n";& git -C $Fixture add head-advanced.txt;& git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'advance authority head' --quiet
+            $durable=[ordered]@{taskId='RG05-CONTRACT';taskVersionId=$contract.taskVersionId;taskSourceHash=$source.hash;status='RUNNING'}
+            $resumed=Resolve-DispatcherContract -Task ([hashtable]$source.tasks[0]) -TaskSource $source -State $durable
+            Assert-True ($resumed.taskVersionId -eq $contract.taskVersionId -and $resumed.planningHead -eq $contract.planningHead) 'restart derived a duplicate lineage after authority HEAD advanced'
         }
     } finally {Pop-Location}
 

@@ -134,7 +134,7 @@ function Get-NextDispatcherDecision {
 }
 
 function New-DispatcherContract {
-    param([hashtable]$Task, $TaskSource)
+    param([hashtable]$Task, $TaskSource, [string]$PlanningHeadOverride='')
     $depVersions = @()
     foreach ($d in @($Task.dependencies)) {
         $dr = Get-DispatcherTaskRecord ([string]$d)
@@ -145,7 +145,7 @@ function New-DispatcherContract {
         # bind its canonical record as a synthetic immutable dependency id.
         $depVersions += (New-StringHash (ConvertTo-CanonicalJson $sourceDep)).Substring(7)
     }
-    $planningHead = "$(Get-GitHeadV2 (Get-RepoRoot))@$($TaskSource.hash)"
+    $planningHead = $(if($PlanningHeadOverride){$PlanningHeadOverride}else{"$(Get-GitHeadV2 (Get-RepoRoot))@$($TaskSource.hash)"})
     $spec = @("TASK $($Task.taskId)","TITLE $($Task.title)","TYPE $($Task.type)","DESCRIPTION",[string]$Task.description,"CONSTRAINTS",(ConvertTo-CanonicalJson $Task.candidateConstraints)) -join "`n"
     return (Freeze-Contract -TaskId $Task.taskId -PlanningHead $planningHead -SpecText $spec -AcceptanceText ([string]$Task.acceptance) `
         -DeclaredScope @($Task.scope) -ProtectedPathGrants @($Task.protectedPathGrants) -Dependencies $depVersions `
@@ -242,6 +242,17 @@ function Complete-DispatcherCandidateCommit {
     if ($out.head -eq $headBefore) { $out.reason='git commit returned exit 0 but candidate HEAD did not advance';return $out }
     $out.ok=$true;$out.created=$true;$out.reason='candidate commit created'
     return $out
+}
+
+function Resolve-DispatcherContract {
+    param([hashtable]$Task, $TaskSource, $State=$null)
+    if($null -eq $State){$State=Get-DispatcherState}
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and "$($State.status)" -in @('RUNNING','WAITING_PROVIDER'))
+    if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
+    $frozen=Get-Contract ([string]$State.taskVersionId)
+    $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
+    if($contract.taskVersionId -ne $State.taskVersionId){throw 'dispatcher: durable task state does not match its revalidated frozen contract'}
+    return $contract
 }
 
 function Get-DispatcherMemoryContext {
@@ -353,7 +364,8 @@ function Resume-DispatcherProviderWait {
 function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
-    $contract = New-DispatcherContract -Task $Task -TaskSource $TaskSource
+    $state=Get-DispatcherState
+    $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
     $classification = Get-TaskClassification -Task $Task
     if("$($Task.taskId)" -like 'PB1-*'){
@@ -378,7 +390,6 @@ function Invoke-RealDispatcherTask {
     $healthy=@(Get-HealthyProviders)
     $route=Resolve-Route -Classification ([hashtable]$classification) -HealthyProviders $healthy -ForceProvider $ProviderOverride
     if(-not $route.ok){ throw "dispatcher: $($route.reason)" }
-    $state=Get-DispatcherState
     if(-not $state -or $state.taskVersionId -ne $contract.taskVersionId -or "$($state.status)" -in @('PUBLISHED','NO_CHANGE_ACCEPTED','FAILED','BLOCKED','WAITING_HUMAN')){
         $runId=New-RunId; $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
         $logicalProjectId=Get-DispatcherLogicalProjectId
