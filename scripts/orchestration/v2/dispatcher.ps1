@@ -207,6 +207,14 @@ function Test-DispatcherImplementationCompleted {
     return ("$($last.resultClass)" -eq 'SUCCESS' -and "$($last.role)" -in @('IMPLEMENTER','CORRECTOR'))
 }
 
+function Test-DispatcherCandidateResumeEligible {
+    param($State)
+    if(-not $State -or "$($State.status)" -notin @('RESUMABLE','BLOCKED')){return $false}
+    if("$($State.stage)" -ne 'IMPLEMENT' -or -not (Test-DispatcherImplementationCompleted $State)){return $false}
+    if(-not "$($State.reason)".StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)){return $false}
+    return [bool]($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)) -and -not $State.candidateHead)
+}
+
 function Complete-DispatcherCandidateCommit {
     param([Parameter(Mandatory)]$State)
     $workspace = [string]$State.workspace
@@ -247,7 +255,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and "$($State.status)" -in @('RUNNING','WAITING_PROVIDER'))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $State)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -367,6 +375,15 @@ function Invoke-RealDispatcherTask {
     $state=Get-DispatcherState
     $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
+    if(Test-DispatcherCandidateResumeEligible $state){
+        $ledgerState=(Get-LedgerState $state.taskVersionId).state
+        if($ledgerState -eq 'FAILED'){
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-ready' -ToState 'READY' -RunId $state.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
+        }elseif($ledgerState -ne 'RUNNING'){throw "dispatcher: recoverable candidate has incompatible ledger state '$ledgerState'"}
+        $state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null
+    }
     $classification = Get-TaskClassification -Task $Task
     if("$($Task.taskId)" -like 'PB1-*'){
         $auth=Join-Path (Get-V2Dir) ([string]$pcfg.realExecutionAuthFile)
@@ -446,7 +463,7 @@ function Invoke-RealDispatcherTask {
                 $state.implementationComplete=$true;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
             $candidate=Complete-DispatcherCandidateCommit -State $state
-            if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'BLOCKED'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;return $state}
+            if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'RESUMABLE'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;return $state}
             $execHead=$candidate.head;$state.implementationCommit=$execHead;Write-DispatcherState $state|Out-Null
             $target=(Get-V2Config).target.branch;$fetch=Invoke-GitV2 -Dir $state.workspace -Arguments @('fetch','--no-tags','--quiet',(Get-RepoRoot),$target) -LogLabel 'candidate-fetch-target'
             if($fetch.exitCode -ne 0){throw (Get-GitFailureSummaryV2 $fetch 'dispatcher fetch current target')}
@@ -519,9 +536,9 @@ function Invoke-DispatcherLoop {
             if(Test-Path $stop){return @{status='STOPPED';reason='explicit stop requested'}}
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
-            if($cur -and "$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -and $cur.taskSourceHash -eq $source.hash){$task=@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0];if(-not $task){throw 'dispatcher: active task disappeared from the immutable task source'};$r=Invoke-RealDispatcherTask -Task $task -TaskSource $source -ProviderOverride $ProviderOverride}
+            if($cur -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $cur)) -and $cur.taskSourceHash -eq $source.hash){$task=@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0];if(-not $task){throw 'dispatcher: active task disappeared from the immutable task source'};$r=Invoke-RealDispatcherTask -Task $task -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
-            if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
+            if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
             if($r.status -eq 'WAITING_PROVIDER'){Start-Sleep -Seconds ([Math]::Min(30,[int]$cfg.providerFailover.pollBackoffSec[0]));continue}
         }
     }finally{[void](Remove-Lease -Namespace 'scheduler' -Key $cfg.target.branch -LeaseId $lease.leaseId)}
