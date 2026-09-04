@@ -65,9 +65,10 @@ function Read-DispatcherTaskSource {
     param([Parameter(Mandatory)][string]$TaskFile)
     $full = [System.IO.Path]::GetFullPath($TaskFile)
     if (-not (Test-Path -LiteralPath $full)) { throw "dispatcher: task source not found: $full" }
-    $typed = ConvertFrom-JsonTyped (Get-Content -Raw -LiteralPath $full)
+    $rawText = [System.IO.File]::ReadAllText($full, [System.Text.Encoding]::UTF8)
+    $typed = ConvertFrom-JsonTyped $rawText
     if ($typed -isnot [System.Collections.IDictionary]) { throw 'dispatcher: task source root must be an object' }
-    $src = _ToHashtable (Get-Content -Raw -LiteralPath $full | ConvertFrom-Json)
+    $src = _ToHashtable ($rawText | ConvertFrom-Json)
     if ("$($src.state)" -ne 'OWNER_APPROVED') { throw "dispatcher: task source state '$($src.state)' is not OWNER_APPROVED" }
     $tasks = @($src.tasks | ForEach-Object { ConvertTo-PlainTaskHashtable $_ })
     if ($tasks.Count -eq 0) { throw 'dispatcher: owner-approved task source contains no tasks' }
@@ -200,6 +201,7 @@ function Get-DispatcherLogicalProjectId {
 
 function Test-DispatcherImplementationCompleted {
     param($State)
+    if ([bool]$State.requiresCorrection) { return $false }
     if ([bool]$State.implementationComplete) { return $true }
     $history = @($State.providerHistory)
     if ($history.Count -eq 0) { return $false }
@@ -213,6 +215,24 @@ function Test-DispatcherCandidateResumeEligible {
     if("$($State.stage)" -ne 'IMPLEMENT' -or -not (Test-DispatcherImplementationCompleted $State)){return $false}
     if(-not "$($State.reason)".StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)){return $false}
     return [bool]($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)) -and -not $State.candidateHead)
+}
+
+function Test-DispatcherContractSupersessionEligible {
+    param($State, [hashtable]$Task, $Contract, $TaskSource)
+    if(-not $State -or "$($State.status)" -ne 'BLOCKED' -or "$($State.stage)" -ne 'IMPLEMENT'){return $false}
+    if($State.taskId -ne $Task.taskId -or $State.taskVersionId -eq $Contract.taskVersionId -or $State.taskSourceHash -eq $TaskSource.hash){return $false}
+    if("$($State.reason)" -notmatch '(OUT OF SCOPE|PROTECTED path)'){return $false}
+    if(-not $State.workspace -or -not (Test-Path -LiteralPath ([string]$State.workspace)) -or -not $State.implementationCommit){return $false}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    $requestedVersion=[string]$constraints.resumeFromTaskVersionId
+    $requestedCommit=[string]$constraints.resumeFromCandidateCommit
+    if($requestedVersion -ne [string]$State.taskVersionId -or $requestedCommit -ne [string]$State.implementationCommit){return $false}
+    if($requestedVersion -notmatch '^[0-9a-f]{64}$' -or $requestedCommit -notmatch '^[0-9a-f]{40}$'){return $false}
+    $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$requestedCommit^{commit}") -LogLabel 'supersession-candidate-object'
+    if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $requestedCommit){return $false}
+    $head=Get-GitHeadV2 ([string]$State.workspace)
+    $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$requestedCommit,$head) -LogLabel 'supersession-candidate-lineage'
+    return ($ancestor.exitCode -eq 0)
 }
 
 function Complete-DispatcherCandidateCommit {
@@ -375,6 +395,19 @@ function Invoke-RealDispatcherTask {
     $state=Get-DispatcherState
     $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
+    if(Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource){
+        $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
+        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
+        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note 'reuse preserved candidate for bounded policy correction'|Out-Null
+        $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
+        $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
+        $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.cycle=[Math]::Max(1,([int]$state.cycle+1))
+        $state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')
+        $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
+        Write-DispatcherState $state|Out-Null
+        memoryBootstrap $Task ([string]$state.logicalProjectId)|Out-Null
+    }
     if(Test-DispatcherCandidateResumeEligible $state){
         $ledgerState=(Get-LedgerState $state.taskVersionId).state
         if($ledgerState -eq 'FAILED'){
@@ -460,7 +493,7 @@ function Invoke-RealDispatcherTask {
                     Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $ar.resultClass|Out-Null
                     $state.status=$ar.resultClass;$state.reason=[string]$ar.structuredResult.summary;Write-DispatcherState $state|Out-Null;return $state
                 }
-                $state.implementationComplete=$true;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
+                $state.implementationComplete=$true;$state.requiresCorrection=$false;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
             $candidate=Complete-DispatcherCandidateCommit -State $state
             if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'RESUMABLE'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;return $state}

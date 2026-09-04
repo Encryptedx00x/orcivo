@@ -167,6 +167,17 @@ try{
             $actual=Read-V2Json $path
             Assert-True ($actual.text -ceq $expected) 'durable UTF-8 state did not round-trip across the JSON reader'
         }
+        Check 'RD-22' {
+            $fx=Join-Path $Root 'rd22';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'work.txt') "candidate`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m candidate --quiet
+            $commit=(& git -C $fx rev-parse HEAD).Trim();$old='3'*64;$new='4'*64
+            $task=Task 'SUPERSEDE';$task.candidateConstraints=[ordered]@{resumeFromTaskVersionId=$old;resumeFromCandidateCommit=$commit}
+            $state=[ordered]@{taskId='SUPERSEDE';taskVersionId=$old;taskSourceHash='sha256:old';status='BLOCKED';stage='IMPLEMENT';reason='OUT OF SCOPE change';workspace=$fx;implementationCommit=$commit}
+            $ok=Test-DispatcherContractSupersessionEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$new} -TaskSource @{hash='sha256:new'}
+            $task.candidateConstraints.resumeFromCandidateCommit='0'*40
+            $bad=Test-DispatcherContractSupersessionEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$new} -TaskSource @{hash='sha256:new'}
+            Assert-True ($ok -and -not $bad) 'contract supersession did not require an exact durable candidate binding'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
