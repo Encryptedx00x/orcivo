@@ -94,6 +94,15 @@ function Get-V2Config {
     return (Get-Content -Raw -LiteralPath $script:V2Config | ConvertFrom-Json)
 }
 
+# Authority-scoped config: always the config that ships with THESE scripts,
+# never a task clone / worktree / fixture. Used by the memory seam so logical
+# project identity can never be silently redefined by an agent's working dir.
+function Get-AuthorityV2Config {
+    $p = Join-Path $script:AuthorityRoot '.orchestration\v2\config.v2.json'
+    if (-not (Test-Path $p)) { throw "v2: missing authority config $p" }
+    return (Get-Content -Raw -LiteralPath $p | ConvertFrom-Json)
+}
+
 # ----------------------------------------------------------------------------
 # canonical JSON + content hashing  (C-03, NH-01, L-01)
 # ----------------------------------------------------------------------------

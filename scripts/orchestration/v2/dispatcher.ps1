@@ -194,21 +194,41 @@ function Get-ReviewDataSnapshot {
     return (New-StringHash (ConvertTo-CanonicalJson $items))
 }
 
+function Get-DispatcherLogicalProjectId {
+    if ($env:ORCIVO_MEMORY_PROJECT) { return [string]$env:ORCIVO_MEMORY_PROJECT }
+    try { $p = (Get-AuthorityV2Config).memoryAdapter.project } catch { $p = $null }
+    if ($p) { return [string]$p }
+    return 'orcivo'
+}
+
 function Get-DispatcherMemoryContext {
-    <# Auxiliary only. Returns '' unless the optional memory adapter is enabled and
-       has written a bounded context artifact. Never authority, never blocks. #>
-    $cfg = Get-V2Config
-    $m = $cfg.memoryAdapter
-    if (-not $m -or -not [bool]$m.enabled) { return @{ text=''; count=0; chars=0 } }
-    $p = Join-Path (Get-DispatcherDir) 'memory-context.json'
-    if (-not (Test-Path -LiteralPath $p)) { return @{ text=''; count=0; chars=0 } }
-    try { $ctx = Read-V2Json $p } catch { return @{ text=''; count=0; chars=0 } }
-    $cap = $(if ($m.maxInjectChars) { [int]$m.maxInjectChars } else { 2000 })
-    $lines = @($ctx.memories) | Select-Object -First $(if ($m.maxMemories) { [int]$m.maxMemories } else { 5 })
+    <# Auxiliary only. Returns text='' unless the optional memory adapter is
+       enabled and has written a bounded context artifact. Never authority,
+       never blocks. Second-guesses the bound the adapter already applied. #>
+    $blank = @{ text=''; count=0; chars=0; enabled=$false; available=$false; fallbackUsed=$false; latencyMs=0; writeCount=0; logicalProjectId=(Get-DispatcherLogicalProjectId) }
+    $m = $null
+    try { $m = (Get-AuthorityV2Config).memoryAdapter } catch { return $blank }
+    if (-not $m -or -not [bool]$m.enabled) { return $blank }
+    $blank.enabled = $true
+    $dir = Get-DispatcherDir
+    $wc = 0
+    $wp = Join-Path $dir 'memory-writes.json'
+    if (Test-Path -LiteralPath $wp) { try { $wc = [int]((Read-V2Json $wp).count) } catch { $wc = 0 } }
+    $blank.writeCount = $wc
+    $p = Join-Path $dir 'memory-context.json'
+    if (-not (Test-Path -LiteralPath $p)) { return $blank }
+    try { $ctx = Read-V2Json $p } catch { return $blank }
+    $cap    = $(if ($m.maxInjectChars) { [int]$m.maxInjectChars } else { 1500 })
+    $maxMem = $(if ($m.maxMemories) { [int]$m.maxMemories } else { 4 })
+    $lines  = @($ctx.memories) | Select-Object -First $maxMem
     $joined = ($lines -join "`n")
     if ($joined.Length -gt $cap) { $joined = $joined.Substring(0, $cap) }
-    if (-not $joined) { return @{ text=''; count=0; chars=0 } }
-    return @{ text = $joined; count = @($lines).Count; chars = $joined.Length }
+    return @{
+        text = $joined; count = @($lines).Count; chars = $joined.Length
+        enabled = $true; available = [bool]$ctx.memoryAvailable; fallbackUsed = [bool]$ctx.memoryFallbackUsed
+        latencyMs = [int]$ctx.memoryLatencyMs; writeCount = $wc
+        logicalProjectId = $(if ($ctx.logicalProjectId) { [string]$ctx.logicalProjectId } else { (Get-DispatcherLogicalProjectId) })
+    }
 }
 
 function New-ImplementerPrompt {
@@ -256,7 +276,7 @@ function Enter-DispatcherProviderWait {
     } | Out-Null
     $State.status='WAITING_PROVIDER'; $State.lastErrorClass=$FailureClass
     Write-DispatcherState $State | Out-Null
-    memoryCheckpoint ([hashtable]$State.task) | Out-Null
+    memoryCheckpoint ([hashtable]$State.task) ([string]$State.logicalProjectId) | Out-Null
     return $State
 }
 
@@ -281,7 +301,7 @@ function Resume-DispatcherProviderWait {
     elseif ($State.stage -eq 'REVIEW') { Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $State.runId | Out-Null; Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'checking' -ToState 'CHECKING' -RunId $State.runId | Out-Null; Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'reviewing' -ToState 'REVIEWING' -RunId $State.runId | Out-Null }
     if ($wait) { $wait.resolvedAt=(Get-Date).ToUniversalTime().ToString('o'); Write-V2JsonCanonical (Get-ProviderWaitPath $State.taskVersionId) $wait }
     if ($State.stage -eq 'IMPLEMENT' -and $State.provider -ne $selected) {
-        $old=[string]$State.provider; $State.provider=$selected; memoryHandoff ([hashtable]$State.task) $old $selected | Out-Null
+        $old=[string]$State.provider; $State.provider=$selected; memoryHandoff ([hashtable]$State.task) $old $selected ([string]$State.logicalProjectId) | Out-Null
     }
     $State.status='RUNNING'; $State.unavailableProviders=@(); Write-DispatcherState $State | Out-Null
     return $true
@@ -318,11 +338,12 @@ function Invoke-RealDispatcherTask {
     $state=Get-DispatcherState
     if(-not $state -or $state.taskVersionId -ne $contract.taskVersionId -or "$($state.status)" -in @('PUBLISHED','NO_CHANGE_ACCEPTED','FAILED','BLOCKED','WAITING_HUMAN')){
         $runId=New-RunId; $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
-        $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict=''}
+        $logicalProjectId=Get-DispatcherLogicalProjectId
+        $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId=$logicalProjectId;memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0}
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' | Out-Null
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $runId -AttemptId (New-AttemptId) | Out-Null
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $runId | Out-Null
-        Write-DispatcherState $state | Out-Null; memoryBootstrap $Task | Out-Null
+        Write-DispatcherState $state | Out-Null; memoryBootstrap $Task $logicalProjectId | Out-Null
     } elseif ($state.status -eq 'WAITING_PROVIDER') {
         if(-not (Resume-DispatcherProviderWait $state)){ return $state }
     }
@@ -336,13 +357,17 @@ function Invoke-RealDispatcherTask {
             $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
             $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
             $mem=Get-DispatcherMemoryContext
-            $state.memoryRetrievedCount=[int]$mem.count; $state.memoryInjectedChars=[int]$mem.chars; if([int]$mem.count -gt 0){$state.memoryUsed=$true}
+            $state.memoryEnabled=[bool]$mem.enabled; $state.memoryAvailable=[bool]$mem.available
+            $state.memoryRetrievedCount=[int]$mem.count; $state.memoryInjectedChars=[int]$mem.chars
+            $state.memoryFallbackUsed=[bool]$mem.fallbackUsed; $state.memoryLatencyMs=[int]$mem.latencyMs
+            $state.memoryWriteCount=[int]$mem.writeCount
+            if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
             $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
             $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
             $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode}
             $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
             if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
-            Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task|Out-Null
+            Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
             if($ar.contextRolloverRequired){
                 if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                 $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
@@ -354,7 +379,7 @@ function Invoke-RealDispatcherTask {
                     $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
                     Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
                     Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
-                    $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other|Out-Null;Write-DispatcherState $state|Out-Null;continue
+                    $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other ([string]$state.logicalProjectId)|Out-Null;Write-DispatcherState $state|Out-Null;continue
                 }
                 return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)
             }
@@ -417,7 +442,7 @@ function Invoke-RealDispatcherTask {
             $imported=(& git -C (Get-RepoRoot) rev-parse $state.branch).Trim();if($imported -ne $state.candidateHead){$state.status='BLOCKED';$state.reason='imported ref is not the reviewed candidate';Write-DispatcherState $state|Out-Null;return $state}
             $ir=Invoke-Integration -TaskVersionId $state.taskVersionId -RunId $state.runId -RepoDir (Get-RepoRoot) -WorktreeDir $state.workspace -Branch $state.branch -BaseSha $state.candidateBase -HeadSha $state.candidateHead -SecretScanRoots @((Join-Path (Get-V2Dir) "runs\$($state.runId)"))
             $state.integration=$ir;$state.status=$ir.status;$state.reason=$ir.reason;Write-DispatcherState $state|Out-Null
-            if($ir.status -eq 'PUBLISHED'){memoryFinalize $Task|Out-Null;Remove-DispatcherWorkspace $state.workspace}
+            if($ir.status -eq 'PUBLISHED'){memoryFinalize $Task ([string]$state.logicalProjectId)|Out-Null;Remove-DispatcherWorkspace $state.workspace}
             return $state
         }
     }

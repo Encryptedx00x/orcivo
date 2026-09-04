@@ -492,16 +492,16 @@
     }
   },
   "memoryAdapter": {
-    "$comment": "Optional ai-memory adapter seam. Disabled by default; memory is AUXILIARY, never authority, fail-soft (adapter failure is ignored, dispatch continues). Reviewers never receive this adapter. Flipping `enabled` to true is an owner-approval-gated change (see .planning/reviews/AI-MEMORY-2-A-B-EVALUATION.md). Reference adapter: scripts/orchestration/v2/memory-eval-adapter.ps1. Bounded retrieval: at most maxMemories pages / maxInjectChars characters injected as untrusted background into the implementer prompt only.",
-    "enabled": false,
+    "$comment": "ai-memory 2.x adapter seam. Memory is AUXILIARY: never authority (task manifest > acceptance > planning > candidate/Git > verification/review > memory), fail-soft (any adapter error is ignored and dispatch continues), implementer-prompt-only (reviewers never receive it). Owner approved enabling this on 2026-09-04 (see .planning/reviews/AI-MEMORY-2-MIGRATION.md). Reference adapter: scripts/orchestration/v2/memory-eval-adapter.ps1. Logical project identity is ALWAYS `project` here / ORCIVO_MEMORY_PROJECT, never a working-directory basename. Bounded retrieval: <= maxMemories pages and <= maxInjectChars chars, only paths under injectKinds, latest-version-only (ai-memory native), injected as untrusted background.",
+    "enabled": true,
     "script": "scripts/orchestration/v2/memory-eval-adapter.ps1",
     "baseUrl": "http://127.0.0.1:49374",
     "project": "orcivo",
     "workspace": "default",
-    "maxMemories": 5,
-    "maxInjectChars": 2000,
-    "relevanceFloor": 0,
-    "timeoutSec": 6
+    "maxMemories": 4,
+    "maxInjectChars": 1500,
+    "timeoutSec": 6,
+    "injectKinds": ["decisions/", "notes/", "handoffs/", "dispatcher/", "_rules/"]
   },
   "redaction": {
     "maxEnvLikeLines": 6,

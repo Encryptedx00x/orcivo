@@ -326,6 +326,12 @@ switch ($Command) {
         $ds = Get-DispatcherState
         if ($ds) { Write-Host "  dispatcher:    task $($ds.taskId) stage=$($ds.stage) status=$($ds.status) provider=$($ds.provider)" }
         else { Write-Host "  dispatcher:    no durable task state" }
+        $mc = $null; try { $mc = (Get-AuthorityV2Config).memoryAdapter } catch { $mc = $null }
+        if ($mc -and [bool]$mc.enabled) {
+            $mi = "  memory:        ENABLED project=$(Get-DispatcherLogicalProjectId) url=$($mc.baseUrl) bounds=$($mc.maxMemories)pg/$($mc.maxInjectChars)ch"
+            if ($ds) { $mi += " | last task: available=$($ds.memoryAvailable) retrieved=$($ds.memoryRetrievedCount) injectedChars=$($ds.memoryInjectedChars) fallback=$($ds.memoryFallbackUsed) latencyMs=$($ds.memoryLatencyMs) writes=$($ds.memoryWriteCount)" }
+            Write-Host $mi
+        } else { Write-Host "  memory:        DISABLED (adapter seam present, memoryAdapter.enabled=false)" }
         $dpf = Test-DockerPreflight
         Write-Host "  docker composition: ready=$($dpf.ready) daemon=$($dpf.daemonRunning) image=$($dpf.imagePresent)"
         Write-Host ""

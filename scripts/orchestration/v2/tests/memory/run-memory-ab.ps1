@@ -14,7 +14,10 @@ Measured per arm: PUBLISHED, DECISION_RECALL (uses 30000), CONTRADICTION
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/tests/memory/run-memory-ab.ps1 -MemoryUrl http://127.0.0.1:49375
 #>
 param(
-    [string]$MemoryUrl = 'http://127.0.0.1:49375',
+    # Defaults to the live ai-memory (2.0.2 on :49374). This is the LARGE A/B from
+    # the evaluation; it makes real Claude+Codex calls. Not part of routine
+    # regression - run it only for a deliberate re-measurement.
+    [string]$MemoryUrl = 'http://127.0.0.1:49374',
     [ValidateSet('both','claude-to-codex','codex-to-claude')][string]$Directions = 'both',
     [switch]$KeepFixtures
 )
