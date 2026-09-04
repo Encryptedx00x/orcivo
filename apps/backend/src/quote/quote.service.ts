@@ -12,7 +12,7 @@ import { ApproveQuoteDto, QuoteCreateDto, assertValidTransition } from '@orcivo/
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
-import { StorageService } from '../storage/storage.service';
+import { StorageService, PDF_BUCKET, PHOTO_BUCKET } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
@@ -119,7 +119,7 @@ export class QuoteService {
         items: true,
       },
     });
-    return { data, page, limit };
+    return { data: await Promise.all(data.map((q) => this.withSignedUrls(q))), page, limit };
   }
 
   async findOne(id: string, companyId: string) {
@@ -128,7 +128,32 @@ export class QuoteService {
       include: { items: true, customer: true, approval: true },
     });
     if (!quote) throw new NotFoundException();
-    return quote;
+    return this.withSignedUrls(quote);
+  }
+
+  /**
+   * P03-T05/T07: stored refs are object keys; resolve them to short-lived signed
+   * URLs on the way out. Legacy rows holding a full public URL are handled by
+   * StorageService.extractKey.
+   */
+  private async withSignedUrls<
+    T extends {
+      pdf_url?: string | null;
+      approval?: { signature_image_url?: string | null } | null;
+    },
+  >(quote: T): Promise<T> {
+    const pdf_url = await this.storage.resolveUrl(PDF_BUCKET, quote.pdf_url ?? null);
+    const approval =
+      quote.approval && 'signature_image_url' in quote.approval
+        ? {
+            ...quote.approval,
+            signature_image_url: await this.storage.resolveUrl(
+              PHOTO_BUCKET,
+              quote.approval.signature_image_url ?? null,
+            ),
+          }
+        : quote.approval;
+    return { ...quote, pdf_url, approval };
   }
 
   /** Gera o PDF do orçamento sob demanda (sem alterar o status). */
@@ -164,8 +189,8 @@ export class QuoteService {
       company as never,
     );
     const pdfObjectName = `${companyId}/quotes/${id}.pdf`;
-    const pdfUrl = await this.storage.uploadBuffer(
-      'orcivo-pdfs',
+    const pdfKey = await this.storage.uploadBuffer(
+      PDF_BUCKET,
       pdfObjectName,
       pdfBuffer,
       'application/pdf',
@@ -177,7 +202,7 @@ export class QuoteService {
 
     const updated = await this.prisma.quote.update({
       where: { id },
-      data: { status: 'SENT', approval_token: token, pdf_url: pdfUrl },
+      data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
       include: { items: true, customer: true, approval: true },
     });
 
@@ -190,7 +215,7 @@ export class QuoteService {
     }
 
     const approvalUrl = `${this.config.get('APP_WEB_URL', 'http://localhost:3000')}/approve/${token}`;
-    return { ...updated, approvalUrl, pdf_url: pdfUrl };
+    return { ...(await this.withSignedUrls(updated)), approvalUrl };
   }
 
   async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
@@ -228,17 +253,13 @@ export class QuoteService {
     if (!result) throw new ConflictException('Orcamento ja foi processado');
 
     // Processar assinatura se DRAWN_SIGNATURE
-    let signatureUrl: string | undefined;
+    let signatureKey: string | undefined;
     if (dto.approval_method === 'DRAWN_SIGNATURE' && dto.signature) {
       const base64 = (dto.signature as string).replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64, 'base64');
+      this.storage.assertUploadable(buffer, 'image/png', 5 * 1024 * 1024, ['image/png']);
       const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.png`;
-      signatureUrl = await this.storage.uploadBuffer(
-        'orcivo-photos',
-        objectName,
-        buffer,
-        'image/png',
-      );
+      signatureKey = await this.storage.uploadBuffer(PHOTO_BUCKET, objectName, buffer, 'image/png');
     }
 
     // Registrar QuoteApproval
@@ -248,7 +269,7 @@ export class QuoteService {
         quote_id: quote.id,
         approval_method: dto.approval_method,
         typed_name: dto.typed_name,
-        signature_image_url: signatureUrl,
+        signature_image_url: signatureKey,
         ip_address: ipAddress,
         user_agent: userAgent ?? '',
       },
@@ -258,24 +279,28 @@ export class QuoteService {
     const company = await this.prisma.company.findUniqueOrThrow({
       where: { id: quote.company_id },
     });
+    // The PDF renderer fetches <Image src> — give it a short-lived signed URL.
+    const signatureSignedUrl = signatureKey
+      ? await this.storage.getSignedUrl(PHOTO_BUCKET, signatureKey)
+      : null;
     const quoteForPdf = {
       ...quote,
       customer_name: quote.customer.name,
       approval: {
         approval_method: dto.approval_method,
         typed_name: dto.typed_name ?? null,
-        signature_image_url: signatureUrl ?? null,
+        signature_image_url: signatureSignedUrl,
       },
     };
     const pdfBuffer = await this.pdfService.generate(quoteForPdf as never, company as never);
     const pdfObjectName = `${quote.company_id}/quotes/${quote.id}.pdf`;
-    const pdfUrl = await this.storage.uploadBuffer(
-      'orcivo-pdfs',
+    const pdfKey = await this.storage.uploadBuffer(
+      PDF_BUCKET,
       pdfObjectName,
       pdfBuffer,
       'application/pdf',
     );
-    await this.prisma.quote.update({ where: { id: quote.id }, data: { pdf_url: pdfUrl } });
+    await this.prisma.quote.update({ where: { id: quote.id }, data: { pdf_url: pdfKey } });
 
     // Criar WorkOrder automaticamente (D2-14)
     const woTitle = quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`;

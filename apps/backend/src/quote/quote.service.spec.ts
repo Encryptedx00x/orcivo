@@ -67,7 +67,15 @@ const mockQueue = {
 };
 
 const mockStorage = {
-  uploadBuffer: jest.fn().mockResolvedValue('https://minio.example.com/file.pdf'),
+  uploadBuffer: jest.fn((_bucket: string, objectName: string) => Promise.resolve(objectName)),
+  resolveUrl: jest.fn((_bucket: string, stored: string | null) =>
+    Promise.resolve(stored ? `https://minio.example.com/signed/${stored}?X-Amz-Signature=x` : null),
+  ),
+  getSignedUrl: jest.fn((_bucket: string, key: string) =>
+    Promise.resolve(`https://minio.example.com/signed/${key}?X-Amz-Signature=x`),
+  ),
+  extractKey: jest.fn((_bucket: string, stored: string | null) => stored ?? null),
+  assertUploadable: jest.fn(),
 };
 
 const mockWorkOrderService = {
