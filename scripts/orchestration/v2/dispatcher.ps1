@@ -255,6 +255,23 @@ function Test-DispatcherPolicyCorrectionResumeEligible {
     return ($ancestor.exitCode -eq 0)
 }
 
+function Enter-DispatcherLedgerPhase {
+    param(
+        [Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][ValidateSet('CHECKING','REVIEWING')][string]$Phase
+    )
+    $current=[string](Get-LedgerState $TaskVersionId).state
+    if($Phase -eq 'CHECKING'){
+        if($current -eq 'RUNNING'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'checking' -ToState 'CHECKING' -RunId $RunId|Out-Null;return}
+        if($current -in @('CHECKING','REVIEWING')){return}
+    }else{
+        if($current -eq 'CHECKING'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'reviewing' -ToState 'REVIEWING' -RunId $RunId|Out-Null;return}
+        if($current -eq 'REVIEWING'){return}
+    }
+    throw "dispatcher: cannot reconcile ledger state '$current' with phase '$Phase'"
+}
+
 function Complete-DispatcherCandidateCommit {
     param([Parameter(Mandatory)]$State)
     $workspace = [string]$State.workspace
@@ -536,7 +553,7 @@ function Invoke-RealDispatcherTask {
             if($merge.exitCode -ne 0){[void](Invoke-GitV2 -Dir $state.workspace -Arguments @('merge','--abort') -LogLabel 'candidate-merge-abort');$state.status='BLOCKED';$state.reason='candidate conflicts with current target; rebuild required';Write-DispatcherState $state|Out-Null;return $state}
             $candHead=Get-GitHeadV2 $state.workspace; $cc=Test-ContractCompliance -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
             if(-not $cc.compliant){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-block' -ToState 'FAILED' -RunId $state.runId -Note ($cc.violations -join '; ')|Out-Null;$state.status='BLOCKED';$state.reason=$cc.violations -join '; ';Write-DispatcherState $state|Out-Null;return $state}
-            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'checking' -ToState 'CHECKING' -RunId $state.runId|Out-Null
+            Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase CHECKING
             $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
             New-Attestation -Kind check -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $(if($vp.pass){'PASS'}else{'FAIL'}) -Payload @{profileId=$vp.profileId;effectiveInvocationHash=$vp.effectiveInvocationHash;checks=@($vp.checks)} -ProducerMeta @{verifier='v2-deterministic';profileId=$vp.profileId;verificationDefinitionHash=$vp.verificationDefinitionHash}|Out-Null
@@ -545,7 +562,7 @@ function Invoke-RealDispatcherTask {
             $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$($state.runId)"))
             $scan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);hits=@($treeScan.hits)+@($artifactScan.hits)}
             if(-not $scan.clean){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'secret-block' -ToState 'FAILED' -RunId $state.runId|Out-Null;$state.status='BLOCKED';$state.reason='secret scan failed before review';Write-DispatcherState $state|Out-Null;return $state}
-            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'reviewing' -ToState 'REVIEWING' -RunId $state.runId|Out-Null
+            Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase REVIEWING
             $state.candidateBase=$candBase;$state.candidateHead=$candHead;$state.candidateTree=$bindings.treeHash;$state.diffHash=$bindings.diffHash;$state.verification=$vp;$state.secretScan=$scan;$state.stage='REVIEW';Write-DispatcherState $state|Out-Null
         }
 
