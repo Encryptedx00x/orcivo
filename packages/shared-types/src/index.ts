@@ -31,3 +31,4 @@ export * from './auth/reset-password.dto';
 export * from './helpers/money';
 export * from './billing/subscription.dto';
 export * from './invite/invite.dto';
+export * from './audit/audit.dto';
