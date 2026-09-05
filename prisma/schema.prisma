@@ -486,23 +486,17 @@ model RequestIdempotency {
 }
 
 model AuditLog {
-  id            String   @id @default(uuid())
-  company_id    String
-  actor_type    String
-  // P02 — ADR-015: additive, nullable. Null for SYSTEM/CUSTOMER actors (no
-  // logged-in member) and for pre-existing rows written before this column
-  // existed. Intentionally no FK to `users`: audit rows must outlive the actor
-  // (deleted/deactivated members keep their trail).
-  actor_user_id String?
-  action        String
-  entity_type   String
-  entity_id     String
-  metadata      Json?
-  created_at    DateTime @default(now())
+  id          String   @id @default(uuid())
+  company_id  String
+  actor_type  String
+  action      String
+  entity_type String
+  entity_id   String
+  metadata    Json?
+  created_at  DateTime @default(now())
 
   @@index([company_id])
   @@index([company_id, entity_type, entity_id])
-  @@index([company_id, actor_user_id])
   @@map("audit_logs")
 }
 
