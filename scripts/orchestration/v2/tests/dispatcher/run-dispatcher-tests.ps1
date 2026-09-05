@@ -197,6 +197,20 @@ try{
             $dirty=Test-GitTreeSecretsClean -RepoDir $fx -Ref HEAD
             Assert-True ($clean.clean -and -not $dirty.clean) 'immutable candidate scan included untracked cache or missed a tracked secret'
         }
+        Check 'RD-25' {
+            $tv='6'*64;Initialize-LedgerTask -TaskVersionId $tv -Identity @{taskId='PHASE-RESUME'}|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event dispatch -ToState DISPATCHED -RunId run-phase|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event running -ToState RUNNING -RunId run-phase|Out-Null
+            Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId run-phase -Phase CHECKING
+            $checkingSeq=(Get-LedgerState $tv).seq
+            Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId run-phase -Phase CHECKING
+            Assert-True ((Get-LedgerState $tv).seq -eq $checkingSeq) 'CHECKING restart duplicated a ledger event'
+            Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId run-phase -Phase REVIEWING
+            $reviewingSeq=(Get-LedgerState $tv).seq
+            Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId run-phase -Phase REVIEWING
+            Assert-True ((Get-LedgerState $tv).seq -eq $reviewingSeq) 'REVIEWING restart duplicated a ledger event'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
