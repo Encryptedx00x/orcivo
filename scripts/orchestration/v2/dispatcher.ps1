@@ -418,6 +418,7 @@ function Resume-DispatcherProviderWait {
     Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'provider-resume' -ToState 'DISPATCHED' -RunId $State.runId -Note "resume stage $($State.stage)" | Out-Null
     if ($State.stage -eq 'IMPLEMENT') { Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $State.runId | Out-Null }
     elseif ($State.stage -eq 'REVIEW') { Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $State.runId | Out-Null; Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'checking' -ToState 'CHECKING' -RunId $State.runId | Out-Null; Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'reviewing' -ToState 'REVIEWING' -RunId $State.runId | Out-Null }
+    $wait = Get-ProviderWait $State.taskVersionId
     if ($wait) { $wait.resolvedAt=(Get-Date).ToUniversalTime().ToString('o'); Write-V2JsonCanonical (Get-ProviderWaitPath $State.taskVersionId) $wait }
     if ($State.stage -eq 'IMPLEMENT' -and $State.provider -ne $selected) {
         $old=[string]$State.provider; $State.provider=$selected; memoryHandoff ([hashtable]$State.task) $old $selected ([string]$State.logicalProjectId) | Out-Null

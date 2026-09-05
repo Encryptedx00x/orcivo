@@ -16,6 +16,7 @@ $Probe    = Join-Path $Here 'pilot-probe.ps1'
 $PS       = (Get-Command powershell).Source
 $RealCfg  = Join-Path $RepoRoot '.orchestration\v2\config.v2.json'
 $RealSchemas = Join-Path $RepoRoot '.orchestration\v2\schemas'
+. (Join-Path $RepoRoot 'scripts\orchestration\v2\lib-v2.ps1')
 
 $pass = 0; $fail = 0; $fx = $null
 
@@ -48,12 +49,10 @@ function New-Fixture {
 function Check([string]$Name, [string]$Scenario) {
     $o = Join-Path $env:TEMP ("po-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + ".txt")
     $al = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Probe, '-Do', $Scenario)
-    $p = Start-Process -FilePath $PS -ArgumentList $al -WorkingDirectory $fx -NoNewWindow -PassThru -RedirectStandardOutput $o -RedirectStandardError "$o.err"
-    if (-not $p.WaitForExit(240000)) { try { $p.Kill($true) } catch {}; }
-    $out = ''
-    foreach ($f in @($o, "$o.err")) { if (Test-Path $f) { $out += (Get-Content -Raw -LiteralPath $f) } }
+    $p = Invoke-NativeCaptured -Exe $PS -Arguments $al -WorkingDirectory $fx -StdoutLog $o -StderrLog "$o.err" -TimeoutSec 240
+    $out = "$($p.stdout)`n$($p.stderr)"
     Remove-Item -LiteralPath $o, "$o.err" -Force -ErrorAction SilentlyContinue
-    if ($out -match 'PROBE_OK') { $script:pass++; Write-Host "PASS  $Name" -ForegroundColor Green }
+    if ($p.exitCode -eq 0 -and $out -match 'PROBE_OK') { $script:pass++; Write-Host "PASS  $Name" -ForegroundColor Green }
     else { $script:fail++; Write-Host "FAIL  $Name" -ForegroundColor Red; Write-Host "      $($out.Trim() -split "`n" | Select-Object -Last 4)" -ForegroundColor DarkYellow }
 }
 

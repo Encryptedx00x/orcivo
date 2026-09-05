@@ -56,7 +56,10 @@ try{
             Assert-True ((ConvertTo-CanonicalFailureClass 'CHECK_FAILURE' $null) -eq 'TEST_FAILURE') 'test class'
         }
         Check 'RD-08' {
-            $lineage='f'*64;$d=Get-FailoverDecision -CurrentProvider claude -Class PROVIDER_QUOTA -FailoversSoFar 0
+            $lineage='f'*64
+            $script:ProviderHealthFaults=@{}
+            try{$d=Get-FailoverDecision -CurrentProvider claude -Class PROVIDER_QUOTA -FailoversSoFar 0}
+            finally{$script:ProviderHealthFaults=$null}
             Assert-True ($d.action -eq 'FAILOVER' -and $d.nextProvider -eq 'codex' -and $lineage -eq ('f'*64)) 'failover or lineage preservation failed'
         }
         Check 'RD-09' {Assert-True ((Get-FailoverDecision -CurrentProvider claude -Class CHECK_FAILURE).action -eq 'NO_FAILOVER') 'test failure caused provider failover'}
@@ -96,6 +99,7 @@ try{
             $w=Get-ProviderWait $tv;$w.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $tv) $w
             $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex=$null}
             Assert-True ((Resume-DispatcherProviderWait $state) -and $state.provider -eq 'codex' -and (Get-LedgerState $tv).state -eq 'RUNNING') 'healthy opposite provider did not restore the same durable task'
+            Assert-True ([bool](Get-ProviderWait $tv).resolvedAt) 'resumed provider wait was not durably resolved'
             $script:ProviderHealthFaults=$null
         }
         Check 'RD-16' {

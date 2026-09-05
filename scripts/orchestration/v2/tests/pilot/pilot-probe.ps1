@@ -160,6 +160,10 @@ switch ($Do) {
         Assert ($cp.status -eq 'PUBLISHED' -and $cp.providerHistory -and $cp.guardsHonored) "checkpoint content incomplete"
         $cp2 = Get-PilotCheckpoint -RunId $r.runId
         Assert ($cp2 -and $cp2.runId -eq $r.runId) "per-run checkpoint missing"
+        $dispatcherState=[ordered]@{runId=$r.runId;taskId='PS-ck';taskVersionId=$c.taskVersionId;status='PUBLISHED';reason='ok';stage='INTEGRATE';provider='claude';providerHistory=@(@{provider='claude';role='IMPLEMENTER'});candidateHead=('a'*40)}
+        Write-RealDispatcherPilotCheckpoint -State $dispatcherState | Out-Null
+        $cp3=Get-PilotCheckpoint
+        Assert ($cp3.status -eq 'PUBLISHED' -and $cp3.ledgerState -eq 'PUBLISHED' -and $cp3.candidateHead -eq ('a'*40)) "real dispatcher checkpoint content incomplete"
         Ok "durable checkpoint written + readable (run $($r.runId.Substring(0,10)))"
     }
 

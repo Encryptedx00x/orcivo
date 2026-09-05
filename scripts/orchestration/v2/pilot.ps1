@@ -92,6 +92,19 @@ function Get-PilotCheckpoint {
     try { return (Read-V2Json $p) } catch { return $null }
 }
 
+function Write-RealDispatcherPilotCheckpoint {
+    param([Parameter(Mandatory)]$State)
+    if(-not $State.runId -or -not $State.taskId -or -not $State.taskVersionId){return $null}
+    $ledgerState=[string](Get-LedgerState ([string]$State.taskVersionId)).state
+    return (Write-PilotCheckpoint -RunId ([string]$State.runId) -State @{
+        taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId
+        status=[string]$State.status;reason=[string]$State.reason;stage=[string]$State.stage
+        provider=[string]$State.provider;providerHistory=@($State.providerHistory)
+        ledgerState=$ledgerState;candidateHead=[string]$State.candidateHead
+        guardsHonored=@('durable-ledger','immutable-candidate','opposite-provider-review','normal-push')
+    })
+}
+
 # ---------------------------------------------------------------------------
 # Invoke-PilotTask - the composed lifecycle for ONE task version.
 # $SpineRunner: scriptblock (scenarioExec, scenarioReview) -> the spine result
@@ -362,6 +375,7 @@ switch ($Command) {
     { $_ -in @('run','run-once','start') } {
         if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }
         $r = Invoke-DispatcherLoop -RunOnce:($Command -eq 'run-once') -TaskFile $TaskFile -ProviderOverride $ProviderOverride
+        Write-RealDispatcherPilotCheckpoint -State $r | Out-Null
         $r | ConvertTo-Json -Depth 20
         exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
     }
