@@ -133,4 +133,14 @@ export class StorageService implements OnModuleInit {
   async deleteObject(bucket: string, objectName: string): Promise<void> {
     await this.client.removeObject(bucket, objectName);
   }
+
+  /** Downloads an object's raw bytes (used to serve an already-generated file, e.g. a quote PDF). */
+  async getObjectBuffer(bucket: string, objectKey: string): Promise<Buffer> {
+    const stream = await this.client.getObject(bucket, objectKey);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
+  }
 }
