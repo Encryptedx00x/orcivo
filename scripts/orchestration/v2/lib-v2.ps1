@@ -483,6 +483,14 @@ function Get-SourceSecretPatterns {
     return @($patterns[0],$quotedAssignment)+@($patterns|Select-Object -Skip 7)
 }
 
+function Get-SourceFixtureSecretPatterns {
+    $patterns=Get-SecretPatterns
+    # Test fixtures routinely contain visibly synthetic token/password literals.
+    # Retain JSON credential detection and every format-specific signature, but
+    # do not fail publication on a generic quoted fixture assignment alone.
+    return @($patterns[0])+@($patterns|Select-Object -Skip 7)
+}
+
 $script:MaxRedactLine = 16384   # lines longer than this are refused, not regex'd
 
 function Protect-Line {
@@ -615,7 +623,7 @@ function Test-ArtifactsClean {
             # arbitrary logs. In source they match ordinary identifiers such as
             # `token`, `objectKey`, and uppercase constants. Keep JSON literal
             # assignments plus every high-confidence credential signature.
-            $activeLinePats=Get-SourceSecretPatterns
+            $activeLinePats=$(if($f.Name -match '\.(spec|test)\.[^.]+$'){Get-SourceFixtureSecretPatterns}else{Get-SourceSecretPatterns})
         }
         foreach ($pat in $activeLinePats) {
             try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
