@@ -32,7 +32,7 @@ export class QuotePublicController {
   // acesso do GET acima: so o orcamento daquele token, sem guard de auth.
   @Get(':token/pdf')
   @Header('Content-Type', 'application/pdf')
-  @Header('Content-Disposition', 'inline; filename="orcamento.pdf"')
+  @Header('Content-Disposition', 'attachment; filename="orcamento.pdf"')
   async getPublicQuotePdf(@Param('token') token: string): Promise<StreamableFile> {
     const buffer = await this.quoteService.getPdfByApprovalToken(token);
     return new StreamableFile(buffer);

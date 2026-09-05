@@ -383,14 +383,20 @@ export class QuoteService {
     const quote = cachedId
       ? await this.prisma.quote.findFirst({
           where: { id: cachedId },
-          select: { id: true, pdf_url: true },
+          select: { id: true, pdf_url: true, approval_token: true },
         })
       : await this.prisma.quote.findFirst({
           where: { approval_token: token },
-          select: { id: true, pdf_url: true },
+          select: { id: true, pdf_url: true, approval_token: true },
         });
 
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
+    // O cache Redis (id do token -> quote id) pode ficar dessincronizado do banco
+    // (token rotacionado por um novo send() ou já expirado ali). Revalidar contra o
+    // approval_token atual do banco antes de servir o PDF — nunca confiar só no cache.
+    if (quote.approval_token !== token) {
+      throw new NotFoundException('Orçamento não encontrado ou link inválido');
+    }
 
     const key = this.storage.extractKey(PDF_BUCKET, quote.pdf_url);
     if (!key) throw new NotFoundException('PDF ainda não foi gerado para este orçamento.');

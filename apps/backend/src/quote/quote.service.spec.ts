@@ -342,7 +342,11 @@ describe('QuoteService', () => {
   describe('getPdfByApprovalToken()', () => {
     it('Test 8: retorna os bytes do PDF já armazenado para o token do orçamento', async () => {
       mockRedis.get.mockResolvedValue('q1');
-      mockPrisma.quote.findFirst.mockResolvedValue({ id: 'q1', pdf_url: 'comp-1/quotes/q1.pdf' });
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        pdf_url: 'comp-1/quotes/q1.pdf',
+        approval_token: 'some-token',
+      });
 
       const result = await service.getPdfByApprovalToken('some-token');
 
@@ -365,7 +369,25 @@ describe('QuoteService', () => {
 
     it('Test 10: orçamento sem PDF gerado ainda lança NotFoundException', async () => {
       mockRedis.get.mockResolvedValue('q1');
-      mockPrisma.quote.findFirst.mockResolvedValue({ id: 'q1', pdf_url: null });
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        pdf_url: null,
+        approval_token: 'some-token',
+      });
+
+      await expect(service.getPdfByApprovalToken('some-token')).rejects.toThrow(NotFoundException);
+      expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
+    });
+
+    it('Test 11: cache Redis dessincronizado (approval_token do banco diferente do token) lança NotFoundException', async () => {
+      // Redis ainda aponta id -> quote, mas o banco já tem outro approval_token
+      // (ex.: quote reenviada e token rotacionado). Não pode servir o PDF de outro token.
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        pdf_url: 'comp-1/quotes/q1.pdf',
+        approval_token: 'token-novo-rotacionado',
+      });
 
       await expect(service.getPdfByApprovalToken('some-token')).rejects.toThrow(NotFoundException);
       expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
