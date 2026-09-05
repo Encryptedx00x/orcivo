@@ -220,7 +220,14 @@ try{
             Build-ReviewPrompt -DataDir $data -TaskVersionId ('7'*64) -Head ('8'*40) -TreeHash ('9'*40) -DiffHash ('sha256:'+('a'*64)) -SpecHash ('sha256:'+('b'*64)) -AcceptanceText 'AC1: review' -SpecText 'spec' -Diff $diff -ChangedFiles @('source.ts') -CheckSummary 'PASS' -CriteriaIds @('AC1') | Out-Null
             $frozen=Get-Content (Join-Path $data 'diff.patch') -Raw
             Assert-True ($frozen -match 'const \{ token \} = params' -and $frozen -match "PDF_BUCKET = 'orcivo-pdfs'") 'review diff redacted ordinary source syntax'
-            Assert-True ($frozen -notmatch 'literal-to-redact' -and $frozen -notmatch ($prefix+'TRACKED123') -and $frozen -match '\[REDACTED\]') 'review diff exposed a source literal secret'
+            Assert-True ($frozen -match 'literal-to-redact' -and $frozen -notmatch ($prefix+'TRACKED123') -and $frozen -match '\[REDACTED\]') 'review diff lost a scan-cleared fixture or exposed a high-confidence secret'
+        }
+        Check 'RD-27' {
+            $fx=Join-Path $Root 'rd27';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'source.ts') "const oldValue = true;`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            Write-Utf8 (Join-Path $fx 'source.ts') "const { token } = params;`nconst approval_token = 'valid-test-token';`n"
+            $captured=Invoke-GitV2 -Dir $fx -Arguments @('diff','--no-color') -LogLabel 'review-source-capture' -ReviewedSourceOutput
+            Assert-True ($captured.exitCode -eq 0 -and $captured.stdout -match 'approval_token' -and $captured.stdout -notmatch '\[REDACTED\]') 'git diff capture redacted scan-cleared review source'
         }
     } finally {Pop-Location}
 

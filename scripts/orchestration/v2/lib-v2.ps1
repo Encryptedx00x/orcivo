@@ -523,7 +523,10 @@ function Protect-SecretsStreaming {
     $lines  = $Text -split "`n"
     $envLike = @($lines | Where-Object { $_ -match $envRx }).Count
     $dropEnv = (-not $SourceText -and $envLike -gt $maxEnv)
-    $activePatterns=$(if($SourceText){Get-SourceSecretPatterns}else{Get-AllRedactionPatterns})
+    # Review diffs are created only after the immutable candidate scan passes.
+    # Preserve generic fixture literals needed to assess behavior while retaining
+    # JSON credential detection and every format-specific signature as defense in depth.
+    $activePatterns=$(if($SourceText){Get-SourceFixtureSecretPatterns}else{Get-AllRedactionPatterns})
     $result = New-Object System.Text.StringBuilder
     foreach ($l in $lines) {
         if ($dropEnv -and $l -match $envRx) { continue }
@@ -547,7 +550,8 @@ function Copy-StreamRedacted {
     param(
         [System.IO.StreamReader]$Reader,
         [string]$LogPath,
-        [int]$MaxChars = 200000
+        [int]$MaxChars = 200000,
+        [string[]]$Patterns=@()
     )
     $cfg = Get-V2Config
     $repl = $cfg.redaction.replacement
@@ -582,7 +586,7 @@ function Copy-StreamRedacted {
             foreach ($t in $triggers) { if ($line.Contains($t)) { $isTrigger = $true; break } }
 
             if ($null -eq $buffer -and -not $isTrigger) {
-                $red = Protect-Line $line
+                $red = Protect-Line $line -Patterns $Patterns
                 $sw.WriteLine($red); $sw.Flush()
                 if ($collected.Length -lt $MaxChars) { [void]$collected.AppendLine($red) }
                 continue
@@ -767,7 +771,8 @@ function Invoke-NativeCaptured {
         [string]$StdoutLog,
         [string]$StderrLog,
         [int]$TimeoutSec = 900,
-        [hashtable]$EnvironmentOverrides = @{}
+        [hashtable]$EnvironmentOverrides = @{},
+        [ValidateSet('Full','ReviewedSource')][string]$StdoutRedactionMode='Full'
     )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $Exe
@@ -835,7 +840,8 @@ function Invoke-NativeCaptured {
     [void]$errJob.AddParameters(@{ reader = $proc.StandardError; logPath = $StderrLog; patterns = (Get-AllRedactionPatterns); mlPatterns = @($cfgR.multilinePatterns); repl = $cfgR.replacement; max = 100000 })
     $errHandle = $errJob.BeginInvoke()
 
-    $stdout = Copy-StreamRedacted -Reader $proc.StandardOutput -LogPath $StdoutLog
+    $stdoutPatterns=$(if($StdoutRedactionMode -eq 'ReviewedSource'){Get-SourceFixtureSecretPatterns}else{Get-AllRedactionPatterns})
+    $stdout = Copy-StreamRedacted -Reader $proc.StandardOutput -LogPath $StdoutLog -Patterns $stdoutPatterns
     $timedOut = $false
     if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
         $timedOut = $true
@@ -921,7 +927,8 @@ function Invoke-GitV2 {
         [string]$Dir = $script:RepoRootV2,
         [Parameter(Mandatory)][string[]]$Arguments,
         [int]$TimeoutSec = 300,
-        [string]$LogLabel = 'git'
+        [string]$LogLabel = 'git',
+        [switch]$ReviewedSourceOutput
     )
     Assert-SafeGitV2 $Arguments
     $gitExe = Resolve-Executable -Name 'git.exe' -NativeOnly
@@ -931,7 +938,8 @@ function Invoke-GitV2 {
     if (-not $safeLabel) { $safeLabel = 'git' }
     $tag = '{0}-{1}-{2}' -f $safeLabel, ([System.Diagnostics.Process]::GetCurrentProcess().Id), ([guid]::NewGuid().ToString('N').Substring(0,12))
     $result = Invoke-NativeCaptured -Exe $gitExe -Arguments (@('-C', $Dir) + @($Arguments)) -WorkingDirectory $Dir `
-        -StdoutLog (Join-Path $logRoot "$tag.stdout.log") -StderrLog (Join-Path $logRoot "$tag.stderr.log") -TimeoutSec $TimeoutSec
+        -StdoutLog (Join-Path $logRoot "$tag.stdout.log") -StderrLog (Join-Path $logRoot "$tag.stderr.log") -TimeoutSec $TimeoutSec `
+        -StdoutRedactionMode $(if($ReviewedSourceOutput){'ReviewedSource'}else{'Full'})
     $result.command = "git $($Arguments -join ' ')"
     return $result
 }
