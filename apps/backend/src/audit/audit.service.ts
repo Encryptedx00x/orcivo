@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { AuditRecordInput } from './audit.types';
+import type { AuditLogMetadata, AuditRecordInput } from './audit.types';
 
 /**
  * ADR-015 — central audit trail.
@@ -33,25 +33,26 @@ import type { AuditRecordInput } from './audit.types';
 @Injectable()
 export class AuditService {
   async record(tx: Prisma.TransactionClient, input: AuditRecordInput): Promise<void> {
-    // `actor_user_id` is added by the additive migration
-    // 20260905000000_audit_log_actor_user_id (ADR-015, nullable, no backfill).
-    // The Prisma schema keeps the column out for now — editing schema.prisma is
-    // gated on a separate contract grant (see P02-T12) — so the create payload
-    // is widened explicitly here instead of relying on the generated type.
-    const data: Prisma.AuditLogUncheckedCreateInput & { actor_user_id: string | null } = {
-      company_id: input.companyId,
-      actor_type: input.actorType,
-      actor_user_id: input.actorUserId ?? null,
-      action: input.action,
-      entity_type: input.entityType,
-      entity_id: input.entityId,
-      metadata: {
-        from: input.from ?? null,
-        to: input.to ?? null,
-        reason: input.reason ?? null,
-        humanText: input.humanText,
-      },
+    // Standardised {from,to,reason} envelope + the human-readable description.
+    const metadata: AuditLogMetadata = {
+      from: input.from ?? null,
+      to: input.to ?? null,
+      reason: input.reason ?? null,
+      humanText: input.humanText,
     };
-    await tx.auditLog.create({ data: data as Prisma.AuditLogUncheckedCreateInput });
+
+    await tx.auditLog.create({
+      data: {
+        company_id: input.companyId,
+        actor_type: input.actorType,
+        // Additive column (migration 20260905000000_audit_log_actor_user_id):
+        // nullable, no FK, null for SYSTEM/CUSTOMER actors.
+        actor_user_id: input.actorUserId ?? null,
+        action: input.action,
+        entity_type: input.entityType,
+        entity_id: input.entityId,
+        metadata,
+      },
+    });
   }
 }

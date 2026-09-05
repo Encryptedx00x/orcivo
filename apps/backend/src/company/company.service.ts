@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 type ApprovalMethod = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
 
@@ -20,7 +21,10 @@ const COMPANY_SELECT = {
 
 @Injectable()
 export class CompanyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async findCurrent(companyId: string) {
     const company = await this.prisma.company.findUnique({
@@ -73,11 +77,33 @@ export class CompanyService {
     return members;
   }
 
-  async updateApprovalMethods(companyId: string, methods: ApprovalMethod[]) {
-    return this.prisma.company.update({
+  async updateApprovalMethods(companyId: string, methods: ApprovalMethod[], userId: string) {
+    const before = await this.prisma.company.findUnique({
       where: { id: companyId },
-      data: { allowed_approval_methods: methods } as never,
-      select: COMPANY_SELECT,
+      select: { trade_name: true, allowed_approval_methods: true },
+    });
+    if (!before) throw new NotFoundException();
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: { allowed_approval_methods: methods } as never,
+        select: COMPANY_SELECT,
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.approval_methods_changed',
+        entityType: 'company',
+        entityId: companyId,
+        from: [...before.allowed_approval_methods],
+        to: [...methods],
+        humanText:
+          `Métodos de aprovação de "${before.trade_name}" alterados para ` +
+          `${methods.join(', ') || '(nenhum)'}`,
+      });
+      return updated;
     });
   }
 }

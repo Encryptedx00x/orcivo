@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { AuditService } from './audit.service';
 
-// Not @Global(): consuming feature modules (quote, work-order, payment,
-// customer, company, invite, appointment, ...) import this module explicitly
-// to inject AuditService. PrismaService is already global (PrismaModule), so
-// no extra imports are needed here.
+// @Global(): the audit trail (ADR-015) is cross-cutting — quote, work-order,
+// payment, customer, company, invite and appointment services all inject
+// AuditService to record their mutations in-transaction. Registered once in
+// AppModule. PrismaService is already global (PrismaModule).
+@Global()
 @Module({
   providers: [AuditService],
   exports: [AuditService],

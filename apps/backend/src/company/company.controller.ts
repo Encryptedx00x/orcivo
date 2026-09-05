@@ -8,6 +8,7 @@ import { AdminOnly } from '../auth/decorators/roles.decorator';
 // Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
+  user: { userId: string };
 }
 
 @Controller('company')
@@ -35,7 +36,7 @@ export class CompanyController {
     @Req() req: TenantRequest,
     @Body() body: { methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[] },
   ) {
-    return this.companyService.updateApprovalMethods(req.companyId, body.methods);
+    return this.companyService.updateApprovalMethods(req.companyId, body.methods, req.user.userId);
   }
 
   @Get('me/plan-limits')

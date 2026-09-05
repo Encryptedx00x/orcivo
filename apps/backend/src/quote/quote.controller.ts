@@ -52,12 +52,12 @@ export class QuoteController {
   @Post(':id/send')
   @HttpCode(200)
   send(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.quoteService.send(id, req.companyId);
+    return this.quoteService.send(id, req.companyId, req.user.userId);
   }
 
   @Patch(':id/cancel')
   @HttpCode(200)
   cancel(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
-    return this.quoteService.cancel(id, req.companyId, reason);
+    return this.quoteService.cancel(id, req.companyId, req.user.userId, reason);
   }
 }

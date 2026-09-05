@@ -3,6 +3,7 @@ import { CustomerCreateDto, CustomerListQueryDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class CustomerService {
@@ -10,16 +11,31 @@ export class CustomerService {
     private readonly prisma: PrismaService,
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
-  async create(dto: CustomerCreateDto, companyId: string) {
+  async create(dto: CustomerCreateDto, companyId: string, userId: string) {
     await this.planLimitsService.enforceLimit(companyId, 'CUSTOMERS');
     await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
-    return this.prisma.customer.create({
-      data: {
-        ...dto,
-        company_id: companyId,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.create({
+        data: {
+          ...dto,
+          company_id: companyId,
+        },
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'customer.created',
+        entityType: 'customer',
+        entityId: customer.id,
+        from: null,
+        to: 'ACTIVE',
+        humanText: `Cliente "${customer.name}" cadastrado`,
+      });
+      return customer;
     });
   }
 

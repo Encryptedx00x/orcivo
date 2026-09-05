@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import { AuditService } from '../audit/audit.service';
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
@@ -21,6 +22,7 @@ export class WorkOrderService {
     private readonly redis: RedisService,
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
+    private readonly audit: AuditService,
   ) {}
 
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
@@ -49,20 +51,37 @@ export class WorkOrderService {
     await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
     await this.ownership.assertQuote(quoteId, companyId);
     const number = await this.nextWorkOrderNumber(companyId);
-    return this.prisma.workOrder.create({
-      data: {
-        company_id: companyId,
-        customer_id: dto.customer_id,
-        quote_id: quoteId,
-        number,
-        title: dto.title,
-        notes: dto.notes,
-        status: initialStatus,
-        scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : undefined,
-        assigned_to_user_id: dto.assigned_to_user_id,
-        created_by_user_id: userId,
-        started_at: initialStatus === 'IN_PROGRESS' ? new Date() : undefined,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const workOrder = await tx.workOrder.create({
+        data: {
+          company_id: companyId,
+          customer_id: dto.customer_id,
+          quote_id: quoteId,
+          number,
+          title: dto.title,
+          notes: dto.notes,
+          status: initialStatus,
+          scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : undefined,
+          assigned_to_user_id: dto.assigned_to_user_id,
+          created_by_user_id: userId,
+          started_at: initialStatus === 'IN_PROGRESS' ? new Date() : undefined,
+        },
+        include: { customer: { select: { name: true } } },
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'work_order.created',
+        entityType: 'work_order',
+        entityId: workOrder.id,
+        from: null,
+        to: initialStatus,
+        humanText:
+          `OS #${workOrder.number} "${workOrder.title}" (${workOrder.customer.name}) criada` +
+          (quoteId ? ' a partir de um orçamento aprovado' : ''),
+      });
+      return workOrder;
     });
   }
 
@@ -86,7 +105,7 @@ export class WorkOrderService {
     return wo;
   }
 
-  async updateStatus(id: string, companyId: string, newStatus: WorkOrderStatus) {
+  async updateStatus(id: string, companyId: string, newStatus: WorkOrderStatus, userId: string) {
     const wo = await this.findOne(id, companyId);
     const current = wo.status as WorkOrderStatus;
     if (!WO_TRANSITIONS[current].includes(newStatus)) {
@@ -95,14 +114,28 @@ export class WorkOrderService {
     const data: Record<string, unknown> = { status: newStatus };
     if (newStatus === 'IN_PROGRESS') data.started_at = new Date();
     if (newStatus === 'DONE') data.finished_at = new Date();
-    return this.prisma.workOrder.update({ where: { id }, data });
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.workOrder.update({ where: { id }, data });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'work_order.status_changed',
+        entityType: 'work_order',
+        entityId: id,
+        from: current,
+        to: newStatus,
+        humanText: `OS #${wo.number} "${wo.title}" (${wo.customer.name}) mudou de ${current} para ${newStatus}`,
+      });
+      return updated;
+    });
   }
 
-  async update(id: string, dto: WorkOrderUpdateDto, companyId: string) {
+  async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {
     await this.findOne(id, companyId);
     await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
     const { status, ...rest } = dto;
-    if (status) return this.updateStatus(id, companyId, status as WorkOrderStatus);
+    if (status) return this.updateStatus(id, companyId, status as WorkOrderStatus, userId);
     return this.prisma.workOrder.update({
       where: { id },
       data: {

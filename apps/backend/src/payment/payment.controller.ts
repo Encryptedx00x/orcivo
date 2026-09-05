@@ -19,6 +19,7 @@ import { PaymentCreateSchema, PaymentListQuerySchema, PaymentSettleSchema } from
 // GET is open to any active member; writes are admin-only.
 interface TenantRequest {
   companyId: string;
+  user: { userId: string };
 }
 
 @Controller('payments')
@@ -40,7 +41,7 @@ export class PaymentController {
     @Req() req: TenantRequest,
     @Body(new ZodValidationPipe(PaymentCreateSchema)) body: unknown,
   ) {
-    return this.paymentService.create(body as never, req.companyId);
+    return this.paymentService.create(body as never, req.companyId, req.user.userId);
   }
 
   @AdminOnly()
@@ -51,13 +52,13 @@ export class PaymentController {
     @Req() req: TenantRequest,
     @Body(new ZodValidationPipe(PaymentSettleSchema)) body: unknown,
   ) {
-    return this.paymentService.settle(id, req.companyId, body as never);
+    return this.paymentService.settle(id, req.companyId, body as never, req.user.userId);
   }
 
   @AdminOnly()
   @Delete(':id')
   @HttpCode(200)
   remove(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.paymentService.remove(id, req.companyId);
+    return this.paymentService.remove(id, req.companyId, req.user.userId);
   }
 }

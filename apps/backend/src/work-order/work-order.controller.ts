@@ -60,7 +60,7 @@ export class WorkOrderController {
     @Body(new ZodValidationPipe(WorkOrderUpdateSchema)) body: unknown,
     @Req() req: TenantRequest,
   ) {
-    return this.workOrderService.update(id, body as never, req.companyId);
+    return this.workOrderService.update(id, body as never, req.companyId, req.user.userId);
   }
 
   // T-2A-17: stage validado no controller antes de chamar service

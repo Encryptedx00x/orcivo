@@ -33,6 +33,6 @@ export class AppointmentController {
   @Delete(':id')
   @HttpCode(200)
   remove(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.appointmentService.remove(id, req.companyId);
+    return this.appointmentService.remove(id, req.companyId, req.user.userId);
   }
 }

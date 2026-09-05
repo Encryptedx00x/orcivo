@@ -27,6 +27,7 @@ import { InviteModule } from './invite/invite.module';
 import { PaymentModule } from './payment/payment.module';
 import { AppointmentModule } from './appointment/appointment.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AuditModule } from './audit/audit.module';
 import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
 
 @Module({
@@ -40,6 +41,7 @@ import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    AuditModule,
     RedisModule,
     TenantModule,
     StorageModule,

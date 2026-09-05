@@ -17,11 +17,14 @@ import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import { AuditService } from '../audit/audit.service';
 
 const mockTx = {
-  quote: { updateMany: jest.fn() },
+  quote: { updateMany: jest.fn(), update: jest.fn() },
   auditLog: { create: jest.fn() },
 };
+
+const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
 
 const mockPrisma = {
   quote: {
@@ -49,7 +52,7 @@ const mockPrisma = {
       pix_key: null,
     }),
   },
-  $transaction: jest.fn(),
+  $transaction: jest.fn(async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx)),
 };
 
 const mockRedis = {
@@ -113,6 +116,7 @@ describe('QuoteService', () => {
             assertCatalogItems: jest.fn().mockResolvedValue(undefined),
           },
         },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);
@@ -162,14 +166,15 @@ describe('QuoteService', () => {
         approval: null,
       });
       mockRedis.set.mockResolvedValue(undefined);
-      mockPrisma.quote.update.mockResolvedValue({
+      mockTx.quote.update.mockResolvedValue({
         id: 'q1',
+        number: 7,
         status: 'SENT',
         approval_token: 'tok',
         valid_until: null,
       });
 
-      const result = await service.send('q1', 'comp-1');
+      const result = await service.send('q1', 'comp-1', 'user-1');
 
       expect(mockRedis.set).toHaveBeenCalledWith(
         expect.stringContaining('quote:approval:'),
@@ -178,6 +183,10 @@ describe('QuoteService', () => {
         604800,
       );
       expect(result.approval_token).toBeTruthy();
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({ action: 'quote.sent', to: 'SENT', actorUserId: 'user-1' }),
+      );
     });
 
     it('Test 3: send() com quote SENT lança BadRequestException (SENT→SENT inválido)', async () => {
@@ -190,7 +199,7 @@ describe('QuoteService', () => {
         approval: null,
       });
 
-      await expect(service.send('q1', 'comp-1')).rejects.toThrow(BadRequestException);
+      await expect(service.send('q1', 'comp-1', 'user-1')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -205,7 +214,7 @@ describe('QuoteService', () => {
         approval: null,
       });
 
-      await expect(service.cancel('q1', 'comp-1')).rejects.toThrow(BadRequestException);
+      await expect(service.cancel('q1', 'comp-1', 'user-1')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -246,14 +255,14 @@ describe('QuoteService', () => {
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'q1', status: 'SENT' } }),
       );
-      expect(mockTx.auditLog.create).toHaveBeenCalledWith(
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
         expect.objectContaining({
-          data: expect.objectContaining({
-            action: 'quote.approved',
-            entity_type: 'quote',
-            entity_id: 'q1',
-            company_id: 'comp-1',
-          }),
+          action: 'quote.approved',
+          entityType: 'quote',
+          entityId: 'q1',
+          companyId: 'comp-1',
+          actorType: 'CUSTOMER',
         }),
       );
       expect(mockPrisma.quoteApproval.create).toHaveBeenCalled();
@@ -291,18 +300,17 @@ describe('QuoteService', () => {
       );
     });
 
-    it('Test A5: AuditLog criado com actor_type SYSTEM dentro do $transaction', async () => {
+    it('Test A5: AuditLog criado com actor_type CUSTOMER dentro do $transaction', async () => {
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
       await service.approve(quoteToken, dto, '10.0.0.1', 'TestAgent');
 
-      expect(mockTx.auditLog.create).toHaveBeenCalledWith(
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
         expect.objectContaining({
-          data: expect.objectContaining({
-            actor_type: 'SYSTEM',
-            action: 'quote.approved',
-            entity_type: 'quote',
-            company_id: 'comp-1',
-          }),
+          actorType: 'CUSTOMER',
+          action: 'quote.approved',
+          entityType: 'quote',
+          companyId: 'comp-1',
         }),
       );
     });
@@ -397,8 +405,14 @@ describe('QuoteService', () => {
 
 describe('QuoteExpiryProcessor', () => {
   let prisma: typeof mockPrisma;
+  const txMock = {
+    quote: { update: jest.fn(), updateMany: jest.fn() },
+    auditLog: { create: jest.fn() },
+  };
+  const auditMock = { record: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(() => {
+    jest.clearAllMocks();
     prisma = {
       quote: {
         create: jest.fn(),
@@ -410,35 +424,52 @@ describe('QuoteExpiryProcessor', () => {
       quoteApproval: { create: jest.fn() },
       auditLog: { create: jest.fn() },
       company: { findUniqueOrThrow: jest.fn() },
-      $transaction: jest.fn(),
+      $transaction: jest.fn(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)),
     };
   });
 
-  it('Test 5: process() expira quote SENT com valid_until no passado', async () => {
+  it('Test 5: process() expira quote SENT com valid_until no passado e grava auditoria', async () => {
     const { QuoteExpiryProcessor } = await import('./quote-expiry.processor');
-    const processor = new QuoteExpiryProcessor(prisma as unknown as PrismaService);
+    const processor = new QuoteExpiryProcessor(
+      prisma as unknown as PrismaService,
+      auditMock as never,
+    );
 
     const pastDate = new Date(Date.now() - 1000 * 60 * 60);
-    prisma.quote.findFirst.mockResolvedValue({ id: 'q1', status: 'SENT', valid_until: pastDate });
-    prisma.quote.update.mockResolvedValue({ id: 'q1', status: 'EXPIRED' });
+    prisma.quote.findFirst.mockResolvedValue({
+      id: 'q1',
+      number: 3,
+      company_id: 'comp-1',
+      status: 'SENT',
+      valid_until: pastDate,
+      customer: { name: 'Cliente' },
+    });
+    txMock.quote.update.mockResolvedValue({ id: 'q1', status: 'EXPIRED' });
 
     await processor.process({ data: { quoteId: 'q1' } } as never);
 
-    expect(prisma.quote.update).toHaveBeenCalledWith({
+    expect(txMock.quote.update).toHaveBeenCalledWith({
       where: { id: 'q1' },
       data: { status: 'EXPIRED' },
     });
+    expect(auditMock.record).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({ action: 'quote.expired', actorType: 'SYSTEM', to: 'EXPIRED' }),
+    );
   });
 
   it('Test 6: process() NÃO modifica quote APPROVED (estado terminal)', async () => {
     const { QuoteExpiryProcessor } = await import('./quote-expiry.processor');
-    const processor = new QuoteExpiryProcessor(prisma as unknown as PrismaService);
+    const processor = new QuoteExpiryProcessor(
+      prisma as unknown as PrismaService,
+      auditMock as never,
+    );
 
     // findFirst retorna null pois WHERE status IN (DRAFT, SENT) não encontra APPROVED
     prisma.quote.findFirst.mockResolvedValue(null);
 
     await processor.process({ data: { quoteId: 'q1' } } as never);
 
-    expect(prisma.quote.update).not.toHaveBeenCalled();
+    expect(txMock.quote.update).not.toHaveBeenCalled();
   });
 });

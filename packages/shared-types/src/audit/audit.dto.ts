@@ -7,6 +7,15 @@ import { z } from 'zod';
 export const AuditActorTypeEnum = z.enum(['USER', 'SYSTEM', 'CUSTOMER']);
 export type AuditActorType = z.infer<typeof AuditActorTypeEnum>;
 
+// Valor serializável em JSON usado em `from`/`to` (normalmente um status string).
+export type AuditJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: AuditJsonValue }
+  | AuditJsonValue[];
+
 /**
  * Contrato de entrada do `AuditService.record()`. `action`/`entityType` são
  * strings livres em formato `dominio.evento` / `dominio` (ex.: `quote.approved`,
@@ -22,18 +31,18 @@ export interface AuditRecordInput {
   entityType: string;
   entityId: string;
   /** Estado anterior relevante (ex.: status antigo). Serializado em metadata.from. */
-  from?: unknown;
+  from?: AuditJsonValue;
   /** Novo estado relevante. Serializado em metadata.to. */
-  to?: unknown;
+  to?: AuditJsonValue;
   reason?: string | null;
   /** Descrição humana, nomeando entidade/contexto/cliente (AC7). */
   humanText: string;
 }
 
 /** Formato padronizado da coluna `metadata` (Json) em `audit_logs`. */
-export interface AuditLogMetadata {
-  from?: unknown;
-  to?: unknown;
-  reason?: string;
+export type AuditLogMetadata = {
+  from: AuditJsonValue;
+  to: AuditJsonValue;
+  reason: string | null;
   humanText: string;
-}
+};

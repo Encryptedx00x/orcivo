@@ -17,6 +17,7 @@ import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class QuoteService {
@@ -30,6 +31,7 @@ export class QuoteService {
     private readonly pdfService: QuotePdfService,
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
+    private readonly auditService: AuditService,
   ) {}
 
   private computeTotals(
@@ -171,13 +173,16 @@ export class QuoteService {
     );
   }
 
-  async send(id: string, companyId: string) {
+  async send(id: string, companyId: string, userId: string) {
     const quote = await this.findOne(id, companyId);
     try {
       assertValidTransition(quote.status as never, 'SENT');
     } catch {
       throw new BadRequestException(`Transicao invalida: ${quote.status} -> SENT`);
     }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as string;
 
     // Gerar PDF e salvar no MinIO
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
@@ -200,10 +205,24 @@ export class QuoteService {
     const ttl = 7 * 24 * 60 * 60; // 7 dias em segundos = 604800
     await this.redis.set(`quote:approval:${token}`, id, 'EX', ttl);
 
-    const updated = await this.prisma.quote.update({
-      where: { id },
-      data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
-      include: { items: true, customer: true, approval: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const q = await tx.quote.update({
+        where: { id },
+        data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.sent',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'SENT',
+        humanText: `Orçamento #${q.number} (${customerName}) enviado para aprovação`,
+      });
+      return q;
     });
 
     // Agendar job de expiracao se valid_until definido
@@ -231,20 +250,19 @@ export class QuoteService {
       });
       if (updated.count === 0) return null; // ja aprovado ou nao e SENT
 
-      // Registrar AuditLog dentro da mesma transaction (D2-14)
-      await tx.auditLog.create({
-        data: {
-          company_id: quote.company_id,
-          actor_type: 'SYSTEM',
-          action: 'quote.approved',
-          entity_type: 'quote',
-          entity_id: quote.id,
-          metadata: {
-            approval_method: dto.approval_method,
-            ip_address: ipAddress,
-            user_agent: userAgent,
-          },
-        },
+      // Registrar AuditLog dentro da mesma transaction (D2-14 / ADR-015).
+      // actorType CUSTOMER: aprovação feita pelo cliente via link público (sem sessão).
+      await this.auditService.record(tx, {
+        companyId: quote.company_id,
+        actorType: 'CUSTOMER',
+        action: 'quote.approved',
+        entityType: 'quote',
+        entityId: quote.id,
+        from: 'SENT',
+        to: 'APPROVED',
+        humanText:
+          `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente ` +
+          `via ${dto.approval_method} (IP ${ipAddress})`,
       });
 
       return updated;
@@ -315,18 +333,38 @@ export class QuoteService {
     return { status: 'APPROVED' };
   }
 
-  async cancel(id: string, companyId: string, reason?: string) {
+  async cancel(id: string, companyId: string, userId: string, reason?: string) {
     const quote = await this.findOne(id, companyId);
     try {
       assertValidTransition(quote.status as never, 'CANCELLED');
     } catch {
       throw new BadRequestException(`Transição inválida: ${quote.status} → CANCELLED`);
     }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as string;
 
-    return this.prisma.quote.update({
-      where: { id },
-      data: { status: 'CANCELLED', notes: reason },
-      include: { items: true, customer: true, approval: true },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'CANCELLED', notes: reason },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.cancelled',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'CANCELLED',
+        reason: reason ?? null,
+        humanText:
+          `Orçamento #${updated.number} (${customerName}) cancelado` +
+          (reason ? `: ${reason}` : ''),
+      });
+      return updated;
     });
   }
 
