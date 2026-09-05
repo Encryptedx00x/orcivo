@@ -155,10 +155,12 @@ function Invoke-Integration {
 
         # 5b. H3-02: pre-publication recursive secret scan. CLEAN is mandatory
         #     before anything is pushed.
-        $scanRoots = @($WorktreeDir) + @($SecretScanRoots) + @(
+        $scanRoots = @($SecretScanRoots) + @(
             (Join-Path (Get-V2Dir) 'logs'), (Join-Path (Get-V2Dir) 'contracts'),
             (Join-Path (Get-V2Dir) 'attestations'), (Join-Path (Get-V2Dir) 'runs'))
-        $scan = Test-TreeSecretsClean -Roots $scanRoots
+        $treeScan = Test-GitTreeSecretsClean -RepoDir $WorktreeDir -Ref $HeadSha
+        $artifactScan = Test-TreeSecretsClean -Roots $scanRoots
+        $scan = [ordered]@{ clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean); hits=@($treeScan.hits)+@($artifactScan.hits) }
         if (-not $scan.clean) {
             return (_fail $TaskVersionId $RunId $result "pre-publication secret scan found $($scan.hits.Count) hit(s): $((@($scan.hits) | Select-Object -First 5) -join ' ; ')" 'SECRET_LEAK_BLOCKED')
         }

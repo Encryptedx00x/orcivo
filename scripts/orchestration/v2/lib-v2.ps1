@@ -846,6 +846,31 @@ function Assert-SafeGitV2 {
     }
 }
 
+# Scan the immutable tracked tree only. Build/test tools may materialize large,
+# untracked dependency caches in a candidate workspace; those are neither part
+# of the candidate nor publication authority and must not make the gate hang.
+function Test-GitTreeSecretsClean {
+    param([Parameter(Mandatory)][string]$RepoDir, [Parameter(Mandatory)][string]$Ref)
+    $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $scanRoot = Join-Path $tempBase ("orcivo-tree-scan-" + [guid]::NewGuid().ToString('N'))
+    $archive = Join-Path $scanRoot 'candidate.zip'
+    $expanded = Join-Path $scanRoot 'tree'
+    try {
+        New-Item -ItemType Directory -Force -Path $expanded | Out-Null
+        $result = Invoke-GitV2 -Dir $RepoDir -Arguments @('archive','--format=zip',"--output=$archive",$Ref) -LogLabel 'secret-scan-archive'
+        if($result.exitCode -ne 0){return [ordered]@{clean=$false;hits=@((Get-GitFailureSummaryV2 $result 'immutable candidate archive'))}}
+        Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
+        return (Test-ArtifactsClean -Root $expanded)
+    } catch {
+        return [ordered]@{clean=$false;hits=@("immutable candidate scan failed: $($_.Exception.Message)")}
+    } finally {
+        $full = [System.IO.Path]::GetFullPath($scanRoot)
+        if($full.StartsWith($tempBase,[System.StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $full) -like 'orcivo-tree-scan-*'){
+            Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # ----------------------------------------------------------------------------
 # git helpers - native stderr is diagnostic data, never success authority
 # ----------------------------------------------------------------------------

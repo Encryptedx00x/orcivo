@@ -188,6 +188,15 @@ try{
             $bad=Test-DispatcherPolicyCorrectionResumeEligible -State $state -Task ([hashtable]$task) -Contract @{taskVersionId=$version} -TaskSource $source
             Assert-True ($ok -and -not $bad) 'same-contract policy correction did not require the exact durable candidate'
         }
+        Check 'RD-24' {
+            $fx=Join-Path $Root 'rd24';& git init -b main --quiet $fx
+            Write-Utf8 (Join-Path $fx 'tracked.txt') "clean candidate`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
+            Write-Utf8 (Join-Path $fx 'node_modules\dependency.txt') 'ORCIVO_SYNTHETIC_SECRET_UNTRACKED123'
+            $clean=Test-GitTreeSecretsClean -RepoDir $fx -Ref HEAD
+            Write-Utf8 (Join-Path $fx 'tracked.txt') 'ORCIVO_SYNTHETIC_SECRET_TRACKED123';& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
+            $dirty=Test-GitTreeSecretsClean -RepoDir $fx -Ref HEAD
+            Assert-True ($clean.clean -and -not $dirty.clean) 'immutable candidate scan included untracked cache or missed a tracked secret'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
