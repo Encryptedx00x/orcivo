@@ -850,14 +850,27 @@ function Assert-SafeGitV2 {
 # untracked dependency caches in a candidate workspace; those are neither part
 # of the candidate nor publication authority and must not make the gate hang.
 function Test-GitTreeSecretsClean {
-    param([Parameter(Mandatory)][string]$RepoDir, [Parameter(Mandatory)][string]$Ref)
+    param(
+        [Parameter(Mandatory)][string]$RepoDir,
+        [Parameter(Mandatory)][string]$Ref,
+        [string]$BaseRef=''
+    )
     $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     $scanRoot = Join-Path $tempBase ("orcivo-tree-scan-" + [guid]::NewGuid().ToString('N'))
     $archive = Join-Path $scanRoot 'candidate.zip'
     $expanded = Join-Path $scanRoot 'tree'
     try {
         New-Item -ItemType Directory -Force -Path $expanded | Out-Null
-        $result = Invoke-GitV2 -Dir $RepoDir -Arguments @('archive','--format=zip',"--output=$archive",$Ref) -LogLabel 'secret-scan-archive'
+        $paths=@()
+        if($BaseRef){
+            $diff=Invoke-GitV2 -Dir $RepoDir -Arguments @('diff','--name-only','--diff-filter=ACMRTUXB','-z',"$BaseRef..$Ref") -LogLabel 'secret-scan-diff-paths'
+            if($diff.exitCode -ne 0){return [ordered]@{clean=$false;hits=@((Get-GitFailureSummaryV2 $diff 'immutable candidate diff paths'))}}
+            $paths=@($diff.stdout.Split([char]0)|Where-Object{-not [string]::IsNullOrWhiteSpace($_)})
+            if($paths.Count -eq 0){return [ordered]@{clean=$true;hits=@()}}
+        }
+        $archiveArgs=@('archive','--format=zip',"--output=$archive",$Ref)
+        if($paths.Count){$archiveArgs+=@('--')+$paths}
+        $result = Invoke-GitV2 -Dir $RepoDir -Arguments $archiveArgs -LogLabel 'secret-scan-archive'
         if($result.exitCode -ne 0){return [ordered]@{clean=$false;hits=@((Get-GitFailureSummaryV2 $result 'immutable candidate archive'))}}
         Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
         return (Test-ArtifactsClean -Root $expanded)

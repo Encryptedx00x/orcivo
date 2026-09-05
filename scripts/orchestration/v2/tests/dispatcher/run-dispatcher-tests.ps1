@@ -190,12 +190,14 @@ try{
         }
         Check 'RD-24' {
             $fx=Join-Path $Root 'rd24';& git init -b main --quiet $fx
-            Write-Utf8 (Join-Path $fx 'tracked.txt') "clean candidate`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
-            Write-Utf8 (Join-Path $fx 'node_modules\dependency.txt') 'ORCIVO_SYNTHETIC_SECRET_UNTRACKED123'
-            $clean=Test-GitTreeSecretsClean -RepoDir $fx -Ref HEAD
-            Write-Utf8 (Join-Path $fx 'tracked.txt') 'ORCIVO_SYNTHETIC_SECRET_TRACKED123';& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
-            $dirty=Test-GitTreeSecretsClean -RepoDir $fx -Ref HEAD
-            Assert-True ($clean.clean -and -not $dirty.clean) 'immutable candidate scan included untracked cache or missed a tracked secret'
+            $prefix='ORCIVO_'+'SYNTHETIC_SECRET_'
+            Write-Utf8 (Join-Path $fx 'baseline.txt') ($prefix+'BASELINE123');& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m baseline --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'tracked.txt') "clean candidate`n";& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
+            Write-Utf8 (Join-Path $fx 'node_modules\dependency.txt') ($prefix+'UNTRACKED123')
+            $clean=Test-GitTreeSecretsClean -RepoDir $fx -BaseRef $base -Ref HEAD
+            Write-Utf8 (Join-Path $fx 'tracked.txt') ($prefix+'TRACKED123');& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
+            $dirty=Test-GitTreeSecretsClean -RepoDir $fx -BaseRef $base -Ref HEAD
+            Assert-True ($clean.clean -and -not $dirty.clean) 'immutable diff scan included baseline/cache content or missed a changed tracked secret'
         }
         Check 'RD-25' {
             $tv='6'*64;Initialize-LedgerTask -TaskVersionId $tv -Identity @{taskId='PHASE-RESUME'}|Out-Null

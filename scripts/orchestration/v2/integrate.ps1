@@ -158,7 +158,7 @@ function Invoke-Integration {
         $scanRoots = @($SecretScanRoots) + @(
             (Join-Path (Get-V2Dir) 'logs'), (Join-Path (Get-V2Dir) 'contracts'),
             (Join-Path (Get-V2Dir) 'attestations'), (Join-Path (Get-V2Dir) 'runs'))
-        $treeScan = Test-GitTreeSecretsClean -RepoDir $WorktreeDir -Ref $HeadSha
+        $treeScan = Test-GitTreeSecretsClean -RepoDir $WorktreeDir -BaseRef $BaseSha -Ref $HeadSha
         $artifactScan = Test-TreeSecretsClean -Roots $scanRoots
         $scan = [ordered]@{ clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean); hits=@($treeScan.hits)+@($artifactScan.hits) }
         if (-not $scan.clean) {
