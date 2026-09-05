@@ -37,6 +37,11 @@ Third-review remediation:
 $script:V2IntegrationTestFaults = $null
 function _fault { param([string]$Name) return ($script:V2IntegrationTestFaults -and $script:V2IntegrationTestFaults[$Name]) }
 
+function Get-IntegrationCommitMessage {
+    param([Parameter(Mandatory)][string]$TaskVersionId)
+    return "chore(orchestration): integrate $($TaskVersionId.Substring(0,12))"
+}
+
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'ledger.ps1')
 . (Join-Path $PSScriptRoot 'attest.ps1')
@@ -168,7 +173,7 @@ function Invoke-Integration {
         # 6. deterministic merge of the reviewed candidate into target.
         #    the candidate already contains target as a parent -> no new content.
         Assert-SafeGitV2 @('merge', '--no-ff', $Branch)
-        $msg = "$($TaskVersionId.Substring(0,12)): integrated run $RunId (V2 spine)"
+        $msg = Get-IntegrationCommitMessage -TaskVersionId $TaskVersionId
         $merge = Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--no-ff','-m',$msg,$HeadSha) -LogLabel 'publish-merge-candidate'
         if ($merge.exitCode -ne 0) {
             [void](Invoke-GitV2 -Dir $RepoDir -Arguments @('merge','--abort') -LogLabel 'publish-merge-abort')
