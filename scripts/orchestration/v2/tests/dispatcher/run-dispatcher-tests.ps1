@@ -213,6 +213,15 @@ try{
             Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId run-phase -Phase REVIEWING
             Assert-True ((Get-LedgerState $tv).seq -eq $reviewingSeq) 'REVIEWING restart duplicated a ledger event'
         }
+        Check 'RD-26' {
+            $data=Join-Path $Root 'rd26-review'
+            $prefix='ORCIVO_'+'SYNTHETIC_SECRET_'
+            $diff="diff --git a/source.ts b/source.ts`n+const { token } = params;`n+const PDF_BUCKET = 'orcivo-pdfs';`n+const apiToken = 'literal-to-redact';`n+$prefix"+'TRACKED123'
+            Build-ReviewPrompt -DataDir $data -TaskVersionId ('7'*64) -Head ('8'*40) -TreeHash ('9'*40) -DiffHash ('sha256:'+('a'*64)) -SpecHash ('sha256:'+('b'*64)) -AcceptanceText 'AC1: review' -SpecText 'spec' -Diff $diff -ChangedFiles @('source.ts') -CheckSummary 'PASS' -CriteriaIds @('AC1') | Out-Null
+            $frozen=Get-Content (Join-Path $data 'diff.patch') -Raw
+            Assert-True ($frozen -match 'const \{ token \} = params' -and $frozen -match "PDF_BUCKET = 'orcivo-pdfs'") 'review diff redacted ordinary source syntax'
+            Assert-True ($frozen -notmatch 'literal-to-redact' -and $frozen -notmatch ($prefix+'TRACKED123') -and $frozen -match '\[REDACTED\]') 'review diff exposed a source literal secret'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

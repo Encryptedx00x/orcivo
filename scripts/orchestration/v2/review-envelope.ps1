@@ -236,7 +236,7 @@ function Build-ReviewPrompt {
     $files = [ordered]@{
         'acceptance.txt' = (Protect-SecretsStreaming ([string]$AcceptanceText))
         'spec.txt'       = (Protect-SecretsStreaming ([string]$SpecText))
-        'diff.patch'     = (Protect-SecretsStreaming ([string]$Diff))
+        'diff.patch'     = (Protect-SecretsStreaming ([string]$Diff) -SourceText)
     }
     $manifest = @()
     foreach ($name in $files.Keys) {

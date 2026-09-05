@@ -473,10 +473,20 @@ function Get-MultilineScanPatterns { return @((Get-V2Config).redaction.multiline
 function Get-RedactionPatterns    { return (Get-SecretPatterns) }
 function Get-AllRedactionPatterns { return (Get-SecretPatterns) }
 
+# Source code needs a narrower form of the canonical library: log-oriented
+# environment/header patterns otherwise erase ordinary declarations such as
+# `const { token } = params` and `objectKey: string`. Keep all high-confidence
+# signatures and add a quoted semantic assignment pattern for source literals.
+function Get-SourceSecretPatterns {
+    $patterns=Get-SecretPatterns
+    $quotedAssignment='(?i)\b[A-Za-z0-9_$]*(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|database[_-]?url|connection[_-]?string|authorization)[A-Za-z0-9_$]*[ \t]*[:=][ \t]*([''"`])[^''"`\r\n]+\2'
+    return @($patterns[0],$quotedAssignment)+@($patterns|Select-Object -Skip 7)
+}
+
 $script:MaxRedactLine = 16384   # lines longer than this are refused, not regex'd
 
 function Protect-Line {
-    param([string]$Line)
+    param([string]$Line, [string[]]$Patterns=@())
     # an over-long line is a redaction-DoS vector (catastrophic backtracking) and
     # is never legitimate agent output - drop it wholesale, fail closed.
     if ($Line.Length -gt $script:MaxRedactLine) {
@@ -485,7 +495,8 @@ function Protect-Line {
     $cfg = Get-V2Config
     $repl = $cfg.redaction.replacement
     $out = $Line
-    foreach ($pat in (Get-AllRedactionPatterns)) {
+    $activePatterns=$(if($Patterns.Count){$Patterns}else{Get-AllRedactionPatterns})
+    foreach ($pat in $activePatterns) {
         try { $out = [regex]::Replace($out, $pat, $repl) }
         catch { return '[REDACTED: line withheld - redaction pattern error, failing closed]' }
     }
@@ -495,7 +506,7 @@ function Protect-Line {
 # Whole-blob redaction: single-line patterns per line, THEN multiline patterns
 # (PEM blocks etc.) across the whole text. Used for anything about to be persisted.
 function Protect-SecretsStreaming {
-    param([string]$Text)
+    param([string]$Text, [switch]$SourceText)
     if ([string]::IsNullOrEmpty($Text)) { return $Text }
     $cfg = Get-V2Config
     $repl = $cfg.redaction.replacement
@@ -503,11 +514,12 @@ function Protect-SecretsStreaming {
     $envRx  = '^\s*(export\s+)?[A-Z][A-Z0-9_]{2,}\s*=\s*\S'
     $lines  = $Text -split "`n"
     $envLike = @($lines | Where-Object { $_ -match $envRx }).Count
-    $dropEnv = ($envLike -gt $maxEnv)
+    $dropEnv = (-not $SourceText -and $envLike -gt $maxEnv)
+    $activePatterns=$(if($SourceText){Get-SourceSecretPatterns}else{Get-AllRedactionPatterns})
     $result = New-Object System.Text.StringBuilder
     foreach ($l in $lines) {
         if ($dropEnv -and $l -match $envRx) { continue }
-        [void]$result.AppendLine((Protect-Line $l))
+        [void]$result.AppendLine((Protect-Line $l -Patterns $activePatterns))
     }
     $s = $result.ToString()
     foreach ($pat in (Get-MultilinePatterns)) {
@@ -603,7 +615,7 @@ function Test-ArtifactsClean {
             # arbitrary logs. In source they match ordinary identifiers such as
             # `token`, `objectKey`, and uppercase constants. Keep JSON literal
             # assignments plus every high-confidence credential signature.
-            $activeLinePats=@($linePats[0])+@($linePats|Select-Object -Skip 7)
+            $activeLinePats=Get-SourceSecretPatterns
         }
         foreach ($pat in $activeLinePats) {
             try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
