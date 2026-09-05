@@ -229,6 +229,10 @@ try{
             $captured=Invoke-GitV2 -Dir $fx -Arguments @('diff','--no-color') -LogLabel 'review-source-capture' -ReviewedSourceOutput
             Assert-True ($captured.exitCode -eq 0 -and $captured.stdout -match 'approval_token' -and $captured.stdout -notmatch '\[REDACTED\]') 'git diff capture redacted scan-cleared review source'
         }
+        Check 'RD-28' {
+            $message=Get-IntegrationCommitMessage -TaskVersionId ('a'*64)
+            Assert-True ($message -eq 'chore(orchestration): integrate aaaaaaaaaaaa') 'integrator merge subject is not Conventional Commits-compatible'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
