@@ -21,6 +21,7 @@ only the deterministic integrator may import an approved candidate and push.
 . (Join-Path $PSScriptRoot 'integrate.ps1')
 . (Join-Path $PSScriptRoot 'real-agent.ps1')
 . (Join-Path $PSScriptRoot 'memory-adapter.ps1')
+. (Join-Path $PSScriptRoot 'owner-gate.ps1')
 
 function Get-DispatcherDir { return (Join-Path (Get-V2Dir) 'dispatcher') }
 function Get-DispatcherCurrentPath { return (Join-Path (Get-DispatcherDir) 'current.json') }
@@ -46,6 +47,43 @@ function Get-DispatcherTaskRecord {
     $p = Join-Path (Get-DispatcherTaskDir) "$TaskId.json"
     if (-not (Test-Path -LiteralPath $p)) { return $null }
     try { return (Read-V2Json $p) } catch { return $null }
+}
+
+function Test-DispatcherOwnerGateResumeState {
+    param($State,[hashtable]$Task,$TaskSource)
+    return [bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and
+        "$($State.status)" -eq 'WAITING_HUMAN' -and "$($State.stage)" -eq 'GATE' -and
+        "$($State.reason)" -eq "Level C: $($Task.ownerGate)" -and "$($State.taskVersionId)" -match '^[0-9a-f]{64}$')
+}
+
+function Approve-DispatcherOwnerGate {
+    param(
+        [Parameter(Mandatory)][string]$TaskId,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$ApprovalScope,[string]$ApprovedBy='owner',[string]$ApprovalSource='pilot.ps1 approve-gate',[string]$TaskFile=''
+    )
+    Assert-SafeId $TaskId 'taskId'
+    if($TaskVersionId -notmatch '^[0-9a-f]{64}$'){throw 'approve-gate: TaskVersionId must be 64 lowercase hex characters'}
+    if([string]::IsNullOrWhiteSpace($ApprovalScope)){throw 'approve-gate: ApprovalScope is required'}
+    if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ([string](Get-V2Config).pilot.taskSourceFile)}
+    elseif(-not [System.IO.Path]::IsPathRooted($TaskFile)){$TaskFile=Join-Path (Get-RepoRoot) $TaskFile}
+    $source=Read-DispatcherTaskSource $TaskFile
+    $matches=@($source.tasks|Where-Object{$_.taskId -eq $TaskId})
+    if($matches.Count -ne 1){throw "approve-gate: task '$TaskId' is not uniquely present in the owner-approved task source"}
+    $task=[hashtable]$matches[0]
+    $state=Get-DispatcherState
+    if(-not $state -or $state.taskId -ne $TaskId){throw "approve-gate: task '$TaskId' is not the current durable dispatcher task"}
+    if([string]$state.taskVersionId -ne $TaskVersionId){throw "approve-gate: supplied TaskVersionId does not match current frozen taskVersionId $($state.taskVersionId)"}
+    if(-not(Test-DispatcherOwnerGateResumeState -State $state -Task $task -TaskSource $source)){throw 'approve-gate: task is not WAITING_HUMAN at its declared Level C GATE'}
+    $classification=Get-TaskClassification -Task $task
+    if($classification.taskComplexity -ne 'LEVEL_C' -and -not(Test-TaskLevelC $task)){throw 'approve-gate: task is not Level C'}
+    $contract=Get-Contract $TaskVersionId
+    $revalidated=New-DispatcherContract -Task $task -TaskSource $source -PlanningHeadOverride ([string]$contract.planningHead)
+    if($revalidated.taskVersionId -ne $TaskVersionId -or $contract.taskId -ne $TaskId -or $contract.gate -ne $task.ownerGate){throw 'approve-gate: frozen contract authority does not match the current task/gate/version'}
+    if((Get-LedgerState $TaskVersionId).state -ne 'WAITING_HUMAN'){throw 'approve-gate: ledger is not WAITING_HUMAN'}
+    $approval=New-OwnerGateApproval -TaskId $TaskId -TaskVersionId $TaskVersionId -GateId ([string]$task.ownerGate) -ApprovalScope $ApprovalScope -ApprovedBy $ApprovedBy -ApprovalSource $ApprovalSource
+    $recognized=Get-OwnerGateApprovalStatus -TaskId $TaskId -TaskVersionId $TaskVersionId -GateId ([string]$task.ownerGate)
+    if(-not $recognized.satisfied){throw "approve-gate: durable approval was not recognized: $($recognized.reason)"}
+    return [ordered]@{status='RESUMABLE';taskId=$TaskId;taskVersionId=$TaskVersionId;gate=[string]$task.ownerGate;approval='APPROVED';approvedAt=$approval.approvalTimestamp;approvedBy=$approval.approvalIdentity;approvalSource=$approval.approvalSource;approvalScope=$approval.approvalScope;executesProductCode=$false;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
 }
 
 function ConvertTo-PlainTaskHashtable {
@@ -312,7 +350,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $State) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible $State) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -478,23 +516,30 @@ function Invoke-RealDispatcherTask {
         }
     }
     $isLevelC = $classification.taskComplexity -eq 'LEVEL_C' -or (Test-TaskLevelC $Task)
+    $ownerGateStatus=$null
     if ($isLevelC) {
+        if($Task.ownerGate -and $Task.ownerGate -ne 'none'){$ownerGateStatus=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$contract.taskVersionId) -GateId ([string]$Task.ownerGate)}
+        else{$ownerGateStatus=[ordered]@{satisfied=$false;approval='MISSING';reason='Level C task has no declared owner gate'}}
+    }
+    if ($isLevelC -and -not $ownerGateStatus.satisfied) {
         $ls=Get-LedgerState $contract.taskVersionId
         if($ls.state -eq 'DISCOVERED'){Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' | Out-Null}
         if((Get-LedgerState $contract.taskVersionId).state -eq 'READY'){Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -Note ([string]$Task.ownerGate) | Out-Null}
-        $hold=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=(New-RunId);taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;status='WAITING_HUMAN';stage='GATE';reason="Level C: $($Task.ownerGate)";decisionNeeded='owner approval for the declared Level C decision';resumes='same task after a durable owner approval';task=$Task;taskSourceHash=$TaskSource.hash}
+        $holdRunId=$(if(Test-DispatcherOwnerGateResumeState -State $state -Task $Task -TaskSource $TaskSource){[string]$state.runId}else{New-RunId})
+        $hold=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$holdRunId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;status='WAITING_HUMAN';stage='GATE';reason="Level C: $($Task.ownerGate)";decisionNeeded='owner approval for the declared Level C decision';resumes='same task after a durable owner approval';gate=[ordered]@{required=$true;approval=[string]$ownerGateStatus.approval;reason=[string]$Task.ownerGate;taskVersionId=[string]$contract.taskVersionId};task=$Task;taskSourceHash=$TaskSource.hash}
         Write-DispatcherState $hold | Out-Null; return $hold
     }
 
     $healthy=@(Get-HealthyProviders)
     $route=Resolve-Route -Classification ([hashtable]$classification) -HealthyProviders $healthy -ForceProvider $ProviderOverride
     if(-not $route.ok){ throw "dispatcher: $($route.reason)" }
+    $ownerGateResume=[bool]($isLevelC -and $ownerGateStatus.satisfied -and (Test-DispatcherOwnerGateResumeState -State $state -Task $Task -TaskSource $TaskSource))
     if(-not $state -or $state.taskVersionId -ne $contract.taskVersionId -or "$($state.status)" -in @('PUBLISHED','NO_CHANGE_ACCEPTED','FAILED','BLOCKED','WAITING_HUMAN')){
-        $runId=New-RunId; $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
+        $runId=$(if($ownerGateResume){[string]$state.runId}else{New-RunId}); $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
         $logicalProjectId=Get-DispatcherLogicalProjectId
         $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$false;implementationCommit='';candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId=$logicalProjectId;memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0}
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' | Out-Null
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $runId -AttemptId (New-AttemptId) | Out-Null
+        if($ownerGateResume){Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'gate-approved' -ToState 'DISPATCHED' -RunId $runId -AttemptId (New-AttemptId) -Note ([string]$Task.ownerGate)|Out-Null}
+        else{Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' | Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $runId -AttemptId (New-AttemptId) | Out-Null}
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $runId | Out-Null
         Write-DispatcherState $state | Out-Null; memoryBootstrap $Task $logicalProjectId | Out-Null
     } elseif ($state.status -eq 'WAITING_PROVIDER') {

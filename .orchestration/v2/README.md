@@ -35,6 +35,17 @@ continues until the graph is idle, a human/provider wait is reached, or the stop
 file is observed. `run-once` executes at most one READY task. `status` and
 `stop` are safe control-plane commands. PB1 tasks additionally require the
 existing `REAL_EXECUTION_AUTHORIZED` token and all declared planning gates.
+Level C tasks pause at `WAITING_HUMAN` until `approve-gate` writes an atomic,
+exact-version approval under the gitignored runtime `gates/` namespace:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 approve-gate -TaskId <taskId> -TaskVersionId <64-hex-version> -ApprovalScope "<declared Level C scope>"
+```
+
+The command only authorizes that frozen task version's declared gate. It does
+not execute the task or bypass planning, scope, secret, verification, review,
+candidate-binding, production, or publication guards. The next `pilot.ps1 run`
+resumes the same task lineage.
 
 Each implementation runs in a disposable clone without remotes. Claude uses
 its non-persistent safe mode. The managed Codex 0.152 Windows runtime currently

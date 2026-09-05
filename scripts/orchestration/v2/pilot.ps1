@@ -3,7 +3,7 @@ pilot.ps1 - the GUARDED pilot supervisor.  (PRAGMATIC V2.1, PARTE 10 / 34)
 
 THREAT_MODEL = LOCAL_TRUSTED_HOST. This is the composed autonomous lifecycle:
 
-  fence -> classify (semantic) -> route (adaptive) -> [Level C? -> WAITING_HUMAN]
+  fence -> classify (semantic) -> route (adaptive) -> [Level C approval?]
         -> [no provider? -> WAITING_PROVIDER] -> implement -> deterministic verify
         -> secret scan -> independent opposite-provider review
         -> bounded correction loop -> integrate (remote-truth confirmed)
@@ -28,6 +28,7 @@ agents, but a blocked P03/P04 graph remains WAITING_HUMAN and starts no task.
 
 Commands:
   status           print pilot config, guards, runner mode, last checkpoint
+  approve-gate     durably approve one exact WAITING_HUMAN Level C task version
   selftest         run the synthetic pilot validation suite
   docker-preflight report whether the Docker composition can run right now
   run              dispatch READY tasks until idle / wait / stop / budget failure
@@ -36,9 +37,14 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
-    [ValidateSet('','claude','codex')][string]$ProviderOverride = ''
+    [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
+    [string]$TaskId = '',
+    [string]$TaskVersionId = '',
+    [string]$ApprovalScope = '',
+    [string]$ApprovedBy = 'owner',
+    [string]$ApprovalSource = 'pilot.ps1 approve-gate'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -159,7 +165,9 @@ function Invoke-PilotTask {
 
     # 3. Level C -> WAITING_HUMAN (levelCStop guard)
     $isLevelC = ($cls.taskComplexity -eq 'LEVEL_C') -or ("$($Task.ownerGate)" -and "$($Task.ownerGate)" -ne 'none') -or ("$($Task.risk)" -eq 'C')
-    if ($isLevelC -and $pcfg.levelCStop) {
+    $gateStatus=$null
+    if($isLevelC -and $Task.ownerGate -and $Task.ownerGate -ne 'none'){$gateStatus=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId $TaskVersionId -GateId ([string]$Task.ownerGate)}
+    if ($isLevelC -and $pcfg.levelCStop -and (-not $gateStatus -or -not $gateStatus.satisfied)) {
         $st = Get-LedgerState $TaskVersionId
         if ($st.state -eq 'DISCOVERED') { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'ready' -ToState 'READY' | Out-Null }
         if ((Get-LedgerState $TaskVersionId).state -eq 'READY') {
@@ -171,6 +179,7 @@ function Invoke-PilotTask {
         Complete-GenerationFence -TaskVersionId $TaskVersionId -Generation $generation -FinalState 'WAITING_HUMAN' | Out-Null
         return $result
     }
+    if($isLevelC -and $gateStatus -and $gateStatus.satisfied){$result.guardsHonored += 'exactOwnerGateApproval'}
 
     # 4. provider health + route
     $healthy = @(Get-HealthyProviders)
@@ -339,6 +348,13 @@ switch ($Command) {
         $ds = Get-DispatcherState
         if ($ds) { Write-Host "  dispatcher:    task $($ds.taskId) stage=$($ds.stage) status=$($ds.status) provider=$($ds.provider)" }
         else { Write-Host "  dispatcher:    no durable task state" }
+        if($ds -and $ds.stage -eq 'GATE' -and $ds.task.ownerGate -and $ds.task.ownerGate -ne 'none'){
+            $gs=Get-OwnerGateApprovalStatus -TaskId ([string]$ds.taskId) -TaskVersionId ([string]$ds.taskVersionId) -GateId ([string]$ds.task.ownerGate)
+            Write-Host "  gate:          required = true"
+            Write-Host "                 approval = $($gs.approval)"
+            Write-Host "                 reason = $($ds.task.ownerGate)"
+            Write-Host "                 taskVersionId = $($ds.taskVersionId)"
+        }
         $mc = $null; try { $mc = (Get-AuthorityV2Config).memoryAdapter } catch { $mc = $null }
         if ($mc -and [bool]$mc.enabled) {
             $mi = "  memory:        ENABLED project=$(Get-DispatcherLogicalProjectId) url=$($mc.baseUrl) bounds=$($mc.maxMemories)pg/$($mc.maxInjectChars)ch"
@@ -371,6 +387,11 @@ switch ($Command) {
     'selftest' {
         & (Join-Path $PSScriptRoot 'tests\pilot\run-pilot-selftest.ps1')
         exit $LASTEXITCODE
+    }
+    'approve-gate' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $ApprovalScope){throw 'approve-gate requires -TaskId, -TaskVersionId, and -ApprovalScope'}
+        $result=Approve-DispatcherOwnerGate -TaskId $TaskId -TaskVersionId $TaskVersionId -ApprovalScope $ApprovalScope -ApprovedBy $ApprovedBy -ApprovalSource $ApprovalSource -TaskFile $TaskFile
+        $result|ConvertTo-Json -Depth 10
     }
     { $_ -in @('run','run-once','start') } {
         if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }

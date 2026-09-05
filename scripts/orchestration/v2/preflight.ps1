@@ -17,6 +17,7 @@ Second-review remediation:
 . (Join-Path $PSScriptRoot 'ledger.ps1')
 . (Join-Path $PSScriptRoot 'contract.ps1')
 . (Join-Path $PSScriptRoot 'lease.ps1')
+. (Join-Path $PSScriptRoot 'owner-gate.ps1')
 
 $script:V2State = Join-Path (Get-V2Dir) 'state'
 
@@ -31,7 +32,6 @@ function Get-V2Index {
     if (-not (Test-Path $p)) { throw "v2 preflight: no V2 index at $p (run the V2 reconciler)" }
     return (Read-V2Json $p)
 }
-
 # #12 / M3-03: run a REAL fetch and keep the observation as IN-PROCESS authority.
 # The persisted last-fetch.json is audit-only and is never read back as proof.
 function Invoke-PreflightFetch {
@@ -177,64 +177,4 @@ function Test-Preflight {
     }
 
     return [ordered]@{ ok = ($fail.Count -eq 0); failures = @($fail); checkedAt = (Get-Date).ToUniversalTime().ToString('o') }
-}
-
-# ---- human gates: durable, hash-bound decisions (#13; C-04 full still deferred) ----
-$script:GateHashKeys = @('gateId','taskVersionId','specHash','decision','approvalIdentity','approvalTimestamp','nonce')
-
-function Get-HumanGatePath {
-    param([string]$TaskVersionId, [string]$GateId)
-    Assert-SafeId $GateId 'gateId'
-    return (Join-Path (Get-V2Dir) "gates\$TaskVersionId\$GateId.json")
-}
-
-function _GateHash {
-    param($G)
-    $h = [ordered]@{}
-    foreach ($k in $script:GateHashKeys) { $h[$k] = [string]$G.$k }
-    $h.v = (Get-V2Config).gates.hashVersion
-    return (New-ContentHash $h)
-}
-
-function Get-HumanGateStatus {
-    param([string]$TaskVersionId, [string]$GateId)
-    $p = Get-HumanGatePath $TaskVersionId $GateId
-    if (-not (Test-Path $p)) { return [ordered]@{ satisfied = $false; reason = 'no approval event' } }
-    $g = $null
-    try { $g = Read-V2Json $p } catch { return [ordered]@{ satisfied = $false; reason = 'gate file not readable' } }
-
-    if ((_GateHash $g) -ne $g.gateHash) { return [ordered]@{ satisfied = $false; reason = 'gateHash mismatch (tampered)' } }
-    if ("$($g.taskVersionId)" -ne $TaskVersionId) { return [ordered]@{ satisfied = $false; reason = 'gate is for a different taskVersionId' } }
-    if ("$($g.gateId)" -ne $GateId) { return [ordered]@{ satisfied = $false; reason = 'gateId mismatch' } }
-    if ("$($g.decision)" -ne 'APPROVED') { return [ordered]@{ satisfied = $false; reason = "decision $($g.decision)" } }
-
-    $c = $null
-    try { $c = Get-Contract $TaskVersionId } catch { }
-    if ($c -and "$($g.specHash)" -ne "$($c.specHash)") { return [ordered]@{ satisfied = $false; reason = 'approval was for a different spec hash (stale)' } }
-
-    return [ordered]@{ satisfied = $true; reason = 'approved'; approvedBy = $g.approvalIdentity; approvedAt = $g.approvalTimestamp }
-}
-
-# test-only synthetic approval. Requires the isolated disposable-repo harness -
-# there is no env var and no code path to approve a real gate.
-function New-SyntheticGateApproval {
-    param([string]$TaskVersionId, [string]$GateId, [string]$RepoDir = '', [string]$ApprovedBy = 'synthetic-test-harness')
-    if (-not $RepoDir) { $RepoDir = (Get-RepoRoot) }
-    Assert-DisposableRoot -RepoDir $RepoDir -Why 'approve a synthetic gate'
-    $c = Get-Contract $TaskVersionId
-    $g = [ordered]@{
-        schemaVersion     = 'orcivo.orchestration.v2.gate/2'
-        gateId            = $GateId
-        taskVersionId     = $TaskVersionId
-        specHash          = $c.specHash
-        decision          = 'APPROVED'
-        reason            = 'synthetic approval for the isolated deterministic test harness'
-        requiredApprovalType = 'human'
-        approvalIdentity  = $ApprovedBy
-        approvalTimestamp = (Get-Date).ToUniversalTime().ToString('o')
-        nonce             = (New-Nonce)
-    }
-    $g.gateHash = _GateHash $g
-    Write-V2JsonCanonical (Get-HumanGatePath $TaskVersionId $GateId) $g
-    return $g
 }

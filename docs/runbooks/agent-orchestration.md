@@ -60,13 +60,14 @@ the real spine + real ledger + real git with no model calls. Full write-up:
 ## PILOT MODE (2026-09-03)
 
 The guarded pilot supervisor (`scripts/orchestration/v2/pilot.ps1`) composes the
-autonomy layer into one lifecycle: fence → classify → route → [Level C →
-WAITING_HUMAN] → [no provider → WAITING_PROVIDER] → implement → verify → secret
+autonomy layer into one lifecycle: fence → classify → route → [Level C without
+exact owner approval → WAITING_HUMAN] → [no provider → WAITING_PROVIDER] → implement → verify → secret
 scan → opposite-provider review → bounded correction → integrate (remote-truth
 confirmed) → durable checkpoint → next.
 
 ```powershell
 powershell -File scripts\orchestration\v2\pilot.ps1 status            # config, guards, runner mode, last checkpoint
+powershell -File scripts\orchestration\v2\pilot.ps1 approve-gate -TaskId <id> -TaskVersionId <version> -ApprovalScope "<scope>"
 powershell -File scripts\orchestration\v2\pilot.ps1 selftest          # SYNTHETIC validation (PS-01..PS-11, no models)
 powershell -File scripts\orchestration\v2\pilot.ps1 docker-preflight  # can the Docker agent composition run right now?
 powershell -File scripts\orchestration\v2\pilot.ps1 start             # (this build: prints the real-task gating only)
@@ -87,7 +88,9 @@ still never runs in the supervisor process.
 
 **A real `PB1-*` task additionally requires:** `.orchestration/v2/REAL_EXECUTION_AUTHORIZED`
 present, that task's P02/P03 gates satisfied, and (for Level C) an owner gate.
-None exist. There is still **no `run` verb** that dispatches a real Orcivo task.
+`approve-gate` writes a gitignored, atomic, exact-`taskVersionId` approval and
+never executes product code. `run` recognizes it on the next process and resumes
+the same frozen task lineage while preserving every unrelated guard.
 
 Batch inputs: `.planning/product/MVP-PRODUCT-BATCH-1.tasks.json` (+ `.plan.json`
 from `scripts/orchestration/v2/batch-reconcile.ps1`). Owner approval +
