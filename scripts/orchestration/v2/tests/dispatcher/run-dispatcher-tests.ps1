@@ -192,10 +192,10 @@ try{
             $fx=Join-Path $Root 'rd24';& git init -b main --quiet $fx
             $prefix='ORCIVO_'+'SYNTHETIC_SECRET_'
             Write-Utf8 (Join-Path $fx 'baseline.txt') ($prefix+'BASELINE123');& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m baseline --quiet
-            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'tracked.txt') "clean candidate`n";& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'tracked.ts') "const { token } = params;`nconst PDF_BUCKET = 'orcivo-pdfs';`n";& git -C $fx add tracked.ts;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
             Write-Utf8 (Join-Path $fx 'node_modules\dependency.txt') ($prefix+'UNTRACKED123')
             $clean=Test-GitTreeSecretsClean -RepoDir $fx -BaseRef $base -Ref HEAD
-            Write-Utf8 (Join-Path $fx 'tracked.txt') ($prefix+'TRACKED123');& git -C $fx add tracked.txt;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
+            Write-Utf8 (Join-Path $fx 'tracked.ts') ($prefix+'TRACKED123');& git -C $fx add tracked.ts;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
             $dirty=Test-GitTreeSecretsClean -RepoDir $fx -BaseRef $base -Ref HEAD
             Assert-True ($clean.clean -and -not $dirty.clean) 'immutable diff scan included baseline/cache content or missed a changed tracked secret'
         }

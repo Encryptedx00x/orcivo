@@ -588,7 +588,7 @@ function Copy-StreamRedacted {
 # Sweep of a finished artifact tree with the CANONICAL secret library (H3-02).
 # One hit fails the run closed (H-11). Also the pre-publication gate primitive.
 function Test-ArtifactsClean {
-    param([string]$Root)
+    param([string]$Root, [switch]$SourceTree)
     $hits = @()
     if (-not (Test-Path $Root)) { return [ordered]@{ clean = $true; hits = @() } }
     $linePats = Get-SecretPatterns
@@ -597,7 +597,15 @@ function Test-ArtifactsClean {
         $txt = ''
         try { $txt = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) } catch { continue }
         if ($null -eq $txt) { continue }
-        foreach ($pat in $linePats) {
+        $activeLinePats=$linePats
+        if($SourceTree -and $f.Extension -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py')){
+            # The environment/header assignment patterns intentionally overmatch
+            # arbitrary logs. In source they match ordinary identifiers such as
+            # `token`, `objectKey`, and uppercase constants. Keep JSON literal
+            # assignments plus every high-confidence credential signature.
+            $activeLinePats=@($linePats[0])+@($linePats|Select-Object -Skip 7)
+        }
+        foreach ($pat in $activeLinePats) {
             try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
                 $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
             } } catch { }
@@ -873,7 +881,7 @@ function Test-GitTreeSecretsClean {
         $result = Invoke-GitV2 -Dir $RepoDir -Arguments $archiveArgs -LogLabel 'secret-scan-archive'
         if($result.exitCode -ne 0){return [ordered]@{clean=$false;hits=@((Get-GitFailureSummaryV2 $result 'immutable candidate archive'))}}
         Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
-        return (Test-ArtifactsClean -Root $expanded)
+        return (Test-ArtifactsClean -Root $expanded -SourceTree)
     } catch {
         return [ordered]@{clean=$false;hits=@("immutable candidate scan failed: $($_.Exception.Message)")}
     } finally {
