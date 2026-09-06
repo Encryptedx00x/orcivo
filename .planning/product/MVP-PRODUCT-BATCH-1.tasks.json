@@ -44,8 +44,8 @@
       "title": "Central AuditService + additive actor_user_id migration",
       "type": "FEATURE_INCOMPLETE",
       "source": "P-02 / D-5 / ADR-015",
-      "description": "AuditService.record({companyId, actorType, actorUserId, action, entityType, entityId, from, to, reason?, humanText}) called in-transaction by quote/OS/payment/customer/company/invite/appointment services on every relevant mutation. Additive migration adds actor_user_id (nullable). metadata standardises {from,to,reason}. Human-readable contextual descriptions naming entity/context/customer (no 'Orcamento aprovou o orcamento'). This successor corrects the original contract scope without changing its business requirements.",
-      "acceptance": "AC1: AuditService.record persists a structured row inside the caller transaction; AC2: quote send/approve/reject/cancel/correct/reopen each write one audit row with from/to/reason; AC3: OS important status changes write audit; AC4: payment create/settle/change write audit; AC5: customer + company/profile important changes write audit; AC6: appointment create/edit/delete write audit where relevant; AC7: descriptions are human-readable and name the entity/context/customer; AC8: no exhaustive per-field enterprise audit added.",
+      "description": "AuditService.record({companyId, actorType, actorUserId, action, entityType, entityId, from, to, reason?, humanText}) called in-transaction by quote/OS/payment/customer/company/invite/appointment services on every relevant mutation. Additive migration adds actor_user_id (nullable). metadata standardises {from,to,reason}. Human-readable contextual descriptions naming entity/context/customer (no 'Orcamento aprovou o orcamento'). This direct corrective successor reuses candidate 046969b76b5e4d5e046e8e9f62c724daf87a5aa0 and is restricted to the two actionable findings from attestation atn-6bbfb7faf8414322a76ae0a286d80e61; the INFO item is excluded and prior accepted corrections/tests must remain intact.",
+      "acceptance": "AC1: AuditService.record persists a structured row inside the caller transaction; AC2: quote send/approve/reject/cancel/correct/reopen each write one audit row with from/to/reason; AC3: OS important status changes write audit; AC4: payment create/settle/change write audit; AC5: customer + company/profile important changes write audit; AC6: appointment create/edit/delete write audit where relevant; AC7: descriptions are human-readable and name the entity/context/customer; AC8: no exhaustive per-field enterprise audit added; AC9: reject and reopenOrCorrect validate and update the expected quote state atomically, preserve the expected status in the write predicate, and create exactly one audit row only for the winning transition, with positive, invalid, rollback, tenant, authorization, idempotency and concurrent-transition tests; AC10: reopening an expired quote transactionally assigns a future valid_until and a newly generated approval token/link, never retaining or reusing the expired approval capability, with security and rollback tests; AC11: the additive migration and all fixes/regressions already present in the rejected candidate are preserved without expanding corrective scope.",
       "dependencies": [],
       "scope": [
         "apps/backend/src/audit",
@@ -85,9 +85,21 @@
       "candidateConstraints": {
         "additiveMigrationOnly": true,
         "noProductionDbTouch": true,
-        "resumeFromTaskVersionId": "585ec58f77e61b37c78ee3ec693d558a213fe6e35bf0f248adeb44486324fde4",
-        "resumeFromCandidateCommit": "7c861010e1271d0e7b5a24069159f511add186c2",
-        "recoveryInstruction": "Reuse only the exact preserved candidate after a fresh owner approval for this successor version. Preserve the original acceptance criteria, re-run policy/verification, and obtain a fresh opposite-provider review before integration. Do not reuse the prior version approval."
+        "ephemeralDatabaseOnly": {
+          "database": "orcivo_dev",
+          "host": "localhost",
+          "port": 5544
+        },
+        "resumeFromTaskVersionId": "34d7b60898aaffe74d2738a8f706d0bcb4618c8e00206574d8f437dc458036d9",
+        "resumeFromCandidateCommit": "046969b76b5e4d5e046e8e9f62c724daf87a5aa0",
+        "resumeFromReviewAttestationId": "atn-6bbfb7faf8414322a76ae0a286d80e61",
+        "resumeFromReviewInvocationId": "att-c03bff0ec9d5403e833ed181de2af7de",
+        "correctiveScope": [
+          "atomic quote reject and reopenOrCorrect transitions with audit only for the winning conditional update",
+          "expired quote reopening renews valid_until and approval token/link transactionally"
+        ],
+        "excludedReviewSeverity": ["info"],
+        "recoveryInstruction": "Reuse only exact candidate 046969b76b5e4d5e046e8e9f62c724daf87a5aa0 from exact predecessor 34d7b60898aaffe74d2738a8f706d0bcb4618c8e00206574d8f437dc458036d9 and exact REQUEST_CHANGES attestation atn-6bbfb7faf8414322a76ae0a286d80e61 / invocation att-c03bff0ec9d5403e833ed181de2af7de. Correct only the two declared actionable findings, preserve the original acceptance criteria and existing fixes/tests, re-run verification and secret scans, and obtain a fresh opposite-provider review before integration. Do not reuse the prior version approval."
       },
       "verificationProfile": "C",
       "phaseGate": "P04",
