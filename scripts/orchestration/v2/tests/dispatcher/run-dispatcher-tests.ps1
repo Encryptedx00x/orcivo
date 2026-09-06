@@ -17,6 +17,43 @@ function Task([string]$Id,[string[]]$Deps=@(),[string]$Risk='B',[string]$Gate='n
 }
 function Source([object[]]$Tasks){return [ordered]@{schemaVersion='orcivo.dispatcher-test/1';batch='RD';state='OWNER_APPROVED';approvedBy='test';approvedAt='2026-09-03';gates=[ordered]@{G1=[ordered]@{kind='TEST';state='PASS'}};phaseOrder=@('P1');tasks=@($Tasks)}}
 
+function New-HistoricalResumeFixture([string]$Id){
+    $workspace=Join-Path $Root ("historical-"+$Id);& git init -b main --quiet $workspace
+    Write-Utf8 (Join-Path $workspace 'work.txt') "base`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+    $base=(& git -C $workspace rev-parse HEAD).Trim()
+    Write-Utf8 (Join-Path $workspace 'work.txt') "reviewed`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m reviewed --quiet
+    $historical=(& git -C $workspace rev-parse HEAD).Trim()
+    Write-Utf8 (Join-Path $workspace 'work.txt') "corrected`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m corrected --quiet
+    $implementation=(& git -C $workspace rev-parse HEAD).Trim()
+
+    $task=Task ("HIST-"+$Id) @() 'C' 'level-c-persistent-migration'
+    $sourcePath=Join-Path $Fixture ("historical-"+$Id+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+    $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
+    $contract=New-DispatcherContract -Task $task -TaskSource $source
+    New-OwnerGateApproval -TaskId $task.taskId -TaskVersionId $contract.taskVersionId -GateId $task.ownerGate -ApprovalScope 'fixture-local recovery only' -ApprovedBy owner -ApprovalSource 'dispatcher recovery regression'|Out-Null
+
+    $runId='run-historical-'+$Id.ToLowerInvariant();$runRoot=Join-Path (Get-V2Dir) "runs\$runId";$reviewDir=Join-Path $runRoot 'review-002'
+    Write-Utf8 (Join-Path $reviewDir 'diff.patch') "diff --git a/work.txt b/work.txt`n-old`n+new`n"
+    $historicalBindings=Get-AttestationBindings -TaskVersionId $contract.taskVersionId -WorktreeDir $workspace -BaseSha $base -HeadSha $historical
+    New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$historicalBindings) -Result PASS|Out-Null
+    $historicalReview=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$historicalBindings) -Result REQUEST_CHANGES -ProducerMeta @{provider='codex';invocationId='fixture-review'}
+    $implementationBindings=Get-AttestationBindings -TaskVersionId $contract.taskVersionId -WorktreeDir $workspace -BaseSha $base -HeadSha $implementation
+    New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$implementationBindings) -Result PASS|Out-Null
+
+    Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
+    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING
+    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event review-correction -ToState RUNNING -RunId $runId|Out-Null
+    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING
+    $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$runId;workspace=$workspace;branch='main';baseSha=$base;status='RUNNING';stage='IMPLEMENT';reason='';cycle=2;attempt=2;implementationComplete=$true;requiresCorrection=$false;implementationCommit=$implementation;candidateBase=$base;candidateHead=$historical;candidateTree=$historicalBindings.treeHash;diffHash=$historicalBindings.diffHash;reviewVerdict='REQUEST_CHANGES';reviewInvocationId='fixture-review'}
+    $scan=[ordered]@{clean=$false;candidate=[ordered]@{clean=$true;baseSha=$base;headSha=$implementation;hits=@()};artifacts=[ordered]@{clean=$false;hits=@('historical false positive')};hits=@('historical false positive')}
+    Set-DispatcherSecretBlock -State $state -Scan $scan|Out-Null
+    return @{state=$state;task=$task;source=$source;workspace=$workspace;base=$base;historical=$historical;implementation=$implementation;implementationBindings=$implementationBindings;historicalReview=$historicalReview;runRoot=$runRoot;gatePath=(Get-HumanGatePath $contract.taskVersionId $task.ownerGate)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -265,6 +302,53 @@ try{
             Assert-True ($durable.secretScan.candidate.baseSha -eq ('d'*40) -and $durable.secretScan.candidate.headSha -eq ('e'*40)) 'secret-block scan omitted its immutable candidate binding'
             Assert-True ($diagnostics -match 'schema\.prisma :: /' -and $diagnostics -notmatch 'fixture-pass') 'secret-block diagnostics did not retain path + regex safely'
             Assert-True ((Get-LedgerState $tv).state -eq 'FAILED') 'secret-block did not fail the ledger closed'
+        }
+        Check 'RD-30' {
+            $f=New-HistoricalResumeFixture 'RD30'
+            Assert-True (Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source) 'second secret-block did not accept a fully proven historical reviewed candidate'
+        }
+        Check 'RD-31' {
+            $f=New-HistoricalResumeFixture 'RD31';$f.state.candidateHead=$f.implementation
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'candidateHead equal to implementationCommit was accepted as historical'
+        }
+        Check 'RD-32' {
+            $f=New-HistoricalResumeFixture 'RD32';& git -C $f.workspace checkout -b unrelated $f.base --quiet
+            Write-Utf8 (Join-Path $f.workspace 'unrelated.txt') "unrelated`n";& git -C $f.workspace add .;& git -C $f.workspace -c user.name=rd -c user.email=rd@local commit -m unrelated --quiet
+            $f.state.implementationCommit=(& git -C $f.workspace rev-parse HEAD).Trim();$f.state.secretScan.candidate.headSha=$f.state.implementationCommit
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'non-descendant implementation was accepted'
+        }
+        Check 'RD-33' {
+            $f=New-HistoricalResumeFixture 'RD33';& git -C $f.workspace checkout $f.historical --quiet
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'workspace HEAD divergent from implementationCommit was accepted'
+        }
+        Check 'RD-34' {
+            $f=New-HistoricalResumeFixture 'RD34';Write-Utf8 (Join-Path $f.workspace 'dirty.txt') "dirty`n"
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'dirty workspace was accepted'
+        }
+        Check 'RD-35' {
+            $f=New-HistoricalResumeFixture 'RD35';Write-Utf8 (Join-Path $f.runRoot 'provider.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('a'*16))
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'dirty current artifact scan was accepted'
+        }
+        Check 'RD-36' {
+            $f=New-HistoricalResumeFixture 'RD36';$path=Join-Path (Get-V2Dir) "attestations\$($f.state.taskVersionId)\review-$($f.historicalReview.attestationId).json"
+            $tampered=Read-V2Json $path;$tampered.result='APPROVE';Write-V2JsonCanonical $path $tampered
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'incompatible/tampered historical review attestation was accepted'
+        }
+        Check 'RD-37' {
+            $f=New-HistoricalResumeFixture 'RD37';New-Attestation -Kind review -TaskVersionId $f.state.taskVersionId -RunId $f.state.runId -Bindings ([hashtable]$f.implementationBindings) -Result APPROVE|Out-Null
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'implementationCommit with an existing review was accepted as unreviewed'
+        }
+        Check 'RD-38' {
+            $f=New-HistoricalResumeFixture 'RD38';$run=$f.state.runId;$version=$f.state.taskVersionId;$workspace=$f.state.workspace;$cycle=$f.state.cycle;$historical=$f.state.candidateHead
+            Assert-True (Resume-DispatcherCandidate -State $f.state -Task $f.task -TaskSource $f.source) 'official durable candidate-resume transition refused a proven restart'
+            $durable=Get-DispatcherState
+            Assert-True ($durable.status -eq 'RUNNING' -and (Get-LedgerState $version).state -eq 'RUNNING') 'restart did not durably return state/ledger to RUNNING'
+            Assert-True ($durable.runId -eq $run -and $durable.taskVersionId -eq $version -and $durable.workspace -eq $workspace -and [int]$durable.cycle -eq [int]$cycle) 'restart changed run, taskVersionId, workspace, or bounded cycle'
+            Assert-True ($durable.candidateHead -eq $historical -and $durable.historicalCandidate.head -eq $historical) 'restart did not preserve and label the previous candidateHead as historical'
+        }
+        Check 'RD-39' {
+            $f=New-HistoricalResumeFixture 'RD39';$gate=Read-V2Json $f.gatePath;$gate.taskId='OTHER';Write-V2JsonCanonical $f.gatePath $gate
+            Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'mismatched exact-version approval was accepted'
         }
     } finally {Pop-Location}
 

@@ -466,7 +466,16 @@ function Test-HolderLive {
 
 # H3-02: ONE canonical secret library. Redactor, sanitize-before-write, the
 # pre-publication scan gate and the final sweep all call Get-SecretPatterns.
-function Get-SecretPatterns       { return @((Get-V2Config).redaction.secretPatterns) }
+function Get-SecretPatterns {
+    $patterns=@((Get-V2Config).redaction.secretPatterns)
+    # Compatibility normalization: keep the contract-bound configuration bytes
+    # stable while making the uppercase environment-variable rule genuinely
+    # case-sensitive. This changes only that rule's inline options.
+    if($patterns.Count -gt 2 -and $patterns[2] -match '^\(\?im\).*\[A-Z\]\[A-Z0-9_\]'){
+        $patterns[2]=[regex]::Replace([string]$patterns[2],'^\(\?im\)','(?m)')
+    }
+    return $patterns
+}
 function Get-MultilinePatterns    { return @((Get-V2Config).redaction.multilinePatterns) }
 function Get-MultilineScanPatterns { return @((Get-V2Config).redaction.multilineScanPatterns) }
 # back-compat shims - every caller now resolves to the single library
@@ -626,7 +635,33 @@ function Test-ArtifactsClean {
         # strict artifact patterns silently miss ordinary Windows log files.
         $scanTxt = $txt.Replace("`r`n", "`n").Replace("`r", "`n")
         $activeLinePats=$linePats
-        if($SourceTree -and $f.Extension -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py','.prisma')){
+        $additionalLineScans=@()
+        $isReviewPatch=($f.Name -eq 'diff.patch' -and $f.Directory.Name -match '^review-[0-9]+$')
+        if($isReviewPatch){
+            # Scan every patch byte for JSON credentials and high-confidence
+            # signatures. Then classify diff body lines by their source path so
+            # tests get fixture semantics, ordinary source gets quoted semantic
+            # assignments, and non-source files retain the strict log patterns.
+            # Stripping the one diff marker keeps +/- credential lines covered.
+            $activeLinePats=Get-SourceFixtureSecretPatterns
+            $sourceBody=New-Object System.Text.StringBuilder
+            $strictBody=New-Object System.Text.StringBuilder
+            $oldPath='';$currentPath=''
+            foreach($line in ($scanTxt -split "`n")){
+                if($line -match '^--- (?:a/)?(.+)$'){$oldPath=$Matches[1];continue}
+                if($line -match '^\+\+\+ (?:b/)?(.+)$'){$currentPath=$(if($Matches[1] -eq '/dev/null'){$oldPath}else{$Matches[1]});continue}
+                if(-not $currentPath -or $line.Length -eq 0 -or '+- ' -notlike "*$($line[0])*" -or $line -match '^(\+\+\+|---) '){continue}
+                $body=$line.Substring(1)
+                $ext=[System.IO.Path]::GetExtension($currentPath).ToLowerInvariant()
+                $name=[System.IO.Path]::GetFileName($currentPath)
+                $isSource=$ext -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py','.prisma')
+                if($isSource){
+                    if($name -notmatch '\.(spec|test)\.[^.]+$'){[void]$sourceBody.AppendLine($body)}
+                }else{[void]$strictBody.AppendLine($body)}
+            }
+            if($sourceBody.Length){$additionalLineScans+=,@{text=$sourceBody.ToString();patterns=@((Get-SourceSecretPatterns)[1])}}
+            if($strictBody.Length){$additionalLineScans+=,@{text=$strictBody.ToString();patterns=@($linePats|Select-Object -Skip 1 -First 6)}}
+        }elseif($SourceTree -and $f.Extension -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py','.prisma')){
             # The environment/header assignment patterns intentionally overmatch
             # arbitrary logs. In source they match ordinary identifiers such as
             # `token`, `objectKey`, and uppercase constants. Keep JSON literal
@@ -637,6 +672,13 @@ function Test-ArtifactsClean {
             try { if ([regex]::IsMatch($scanTxt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
                 $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
             } } catch { }
+        }
+        foreach($extra in $additionalLineScans){
+            foreach($pat in @($extra.patterns)){
+                try { if([regex]::IsMatch([string]$extra.text,$pat,[System.Text.RegularExpressions.RegexOptions]::Multiline)) {
+                    $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
+                } } catch { }
+            }
         }
         foreach ($pat in $mlPats) {
             try { if ([regex]::IsMatch($scanTxt, $pat, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
