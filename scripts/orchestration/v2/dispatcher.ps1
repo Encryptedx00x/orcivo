@@ -358,18 +358,44 @@ function Resume-DispatcherCandidate {
 
 function Test-DispatcherContractSupersessionEligible {
     param($State, [hashtable]$Task, $Contract, $TaskSource)
-    if(-not $State -or "$($State.status)" -ne 'BLOCKED' -or "$($State.stage)" -ne 'IMPLEMENT'){return $false}
+    if(-not $State){return $false}
+    $policyBlocked=("$($State.status)" -eq 'BLOCKED' -and "$($State.stage)" -eq 'IMPLEMENT' -and "$($State.reason)" -match '(OUT OF SCOPE|PROTECTED path)')
+    $reviewBudget=("$($State.status)" -eq 'WAITING_HUMAN' -and "$($State.stage)" -eq 'REVIEW' -and "$($State.reason)" -eq 'bounded correction budget exhausted')
+    if(-not($policyBlocked -or $reviewBudget)){return $false}
     if($State.taskId -ne $Task.taskId -or $State.taskVersionId -eq $Contract.taskVersionId -or $State.taskSourceHash -eq $TaskSource.hash){return $false}
-    if("$($State.reason)" -notmatch '(OUT OF SCOPE|PROTECTED path)'){return $false}
-    if(-not $State.workspace -or -not (Test-Path -LiteralPath ([string]$State.workspace)) -or -not $State.implementationCommit){return $false}
+    if(-not $State.workspace -or -not (Test-Path -LiteralPath ([string]$State.workspace))){return $false}
     $constraints=_ToHashtable $Task.candidateConstraints
     $requestedVersion=[string]$constraints.resumeFromTaskVersionId
     $requestedCommit=[string]$constraints.resumeFromCandidateCommit
-    if($requestedVersion -ne [string]$State.taskVersionId -or $requestedCommit -ne [string]$State.implementationCommit){return $false}
+    $expectedCommit=$(if($reviewBudget){[string]$State.candidateHead}else{[string]$State.implementationCommit})
+    if($requestedVersion -ne [string]$State.taskVersionId -or $requestedCommit -ne $expectedCommit){return $false}
     if($requestedVersion -notmatch '^[0-9a-f]{64}$' -or $requestedCommit -notmatch '^[0-9a-f]{40}$'){return $false}
     $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$requestedCommit^{commit}") -LogLabel 'supersession-candidate-object'
     if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $requestedCommit){return $false}
     $head=Get-GitHeadV2 ([string]$State.workspace)
+    if($reviewBudget){
+        if($head -ne $requestedCommit -or (Get-LedgerState $requestedVersion).state -ne 'FAILED_REVIEW_BUDGET'){return $false}
+        $status=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'review-budget-supersession-status'
+        if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout)){return $false}
+        $oldContract=Get-Contract $requestedVersion
+        if([string]$oldContract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return $false}
+        if($State.task.ownerGate -and $State.task.ownerGate -ne 'none'){
+            $gate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId $requestedVersion -GateId ([string]$State.task.ownerGate)
+            if(-not $gate.satisfied -or [string]$gate.approval -ne 'APPROVED'){return $false}
+        }
+        $review=Get-LatestAuthoritative -TaskVersionId $requestedVersion -Kind 'review' -RunId ([string]$State.runId) -HeadSha $requestedCommit
+        if(-not $review -or [string]$review.result -ne 'REQUEST_CHANGES'){return $false}
+        if([string]$constraints.resumeFromReviewAttestationId -ne [string]$review.attestationId -or [string]$constraints.resumeFromReviewInvocationId -ne [string]$review.producer.invocationId){return $false}
+        if([string]$review.bindings.treeHash -ne [string]$State.candidateTree -or [string]$review.bindings.diffHash -ne [string]$State.diffHash){return $false}
+        $fresh=Test-AttestationFresh -Attestation $review -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha $requestedCommit
+        if(-not $fresh.fresh){return $false}
+        $rejected=@(Get-Attestations -TaskVersionId $requestedVersion|Where-Object{[string]$_.runId -eq [string]$State.runId -and [string]$_.bindings.headSHA -eq $requestedCommit -and [string]$_.kind -in @('integration','approval')})
+        if($rejected.Count){return $false}
+        $runRoot=Join-Path (Get-V2Dir) "runs\$($State.runId)"
+        $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $requestedCommit
+        $artifactScan=Test-TreeSecretsClean -Roots @($runRoot)
+        if(-not $candidateScan.clean -or -not $artifactScan.clean){return $false}
+    }
     $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$requestedCommit,$head) -LogLabel 'supersession-candidate-lineage'
     return ($ancestor.exitCode -eq 0)
 }
@@ -617,9 +643,10 @@ function Invoke-RealDispatcherTask {
     if(($contractSupersession -or $pendingSupersession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
         if($contractSupersession){
             $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
+            $resumeCommit=$(if("$($state.status)" -eq 'WAITING_HUMAN' -and "$($state.stage)" -eq 'REVIEW'){[string]$state.candidateHead}else{[string]$state.implementationCommit})
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note ([string]$Task.ownerGate)|Out-Null
-            $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
+            $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit
             $state.pendingContractSupersession=$true;$state.pendingSupersessionReason=$previousReason
             $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
             $state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
@@ -644,14 +671,18 @@ function Invoke-RealDispatcherTask {
             attempt=[int]$state.attempt;cycle=[int]$state.cycle
             rollovers=[int]$state.rollovers;failovers=[int]$state.failovers
         }
-        $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
+        $resumeCommit=[string]$Task.candidateConstraints.resumeFromCandidateCommit
+        $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit;$state.implementationCommit=$resumeCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
         # Attempts/corrections are bounded per immutable task version. Preserve
         # the superseded counters above, then start this successor at its first
         # correction cycle instead of inheriting an already exhausted budget.
         $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason=''
         $state.attempt=0;$state.cycle=1;$state.rollovers=0;$state.failovers=0
-        $state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')
+        if($previousReason -eq 'bounded correction budget exhausted'){
+            $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
+            $state.findings=@($priorReview.payload.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+        }else{$state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')}
         $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
         $state.pendingContractSupersession=$false
         Write-DispatcherState $state|Out-Null
@@ -795,11 +826,12 @@ function Invoke-RealDispatcherTask {
             $wrapped=$(if($rr.structuredResult){"$($cfg.review.beginMarker)`n$(ConvertTo-CanonicalJson $rr.structuredResult)`n$($cfg.review.endMarker)"}else{''})
             $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead
-            New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $parsed.verdict -Payload @{problems=@($parsed.problems);reason=$parsed.reason;findings=@($parsed.envelope.findings)} -ProducerMeta @{provider=$reviewer;model=$rr.model;profile=$rr.profile;invocationId=$rr.invocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=$rr.exitCode}|Out-Null
-            $state.reviewVerdict=$parsed.verdict;$state.reviewInvocationId=$rr.invocationId;Write-DispatcherState $state|Out-Null
+            $reviewAttestation=New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $parsed.verdict -Payload @{problems=@($parsed.problems);reason=$parsed.reason;findings=@($parsed.envelope.findings)} -ProducerMeta @{provider=$reviewer;model=$rr.model;profile=$rr.profile;invocationId=$rr.invocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=$rr.exitCode}
+            $state.reviewVerdict=$parsed.verdict;$state.reviewInvocationId=$rr.invocationId;$state.reviewAttestationId=$reviewAttestation.attestationId
+            $state.findings=@($parsed.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"});Write-DispatcherState $state|Out-Null
             if($parsed.verdict -eq 'REQUEST_CHANGES'){
                 if([int]$state.cycle -ge $maxCycles){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-budget-spent' -ToState 'FAILED_REVIEW_BUDGET' -RunId $state.runId|Out-Null;$state.status='WAITING_HUMAN';$state.reason='bounded correction budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
-                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.findings=@($parsed.envelope.findings|ForEach-Object{"$($_.severity): $($_.detail)"});$state.stage='IMPLEMENT';$state.implementationComplete=$false;Write-DispatcherState $state|Out-Null;continue
+                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.stage='IMPLEMENT';$state.implementationComplete=$false;Write-DispatcherState $state|Out-Null;continue
             }
             if($parsed.verdict -ne 'APPROVE'){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note $parsed.verdict|Out-Null;$state.status='WAITING_HUMAN';$state.reason="$($parsed.verdict): $($parsed.reason)";$state.decisionNeeded='resolve reviewer block or Level C escalation';$state.resumes='new approved task version or explicit owner decision';Write-DispatcherState $state|Out-Null;return $state}
             Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'approved' -ToState 'APPROVED' -RunId $state.runId|Out-Null;$state.stage='INTEGRATE';Write-DispatcherState $state|Out-Null

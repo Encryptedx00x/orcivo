@@ -54,6 +54,21 @@ function New-HistoricalResumeFixture([string]$Id){
     return @{state=$state;task=$task;source=$source;workspace=$workspace;base=$base;historical=$historical;implementation=$implementation;implementationBindings=$implementationBindings;historicalReview=$historicalReview;runRoot=$runRoot;gatePath=(Get-HumanGatePath $contract.taskVersionId $task.ownerGate)}
 }
 
+function New-ReviewBudgetSupersessionFixture([string]$Id){
+    $f=New-HistoricalResumeFixture $Id
+    Add-LedgerEvent -TaskVersionId $f.state.taskVersionId -Event retry -ToState READY -RunId $f.state.runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $f.state.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.state.runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $f.state.taskVersionId -Event running -ToState RUNNING -RunId $f.state.runId|Out-Null
+    Enter-DispatcherLedgerPhase -TaskVersionId $f.state.taskVersionId -RunId $f.state.runId -Phase CHECKING
+    Enter-DispatcherLedgerPhase -TaskVersionId $f.state.taskVersionId -RunId $f.state.runId -Phase REVIEWING
+    $review=New-Attestation -Kind review -TaskVersionId $f.state.taskVersionId -RunId $f.state.runId -Bindings ([hashtable]$f.implementationBindings) -Result REQUEST_CHANGES -Payload @{findings=@(@{severity='high';detail='latest finding'})} -ProducerMeta @{provider='codex';invocationId=('review-'+$Id)}
+    Add-LedgerEvent -TaskVersionId $f.state.taskVersionId -Event budget -ToState FAILED_REVIEW_BUDGET -RunId $f.state.runId|Out-Null
+    $f.state.status='WAITING_HUMAN';$f.state.stage='REVIEW';$f.state.reason='bounded correction budget exhausted';$f.state.candidateHead=$f.implementation;$f.state.candidateTree=$f.implementationBindings.treeHash;$f.state.diffHash=$f.implementationBindings.diffHash;$f.state.reviewVerdict='REQUEST_CHANGES';$f.state.reviewInvocationId=$review.producer.invocationId
+    $successor=Source @($f.task);$successor.tasks[0].description='bounded review correction successor';$successor.tasks[0].candidateConstraints=[ordered]@{resumeFromTaskVersionId=$f.state.taskVersionId;resumeFromCandidateCommit=$f.implementation;resumeFromReviewAttestationId=$review.attestationId;resumeFromReviewInvocationId=$review.producer.invocationId}
+    $path=Join-Path $Fixture ("successor-$Id.json");Write-Utf8 $path ($successor|ConvertTo-Json -Depth 20);$newSource=Read-DispatcherTaskSource $path;$newTask=[hashtable]$newSource.tasks[0];$newContract=New-DispatcherContract -Task $newTask -TaskSource $newSource
+    $f.review=$review;$f.newSource=$newSource;$f.newTask=$newTask;$f.newContract=$newContract;return $f
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -349,6 +364,22 @@ try{
         Check 'RD-39' {
             $f=New-HistoricalResumeFixture 'RD39';$gate=Read-V2Json $f.gatePath;$gate.taskId='OTHER';Write-V2JsonCanonical $f.gatePath $gate
             Assert-True (-not(Test-DispatcherCandidateResumeEligible -State $f.state -Task $f.task -TaskSource $f.source)) 'mismatched exact-version approval was accepted'
+        }
+        Check 'RD-40' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD40'
+            Assert-True (Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource) 'fresh FAILED_REVIEW_BUDGET successor was not eligible'
+        }
+        Check 'RD-41' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD41';$f.state.diffHash=('sha256:'+('0'*64))
+            Assert-True (-not(Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource)) 'review binding drift was accepted'
+        }
+        Check 'RD-42' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD42';& git -C $f.workspace checkout $f.historical --quiet
+            Assert-True (-not(Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource)) 'divergent workspace HEAD was accepted'
+        }
+        Check 'RD-43' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD43';Write-Utf8 (Join-Path $f.runRoot 'dirty.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('x'*16))
+            Assert-True (-not(Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource)) 'dirty artifact scan was accepted'
         }
     } finally {Pop-Location}
 
