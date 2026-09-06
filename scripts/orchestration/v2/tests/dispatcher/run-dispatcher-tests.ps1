@@ -166,6 +166,15 @@ try{
             $resumed=Resolve-DispatcherContract -Task ([hashtable]$source.tasks[0]) -TaskSource $source -State $durable
             Assert-True ($resumed.taskVersionId -eq $contract.taskVersionId -and $resumed.planningHead -eq $contract.planningHead) 'restart derived a duplicate lineage after authority HEAD advanced'
         }
+        Check 'RG-06' {
+            $fx=Join-Path $Root 'rg06';New-Item -ItemType Directory -Force -Path $fx|Out-Null
+            $s=[ordered]@{workspace=$fx;status='BLOCKED';stage='IMPLEMENT';reason='secret scan failed before review';candidateHead='';implementationComplete=$true}
+            Assert-True (Test-DispatcherCandidateResumeEligible $s) 'completed candidate blocked by the pre-review secret scan was not restart-eligible'
+            $s.reason='unrelated failure'
+            Assert-True (-not (Test-DispatcherCandidateResumeEligible $s)) 'unrelated blocked candidate became restart-eligible'
+            $s.reason='secret scan failed before review';$s.implementationComplete=$false
+            Assert-True (-not (Test-DispatcherCandidateResumeEligible $s)) 'incomplete implementation became secret-scan restart-eligible'
+        }
         Check 'RD-21' {
             $path=Join-Path $Root 'utf8-state.json';$expected='ação — orçamento';Write-V2JsonCanonical $path ([ordered]@{text=$expected})
             $actual=Read-V2Json $path
@@ -236,6 +245,26 @@ try{
         Check 'RD-28' {
             $message=Get-IntegrationCommitMessage -TaskVersionId ('a'*64)
             Assert-True ($message -eq 'chore(orchestration): integrate aaaaaaaaaaaa') 'integrator merge subject is not Conventional Commits-compatible'
+        }
+        Check 'RD-29' {
+            $scanRoot=Join-Path $Root 'rd29-prisma';$uri='postgresql'+'://'+'fixture-user'+':'+'fixture-pass'+'@localhost:5544/orcivo_dev'
+            Write-Utf8 (Join-Path $scanRoot 'schema.prisma') "datasource db {`n  url = `"$uri`"`n}`n"
+            $candidateScan=Test-ArtifactsClean -Root $scanRoot -SourceTree
+            Assert-True (-not $candidateScan.clean) 'observability fixture did not produce a candidate secret hit'
+            $tv='c'*64;$run='run-secret-observability'
+            Initialize-LedgerTask -TaskVersionId $tv -Identity @{taskId='SECRET-OBS'}|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event dispatch -ToState DISPATCHED -RunId $run|Out-Null
+            Add-LedgerEvent -TaskVersionId $tv -Event running -ToState RUNNING -RunId $run|Out-Null
+            Enter-DispatcherLedgerPhase -TaskVersionId $tv -RunId $run -Phase CHECKING
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId='SECRET-OBS';taskVersionId=$tv;runId=$run;status='RUNNING';stage='IMPLEMENT'}
+            $scan=[ordered]@{clean=$false;candidate=[ordered]@{clean=$false;baseSha=('d'*40);headSha=('e'*40);hits=@($candidateScan.hits)};artifacts=[ordered]@{clean=$true;hits=@()};hits=@($candidateScan.hits)}
+            Set-DispatcherSecretBlock -State $state -Scan $scan|Out-Null
+            $durable=Get-DispatcherState;$diagnostics=[string](@($durable.secretScan.hits)-join ' ')
+            Assert-True ($durable.status -eq 'BLOCKED' -and -not $durable.secretScan.clean -and -not $durable.secretScan.candidate.clean -and $durable.secretScan.artifacts.clean) 'secret-block scan result was not persisted before return'
+            Assert-True ($durable.secretScan.candidate.baseSha -eq ('d'*40) -and $durable.secretScan.candidate.headSha -eq ('e'*40)) 'secret-block scan omitted its immutable candidate binding'
+            Assert-True ($diagnostics -match 'schema\.prisma :: /' -and $diagnostics -notmatch 'fixture-pass') 'secret-block diagnostics did not retain path + regex safely'
+            Assert-True ((Get-LedgerState $tv).state -eq 'FAILED') 'secret-block did not fail the ledger closed'
         }
     } finally {Pop-Location}
 

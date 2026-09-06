@@ -251,7 +251,10 @@ function Test-DispatcherCandidateResumeEligible {
     param($State)
     if(-not $State -or "$($State.status)" -notin @('RESUMABLE','BLOCKED')){return $false}
     if("$($State.stage)" -ne 'IMPLEMENT' -or -not (Test-DispatcherImplementationCompleted $State)){return $false}
-    if(-not "$($State.reason)".StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)){return $false}
+    $reason=[string]$State.reason
+    $commitRetry=$reason.StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)
+    $scanRetry=$reason.Equals('secret scan failed before review',[System.StringComparison]::Ordinal)
+    if(-not ($commitRetry -or $scanRetry)){return $false}
     return [bool]($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)) -and -not $State.candidateHead)
 }
 
@@ -482,6 +485,22 @@ function Resume-DispatcherProviderWait {
     return $true
 }
 
+function Set-DispatcherSecretBlock {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$Scan)
+    Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'secret-block' -ToState 'FAILED' -RunId $State.runId|Out-Null
+    # Scanner hits are deliberately diagnostic-only: path + regex, never the
+    # matched line/value. Persist both scan classes before returning the block.
+    $State.secretScan=[ordered]@{
+        clean=$false
+        candidate=[ordered]@{clean=[bool]$Scan.candidate.clean;baseSha=[string]$Scan.candidate.baseSha;headSha=[string]$Scan.candidate.headSha;hits=@($Scan.candidate.hits|ForEach-Object{[string]$_})}
+        artifacts=[ordered]@{clean=[bool]$Scan.artifacts.clean;hits=@($Scan.artifacts.hits|ForEach-Object{[string]$_})}
+        hits=@($Scan.hits|ForEach-Object{[string]$_})
+    }
+    $State.status='BLOCKED';$State.reason='secret scan failed before review'
+    Write-DispatcherState $State|Out-Null
+    return $State
+}
+
 function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
@@ -655,8 +674,15 @@ function Invoke-RealDispatcherTask {
             if(-not $vp.pass){if([int]$state.cycle -lt $maxCycles){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'verification-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.findings=@('deterministic verification failed');Write-DispatcherState $state|Out-Null;continue};Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'check-failed' -ToState 'FAILED' -RunId $state.runId|Out-Null;$state.status='TEST_FAILURE';$state.reason='deterministic verification failed';Write-DispatcherState $state|Out-Null;return $state}
             $treeScan=Test-GitTreeSecretsClean -RepoDir $state.workspace -BaseRef $candBase -Ref $candHead
             $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$($state.runId)"))
-            $scan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);hits=@($treeScan.hits)+@($artifactScan.hits)}
-            if(-not $scan.clean){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'secret-block' -ToState 'FAILED' -RunId $state.runId|Out-Null;$state.status='BLOCKED';$state.reason='secret scan failed before review';Write-DispatcherState $state|Out-Null;return $state}
+            $scan=[ordered]@{
+                clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean)
+                candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$candBase;headSha=$candHead;hits=@($treeScan.hits)}
+                artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)}
+                # Test-ArtifactsClean returns only path + matching regex. It
+                # never includes the detected value, so this is safe to persist.
+                hits=@($treeScan.hits)+@($artifactScan.hits)
+            }
+            if(-not $scan.clean){return (Set-DispatcherSecretBlock -State $state -Scan $scan)}
             Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase REVIEWING
             $state.candidateBase=$candBase;$state.candidateHead=$candHead;$state.candidateTree=$bindings.treeHash;$state.diffHash=$bindings.diffHash;$state.verification=$vp;$state.secretScan=$scan;$state.stage='REVIEW';Write-DispatcherState $state|Out-Null
         }
