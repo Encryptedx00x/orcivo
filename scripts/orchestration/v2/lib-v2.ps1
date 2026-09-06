@@ -621,8 +621,12 @@ function Test-ArtifactsClean {
         $txt = ''
         try { $txt = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) } catch { continue }
         if ($null -eq $txt) { continue }
+        # Canonicalize line endings for multiline assignment patterns. In .NET,
+        # `$` stops before LF but not before the CR in a CRLF pair, which made
+        # strict artifact patterns silently miss ordinary Windows log files.
+        $scanTxt = $txt.Replace("`r`n", "`n").Replace("`r", "`n")
         $activeLinePats=$linePats
-        if($SourceTree -and $f.Extension -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py')){
+        if($SourceTree -and $f.Extension -in @('.ts','.tsx','.js','.jsx','.mjs','.cjs','.ps1','.psm1','.cs','.java','.go','.rs','.py','.prisma')){
             # The environment/header assignment patterns intentionally overmatch
             # arbitrary logs. In source they match ordinary identifiers such as
             # `token`, `objectKey`, and uppercase constants. Keep JSON literal
@@ -630,12 +634,12 @@ function Test-ArtifactsClean {
             $activeLinePats=$(if($f.Name -match '\.(spec|test)\.[^.]+$'){Get-SourceFixtureSecretPatterns}else{Get-SourceSecretPatterns})
         }
         foreach ($pat in $activeLinePats) {
-            try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
+            try { if ([regex]::IsMatch($scanTxt, $pat, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
                 $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
             } } catch { }
         }
         foreach ($pat in $mlPats) {
-            try { if ([regex]::IsMatch($txt, $pat, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+            try { if ([regex]::IsMatch($scanTxt, $pat, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
                 $hits += ("{0} :: /{1}/" -f $f.FullName.Substring($Root.Length), $pat)
             } } catch { }
         }

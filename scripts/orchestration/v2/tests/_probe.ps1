@@ -1092,6 +1092,47 @@ switch ($Do) {
     OK
 }
 
+'secret-prisma-source-classification' {
+    $sourceRoot = Join-Path (Get-V2Dir) 'prisma-source-scan'
+    $schemaPath = Join-Path $sourceRoot 'schema.prisma'
+    New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+    $legit = @'
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+'@
+    Set-Content -LiteralPath $schemaPath -Value $legit -Encoding utf8
+    $legitScan = Test-ArtifactsClean -Root $sourceRoot -SourceTree
+    Expect $legitScan.clean "legitimate Prisma source was flagged: $($legitScan.hits -join ';')"
+
+    $credentialUri = 'postgresql' + '://' + 'fixture-user' + ':' + 'fixture-pass' + '@localhost:5544/orcivo_dev'
+    Set-Content -LiteralPath $schemaPath -Value ($legit + "`n// high-confidence credential fixture`nurl = `"$credentialUri`"`n") -Encoding utf8
+    $sourceDirty = Test-ArtifactsClean -Root $sourceRoot -SourceTree
+    Expect (-not $sourceDirty.clean) 'high-confidence credential in Prisma source was missed'
+    Expect (($sourceDirty.hits -join ' ') -notmatch [regex]::Escape('fixture-pass')) 'secret value leaked into source scan diagnostics'
+
+    $artifactRoot = Join-Path (Get-V2Dir) 'strict-artifact-scan'
+    New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+    $artifactKey = 'DATABASE' + '_URL'
+    Set-Content -LiteralPath (Join-Path $artifactRoot 'provider.log') -Value @('provider startup',($artifactKey + ' = fixture-reference')) -Encoding utf8
+    $artifactDirty = Test-ArtifactsClean -Root $artifactRoot
+    Expect (-not $artifactDirty.clean) 'artifact/log scan stopped enforcing strict assignment patterns'
+
+    $base = Get-GitHeadV2 $Repo
+    New-Item -ItemType Directory -Force -Path (Join-Path $Repo 'prisma') | Out-Null
+    Set-Content -LiteralPath (Join-Path $Repo 'prisma/schema.prisma') -Value ($legit + "`nurl = `"$credentialUri`"`n") -Encoding utf8
+    & git -C $Repo add prisma/schema.prisma 2>&1 | Out-Null
+    & git -C $Repo -c user.name=fixture -c user.email=fixture@local commit -qm 'prisma secret fixture' 2>&1 | Out-Null
+    $candidateDirty = Test-GitTreeSecretsClean -RepoDir $Repo -BaseRef $base -Ref (Get-GitHeadV2 $Repo)
+    Expect (-not $candidateDirty.clean) 'committed Prisma credential did not fail the immutable candidate scan closed'
+    Expect (-not (Test-TreeSecretsClean -Roots @($artifactRoot)).clean) 'artifact tree with a strict-pattern hit did not fail closed'
+    OK
+}
+
 'pipeline-prepublish-secret-gate' {
     # H3-02: a secret that reaches a PERSISTED candidate artifact is caught by the
     # pre-publication scan gate INSIDE Invoke-Integration - no push, no PUBLISHED.

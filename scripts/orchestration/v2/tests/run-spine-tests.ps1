@@ -263,6 +263,7 @@ Check 'M-05: e2e reviewer provenance is the launcher metadata, not the envelope'
 Check 'H-11/#15: e2e secret-crash - single-line secret never persisted' { ProbeOK (New-V2Fixture) 'pipeline-secret-crash' 'single' }
 Check 'H-11/#15: e2e secret-crash - multiline PEM never persisted'      { ProbeOK (New-V2Fixture) 'pipeline-secret-crash' 'pem' }
 Check 'H3-02: JSON password/token/DATABASE_URL redacted + scanned (one lib)' { ProbeOK (New-V2Fixture) 'secret-json-corpus' }
+Check 'H3-02: Prisma source avoids assignment false positives but blocks credentials' { ProbeOK (New-V2Fixture) 'secret-prisma-source-classification' }
 Check 'H3-02: pre-publication secret gate blocks push (no PUBLISHED)'   { ProbeOK (New-V2Fixture) 'pipeline-prepublish-secret-gate' }
 
 # ---- integration (C-03 / H-04 / #6 / #7 / NM-02) -------------
