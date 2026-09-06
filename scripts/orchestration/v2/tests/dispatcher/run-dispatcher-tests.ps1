@@ -381,6 +381,28 @@ try{
             $f=New-ReviewBudgetSupersessionFixture 'RD43';Write-Utf8 (Join-Path $f.runRoot 'dirty.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('x'*16))
             Assert-True (-not(Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource)) 'dirty artifact scan was accepted'
         }
+        Check 'RD-44' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD44';$path=Join-Path (Get-V2Dir) "attestations\$($f.state.taskVersionId)\review-$($f.review.attestationId).json"
+            $tampered=Read-V2Json $path;$tampered.payload.findings[0].detail='tampered';Write-V2JsonCanonical $path $tampered
+            Assert-True (-not(Test-DispatcherContractSupersessionEligible -State $f.state -Task $f.newTask -Contract $f.newContract -TaskSource $f.newSource)) 'stale/tampered latest review attestation was accepted'
+        }
+        Check 'RD-45' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD45'
+            $parsed=[ordered]@{verdict='REQUEST_CHANGES';envelope=[ordered]@{findings=@([ordered]@{severity='high';detail='newest actionable'},[ordered]@{severity='info';detail='not corrective'})}}
+            Set-DispatcherReviewOutcome -State $f.state -ParsedReview $parsed -InvocationId 'latest-invocation' -Attestation $f.review|Out-Null
+            $durable=Get-DispatcherState
+            Assert-True ($durable.reviewVerdict -eq 'REQUEST_CHANGES' -and $durable.reviewInvocationId -eq 'latest-invocation' -and $durable.reviewAttestationId -eq $f.review.attestationId) 'latest review provenance was not persisted'
+            Assert-True (@($durable.findings).Count -eq 1 -and $durable.findings[0] -eq 'high: newest actionable') 'latest actionable findings were not persisted or INFO was retained'
+        }
+        Check 'RD-46' {
+            $f=New-ReviewBudgetSupersessionFixture 'RD46';Write-DispatcherState $f.state|Out-Null
+            $run=$f.state.runId;$workspace=$f.workspace;$oldVersion=$f.state.taskVersionId;$candidate=$f.implementation
+            $result=Invoke-RealDispatcherTask -Task $f.newTask -TaskSource $f.newSource
+            Assert-True ($result.status -eq 'WAITING_HUMAN' -and $result.stage -eq 'GATE' -and [bool]$result.pendingContractSupersession) 'official restart did not enter the successor owner gate'
+            Assert-True ($result.runId -eq $run -and $result.workspace -eq $workspace -and $result.taskVersionId -eq $f.newContract.taskVersionId) 'official restart changed the run/workspace or selected the wrong successor version'
+            Assert-True ($result.supersededTaskVersionId -eq $oldVersion -and $result.recoveredCandidateCommit -eq $candidate) 'official restart did not preserve rejected-candidate lineage'
+            Assert-True ($result.supersededReview.attestationId -eq $f.review.attestationId -and @($result.findings).Count -eq 1 -and $result.findings[0] -eq 'high: latest finding') 'official restart did not bind the newest rejected review and findings'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

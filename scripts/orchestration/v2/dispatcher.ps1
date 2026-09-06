@@ -625,6 +625,21 @@ function Set-DispatcherSecretBlock {
     return $State
 }
 
+function Set-DispatcherReviewOutcome {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)]$ParsedReview,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)]$Attestation
+    )
+    $State.reviewVerdict=[string]$ParsedReview.verdict
+    $State.reviewInvocationId=$InvocationId
+    $State.reviewAttestationId=[string]$Attestation.attestationId
+    $State.findings=@($ParsedReview.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+    Write-DispatcherState $State|Out-Null
+    return $State
+}
+
 function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
@@ -649,6 +664,11 @@ function Invoke-RealDispatcherTask {
             $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit
             $state.pendingContractSupersession=$true;$state.pendingSupersessionReason=$previousReason
             $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
+            if($previousReason -eq 'bounded correction budget exhausted'){
+                $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
+                $state.supersededReview=[ordered]@{attestationId=[string]$priorReview.attestationId;invocationId=[string]$priorReview.producer.invocationId;verdict=[string]$priorReview.result;head=[string]$priorReview.bindings.headSHA;tree=[string]$priorReview.bindings.treeHash;diffHash=[string]$priorReview.bindings.diffHash}
+                $state.findings=@($priorReview.payload.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+            }
             $state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
         }
         $state.status='WAITING_HUMAN';$state.stage='GATE';$state.reason="Level C: $($Task.ownerGate)"
@@ -827,8 +847,7 @@ function Invoke-RealDispatcherTask {
             $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead
             $reviewAttestation=New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $parsed.verdict -Payload @{problems=@($parsed.problems);reason=$parsed.reason;findings=@($parsed.envelope.findings)} -ProducerMeta @{provider=$reviewer;model=$rr.model;profile=$rr.profile;invocationId=$rr.invocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=$rr.exitCode}
-            $state.reviewVerdict=$parsed.verdict;$state.reviewInvocationId=$rr.invocationId;$state.reviewAttestationId=$reviewAttestation.attestationId
-            $state.findings=@($parsed.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"});Write-DispatcherState $state|Out-Null
+            Set-DispatcherReviewOutcome -State $state -ParsedReview $parsed -InvocationId $rr.invocationId -Attestation $reviewAttestation|Out-Null
             if($parsed.verdict -eq 'REQUEST_CHANGES'){
                 if([int]$state.cycle -ge $maxCycles){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-budget-spent' -ToState 'FAILED_REVIEW_BUDGET' -RunId $state.runId|Out-Null;$state.status='WAITING_HUMAN';$state.reason='bounded correction budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                 Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.stage='IMPLEMENT';$state.implementationComplete=$false;Write-DispatcherState $state|Out-Null;continue
