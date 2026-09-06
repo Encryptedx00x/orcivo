@@ -523,9 +523,17 @@ function Invoke-RealDispatcherTask {
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
         }
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note 'reuse preserved candidate for bounded policy correction'|Out-Null
+        $state.supersededBudget=[ordered]@{
+            attempt=[int]$state.attempt;cycle=[int]$state.cycle
+            rollovers=[int]$state.rollovers;failovers=[int]$state.failovers
+        }
         $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
-        $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.cycle=[Math]::Max(1,([int]$state.cycle+1))
+        # Attempts/corrections are bounded per immutable task version. Preserve
+        # the superseded counters above, then start this successor at its first
+        # correction cycle instead of inheriting an already exhausted budget.
+        $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason=''
+        $state.attempt=0;$state.cycle=1;$state.rollovers=0;$state.failovers=0
         $state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')
         $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
         $state.pendingContractSupersession=$false

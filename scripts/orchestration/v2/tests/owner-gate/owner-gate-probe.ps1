@@ -174,7 +174,7 @@ switch ($Do) {
             schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$oldTask.taskId;taskVersionId=$oldContract.taskVersionId
             task=$oldTask;taskSourceHash=$oldSource.hash;status='BLOCKED';stage='IMPLEMENT';reason='OUT OF SCOPE change: work/candidate.txt'
             workspace=$candidateWs.workspace;branch=$candidateWs.branch;baseSha=$base;implementationCommit=$candidate;implementationComplete=$true
-            candidateHead='';cycle=0;attempt=1;provider='claude';profile='CRITICAL';providerHistory=@();findings=@();decisions=@();importantArtifacts=@()
+            candidateHead='';cycle=2;attempt=3;rollovers=1;failovers=1;provider='claude';profile='CRITICAL';providerHistory=@();findings=@();decisions=@();importantArtifacts=@()
         })|Out-Null
 
         $successor=Get-Content -Raw -LiteralPath $sourcePath|ConvertFrom-Json
@@ -207,6 +207,8 @@ switch ($Do) {
         try{$resumed=Invoke-RealDispatcherTask -Task $newTask -TaskSource $newSource}finally{Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue}
         Assert-OG ($resumed.status -eq 'STOPPED' -and $resumed.stage -eq 'IMPLEMENT') "approved successor did not enter bounded correction: $($resumed.status)/$($resumed.stage)"
         Assert-OG ($resumed.runId -eq $runId -and $resumed.workspace -eq $candidateWs.workspace -and $resumed.implementationCommit -eq $candidate) 'approved successor did not reuse exact run/workspace/candidate'
+        Assert-OG ($resumed.cycle -eq 1 -and $resumed.attempt -eq 0 -and $resumed.rollovers -eq 0 -and $resumed.failovers -eq 0) 'successor inherited exhausted attempt/correction budgets'
+        Assert-OG ($resumed.supersededBudget.cycle -eq 2 -and $resumed.supersededBudget.attempt -eq 3 -and $resumed.supersededBudget.rollovers -eq 1 -and $resumed.supersededBudget.failovers -eq 1) 'successor did not preserve prior budget counters as traceability'
         Assert-OG ((Get-LedgerState $hold.taskVersionId).state -eq 'RUNNING') 'approved successor ledger did not enter RUNNING'
         Remove-DispatcherWorkspace $candidateWs.workspace
         Complete-OG 'successor requires fresh approval before exact candidate reuse'
