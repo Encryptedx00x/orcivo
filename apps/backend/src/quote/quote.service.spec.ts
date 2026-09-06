@@ -20,7 +20,7 @@ import { TenantOwnershipService } from '../common/tenant/tenant-ownership.servic
 import { AuditService } from '../audit/audit.service';
 
 const mockTx = {
-  quote: { updateMany: jest.fn(), update: jest.fn() },
+  quote: { updateMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
   auditLog: { create: jest.fn() },
 };
 
@@ -218,6 +218,162 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('reject()', () => {
+    it('Test R1: reject() SENT→REJECTED grava uma auditoria com from/to/reason', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 5, status: 'REJECTED' });
+
+      await service.reject('q1', 'comp-1', 'user-1', 'Cliente achou caro');
+
+      expect(mockTx.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'REJECTED' } }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.rejected',
+          entityType: 'quote',
+          entityId: 'q1',
+          from: 'SENT',
+          to: 'REJECTED',
+          reason: 'Cliente achou caro',
+          actorType: 'USER',
+          actorUserId: 'user-1',
+        }),
+      );
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('Maria');
+    });
+
+    it('Test R2: reject() sem motivo lança BadRequestException', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      await expect(service.reject('q1', 'comp-1', 'user-1', '  ')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test R3: reject() de estado terminal (APPROVED) lança BadRequestException', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'APPROVED',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      await expect(service.reject('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('reopen() / correct()', () => {
+    it('Test R4: reopen() REJECTED→SENT grava uma auditoria com from/to/reason', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'REJECTED',
+        items: [],
+        customer: { name: 'João' },
+        approval: null,
+      });
+      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 8, status: 'SENT' });
+
+      await service.reopen('q1', 'comp-1', 'user-1', 'Cliente voltou atrás');
+
+      expect(mockTx.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'SENT' } }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.reopened',
+          from: 'REJECTED',
+          to: 'SENT',
+          reason: 'Cliente voltou atrás',
+          actorUserId: 'user-1',
+        }),
+      );
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('João');
+    });
+
+    it('Test R5: correct() APPROVED→DRAFT grava uma auditoria com from/to/reason', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'APPROVED',
+        items: [],
+        customer: { name: 'Ana' },
+        approval: null,
+      });
+      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 12, status: 'DRAFT' });
+
+      await service.correct('q1', 'comp-1', 'user-1', 'Erro no valor de um item');
+
+      expect(mockTx.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'DRAFT' } }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.corrected',
+          from: 'APPROVED',
+          to: 'DRAFT',
+          reason: 'Erro no valor de um item',
+        }),
+      );
+    });
+
+    it('Test R6: reopen() de estado não-terminal (SENT) lança BadRequestException', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'João' },
+        approval: null,
+      });
+
+      await expect(service.reopen('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test R7: correct() sem motivo lança BadRequestException', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'CANCELLED',
+        items: [],
+        customer: { name: 'Ana' },
+        approval: null,
+      });
+
+      await expect(service.correct('q1', 'comp-1', 'user-1', undefined)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
   describe('approve()', () => {
     const quoteToken = 'valid-token';
     const quoteMock = {
@@ -406,7 +562,7 @@ describe('QuoteService', () => {
 describe('QuoteExpiryProcessor', () => {
   let prisma: typeof mockPrisma;
   const txMock = {
-    quote: { update: jest.fn(), updateMany: jest.fn() },
+    quote: { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   const auditMock = { record: jest.fn().mockResolvedValue(undefined) };
@@ -426,50 +582,114 @@ describe('QuoteExpiryProcessor', () => {
       company: { findUniqueOrThrow: jest.fn() },
       $transaction: jest.fn(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)),
     };
+    // default: still eligible at UPDATE time
+    txMock.quote.findUnique.mockResolvedValue({ status: 'SENT' });
+    txMock.quote.updateMany.mockResolvedValue({ count: 1 });
   });
 
-  it('Test 5: process() expira quote SENT com valid_until no passado e grava auditoria', async () => {
+  const newProcessor = async () => {
     const { QuoteExpiryProcessor } = await import('./quote-expiry.processor');
-    const processor = new QuoteExpiryProcessor(
-      prisma as unknown as PrismaService,
-      auditMock as never,
-    );
+    return new QuoteExpiryProcessor(prisma as unknown as PrismaService, auditMock as never);
+  };
 
-    const pastDate = new Date(Date.now() - 1000 * 60 * 60);
+  it('Test 5: process() expira quote SENT com valid_until no passado e grava auditoria', async () => {
+    const processor = await newProcessor();
+
     prisma.quote.findFirst.mockResolvedValue({
       id: 'q1',
       number: 3,
       company_id: 'comp-1',
-      status: 'SENT',
-      valid_until: pastDate,
       customer: { name: 'Cliente' },
     });
-    txMock.quote.update.mockResolvedValue({ id: 'q1', status: 'EXPIRED' });
 
     await processor.process({ data: { quoteId: 'q1' } } as never);
 
-    expect(txMock.quote.update).toHaveBeenCalledWith({
-      where: { id: 'q1' },
+    // Elegibilidade preservada na escrita transacional (não um update por id "cego").
+    expect(txMock.quote.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'q1',
+        status: 'SENT',
+        valid_until: { lt: expect.any(Date) },
+      },
       data: { status: 'EXPIRED' },
     });
     expect(auditMock.record).toHaveBeenCalledWith(
       txMock,
-      expect.objectContaining({ action: 'quote.expired', actorType: 'SYSTEM', to: 'EXPIRED' }),
+      expect.objectContaining({
+        action: 'quote.expired',
+        actorType: 'SYSTEM',
+        from: 'SENT',
+        to: 'EXPIRED',
+      }),
     );
   });
 
   it('Test 6: process() NÃO modifica quote APPROVED (estado terminal)', async () => {
-    const { QuoteExpiryProcessor } = await import('./quote-expiry.processor');
-    const processor = new QuoteExpiryProcessor(
-      prisma as unknown as PrismaService,
-      auditMock as never,
-    );
+    const processor = await newProcessor();
 
     // findFirst retorna null pois WHERE status IN (DRAFT, SENT) não encontra APPROVED
     prisma.quote.findFirst.mockResolvedValue(null);
 
     await processor.process({ data: { quoteId: 'q1' } } as never);
 
-    expect(txMock.quote.update).not.toHaveBeenCalled();
+    expect(txMock.quote.updateMany).not.toHaveBeenCalled();
+    expect(auditMock.record).not.toHaveBeenCalled();
+  });
+
+  it('Test 5b: aprovação concorrente entre a leitura e o UPDATE — não expira nem audita', async () => {
+    const processor = await newProcessor();
+
+    prisma.quote.findFirst.mockResolvedValue({
+      id: 'q1',
+      number: 3,
+      company_id: 'comp-1',
+      customer: { name: 'Cliente' },
+    });
+    // A linha ainda parecia SENT ao reler o status, mas foi aprovada (ou teve a
+    // validade estendida) antes do updateMany — o filtro condicional não bate.
+    txMock.quote.findUnique.mockResolvedValue({ status: 'SENT' });
+    txMock.quote.updateMany.mockResolvedValue({ count: 0 });
+
+    await processor.process({ data: { quoteId: 'q1' } } as never);
+
+    expect(auditMock.record).not.toHaveBeenCalled();
+  });
+
+  it('Test 5c: status já mudou ao reler dentro da transação — aborta antes do UPDATE', async () => {
+    const processor = await newProcessor();
+
+    prisma.quote.findFirst.mockResolvedValue({
+      id: 'q1',
+      number: 3,
+      company_id: 'comp-1',
+      customer: { name: 'Cliente' },
+    });
+    txMock.quote.findUnique.mockResolvedValue({ status: 'APPROVED' });
+
+    await processor.process({ data: { quoteId: 'q1' } } as never);
+
+    expect(txMock.quote.updateMany).not.toHaveBeenCalled();
+    expect(auditMock.record).not.toHaveBeenCalled();
+  });
+
+  it('Test 5d: varredura com workers sobrepostos — a segunda passada não re-expira nem re-audita', async () => {
+    const processor = await newProcessor();
+
+    prisma.quote.findMany.mockResolvedValue([{ id: 'q1' }]);
+    prisma.quote.findFirst
+      .mockResolvedValueOnce({
+        id: 'q1',
+        number: 9,
+        company_id: 'comp-1',
+        customer: { name: 'Cliente' },
+      })
+      // segunda varredura: já EXPIRED, o filtro status IN (DRAFT,SENT) devolve null
+      .mockResolvedValueOnce(null);
+    txMock.quote.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await processor.sweepExpiredQuotes();
+    await processor.sweepExpiredQuotes();
+
+    expect(auditMock.record).toHaveBeenCalledTimes(1);
   });
 });

@@ -16,8 +16,8 @@ const maybe = canRun ? describe : describe.skip;
 maybe('AuditService (integration)', () => {
   const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
   const audit = new AuditService();
-  let companyId: string;
-  let userId: string;
+  let companyId: string | undefined;
+  let userId: string | undefined;
 
   beforeAll(async () => {
     await prisma.$connect();
@@ -35,13 +35,24 @@ maybe('AuditService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.auditLog.deleteMany({ where: { company_id: companyId } });
-    await prisma.company.deleteMany({ where: { id: companyId } });
-    await prisma.user.deleteMany({ where: { id: userId } });
-    await prisma.$disconnect();
+    // Guard every delete with a fixture id that was actually captured — if
+    // beforeAll threw before assigning these, an undefined `where` filter would
+    // make Prisma drop the condition and deleteMany would hit unrelated rows.
+    try {
+      if (companyId) {
+        await prisma.auditLog.deleteMany({ where: { company_id: companyId } });
+        await prisma.company.deleteMany({ where: { id: companyId } });
+      }
+      if (userId) {
+        await prisma.user.deleteMany({ where: { id: userId } });
+      }
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   afterEach(async () => {
+    if (!companyId) return;
     await prisma.auditLog.deleteMany({ where: { company_id: companyId } });
   });
 

@@ -368,6 +368,130 @@ export class QuoteService {
     });
   }
 
+  /**
+   * Recusa (P-01/ADR-015): SENT → REJECTED. Motivo obrigatório e — como no
+   * cancelamento — nunca sobrescreve `notes`; o motivo vive só na trilha de
+   * auditoria. Exatamente uma linha de auditoria com from/to/reason (AC2).
+   */
+  async reject(id: string, companyId: string, userId: string, reason?: string) {
+    const quote = await this.findOne(id, companyId);
+    try {
+      assertValidTransition(quote.status as never, 'REJECTED');
+    } catch {
+      throw new BadRequestException(`Transição inválida: ${quote.status} → REJECTED`);
+    }
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException('Motivo é obrigatório para recusar um orçamento');
+    }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as string;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'REJECTED' },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.rejected',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'REJECTED',
+        reason: trimmedReason,
+        humanText: `Orçamento #${updated.number} (${customerName}) recusado: ${trimmedReason}`,
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * Reabrir (reabrir — @AdminOnly): traz um orçamento de um estado terminal de
+   * volta para SENT para uma nova rodada de aprovação. `assertValidTransition`
+   * não cobre saídas de estados terminais de propósito (a máquina de estados
+   * completa é P04); aqui a origem é validada localmente. Uma linha de auditoria
+   * com from/to/reason (AC2). O histórico anterior é preservado.
+   */
+  async reopen(id: string, companyId: string, userId: string, reason?: string) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, {
+      to: 'SENT',
+      allowedFrom: ['REJECTED', 'EXPIRED', 'CANCELLED'],
+      action: 'quote.reopened',
+      verb: 'reabrir',
+      describe: (n, c, r) => `Orçamento #${n} (${c}) reaberto para nova aprovação: ${r}`,
+    });
+  }
+
+  /**
+   * Corrigir (corrigir — @AdminOnly): devolve um orçamento terminal para DRAFT
+   * para ajuste de itens/valores antes de reenviar. Uma linha de auditoria com
+   * from/to/reason (AC2).
+   */
+  async correct(id: string, companyId: string, userId: string, reason?: string) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, {
+      to: 'DRAFT',
+      allowedFrom: ['APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED'],
+      action: 'quote.corrected',
+      verb: 'corrigir',
+      describe: (n, c, r) =>
+        `Orçamento #${n} (${c}) reaberto para correção (voltou para rascunho): ${r}`,
+    });
+  }
+
+  private async reopenOrCorrect(
+    id: string,
+    companyId: string,
+    userId: string,
+    reason: string | undefined,
+    opts: {
+      to: 'SENT' | 'DRAFT';
+      allowedFrom: string[];
+      action: 'quote.reopened' | 'quote.corrected';
+      verb: 'reabrir' | 'corrigir';
+      describe: (num: number, customer: string, reason: string) => string;
+    },
+  ) {
+    const quote = await this.findOne(id, companyId);
+    const fromStatus = quote.status as string;
+    if (!opts.allowedFrom.includes(fromStatus)) {
+      throw new BadRequestException(
+        `Transição inválida: ${fromStatus} → ${opts.to} (${opts.verb})`,
+      );
+    }
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException(`Motivo é obrigatório para ${opts.verb} um orçamento`);
+    }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: opts.to },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: opts.action,
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: opts.to,
+        reason: trimmedReason,
+        humanText: opts.describe(updated.number, customerName, trimmedReason),
+      });
+      return updated;
+    });
+  }
+
   async getByApprovalToken(token: string) {
     // Verificar Redis primeiro, fallback ao banco (token pode ter expirado do Redis mas estar no banco)
     const cachedId = await this.redis.get(`quote:approval:${token}`);

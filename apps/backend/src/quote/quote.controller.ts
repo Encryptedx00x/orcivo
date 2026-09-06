@@ -14,6 +14,7 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { QuoteCreateSchema } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
+import { AdminOnly } from '../auth/decorators/roles.decorator';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
@@ -59,5 +60,26 @@ export class QuoteController {
   @HttpCode(200)
   cancel(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
     return this.quoteService.cancel(id, req.companyId, req.user.userId, reason);
+  }
+
+  @Patch(':id/reject')
+  @HttpCode(200)
+  reject(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
+    return this.quoteService.reject(id, req.companyId, req.user.userId, reason);
+  }
+
+  // reabrir/corrigir são ações de correção sobre estados terminais — @AdminOnly (P-01).
+  @Patch(':id/reopen')
+  @AdminOnly()
+  @HttpCode(200)
+  reopen(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
+    return this.quoteService.reopen(id, req.companyId, req.user.userId, reason);
+  }
+
+  @Patch(':id/correct')
+  @AdminOnly()
+  @HttpCode(200)
+  correct(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
+    return this.quoteService.correct(id, req.companyId, req.user.userId, reason);
   }
 }
