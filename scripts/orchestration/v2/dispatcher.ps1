@@ -247,15 +247,113 @@ function Test-DispatcherImplementationCompleted {
     return ("$($last.resultClass)" -eq 'SUCCESS' -and "$($last.role)" -in @('IMPLEMENTER','CORRECTOR'))
 }
 
+function Test-DispatcherAttestationCandidateBinding {
+    param($Attestation,$State,[string]$Workspace,[string]$BaseSha,[string]$HeadSha,[string]$ExpectedDiffHash='')
+    try{
+        if(-not $Attestation -or [string]$Attestation.taskVersionId -ne [string]$State.taskVersionId -or [string]$Attestation.runId -ne [string]$State.runId){return $false}
+        if([string]$Attestation.bindings.taskVersionId -ne [string]$State.taskVersionId -or [string]$Attestation.bindings.baseSHA -ne $BaseSha -or [string]$Attestation.bindings.headSHA -ne $HeadSha){return $false}
+        if([string]$Attestation.attestationHash -ne (_AttestationCore (_ToHashtable $Attestation))){return $false}
+        if([string]$Attestation.bindings.treeHash -ne (Get-GitTreeHash -Dir $Workspace -Ref $HeadSha)){return $false}
+        if($ExpectedDiffHash -and [string]$Attestation.bindings.diffHash -ne $ExpectedDiffHash){return $false}
+        if([string]$Attestation.bindings.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return $false}
+        $contract=Get-Contract ([string]$State.taskVersionId)
+        foreach($key in @('specHash','acceptanceHash','configHash','verificationProfileHash','verificationDefinitionHash','contractHash')){
+            if([string]$Attestation.bindings.$key -ne [string]$contract.$key){return $false}
+        }
+        return $true
+    }catch{return $false}
+}
+
+function Test-DispatcherHistoricalCandidateResumeEligible {
+    param($State,[hashtable]$Task,$TaskSource)
+    try{
+        if(-not $Task -or -not $TaskSource){return $false}
+        if(-not [bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return $false}
+        if([string]$State.reason -ne 'secret scan failed before review'){return $false}
+        if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return $false}
+        if([string]$State.taskVersionId -notmatch '^[0-9a-f]{64}$' -or -not(Test-SafeId ([string]$State.runId))){return $false}
+        foreach($sha in @([string]$State.implementationCommit,[string]$State.candidateHead,[string]$State.candidateBase)){
+            if($sha -notmatch '^[0-9a-f]{40}$'){return $false}
+        }
+        if([string]$State.implementationCommit -eq [string]$State.candidateHead){return $false}
+
+        $contract=Get-Contract ([string]$State.taskVersionId)
+        if([string]$contract.taskId -ne [string]$Task.taskId -or [string]$contract.bindings.taskSourceHash -ne [string]$TaskSource.hash){return $false}
+        if([string]$contract.gate -ne [string]$Task.ownerGate -or [string]$contract.risk -ne [string]$Task.risk -or [string]$contract.verificationProfile -ne [string]$Task.verificationProfile){return $false}
+        $expectedSpec=@("TASK $($Task.taskId)","TITLE $($Task.title)","TYPE $($Task.type)","DESCRIPTION",[string]$Task.description,"CONSTRAINTS",(ConvertTo-CanonicalJson $Task.candidateConstraints)) -join "`n"
+        if([string]$contract.specHash -ne (New-StringHash (Protect-ArtifactText $expectedSpec)) -or [string]$contract.acceptanceHash -ne (New-StringHash (Protect-ArtifactText ([string]$Task.acceptance)))){return $false}
+        if((ConvertTo-CanonicalJson @($contract.declaredScope)) -ne (ConvertTo-CanonicalJson @($Task.scope))){return $false}
+        if((ConvertTo-CanonicalJson @($contract.protectedPathGrants)) -ne (ConvertTo-CanonicalJson @($Task.protectedPathGrants))){return $false}
+        if([string]$contract.gate -ne 'none'){
+            $approval=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$contract.gate)
+            if(-not [bool]$approval.satisfied -or [string]$approval.approval -ne 'APPROVED'){return $false}
+        }
+
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return $false}
+        $status=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'historical-resume-status'
+        if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout)){return $false}
+        if((Get-GitHeadV2 $workspace) -ne [string]$State.implementationCommit){return $false}
+        foreach($sha in @([string]$State.implementationCommit,[string]$State.candidateHead)){
+            $object=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse','--verify',"$sha^{commit}") -LogLabel 'historical-resume-object'
+            if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $sha){return $false}
+        }
+        $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',[string]$State.candidateHead,[string]$State.implementationCommit) -LogLabel 'historical-resume-lineage'
+        if($ancestor.exitCode -ne 0){return $false}
+
+        if((Get-LedgerState ([string]$State.taskVersionId)).state -ne 'FAILED'){return $false}
+        $historicalReview=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind 'review' -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+        if(-not $historicalReview -or [string]$historicalReview.result -ne 'REQUEST_CHANGES' -or [string]$State.reviewVerdict -ne [string]$historicalReview.result){return $false}
+        if([string]$State.candidateTree -ne [string]$historicalReview.bindings.treeHash -or [string]$State.diffHash -ne [string]$historicalReview.bindings.diffHash){return $false}
+        if(-not(Test-DispatcherAttestationCandidateBinding -Attestation $historicalReview -State $State -Workspace $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead) -ExpectedDiffHash ([string]$State.diffHash))){return $false}
+
+        $implementationAttestations=@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)|Where-Object{
+            [string]$_.runId -eq [string]$State.runId -and [string]$_.bindings.headSHA -eq [string]$State.implementationCommit
+        })
+        if(@($implementationAttestations|Where-Object{[string]$_.kind -in @('review','approval','integration') -or ([string]$_.kind -eq 'check' -and [string]$_.result -ne 'PASS')}).Count){return $false}
+        $implementationCheck=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind 'check' -RunId ([string]$State.runId) -HeadSha ([string]$State.implementationCommit)
+        if($implementationCheck){
+            if([string]$implementationCheck.result -ne 'PASS' -or -not(Test-DispatcherAttestationCandidateBinding -Attestation $implementationCheck -State $State -Workspace $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.implementationCommit))){return $false}
+        }
+
+        if([string]$State.secretScan.candidate.baseSha -ne [string]$State.candidateBase -or [string]$State.secretScan.candidate.headSha -ne [string]$State.implementationCommit){return $false}
+        $runRoot=Join-Path (Get-V2Dir) "runs\$($State.runId)"
+        if(-not(Test-Path -LiteralPath $runRoot)){return $false}
+        $candidateScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef ([string]$State.candidateBase) -Ref ([string]$State.implementationCommit)
+        $artifactScan=Test-TreeSecretsClean -Roots @($runRoot)
+        return [bool]($candidateScan.clean -and $artifactScan.clean)
+    }catch{return $false}
+}
+
 function Test-DispatcherCandidateResumeEligible {
-    param($State)
+    param($State,[hashtable]$Task=$null,$TaskSource=$null)
     if(-not $State -or "$($State.status)" -notin @('RESUMABLE','BLOCKED')){return $false}
     if("$($State.stage)" -ne 'IMPLEMENT' -or -not (Test-DispatcherImplementationCompleted $State)){return $false}
     $reason=[string]$State.reason
     $commitRetry=$reason.StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)
     $scanRetry=$reason.Equals('secret scan failed before review',[System.StringComparison]::Ordinal)
     if(-not ($commitRetry -or $scanRetry)){return $false}
-    return [bool]($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)) -and -not $State.candidateHead)
+    if(-not ($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)))){return $false}
+    if(-not $State.candidateHead){return $true}
+    return (Test-DispatcherHistoricalCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource)
+}
+
+function Resume-DispatcherCandidate {
+    param($State,[hashtable]$Task,$TaskSource)
+    if(-not(Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource)){return $false}
+    $ledgerState=(Get-LedgerState $State.taskVersionId).state
+    $historicalCandidate=[bool]$State.candidateHead
+    $resumeNote=$(if($historicalCandidate){"historical reviewed head $($State.candidateHead); resume unreviewed implementation $($State.implementationCommit)"}else{'resume committed implementation candidate'})
+    if($ledgerState -eq 'FAILED'){
+        Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'candidate-resume-ready' -ToState 'READY' -RunId $State.runId -Note $resumeNote|Out-Null
+        Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'candidate-resume-dispatch' -ToState 'DISPATCHED' -RunId $State.runId -AttemptId (New-AttemptId) -Note $resumeNote|Out-Null
+        Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'candidate-resume-running' -ToState 'RUNNING' -RunId $State.runId -Note $resumeNote|Out-Null
+    }elseif($ledgerState -ne 'RUNNING'){throw "dispatcher: recoverable candidate has incompatible ledger state '$ledgerState'"}
+    if($historicalCandidate){
+        $State.historicalCandidate=[ordered]@{head=[string]$State.candidateHead;base=[string]$State.candidateBase;tree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;reviewVerdict=[string]$State.reviewVerdict;reviewInvocationId=[string]$State.reviewInvocationId}
+    }
+    $State.status='RUNNING';$State.reason='';Write-DispatcherState $State|Out-Null
+    return $true
 }
 
 function Test-DispatcherContractSupersessionEligible {
@@ -370,7 +468,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible $State) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -570,14 +668,8 @@ function Invoke-RealDispatcherTask {
         $state.requiresCorrection=$true;$state.implementationComplete=$false
         Write-DispatcherState $state|Out-Null
     }
-    if(Test-DispatcherCandidateResumeEligible $state){
-        $ledgerState=(Get-LedgerState $state.taskVersionId).state
-        if($ledgerState -eq 'FAILED'){
-            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-ready' -ToState 'READY' -RunId $state.runId|Out-Null
-            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
-            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'candidate-resume-running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
-        }elseif($ledgerState -ne 'RUNNING'){throw "dispatcher: recoverable candidate has incompatible ledger state '$ledgerState'"}
-        $state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null
+    if(Test-DispatcherCandidateResumeEligible -State $state -Task $Task -TaskSource $TaskSource){
+        if(-not(Resume-DispatcherCandidate -State $state -Task $Task -TaskSource $TaskSource)){throw 'dispatcher: candidate resume eligibility changed before durable transition'}
     }
     if("$($Task.taskId)" -like 'PB1-*'){
         $auth=Join-Path (Get-V2Dir) ([string]$pcfg.realExecutionAuthFile)
@@ -740,7 +832,9 @@ function Invoke-DispatcherLoop {
             if(Test-Path $stop){return @{status='STOPPED';reason='explicit stop requested'}}
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
-            if($cur -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherCandidateResumeEligible $cur)) -and $cur.taskSourceHash -eq $source.hash){$task=@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0];if(-not $task){throw 'dispatcher: active task disappeared from the immutable task source'};$r=Invoke-RealDispatcherTask -Task $task -TaskSource $source -ProviderOverride $ProviderOverride}
+            $task=$(if($cur){@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0]}else{$null})
+            $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and (Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source))
+            if($cur -and $task -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
             if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
             if($r.status -eq 'WAITING_PROVIDER'){Start-Sleep -Seconds ([Math]::Min(30,[int]$cfg.providerFailover.pollBackoffSec[0]));continue}

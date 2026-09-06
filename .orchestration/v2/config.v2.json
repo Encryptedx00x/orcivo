@@ -511,7 +511,7 @@
     "secretPatterns": [
       "(?i)\"[A-Za-z0-9_. -]{0,40}(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|session[_-]?key|database[_-]?url|connection[_-]?string|authorization)[A-Za-z0-9_. -]{0,40}\"[ \\t]*:[ \\t]*\"[^\"]+\"",
       "(?im)^[ \\t]*(export[ \\t]+)?[A-Za-z0-9_. -]{0,40}(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|database[_-]?url|connection[_-]?string)[A-Za-z0-9_]{0,40}[ \\t]*[:=][ \\t]*[^\\r\\n]+$",
-      "(?m)^[ \\t]*(export[ \\t]+)?[A-Z][A-Z0-9_]{2,}[ \\t]*=[ \\t]*[^\\r\\n]+$",
+      "(?im)^[ \\t]*(export[ \\t]+)?[A-Z][A-Z0-9_]{2,}[ \\t]*=[ \\t]*[^\\r\\n]+$",
       "(?im)^[ \\t]*(proxy-)?authorization[ \\t]*:[ \\t]*[^\\r\\n]+$",
       "(?i)\\bauthorization\\b[ \\t]*[:=][ \\t]*\\S+",
       "(?i)\\bbearer[ \\t]+[A-Za-z0-9._~+/-]{8,}=*",

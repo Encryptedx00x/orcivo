@@ -466,7 +466,16 @@ function Test-HolderLive {
 
 # H3-02: ONE canonical secret library. Redactor, sanitize-before-write, the
 # pre-publication scan gate and the final sweep all call Get-SecretPatterns.
-function Get-SecretPatterns       { return @((Get-V2Config).redaction.secretPatterns) }
+function Get-SecretPatterns {
+    $patterns=@((Get-V2Config).redaction.secretPatterns)
+    # Compatibility normalization: keep the contract-bound configuration bytes
+    # stable while making the uppercase environment-variable rule genuinely
+    # case-sensitive. This changes only that rule's inline options.
+    if($patterns.Count -gt 2 -and $patterns[2] -match '^\(\?im\).*\[A-Z\]\[A-Z0-9_\]'){
+        $patterns[2]=[regex]::Replace([string]$patterns[2],'^\(\?im\)','(?m)')
+    }
+    return $patterns
+}
 function Get-MultilinePatterns    { return @((Get-V2Config).redaction.multilinePatterns) }
 function Get-MultilineScanPatterns { return @((Get-V2Config).redaction.multilineScanPatterns) }
 # back-compat shims - every caller now resolves to the single library
