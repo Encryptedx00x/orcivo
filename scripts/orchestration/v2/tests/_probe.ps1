@@ -1133,6 +1133,65 @@ datasource db {
     OK
 }
 
+'secret-review-patch-classification' {
+    $root = Join-Path (Get-V2Dir) 'review-patch-scan'
+    $review = Join-Path $root 'review-002'
+    New-Item -ItemType Directory -Force -Path $review | Out-Null
+    $patchPath = Join-Path $review 'diff.patch'
+
+    $ordinaryPatch = @'
+diff --git a/example.ts b/example.ts
+--- a/example.ts
++++ b/example.ts
+@@ -1,2 +1,6 @@
++const targetUserId = input.targetUserId
++const service = createService()
++type AuditRow = { approval_token: string }
++const prisma = createClient()
+'@
+    Set-Content -LiteralPath $patchPath -Value $ordinaryPatch -Encoding utf8
+    $ordinary = Test-ArtifactsClean -Root $root
+    Expect $ordinary.clean "ordinary source assignments/types in a review patch were flagged: $($ordinary.hits -join ';')"
+
+    $uppercasePattern = @((Get-SecretPatterns) | Where-Object { $_ -match '\[A-Z\]\[A-Z0-9_\]' })[0]
+    Expect ([regex]::IsMatch('SERVICE_VALUE=fixture-reference',$uppercasePattern)) 'uppercase assignment pattern stopped matching uppercase variables'
+    Expect (-not [regex]::IsMatch('service_value=fixture-reference',$uppercasePattern)) 'uppercase assignment pattern is not case-sensitive'
+
+    $secretCases = @(
+        '+const token = "' + 'sk-' + ('a' * 20) + '"',
+        '-const apiKey = "' + 'AIza' + ('b' * 32) + '"',
+        '+const password = "postgresql' + '://fixture-user:fixture-pass@localhost:5544/db"'
+    )
+    foreach ($secretLine in $secretCases) {
+        Set-Content -LiteralPath $patchPath -Value ($ordinaryPatch + "`n" + $secretLine) -Encoding utf8
+        $dirtyPatch = Test-ArtifactsClean -Root $root
+        Expect (-not $dirtyPatch.clean) 'a real credential signature in an added/removed patch line was missed'
+        Expect (($dirtyPatch.hits -join ' ') -notmatch 'fixture-pass|sk-[a]+|AIza[b]+') 'a patch secret value leaked into scanner diagnostics'
+    }
+
+    Set-Content -LiteralPath $patchPath -Value $ordinaryPatch -Encoding utf8
+    $logRoot = Join-Path $root 'logs'
+    New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+    $runtimeSecret = 'ORCIVO_' + 'SYNTHETIC_SECRET_' + ('c' * 16)
+    Set-Content -LiteralPath (Join-Path $logRoot 'provider.log') -Value $runtimeSecret -Encoding utf8
+    $dirtyLog = Test-ArtifactsClean -Root $logRoot
+    Expect (-not $dirtyLog.clean) 'a secret in a normal log was missed'
+    Expect (($dirtyLog.hits -join ' ') -notmatch [regex]::Escape($runtimeSecret)) 'a log secret value leaked into scanner diagnostics'
+
+    $redactedRoot = Join-Path $root 'redacted'
+    New-Item -ItemType Directory -Force -Path $redactedRoot | Out-Null
+    Set-Content -LiteralPath (Join-Path $redactedRoot 'provider.log') -Value (Protect-SecretsStreaming $runtimeSecret) -Encoding utf8
+    $redacted = Test-ArtifactsClean -Root $redactedRoot
+    Expect $redacted.clean "an already-redacted artifact blocked itself: $($redacted.hits -join ';')"
+
+    $candidateRoot = Join-Path $root 'candidate'
+    New-Item -ItemType Directory -Force -Path $candidateRoot | Out-Null
+    Set-Content -LiteralPath (Join-Path $candidateRoot 'source.ts') -Value ('const token = "' + 'ghp_' + ('d' * 24) + '"') -Encoding utf8
+    Expect (-not (Test-ArtifactsClean -Root $candidateRoot -SourceTree).clean) 'candidate/source scan did not fail closed on a high-confidence token'
+    Expect (-not (Test-TreeSecretsClean -Roots @($logRoot)).clean) 'artifact tree scan did not fail closed on a normal-log secret'
+    OK
+}
+
 'pipeline-prepublish-secret-gate' {
     # H3-02: a secret that reaches a PERSISTED candidate artifact is caught by the
     # pre-publication scan gate INSIDE Invoke-Integration - no push, no PUBLISHED.

@@ -264,6 +264,7 @@ Check 'H-11/#15: e2e secret-crash - single-line secret never persisted' { ProbeO
 Check 'H-11/#15: e2e secret-crash - multiline PEM never persisted'      { ProbeOK (New-V2Fixture) 'pipeline-secret-crash' 'pem' }
 Check 'H3-02: JSON password/token/DATABASE_URL redacted + scanned (one lib)' { ProbeOK (New-V2Fixture) 'secret-json-corpus' }
 Check 'H3-02: Prisma source avoids assignment false positives but blocks credentials' { ProbeOK (New-V2Fixture) 'secret-prisma-source-classification' }
+Check 'H3-02: review patches use source semantics and still block real credentials' { ProbeOK (New-V2Fixture) 'secret-review-patch-classification' }
 Check 'H3-02: pre-publication secret gate blocks push (no PUBLISHED)'   { ProbeOK (New-V2Fixture) 'pipeline-prepublish-secret-gate' }
 
 # ---- integration (C-03 / H-04 / #6 / #7 / NM-02) -------------
