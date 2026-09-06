@@ -75,6 +75,7 @@ Invoke-OGCheck 'OG-07 approval does not bypass unrelated guards' 'unrelated-guar
 Invoke-OGCheck 'OG-08 same task lineage is preserved' 'lineage-preserved'
 Invoke-OGCheck 'OG-09 command refuses non-WAITING_HUMAN task' 'refuse-nonwaiting'
 Invoke-OGCheck 'OG-10 command refuses taskVersionId mismatch' 'refuse-version-mismatch'
+Invoke-OGCheck 'OG-11 successor gate precedes exact candidate reuse' 'supersession-gate'
 Write-Host "`n=== owner gate: $pass passed, $fail failed ===" -ForegroundColor $(if($fail){'Red'}else{'Green'})
 
 if (-not $KeepFixture) {

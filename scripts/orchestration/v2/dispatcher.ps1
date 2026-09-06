@@ -273,6 +273,23 @@ function Test-DispatcherContractSupersessionEligible {
     return ($ancestor.exitCode -eq 0)
 }
 
+function Test-DispatcherPendingContractSupersessionResume {
+    param($State, [hashtable]$Task, $Contract, $TaskSource)
+    if(-not $State -or -not [bool]$State.pendingContractSupersession){return $false}
+    if($State.taskId -ne $Task.taskId -or $State.taskVersionId -ne $Contract.taskVersionId -or $State.taskSourceHash -ne $TaskSource.hash){return $false}
+    if("$($State.status)" -ne 'WAITING_HUMAN' -or "$($State.stage)" -ne 'GATE' -or "$($State.reason)" -ne "Level C: $($Task.ownerGate)"){return $false}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    $requestedVersion=[string]$constraints.resumeFromTaskVersionId
+    $requestedCommit=[string]$constraints.resumeFromCandidateCommit
+    if($requestedVersion -ne [string]$State.supersededTaskVersionId -or $requestedCommit -ne [string]$State.recoveredCandidateCommit){return $false}
+    if($requestedVersion -notmatch '^[0-9a-f]{64}$' -or $requestedCommit -notmatch '^[0-9a-f]{40}$'){return $false}
+    if(-not $State.workspace -or -not(Test-Path -LiteralPath ([string]$State.workspace))){return $false}
+    $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$requestedCommit^{commit}") -LogLabel 'pending-supersession-candidate-object'
+    if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $requestedCommit){return $false}
+    $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$requestedCommit,(Get-GitHeadV2 ([string]$State.workspace))) -LogLabel 'pending-supersession-candidate-lineage'
+    return ($ancestor.exitCode -eq 0)
+}
+
 function Test-DispatcherPolicyCorrectionResumeState {
     param($State, [hashtable]$Task, $TaskSource)
     return [bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and
@@ -471,16 +488,47 @@ function Invoke-RealDispatcherTask {
     $state=Get-DispatcherState
     $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
-    if(Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource){
-        $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+    $classification = Get-TaskClassification -Task $Task
+    $isLevelC = $classification.taskComplexity -eq 'LEVEL_C' -or (Test-TaskLevelC $Task)
+    $ownerGateStatus=$null
+    if ($isLevelC) {
+        if($Task.ownerGate -and $Task.ownerGate -ne 'none'){$ownerGateStatus=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$contract.taskVersionId) -GateId ([string]$Task.ownerGate)}
+        else{$ownerGateStatus=[ordered]@{satisfied=$false;approval='MISSING';reason='Level C task has no declared owner gate'}}
+    }
+    $contractSupersession=Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
+    $pendingSupersession=Test-DispatcherPendingContractSupersessionResume -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
+    if(($contractSupersession -or $pendingSupersession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
+        if($contractSupersession){
+            $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note ([string]$Task.ownerGate)|Out-Null
+            $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
+            $state.pendingContractSupersession=$true;$state.pendingSupersessionReason=$previousReason
+            $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
+            $state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
+        }
+        $state.status='WAITING_HUMAN';$state.stage='GATE';$state.reason="Level C: $($Task.ownerGate)"
+        $state.decisionNeeded='fresh owner approval for the superseding Level C task version'
+        $state.resumes='same preserved candidate after a durable exact-version owner approval'
+        $state.gate=[ordered]@{required=$true;approval=[string]$ownerGateStatus.approval;reason=[string]$Task.ownerGate;taskVersionId=[string]$contract.taskVersionId}
+        Write-DispatcherState $state|Out-Null;return $state
+    }
+    if($contractSupersession -or $pendingSupersession){
+        $previousVersion=$(if($pendingSupersession){[string]$state.supersededTaskVersionId}else{[string]$state.taskVersionId})
+        $previousReason=$(if($pendingSupersession){[string]$state.pendingSupersessionReason}else{[string]$state.reason})
+        if($pendingSupersession){
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'gate-approved' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId) -Note ([string]$Task.ownerGate)|Out-Null
+        }else{
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
+        }
         Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note 'reuse preserved candidate for bounded policy correction'|Out-Null
         $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=[string]$state.implementationCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
         $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.cycle=[Math]::Max(1,([int]$state.cycle+1))
         $state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')
         $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
+        $state.pendingContractSupersession=$false
         Write-DispatcherState $state|Out-Null
         memoryBootstrap $Task ([string]$state.logicalProjectId)|Out-Null
     }
@@ -504,7 +552,6 @@ function Invoke-RealDispatcherTask {
         }elseif($ledgerState -ne 'RUNNING'){throw "dispatcher: recoverable candidate has incompatible ledger state '$ledgerState'"}
         $state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null
     }
-    $classification = Get-TaskClassification -Task $Task
     if("$($Task.taskId)" -like 'PB1-*'){
         $auth=Join-Path (Get-V2Dir) ([string]$pcfg.realExecutionAuthFile)
         if(-not (Test-Path -LiteralPath $auth)){
@@ -514,12 +561,6 @@ function Invoke-RealDispatcherTask {
             $hold=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=(New-RunId);taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;status='WAITING_HUMAN';stage='GATE';reason="real execution not authorized (missing $($pcfg.realExecutionAuthFile))";decisionNeeded='owner authorization token for real PB1 execution';resumes='same task after durable authorization and unchanged planning gates';task=$Task;taskSourceHash=$TaskSource.hash}
             Write-DispatcherState $hold|Out-Null;return $hold
         }
-    }
-    $isLevelC = $classification.taskComplexity -eq 'LEVEL_C' -or (Test-TaskLevelC $Task)
-    $ownerGateStatus=$null
-    if ($isLevelC) {
-        if($Task.ownerGate -and $Task.ownerGate -ne 'none'){$ownerGateStatus=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$contract.taskVersionId) -GateId ([string]$Task.ownerGate)}
-        else{$ownerGateStatus=[ordered]@{satisfied=$false;approval='MISSING';reason='Level C task has no declared owner gate'}}
     }
     if ($isLevelC -and -not $ownerGateStatus.satisfied) {
         $ls=Get-LedgerState $contract.taskVersionId
