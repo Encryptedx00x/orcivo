@@ -150,5 +150,68 @@ switch ($Do) {
         Assert-OG (-not(Test-Path (Get-HumanGatePath $current.taskVersionId 'level-c-persistent-migration'))) 'version mismatch wrote approval'
         Complete-OG 'command refuses taskVersionId mismatch'
     }
+    'supersession-gate' {
+        $sourcePath=Get-OGTaskSourcePath
+        $oldSource=Read-DispatcherTaskSource $sourcePath
+        $oldTask=[hashtable]@($oldSource.tasks)[0]
+        $oldContract=New-DispatcherContract -Task $oldTask -TaskSource $oldSource
+        Initialize-LedgerTask -TaskVersionId $oldContract.taskVersionId -Identity @{taskId=$oldTask.taskId}|Out-Null
+
+        $runId=New-RunId
+        $base=Get-GitHeadV2 (Get-RepoRoot)
+        $candidateWs=New-DispatcherWorkspace -RunId $runId -BaseSha $base
+        New-Item -ItemType Directory -Force -Path (Join-Path $candidateWs.workspace 'work')|Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $candidateWs.workspace 'work\candidate.txt'),'preserved candidate',(New-Object System.Text.UTF8Encoding($false)))
+        & git -C $candidateWs.workspace add -A
+        & git -C $candidateWs.workspace -c user.name=fixture -c user.email=fixture@local commit -q -m candidate
+        $candidate=(Get-GitHeadV2 $candidateWs.workspace)
+
+        Add-LedgerEvent -TaskVersionId $oldContract.taskVersionId -Event 'ready' -ToState 'READY'|Out-Null
+        Add-LedgerEvent -TaskVersionId $oldContract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $runId|Out-Null
+        Add-LedgerEvent -TaskVersionId $oldContract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $runId|Out-Null
+        Add-LedgerEvent -TaskVersionId $oldContract.taskVersionId -Event 'policy-block' -ToState 'FAILED' -RunId $runId|Out-Null
+        Write-DispatcherState ([ordered]@{
+            schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$oldTask.taskId;taskVersionId=$oldContract.taskVersionId
+            task=$oldTask;taskSourceHash=$oldSource.hash;status='BLOCKED';stage='IMPLEMENT';reason='OUT OF SCOPE change: work/candidate.txt'
+            workspace=$candidateWs.workspace;branch=$candidateWs.branch;baseSha=$base;implementationCommit=$candidate;implementationComplete=$true
+            candidateHead='';cycle=2;attempt=3;rollovers=1;failovers=1;provider='claude';profile='CRITICAL';providerHistory=@();findings=@();decisions=@();importantArtifacts=@()
+        })|Out-Null
+
+        $successor=Get-Content -Raw -LiteralPath $sourcePath|ConvertFrom-Json
+        $successor.tasks[0].description='apply additive fixture migration using the preserved candidate'
+        $successor.tasks[0].candidateConstraints=[ordered]@{
+            additiveOnly=$true
+            resumeFromTaskVersionId=$oldContract.taskVersionId
+            resumeFromCandidateCommit=$candidate
+            recoveryInstruction='Reuse the exact preserved candidate after a new exact-version owner approval.'
+        }
+        [System.IO.File]::WriteAllText($sourcePath,($successor|ConvertTo-Json -Depth 30),(New-Object System.Text.UTF8Encoding($false)))
+        $newSource=Read-DispatcherTaskSource $sourcePath
+        $newTask=[hashtable]@($newSource.tasks)[0]
+
+        function Invoke-RealAgent { throw 'provider must not run before successor owner approval' }
+        $hold=Invoke-RealDispatcherTask -Task $newTask -TaskSource $newSource
+        Assert-OG ($hold.status -eq 'WAITING_HUMAN' -and $hold.stage -eq 'GATE') "successor did not stop at owner gate: $($hold.status)/$($hold.stage)"
+        Assert-OG ($hold.taskVersionId -ne $oldContract.taskVersionId -and $hold.runId -eq $runId) 'successor gate did not preserve traceability/new version'
+        Assert-OG ($hold.pendingContractSupersession -and $hold.supersededTaskVersionId -eq $oldContract.taskVersionId) 'successor gate lost supersession traceability'
+        Assert-OG ($hold.workspace -eq $candidateWs.workspace -and $hold.recoveredCandidateCommit -eq $candidate) 'successor gate lost the preserved candidate binding'
+        Assert-OG ((Get-LedgerState $hold.taskVersionId).state -eq 'WAITING_HUMAN') 'successor ledger did not stop at WAITING_HUMAN'
+        Assert-OG ((Get-HumanGateStatus $hold.taskVersionId 'level-c-persistent-migration').approval -ne 'APPROVED') 'old approval carried into successor'
+
+        $approved=Invoke-OGApproval @{source=$newSource;task=$newTask;state=$hold}
+        Assert-OG ($approved.exitCode -eq 0) "successor approve-gate failed: $($approved.output -join ' | ')"
+        function Get-HealthyProviders { return @('claude','codex') }
+        function Resolve-Route { return @{ok=$true;provider='claude';profile='CRITICAL';model='fixture-model'} }
+        $stop=Join-Path (Get-V2Dir) (Get-PilotConfig).stopFile
+        [System.IO.File]::WriteAllText($stop,'stop before fixture correction',(New-Object System.Text.UTF8Encoding($false)))
+        try{$resumed=Invoke-RealDispatcherTask -Task $newTask -TaskSource $newSource}finally{Remove-Item -LiteralPath $stop -Force -ErrorAction SilentlyContinue}
+        Assert-OG ($resumed.status -eq 'STOPPED' -and $resumed.stage -eq 'IMPLEMENT') "approved successor did not enter bounded correction: $($resumed.status)/$($resumed.stage)"
+        Assert-OG ($resumed.runId -eq $runId -and $resumed.workspace -eq $candidateWs.workspace -and $resumed.implementationCommit -eq $candidate) 'approved successor did not reuse exact run/workspace/candidate'
+        Assert-OG ($resumed.cycle -eq 1 -and $resumed.attempt -eq 0 -and $resumed.rollovers -eq 0 -and $resumed.failovers -eq 0) 'successor inherited exhausted attempt/correction budgets'
+        Assert-OG ($resumed.supersededBudget.cycle -eq 2 -and $resumed.supersededBudget.attempt -eq 3 -and $resumed.supersededBudget.rollovers -eq 1 -and $resumed.supersededBudget.failovers -eq 1) 'successor did not preserve prior budget counters as traceability'
+        Assert-OG ((Get-LedgerState $hold.taskVersionId).state -eq 'RUNNING') 'approved successor ledger did not enter RUNNING'
+        Remove-DispatcherWorkspace $candidateWs.workspace
+        Complete-OG 'successor requires fresh approval before exact candidate reuse'
+    }
     default { throw "unknown owner-gate probe '$Do'" }
 }

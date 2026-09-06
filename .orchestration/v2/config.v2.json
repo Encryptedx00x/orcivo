@@ -16,7 +16,7 @@
     "hashChainVersion": "orcivo.orchestration.v2.ledger-event/2"
   },
   "contract": {
-    "$comment": "H-06/M-01: an empty declaredScope FAILS CLOSED (no changed file is in scope). An unrestricted executor needs the explicit risk-C grant 'unrestrictedScope', which is a different thing from []. H3-05: a protectedPathGrant MUST be an exact canonical member of grantableProtectedPrefixes - no globs, no root, no parent, no 'whole .planning'. A task can never invent a new protected prefix.",
+    "$comment": "H-06/M-01: an empty declaredScope FAILS CLOSED (no changed file is in scope). An unrestricted executor needs the explicit risk-C grant 'unrestrictedScope', which is a different thing from []. H3-05: a protectedPathGrant MUST be an exact canonical member of grantableProtectedPrefixes - no globs, no root, no parent, no 'whole .planning'. A task can never invent a new protected prefix. prisma/schema.prisma is grantable only as that exact file on an elevated-risk contract; prisma/ and sibling paths remain ungrantable.",
     "protectedPaths": [
       ".planning/",
       ".orchestration/",
@@ -34,7 +34,8 @@
     "grantableProtectedPrefixes": [
       ".planning/reviews/",
       ".planning/phases/",
-      ".orchestration/v2/state/"
+      ".orchestration/v2/state/",
+      "prisma/schema.prisma"
     ]
   },
   "preflight": {

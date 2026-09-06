@@ -994,7 +994,7 @@ switch ($Do) {
 'protected-grant-strict' {
     # H3-05: a protected-path grant must be an EXACT allowlist member. No globs,
     # no root, no parent, no bare 'whole .planning'.
-    $bad = @('*','**','/','.','..','../','..\','C:\','root','.planning/','.planning',' ','.orchestration/','work/../..','.planning/reviews/../..')
+    $bad = @('*','**','/','.','..','../','..\','C:\','root','.planning/','.planning',' ','.orchestration/','work/../..','.planning/reviews/../..','prisma/','prisma','prisma/*.prisma','prisma/schema.prisma/child')
     foreach ($g in $bad) {
         ExpectThrow { Freeze-Fx -TaskId ("T-BADGRANT-" + [guid]::NewGuid().ToString('N').Substring(0,6)) -Scope @('work/') -Grants @($g) -Risk 'C' } "wildcard/broad grant '$g' was accepted at freeze"
     }
@@ -1005,7 +1005,8 @@ switch ($Do) {
     $tvid = $c.taskVersionId
     $base = (Get-GitHeadV2 $Repo)
     $wt = Join-Path (Get-V2Dir) 'wt-pg'
-    & git -C $Repo worktree add -b pg-branch $wt $base --quiet 2>&1 | Out-Null
+    & git -C $Repo worktree add --detach $wt $base --quiet 2>&1 | Out-Null
+    Expect ($LASTEXITCODE -eq 0) 'failed to create detached protected-grant fixture worktree'
     New-Item -ItemType Directory -Force -Path (Join-Path $wt '.planning/reviews') | Out-Null
     Set-Content (Join-Path $wt '.planning/reviews/NOTE.md') "allowed subtree"
     New-Item -ItemType Directory -Force -Path (Join-Path $wt '.planning') | Out-Null
@@ -1016,6 +1017,21 @@ switch ($Do) {
     & git -C $Repo worktree remove --force $wt 2>&1 | Out-Null
     Write-Output "VERDICT=$($r.verdict) VIOL=$($r.violations -join '|')"
     Expect ($r.verdict -eq 'POLICY_BLOCK' -and (($r.violations -join ' ') -match 'PWN\.md')) "granted subtree leaked authority to a sibling protected file: $($r.violations -join '|')"
+
+    # Prisma migrations need one narrowly grantable authoritative file. The
+    # exact file grant must work at risk C without authorising prisma/ broadly.
+    $schema = Freeze-Fx -TaskId 'T-SCHEMA-GRANT' -Scope @('prisma/schema.prisma','prisma/migrations/') -Grants @('prisma/schema.prisma') -Risk 'C'
+    $schemaBase = (Get-GitHeadV2 $Repo)
+    $schemaWt = Join-Path (Get-V2Dir) 'wt-schema-grant'
+    & git -C $Repo worktree add --detach $schemaWt $schemaBase --quiet 2>&1 | Out-Null
+    Expect ($LASTEXITCODE -eq 0) 'failed to create detached prisma-schema fixture worktree'
+    New-Item -ItemType Directory -Force -Path (Join-Path $schemaWt 'prisma') | Out-Null
+    Set-Content (Join-Path $schemaWt 'prisma/schema.prisma') "model AuditLog { id String @id }"
+    & git -C $schemaWt add -A 2>&1 | Out-Null; & git -C $schemaWt -c user.name=x -c user.email=x@x commit -qm schema 2>&1 | Out-Null
+    $schemaHead = (Get-GitHeadV2 $schemaWt)
+    $schemaResult = Test-ContractCompliance -TaskVersionId $schema.taskVersionId -WorktreeDir $schemaWt -BaseSha $schemaBase -HeadSha $schemaHead
+    & git -C $Repo worktree remove --force $schemaWt 2>&1 | Out-Null
+    Expect ($schemaResult.verdict -eq 'CHANGED' -and $schemaResult.compliant) "exact prisma/schema.prisma grant was not honoured: $($schemaResult.violations -join '|')"
     OK
 }
 
