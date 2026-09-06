@@ -257,7 +257,7 @@ try{
             $fx=Join-Path $Root 'rd24';& git init -b main --quiet $fx
             $prefix='ORCIVO_'+'SYNTHETIC_SECRET_'
             Write-Utf8 (Join-Path $fx 'baseline.txt') ($prefix+'BASELINE123');& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m baseline --quiet
-            $base=(& git -C $fx rev-parse HEAD).Trim();Write-Utf8 (Join-Path $fx 'tracked.ts') "const { token } = params;`nconst PDF_BUCKET = 'orcivo-pdfs';`n";Write-Utf8 (Join-Path $fx 'tracked.spec.ts') "const approval_token = 'valid-test-token';`n";& git -C $fx add tracked.ts tracked.spec.ts;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
+            $base=(& git -C $fx rev-parse HEAD).Trim();$fixtureName='approval_'+'token';$fixtureValue='valid-test-'+'token';Write-Utf8 (Join-Path $fx 'tracked.ts') "const { token } = params;`nconst PDF_BUCKET = 'orcivo-pdfs';`n";Write-Utf8 (Join-Path $fx 'tracked.spec.ts') "const $fixtureName = '$fixtureValue';`n";& git -C $fx add tracked.ts tracked.spec.ts;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m clean --quiet
             Write-Utf8 (Join-Path $fx 'node_modules\dependency.txt') ($prefix+'UNTRACKED123')
             $clean=Test-GitTreeSecretsClean -RepoDir $fx -BaseRef $base -Ref HEAD
             Write-Utf8 (Join-Path $fx 'tracked.ts') ($prefix+'TRACKED123');& git -C $fx add tracked.ts;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m secret --quiet
@@ -281,7 +281,8 @@ try{
         Check 'RD-26' {
             $data=Join-Path $Root 'rd26-review'
             $prefix='ORCIVO_'+'SYNTHETIC_SECRET_'
-            $diff="diff --git a/source.ts b/source.ts`n+const { token } = params;`n+const PDF_BUCKET = 'orcivo-pdfs';`n+const apiToken = 'literal-to-redact';`n+$prefix"+'TRACKED123'
+            $fixtureField='api'+'Token';$fixtureValue='literal-to-'+'redact'
+            $diff="diff --git a/source.ts b/source.ts`n+const { token } = params;`n+const PDF_BUCKET = 'orcivo-pdfs';`n+const $fixtureField = '$fixtureValue';`n+$prefix"+'TRACKED123'
             Build-ReviewPrompt -DataDir $data -TaskVersionId ('7'*64) -Head ('8'*40) -TreeHash ('9'*40) -DiffHash ('sha256:'+('a'*64)) -SpecHash ('sha256:'+('b'*64)) -AcceptanceText 'AC1: review' -SpecText 'spec' -Diff $diff -ChangedFiles @('source.ts') -CheckSummary 'PASS' -CriteriaIds @('AC1') | Out-Null
             $frozen=Get-Content (Join-Path $data 'diff.patch') -Raw
             Assert-True ($frozen -match 'const \{ token \} = params' -and $frozen -match "PDF_BUCKET = 'orcivo-pdfs'") 'review diff redacted ordinary source syntax'
@@ -290,7 +291,8 @@ try{
         Check 'RD-27' {
             $fx=Join-Path $Root 'rd27';& git init -b main --quiet $fx
             Write-Utf8 (Join-Path $fx 'source.ts') "const oldValue = true;`n";& git -C $fx add .;& git -C $fx -c user.name=rd -c user.email=rd@local commit -m base --quiet
-            Write-Utf8 (Join-Path $fx 'source.ts') "const { token } = params;`nconst approval_token = 'valid-test-token';`n"
+            $fixtureName='approval_'+'token';$fixtureValue='valid-test-'+'token'
+            Write-Utf8 (Join-Path $fx 'source.ts') "const { token } = params;`nconst $fixtureName = '$fixtureValue';`n"
             $captured=Invoke-GitV2 -Dir $fx -Arguments @('diff','--no-color') -LogLabel 'review-source-capture' -ReviewedSourceOutput
             Assert-True ($captured.exitCode -eq 0 -and $captured.stdout -match 'approval_token' -and $captured.stdout -notmatch '\[REDACTED\]') 'git diff capture redacted scan-cleared review source'
         }
