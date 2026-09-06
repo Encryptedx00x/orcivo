@@ -1005,7 +1005,8 @@ switch ($Do) {
     $tvid = $c.taskVersionId
     $base = (Get-GitHeadV2 $Repo)
     $wt = Join-Path (Get-V2Dir) 'wt-pg'
-    & git -C $Repo worktree add -b pg-branch $wt $base --quiet 2>&1 | Out-Null
+    & git -C $Repo worktree add --detach $wt $base --quiet 2>&1 | Out-Null
+    Expect ($LASTEXITCODE -eq 0) 'failed to create detached protected-grant fixture worktree'
     New-Item -ItemType Directory -Force -Path (Join-Path $wt '.planning/reviews') | Out-Null
     Set-Content (Join-Path $wt '.planning/reviews/NOTE.md') "allowed subtree"
     New-Item -ItemType Directory -Force -Path (Join-Path $wt '.planning') | Out-Null
@@ -1022,7 +1023,8 @@ switch ($Do) {
     $schema = Freeze-Fx -TaskId 'T-SCHEMA-GRANT' -Scope @('prisma/schema.prisma','prisma/migrations/') -Grants @('prisma/schema.prisma') -Risk 'C'
     $schemaBase = (Get-GitHeadV2 $Repo)
     $schemaWt = Join-Path (Get-V2Dir) 'wt-schema-grant'
-    & git -C $Repo worktree add -b pg-schema-branch $schemaWt $schemaBase --quiet 2>&1 | Out-Null
+    & git -C $Repo worktree add --detach $schemaWt $schemaBase --quiet 2>&1 | Out-Null
+    Expect ($LASTEXITCODE -eq 0) 'failed to create detached prisma-schema fixture worktree'
     New-Item -ItemType Directory -Force -Path (Join-Path $schemaWt 'prisma') | Out-Null
     Set-Content (Join-Path $schemaWt 'prisma/schema.prisma') "model AuditLog { id String @id }"
     & git -C $schemaWt add -A 2>&1 | Out-Null; & git -C $schemaWt -c user.name=x -c user.email=x@x commit -qm schema 2>&1 | Out-Null
