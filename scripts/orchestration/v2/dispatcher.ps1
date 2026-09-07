@@ -615,6 +615,14 @@ function Resume-DispatcherProviderWait {
     return $true
 }
 
+function Set-DispatcherStoppedAfterAgentIfRequested {
+    param([Parameter(Mandatory)]$State)
+    $stop=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile)
+    if(-not(Test-Path -LiteralPath $stop)){return $false}
+    $State.status='STOPPED';$State.reason='explicit stop requested';Write-DispatcherState $State|Out-Null
+    return $true
+}
+
 function Test-DispatcherHistoricalProviderFailureRecovery {
     param(
         [Parameter(Mandatory)]$State,
@@ -904,11 +912,80 @@ function Test-DispatcherStoppedImplementationRecovery {
     return [ordered]@{eligible=$true;reason='official stopped partial implementation verified';attempt=$attempt;expectedHead=$expectedHead;partial=$partial;stopPath=$stopPath;checkpointHash=(New-FileHash $checkpointPath);ledgerRecovered=$ledgerRecovered;derivedClass=$derived}
 }
 
+function Test-DispatcherStoppedInflightRecovery {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$StopHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    foreach($hash in @($EvidenceHash,$StopHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid evidence hash'}}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.reason -ne "provider invocation $InvocationId ended as AGENT_FAILURE/AGENT_FAILURE"){return &$deny 'state is not the stopped in-flight agent failure'}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.runId -ne $RunId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSource -ne [string]$TaskSource.path){return &$deny 'task, run, or task source drift'}
+    $contract=Get-Contract ([string]$State.taskVersionId);if([string]$contract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return &$deny 'frozen contract task source drift'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$contract.planningHead);if([string]$revalidated.taskVersionId -ne [string]$State.taskVersionId){return &$deny 'task contract drift'}
+    if($Task.ownerGate -and [string]$Task.ownerGate -ne 'none'){$gate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$Task.ownerGate);if(-not $gate.satisfied -or [string]$gate.approval -ne 'APPROVED'){return &$deny 'exact approval is not valid'}}
+    $prior=@($State.stoppedImplementationRecoveryHistory|Where-Object{[string]$_.runId -eq $RunId -and [string]$_.workspace -eq [string]$State.workspace})
+    if($prior.Count -ne 1){return &$deny 'prior stopped implementation recovery binding missing'};$prior=$prior[0]
+    if([int]$State.failovers -ne [int]$prior.failovers -or [int]$State.cycle -ne [int]$prior.cycle){return &$deny 'failover or bounded-cycle mismatch'}
+    $stopPath=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile);if(-not(Test-Path -LiteralPath $stopPath) -or (New-FileHash $stopPath) -ne $StopHash){return &$deny 'stop evidence hash mismatch'}
+    $stopText=[IO.File]::ReadAllText($stopPath,[Text.Encoding]::ASCII);if($stopText -notmatch '^stop requested ([^\r\n]+)\r?\n?$'){return &$deny 'stop lacks official pilot provenance'}
+    $stopAt=[datetime]::MinValue;if(-not[datetime]::TryParse($Matches[1],[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$stopAt)){return &$deny 'stop timestamp is invalid'};$stopAt=$stopAt.ToUniversalTime()
+    $checkpointPath=Join-Path (Get-V2Dir) "pilot\$RunId.json";if(-not(Test-Path -LiteralPath $checkpointPath)){return &$deny 'pilot checkpoint missing'}
+    try{$checkpoint=Read-V2Json $checkpointPath}catch{return &$deny 'pilot checkpoint invalid'}
+    if([string]$checkpoint.status -ne 'AGENT_FAILURE' -or [string]$checkpoint.stage -ne 'IMPLEMENT' -or [string]$checkpoint.runId -ne $RunId -or [string]$checkpoint.taskVersionId -ne [string]$State.taskVersionId){return &$deny 'pilot checkpoint binding mismatch'}
+    if(Test-HolderLive (_ToHashtable $checkpoint.holder)){return &$deny 'pilot checkpoint holder is still active'}
+    $written=[datetime]::MinValue;if(-not[datetime]::TryParse([string]$checkpoint.writtenAt,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$written) -or $written.ToUniversalTime() -lt $stopAt){return &$deny 'pilot checkpoint predates stop request'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.integration -or @(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'successor candidate, attestation, or integration already exists'}
+    $expectedHead=[string]$prior.expectedHead;if($expectedHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.implementationCommit -ne $expectedHead -or -not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){return &$deny 'workspace HEAD drift'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $partial.clean){return &$deny $partial.reason}
+    $history=@($State.providerHistory);$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId});if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'invocation history binding mismatch'}
+    $attempt=$matches[0];if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or [string]$attempt.providerClass -ne 'AGENT_FAILURE' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -eq 0){return &$deny 'invocation is not the terminal Codex agent failure'}
+    $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
+    if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash -or [string]$attempt.stdoutHash -ne $EvidenceHash -or [string]$attempt.controlRecordHash -ne $EvidenceHash){return &$deny 'invocation evidence hash mismatch'}
+    $file=Get-Item -LiteralPath $stdoutPath;if($stopAt -lt $file.CreationTimeUtc -or $stopAt -gt $file.LastWriteTimeUtc){return &$deny 'stop did not occur during the invocation evidence interval'}
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$started=0;$completed=0;$turnStarted=0;$turnCompleted=0;$lastValid=$null
+    foreach($line in ($raw -split "`r?`n"|Where-Object{$_})){try{$j=$line|ConvertFrom-Json -ErrorAction Stop;$lastValid=$j;if([string]$j.type -eq 'turn.started'){$turnStarted++};if([string]$j.type -eq 'turn.completed'){$turnCompleted++};if([string]$j.type -eq 'item.started'){$started++};if([string]$j.type -eq 'item.completed'){$completed++}}catch{}}
+    if($turnStarted -ne 1 -or $turnCompleted -ne 0 -or $started -le $completed -or [string]$lastValid.type -ne 'item.started' -or [string]$lastValid.item.status -ne 'in_progress'){return &$deny 'raw invocation is not a provably interrupted Codex turn'}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId);if($ledger.corrupt){return &$deny 'ledger is corrupt'};$events=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)))
+    $names=@('stopped-inflight-recovery-ready','stopped-inflight-recovery-dispatch','stopped-inflight-recovered');$recoveryEvents=@($events|Where-Object{[string]$_.runId -eq $RunId -and [string]$_.attemptId -eq $InvocationId -and [string]$_.event -in $names})
+    if([string]$ledger.state -eq 'FAILED'){if([string]$events[-1].event -ne 'execute-failed' -or [string]$events[-1].runId -ne $RunId -or [string]$events[-1].note -ne 'AGENT_FAILURE' -or $recoveryEvents.Count){return &$deny 'ledger FAILED provenance mismatch'}}
+    elseif([string]$ledger.state -in @('READY','DISPATCHED','RUNNING')){if($recoveryEvents.Count -lt 1 -or $recoveryEvents.Count -gt 3){return &$deny 'partial recovery ledger provenance mismatch'};foreach($ev in $recoveryEvents){if([string]$ev.evidence.stdoutHash -ne $EvidenceHash -or [string]$ev.evidence.stopHash -ne $StopHash){return &$deny 'partial recovery ledger evidence mismatch'}}}
+    else{return &$deny 'ledger state is not recoverable'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'current candidate or artifact scan is dirty'}
+    return [ordered]@{eligible=$true;reason='official stop interrupted an in-flight Codex turn';attempt=$attempt;expectedHead=$expectedHead;partial=$partial;stopPath=$stopPath;checkpointHash=(New-FileHash $checkpointPath);ledgerState=[string]$ledger.state}
+}
+
+function Recover-DispatcherStoppedInflightImplementation {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$StopHash)
+    $existing=@($State.stoppedInflightRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.stopHash -eq $StopHash})
+    if($existing.Count){$stop=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile);if((Test-Path -LiteralPath $stop) -and -not(Invoke-FileCas -Path $stop -ExpectedHash $StopHash -NewContent '' -Delete)){throw 'stopped in-flight recovery: stop evidence changed before idempotent consume'};return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$State.runId;workspace=$State.workspace;provider=$State.provider;failovers=[int]$State.failovers;cycle=[int]$State.cycle;recovery=$existing[-1]}}
+    $proof=Test-DispatcherStoppedInflightRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash;if(-not $proof.eligible){throw "stopped in-flight recovery: $($proof.reason)"}
+    $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;stdoutHash=$EvidenceHash;stopHash=$StopHash;checkpointHash=$proof.checkpointHash;diffHash=$proof.partial.diffHash;filesHash=$proof.partial.filesHash;previousClass='AGENT_FAILURE';derivedClass='AGENT_INFRASTRUCTURE_FAILURE'}
+    $ledger=Get-LedgerState $TaskVersionId
+    if($ledger.state -eq 'FAILED'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'stopped-inflight-recovery-ready' -ToState 'READY' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'verified stop during incomplete provider turn'|Out-Null;$ledger=Get-LedgerState $TaskVersionId}
+    if($ledger.state -eq 'READY'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'stopped-inflight-recovery-dispatch' -ToState 'DISPATCHED' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'resume preserved partial implementation'|Out-Null;$ledger=Get-LedgerState $TaskVersionId}
+    if($ledger.state -eq 'DISPATCHED'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'stopped-inflight-recovered' -ToState 'RUNNING' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'resume same implementation lineage after official stop'|Out-Null}
+    if($script:StoppedInflightRecoveryFaultAfterLedger){throw 'injected stopped in-flight recovery crash after ledger transition'}
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;evidenceHash=$EvidenceHash;stopHash=$StopHash;checkpointHash=$proof.checkpointHash;diffHash=$proof.partial.diffHash;filesHash=$proof.partial.filesHash;changedFiles=@($proof.partial.paths);previousClass='AGENT_FAILURE';derivedClass='AGENT_INFRASTRUCTURE_FAILURE';runId=$RunId;workspace=[string]$State.workspace;expectedHead=$proof.expectedHead;failovers=[int]$State.failovers;cycle=[int]$State.cycle}
+    $State.stoppedInflightRecoveryHistory=@($State.stoppedInflightRecoveryHistory|Where-Object{$_})+@($recovery);$State.status='RUNNING';$State.reason='';$State.lastErrorClass='AGENT_INFRASTRUCTURE_FAILURE';Write-DispatcherState $State|Out-Null
+    if(-not(Invoke-FileCas -Path $proof.stopPath -ExpectedHash $StopHash -NewContent '' -Delete)){throw 'stopped in-flight recovery: stop evidence changed before consume'}
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$State.runId;workspace=$State.workspace;provider=$State.provider;failovers=[int]$State.failovers;cycle=[int]$State.cycle;recovery=$recovery}
+}
+
 function Recover-DispatcherStoppedImplementation {
     param([Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$StopHash)
     $state=Get-DispatcherState;if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'stopped implementation recovery: durable task version mismatch'}
+    $inflightExisting=@($state.stoppedInflightRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.stopHash -eq $StopHash})
+    if($inflightExisting.Count){return (Recover-DispatcherStoppedInflightImplementation -State $state -Task $Task -TaskSource $TaskSource -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash)}
     $existing=@($state.stoppedImplementationRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.stopHash -eq $StopHash})
     if($existing.Count){$stop=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile);if((Test-Path -LiteralPath $stop) -and -not(Invoke-FileCas -Path $stop -ExpectedHash $StopHash -NewContent '' -Delete)){throw 'stopped implementation recovery: stop evidence changed before idempotent consume'};return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$existing[-1]}}
+    if([string]$state.status -eq 'AGENT_FAILURE'){return (Recover-DispatcherStoppedInflightImplementation -State $state -Task $Task -TaskSource $TaskSource -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash)}
     $proof=Test-DispatcherStoppedImplementationRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash
     if(-not $proof.eligible){throw "stopped implementation recovery: $($proof.reason)"}
     $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;stdoutHash=$EvidenceHash;stopHash=$StopHash;checkpointHash=$proof.checkpointHash;diffHash=$proof.partial.diffHash;filesHash=$proof.partial.filesHash;derivedClass=$proof.derivedClass}
@@ -1090,6 +1167,7 @@ function Invoke-RealDispatcherTask {
                 $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
                 if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
                 Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
+                if(Set-DispatcherStoppedAfterAgentIfRequested $state){return $state}
                 if($ar.contextRolloverRequired){
                     if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                     $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue

@@ -132,6 +132,28 @@ function New-StoppedPartialRecoveryFixture([string]$Id){
     return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=(New-FileHash $stdoutPath);stopPath=$stopPath;stopHash=(New-FileHash $stopPath)}
 }
 
+function New-StoppedInflightRecoveryFixture([string]$Id){
+    $f=New-StoppedPartialRecoveryFixture $Id
+    Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null
+    $state=Get-DispatcherState;$wait=Get-ProviderWait $state.taskVersionId;$wait.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $state.taskVersionId) $wait
+    $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null};try{Assert-True (Resume-DispatcherProviderWait $state) 'fixture could not resume Codex'}finally{$script:ProviderHealthFaults=$null}
+    $state=Get-DispatcherState;$attempt=[int]$state.attempt+1;$invocation='att-'+[guid]::NewGuid().ToString('N');$suffix=$invocation.Substring(4,8);$logs=Split-Path -Parent $f.stdoutPath
+    $stdoutPath=Join-Path $logs ('implementer-{0:000}-codex-{1}.stdout.log' -f $attempt,$suffix)
+    $start=[ordered]@{type='thread.started';thread_id='fixture'}|ConvertTo-Json -Compress
+    $turn=[ordered]@{type='turn.started'}|ConvertTo-Json -Compress
+    $itemStart=[ordered]@{type='item.started';item=[ordered]@{id='item_1';type='command_execution';status='in_progress'}}|ConvertTo-Json -Compress
+    $done=[ordered]@{type='item.completed';item=[ordered]@{id='item_1';type='command_execution';status='completed';exit_code=0}}|ConvertTo-Json -Compress
+    Write-Utf8 $stdoutPath "$start`n$turn`n$itemStart`n$done`n"
+    Start-Sleep -Milliseconds 10;$stopPath=Join-Path (Get-V2Dir) (Get-V2Config).pilot.stopFile;Set-Content -LiteralPath $stopPath -Value "stop requested $((Get-Date).ToString('o'))" -Encoding ascii
+    Start-Sleep -Milliseconds 10;$inflight=[ordered]@{type='item.started';item=[ordered]@{id='item_2';type='command_execution';status='in_progress'}}|ConvertTo-Json -Compress;Add-Content -LiteralPath $stdoutPath -Value $inflight -Encoding utf8
+    $hash=New-FileHash $stdoutPath;$entry=[ordered]@{invocationId=$invocation;role='CORRECTOR';provider='codex';attempt=$attempt;providerClass='AGENT_FAILURE';resultClass='AGENT_FAILURE';exitCode=1;stdoutArtifact=$stdoutPath;stdoutHash=$hash;controlRecordHash=$hash}
+    $state.providerHistory=@($state.providerHistory)+@($entry);$state.importantArtifacts=@($state.importantArtifacts)+@($stdoutPath);$state.attempt=$attempt;$state.status='AGENT_FAILURE';$state.reason="provider invocation $invocation ended as AGENT_FAILURE/AGENT_FAILURE";Write-DispatcherState $state|Out-Null
+    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event execute-failed -ToState FAILED -RunId $state.runId -Note AGENT_FAILURE|Out-Null
+    $checkpoint=[ordered]@{schemaVersion='orcivo.orchestration.v2.pilot-checkpoint/1';runId=$state.runId;writtenAt=(Get-Date).ToUniversalTime().ToString('o');holder=[ordered]@{pid=2147483000;startTime='2000-01-01T00:00:00.0000000Z';host=$env:COMPUTERNAME;alive=$true};taskId=$state.taskId;taskVersionId=$state.taskVersionId;status='AGENT_FAILURE';reason=$state.reason;stage='IMPLEMENT';provider='codex';providerHistory=@($state.providerHistory);ledgerState='FAILED';candidateHead=''}
+    $pilotDir=Join-Path (Get-V2Dir) 'pilot';Write-V2JsonCanonical (Join-Path $pilotDir "$($state.runId).json") $checkpoint;Write-V2JsonCanonical (Join-Path $pilotDir 'latest.json') $checkpoint
+    return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;stopPath=$stopPath;stopHash=(New-FileHash $stopPath)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -647,6 +669,24 @@ try{
             $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null};try{$codex=Resume-DispatcherProviderWait $still}finally{$script:ProviderHealthFaults=$null};$durable=Get-DispatcherState
             Assert-True (-not $none -and $wasWaiting) 'both unavailable providers did not remain durably waiting'
             Assert-True ($codex -and $durable.status -eq 'RUNNING' -and $durable.provider -eq 'codex' -and [int]$durable.failovers -eq 1) 'returning Codex did not resume once without another failover'
+        }
+        Check 'RD-73' {
+            $f=New-StoppedInflightRecoveryFixture 'RD73';$p=Test-DispatcherStoppedInflightRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Add-Content -LiteralPath $f.stdoutPath -Value 'tampered';$bad=Test-DispatcherStoppedInflightRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True ($p.eligible -and -not $bad.eligible -and $bad.reason -match 'hash') 'in-flight stop proof was rejected or tampered raw evidence was accepted'
+        }
+        Check 'RD-74' {
+            $f=New-StoppedInflightRecoveryFixture 'RD74';$version=$f.contract.taskVersionId;$before=@(git -C $f.workspace status --porcelain=v1 --untracked-files=all);$failovers=[int]$f.state.failovers;$cycle=[int]$f.state.cycle
+            $script:StoppedInflightRecoveryFaultAfterLedger=$true;try{try{Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null}catch{}}finally{$script:StoppedInflightRecoveryFaultAfterLedger=$null}
+            $first=Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash;$seq=(Get-LedgerState $version).seq
+            $second=Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash;$durable=Get-DispatcherState;$after=@(git -C $f.workspace status --porcelain=v1 --untracked-files=all)
+            Assert-True ($first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED' -and (Get-LedgerState $version).seq -eq $seq) 'in-flight recovery was not crash-safe and idempotent'
+            Assert-True ($durable.status -eq 'RUNNING' -and [int]$durable.failovers -eq $failovers -and [int]$durable.cycle -eq $cycle -and (($before -join "`n") -eq ($after -join "`n"))) 'in-flight recovery changed lineage, budgets, or partial workspace'
+        }
+        Check 'RD-75' {
+            $f=New-StoppedPartialRecoveryFixture 'RD75';$state=$f.state;$state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null;$seq=(Get-LedgerState $state.taskVersionId).seq
+            Assert-True (Set-DispatcherStoppedAfterAgentIfRequested $state) 'post-agent stop marker was not given precedence'
+            $durable=Get-DispatcherState;Assert-True ($durable.status -eq 'STOPPED' -and $durable.reason -eq 'explicit stop requested' -and (Get-LedgerState $state.taskVersionId).seq -eq $seq) 'post-agent stop mutated the ledger or failed to persist STOPPED'
         }
     } finally {Pop-Location}
 
