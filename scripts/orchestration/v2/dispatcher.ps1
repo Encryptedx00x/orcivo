@@ -609,6 +609,94 @@ function Resume-DispatcherProviderWait {
     return $true
 }
 
+function Test-DispatcherHistoricalProviderFailureRecovery {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    if($EvidenceHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid evidence hash'}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.runId -ne $RunId){return &$deny 'task or run mismatch'}
+    if([string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSource -ne [string]$TaskSource.path){return &$deny 'task source drift'}
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'state is not recoverable AGENT_FAILURE/IMPLEMENT'}
+    if((Get-LedgerState ([string]$State.taskVersionId)).state -ne 'FAILED'){return &$deny 'ledger is not FAILED'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.integration){return &$deny 'successor implementation or integration already exists'}
+    if(@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'successor already has attestations'}
+    $contract=Get-Contract ([string]$State.taskVersionId)
+    if([string]$contract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return &$deny 'frozen contract task source drift'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$contract.planningHead)
+    if([string]$revalidated.taskVersionId -ne [string]$State.taskVersionId){return &$deny 'task contract drift'}
+    if($Task.ownerGate -and [string]$Task.ownerGate -ne 'none'){
+        $gate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$Task.ownerGate)
+        if(-not $gate.satisfied -or [string]$gate.approval -ne 'APPROVED'){return &$deny 'exact approval is not valid'}
+    }
+    if(-not $State.workspace -or -not(Test-Path -LiteralPath ([string]$State.workspace))){return &$deny 'workspace missing'}
+    $expectedHead=[string]$State.recoveredCandidateCommit
+    if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.implementationCommit -ne $expectedHead){return &$deny 'expected implementation head mismatch'}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){return &$deny 'workspace HEAD drift'}
+    $gitStatus=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'provider-recovery-status'
+    if($gitStatus.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$gitStatus.stdout)){return &$deny 'workspace is dirty'}
+    $history=@($State.providerHistory)
+    if(-not $history.Count){return &$deny 'provider history missing'}
+    $last=$history[-1]
+    if([string]$last.invocationId -ne $InvocationId -or [string]$last.provider -ne 'claude' -or [int]$last.attempt -ne [int]$State.attempt){return &$deny 'invocation, provider, or attempt mismatch'}
+    if([string]$last.providerClass -ne 'AGENT_FAILURE' -or [string]$last.resultClass -ne 'AGENT_FAILURE' -or [int]$last.exitCode -eq 0){return &$deny 'historical failure class is incompatible'}
+    if($State.reason -and [string]$State.reason -notmatch '(?i)agent.failure'){return &$deny 'failure reason mismatch'}
+    $artifacts=@($State.importantArtifacts)
+    if($artifacts.Count -lt 2){return &$deny 'provider evidence artifact missing'}
+    $stdoutPath=[System.IO.Path]::GetFullPath([string]$artifacts[-2])
+    $runLogs=[System.IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"))
+    if(-not $stdoutPath.StartsWith(($runLogs.TrimEnd('\')+'\'),[System.StringComparison]::OrdinalIgnoreCase)){return &$deny 'provider evidence is outside the run log directory'}
+    $expectedLeaf=('implementer-{0:000}-claude' -f [int]$last.attempt)
+    if((Split-Path -Leaf $stdoutPath) -notmatch ('^'+[regex]::Escape($expectedLeaf)+'(?:-[0-9a-f]{8})?\.stdout\.log$')){return &$deny 'provider evidence filename mismatch'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash){return &$deny 'provider evidence hash mismatch'}
+    $record=(Get-Content -LiteralPath $stdoutPath|Where-Object{-not [string]::IsNullOrWhiteSpace($_)}|Select-Object -Last 1)
+    if(-not $record){return &$deny 'provider control record missing'}
+    $parsed=ConvertFrom-RealClaudeOutput ([string]$record)
+    if(-not(Test-ClaudeSubscriptionAccessDisabled $parsed.control)){return &$deny 'provider control is not canonical subscription-disabled evidence'}
+    $legacy=Get-FailureClassV2 -Provider 'claude' -ExitCode ([int]$last.exitCode) -Control $parsed.control
+    $derived=ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
+    if(-not(Test-IsCanonicalProviderClass $derived)){return &$deny 'derived class is not failover eligible'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead
+    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'current secret scan is dirty'}
+    return [ordered]@{eligible=$true;reason='canonical historical provider failure verified';last=$last;stdoutPath=$stdoutPath;evidenceHash=$EvidenceHash;recordHash=(New-StringHash ([string]$record));legacyClass=$legacy;derivedClass=$derived;expectedHead=$expectedHead}
+}
+
+function Recover-DispatcherHistoricalProviderFailure {
+    param(
+        [Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash
+    )
+    $state=Get-DispatcherState
+    if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'provider recovery: durable task version mismatch'}
+    $existing=@($state.providerRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash})
+    if($existing.Count){return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;recovery=$existing[-1]}}
+    $proof=Test-DispatcherHistoricalProviderFailureRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash
+    if(-not $proof.eligible){throw "provider recovery: $($proof.reason)"}
+    $decision=Get-FailoverDecision -CurrentProvider 'claude' -Class ([string]$proof.derivedClass) -FailoversSoFar ([int]$state.failovers)
+    if([string]$decision.action -ne 'FAILOVER' -or -not $decision.nextProvider){throw "provider recovery: alternate provider unavailable ($($decision.reason))"}
+    $evidence=@{invocationId=$InvocationId;provider='claude';attempt=[int]$proof.last.attempt;evidenceHash=$proof.evidenceHash;controlRecordHash=$proof.recordHash;previousClass='AGENT_FAILURE';derivedClass=$proof.derivedClass}
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'provider-failure-reclassified' -ToState 'READY' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'verified structured provider failure'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note "claude -> $($decision.nextProvider)"|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'running' -ToState 'RUNNING' -RunId $RunId -Evidence $evidence -Note 'resume same implementation lineage after provider failover'|Out-Null
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='claude';attempt=[int]$proof.last.attempt;evidenceHash=$proof.evidenceHash;controlRecordHash=$proof.recordHash;previousClass='AGENT_FAILURE';derivedClass=$proof.derivedClass;nextProvider=[string]$decision.nextProvider;runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead}
+    $state.providerRecoveryHistory=@($state.providerRecoveryHistory|Where-Object{$_})+@($recovery)
+    $state.unavailableProviders=@($state.unavailableProviders|Where-Object{$_})+@('claude')|Select-Object -Unique
+    $state.provider=[string]$decision.nextProvider;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';$state.reason='';$state.lastErrorClass=[string]$proof.derivedClass
+    Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;recovery=$recovery}
+}
+
 function Set-DispatcherSecretBlock {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$Scan)
     Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'secret-block' -ToState 'FAILED' -RunId $State.runId|Out-Null
@@ -774,7 +862,7 @@ function Invoke-RealDispatcherTask {
                 if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
                 $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
                 $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
-                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode}
+                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash}
                 $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
                 if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
                 Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
@@ -796,7 +884,9 @@ function Invoke-RealDispatcherTask {
                 if($ar.resultClass -ne 'SUCCESS'){
                     if([int]$state.attempt -lt $maxAttempts){$state.findings=@("implementer result $($ar.resultClass): $($ar.structuredResult.summary)");Write-DispatcherState $state|Out-Null;continue}
                     Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $ar.resultClass|Out-Null
-                    $state.status=$ar.resultClass;$state.reason=[string]$ar.structuredResult.summary;Write-DispatcherState $state|Out-Null;return $state
+                    $failureSummary=[string]$ar.structuredResult.summary
+                    if(-not $failureSummary){$failureSummary="provider invocation $($ar.invocationId) ended as $($ar.providerClass)/$($ar.resultClass)"}
+                    $state.status=$ar.resultClass;$state.reason=$failureSummary;Write-DispatcherState $state|Out-Null;return $state
                 }
                 $state.implementationComplete=$true;$state.requiresCorrection=$false;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
@@ -839,7 +929,7 @@ function Invoke-RealDispatcherTask {
             $rr=Invoke-RealAgent -Provider $reviewer -Role 'reviewer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $reviewDir -StructuredPrompt $rp -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$cfg.budgets.reviewTimeoutSec) -Attempt ([int]$state.cycle+1)
             $reviewDataAfter=Get-ReviewDataSnapshot $reviewDir
             if($reviewDataAfter -ne $reviewDataBefore){$rr.structuredResult=$null;$rr.resultClass='AGENT_FAILURE';$state.findings+=,'reviewer mutated its review-data workspace'}
-            $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;exitCode=$rr.exitCode}
+            $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;exitCode=$rr.exitCode;stdoutArtifact=$rr.stdoutArtifact;stdoutHash=$rr.stdoutHash;controlRecordHash=$rr.controlRecordHash}
             Write-DispatcherState $state|Out-Null
             if(Test-IsCanonicalProviderClass $rr.providerClass){return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)}
             if($rr.structuredResult){foreach($f in @($rr.structuredResult.findings)){if($f -is [System.Collections.IDictionary]){if($null -eq $f.file){$f.Remove('file')};if($null -eq $f.line){$f.Remove('line')}}}}

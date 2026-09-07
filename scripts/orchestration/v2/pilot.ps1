@@ -37,11 +37,14 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'recover-provider-failure', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
     [string]$TaskVersionId = '',
+    [string]$RunId = '',
+    [string]$InvocationId = '',
+    [string]$EvidenceHash = '',
     [string]$ApprovalScope = '',
     [string]$ApprovedBy = 'owner',
     [string]$ApprovalSource = 'pilot.ps1 approve-gate'
@@ -392,6 +395,15 @@ switch ($Command) {
         if(-not $TaskId -or -not $TaskVersionId -or -not $ApprovalScope){throw 'approve-gate requires -TaskId, -TaskVersionId, and -ApprovalScope'}
         $result=Approve-DispatcherOwnerGate -TaskId $TaskId -TaskVersionId $TaskVersionId -ApprovalScope $ApprovalScope -ApprovedBy $ApprovedBy -ApprovalSource $ApprovalSource -TaskFile $TaskFile
         $result|ConvertTo-Json -Depth 10
+    }
+    'recover-provider-failure' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash){throw 'recover-provider-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, and -EvidenceHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-provider-failure: task '$TaskId' not found"}
+        $result=Recover-DispatcherHistoricalProviderFailure -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash
+        $result|ConvertTo-Json -Depth 12
     }
     { $_ -in @('run','run-once','start') } {
         if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }

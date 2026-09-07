@@ -25,13 +25,33 @@ function ConvertFrom-ClaudeResult {
     param($ResultObj)   # already parsed
     if (-not $ResultObj) { return $null }
     $isErr = ($ResultObj.is_error -eq $true) -or ("$($ResultObj.subtype)" -match 'error')
+    $apiStatus=0
+    if($ResultObj.api_error_status){$apiStatus=[int]$ResultObj.api_error_status}
+    elseif($ResultObj.error -and $ResultObj.error.status){$apiStatus=[int]$ResultObj.error.status}
+    $httpStatus=$(if($ResultObj.status){[int]$ResultObj.status}else{$apiStatus})
+    $errorMessage=$(if($ResultObj.error -is [string]){[string]$ResultObj.error}elseif($ResultObj.error -and $ResultObj.error.message){[string]$ResultObj.error.message}else{''})
+    $message=Protect-SecretsStreaming ("$errorMessage$($ResultObj.result)")
     return [ordered]@{
         channel   = 'claude'
         isError   = [bool]$isErr
         errorType = "$($ResultObj.error_type)$($ResultObj.subtype)"
-        httpStatus = $(if ($ResultObj.status) { [int]$ResultObj.status } else { 0 })
-        message   = "$($ResultObj.error)$($ResultObj.result)"
+        httpStatus = $httpStatus
+        apiErrorStatus = $apiStatus
+        subtype = [string]$ResultObj.subtype
+        terminalReason = [string]$ResultObj.terminal_reason
+        permissionDenialCount = $(if($null -eq $ResultObj.permission_denials){0}else{@($ResultObj.permission_denials).Count})
+        message   = $message
     }
+}
+
+function Test-ClaudeSubscriptionAccessDisabled {
+    param($Control)
+    if(-not $Control -or [string]$Control.channel -ne 'claude' -or -not [bool]$Control.isError){return $false}
+    if([int]$Control.httpStatus -ne 403 -and [int]$Control.apiErrorStatus -ne 403){return $false}
+    if([int]$Control.permissionDenialCount -gt 0){return $false}
+    if([string]$Control.terminalReason -notmatch '(?i)^api[_ -]?error$'){return $false}
+    $text=[string]$Control.message
+    return [bool]($text -match '(?i)(?:claude(?: code)?\s+)?subscription access.{0,64}(?:disabled|unavailable)|(?:disabled|unavailable).{0,64}(?:claude(?: code)?\s+)?subscription access')
 }
 
 # Normalize a codex `exec --json` event stream (array of parsed events).
@@ -81,6 +101,8 @@ function Get-FailureClassV2 {
     $t = ("$($Control.errorType) $($Control.message)").ToLowerInvariant()
     $s = [int]$Control.httpStatus
 
+    if ([int]$Control.permissionDenialCount -gt 0) { return 'TOOL_ERROR' }
+    if ($Provider -eq 'claude' -and (Test-ClaudeSubscriptionAccessDisabled $Control)) { return 'PROVIDER_AUTH' }
     if ($t -match 'auth|unauthorized|invalid[_ ]?api[_ ]?key|login|token[_ ]?expired|401' -or $s -eq 401) { return 'PROVIDER_AUTH' }
     if ($t -match 'insufficient_quota|credit balance|usage limit|quota' -and $t -notmatch 'test|assert') { return 'PROVIDER_QUOTA' }
     if ($t -match 'rate[_ ]?limit|too many requests|429' -or $s -eq 429) { return 'PROVIDER_RATE_LIMIT' }

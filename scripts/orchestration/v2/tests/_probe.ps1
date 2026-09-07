@@ -649,6 +649,13 @@ switch ($Do) {
     Expect (Test-ShouldFailover 'PROVIDER_QUOTA' 0) "should fail over on control-channel quota"
     Expect (-not (Test-ShouldFailover 'UNKNOWN' 0)) "UNKNOWN must never fail over"
     Expect (-not (Test-ShouldFailover 'PROVIDER_QUOTA' 1)) "must not exceed 1 failover per lineage"
+    $disabled = ConvertFrom-ClaudeResult ([pscustomobject]@{ api_error_status = 403; is_error = $true; subtype = 'success'; terminal_reason = 'api_error'; result = 'Claude Code subscription access disabled'; permission_denials = @() })
+    Expect ($disabled.apiErrorStatus -eq 403 -and $disabled.terminalReason -eq 'api_error') "Claude structured provider fields were not preserved"
+    Expect ((Get-FailureClassV2 -Provider 'claude' -ExitCode 1 -Control $disabled) -eq 'PROVIDER_AUTH') "Claude subscription-disabled response was not provider-auth"
+    $generic403 = ConvertFrom-ClaudeResult ([pscustomobject]@{ api_error_status = 403; is_error = $true; subtype = 'error'; terminal_reason = 'api_error'; result = 'request forbidden' })
+    Expect ((Get-FailureClassV2 -Provider 'claude' -ExitCode 1 -Control $generic403) -eq 'APPLICATION_ERROR') "generic HTTP 403 became provider unavailability"
+    $permission403 = ConvertFrom-ClaudeResult ([pscustomobject]@{ api_error_status = 403; is_error = $true; subtype = 'success'; terminal_reason = 'api_error'; result = 'subscription access disabled'; permission_denials = @('Read') })
+    Expect ((Get-FailureClassV2 -Provider 'claude' -ExitCode 1 -Control $permission403) -eq 'TOOL_ERROR') "tool permission denial became provider unavailability"
     OK
 }
 

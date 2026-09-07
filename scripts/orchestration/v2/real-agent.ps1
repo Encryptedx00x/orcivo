@@ -63,6 +63,11 @@ function ConvertFrom-RealClaudeOutput {
     param([string]$Text)
     $obj = $null
     try { $obj = $Text | ConvertFrom-Json } catch { }
+    if(-not $obj){
+        foreach($line in @($Text -split "`r?`n"|Where-Object{-not [string]::IsNullOrWhiteSpace($_)})){
+            try{$candidate=$line|ConvertFrom-Json;if($candidate){$obj=$candidate}}catch{}
+        }
+    }
     if (-not $obj) { return @{ control = $null; structured = $null } }
     $control = ConvertFrom-ClaudeResult $obj
     $structured = $obj.structured_output
@@ -106,7 +111,8 @@ function Invoke-RealAgent {
     )
     if (-not (Test-Path -LiteralPath $Workspace)) { throw "real-agent: workspace does not exist: $Workspace" }
     New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
-    $stamp = '{0}-{1:000}-{2}' -f $Role, $Attempt, $Provider
+    $invocationId=New-AttemptId
+    $stamp = '{0}-{1:000}-{2}-{3}' -f $Role, $Attempt, $Provider,$invocationId.Substring(4,8)
     $promptFile = Join-Path $ArtifactDir "$stamp.prompt.txt"
     [System.IO.File]::WriteAllText($promptFile, (Protect-ArtifactText $StructuredPrompt), (New-Utf8NoBom))
     $stdoutLog = Join-Path $ArtifactDir "$stamp.stdout.log"
@@ -114,7 +120,7 @@ function Invoke-RealAgent {
 
     $route = Resolve-Provider -Profile $Profile -Provider $Provider
     if (-not $route.ok) {
-        return [ordered]@{ provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; duration=0; contextRolloverRequired=$false }
+        return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false }
     }
     $schemaPath = $(if ($Role -eq 'reviewer') { Get-ReviewResultSchemaPath } else { Get-AgentResultSchemaPath })
     $args = @($route.invocationArgs)
@@ -182,10 +188,11 @@ function Invoke-RealAgent {
     }
 
     return [ordered]@{
-        invocationId=(New-AttemptId)
+        invocationId=$invocationId
         provider=$Provider; model=$route.model; profile=$Profile; attempt=$Attempt
         exitCode=$proc.exitCode; providerClass=$providerClass; resultClass=$resultClass
         structuredResult=$structured; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
+        stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
     }

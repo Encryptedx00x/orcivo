@@ -69,6 +69,26 @@ function New-ReviewBudgetSupersessionFixture([string]$Id){
     $f.review=$review;$f.newSource=$newSource;$f.newTask=$newTask;$f.newContract=$newContract;return $f
 }
 
+function New-ProviderFailureRecoveryFixture([string]$Id){
+    $f=New-ReviewBudgetSupersessionFixture $Id
+    $task=[hashtable]$f.newTask;$contract=$f.newContract;$source=$f.newSource
+    New-OwnerGateApproval -TaskId $task.taskId -TaskVersionId $contract.taskVersionId -GateId $task.ownerGate -ApprovalScope 'fixture-local provider recovery only' -ApprovedBy owner -ApprovalSource 'dispatcher provider recovery regression'|Out-Null
+    Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.state.runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $f.state.runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event execute-failed -ToState FAILED -RunId $f.state.runId -Note AGENT_FAILURE|Out-Null
+
+    $invocation='att-'+[guid]::NewGuid().ToString('N')
+    $logs=Join-Path $f.runRoot 'logs';$stdoutPath=Join-Path $logs 'implementer-003-claude.stdout.log';$stderrPath=Join-Path $logs 'implementer-003-claude.stderr.log'
+    $prior=[ordered]@{subtype='success';is_error=$false;result='prior attempt'}
+    $record=[ordered]@{api_error_status=403;is_error=$true;subtype='success';terminal_reason='api_error';result='Claude Code subscription access disabled for this account';permission_denials=@()}
+    Write-Utf8 $stdoutPath ((ConvertTo-Json $prior -Compress)+"`n"+(ConvertTo-Json $record -Compress)+"`n");Write-Utf8 $stderrPath ''
+    $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$f.state.runId;workspace=$f.workspace;branch='main';baseSha=$f.base;candidateBase=$f.base;status='AGENT_FAILURE';stage='IMPLEMENT';reason='';cycle=0;attempt=3;implementationComplete=$false;requiresCorrection=$true;implementationCommit=$f.implementation;recoveredCandidateCommit=$f.implementation;candidateHead='';candidateTree='';diffHash='';provider='claude';profile='REASONING';failovers=0;rollovers=0;unavailableProviders=@();providerHistory=@([ordered]@{invocationId=$invocation;role='CORRECTOR';provider='claude';attempt=3;providerClass='AGENT_FAILURE';resultClass='AGENT_FAILURE';exitCode=1});importantArtifacts=@($stdoutPath,$stderrPath);findings=@('high: authorized successor correction');decisions=@();reviewVerdict='';logicalProjectId='fixture';integration=$null}
+    Write-DispatcherState $state|Out-Null
+    return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$f.workspace;runId=$f.state.runId;stdoutPath=$stdoutPath;evidenceHash=(New-FileHash $stdoutPath);invocation=$invocation}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -404,6 +424,74 @@ try{
             Assert-True ($result.runId -eq $run -and $result.workspace -eq $workspace -and $result.taskVersionId -eq $f.newContract.taskVersionId) 'official restart changed the run/workspace or selected the wrong successor version'
             Assert-True ($result.supersededTaskVersionId -eq $oldVersion -and $result.recoveredCandidateCommit -eq $candidate) 'official restart did not preserve rejected-candidate lineage'
             Assert-True ($result.supersededReview.attestationId -eq $f.review.attestationId -and @($result.findings).Count -eq 1 -and $result.findings[0] -eq 'high: latest finding') 'official restart did not bind the newest rejected review and findings'
+        }
+        Check 'RD-47' {
+            $top=ConvertFrom-ClaudeResult ([pscustomobject]@{api_error_status=403;is_error=$true;subtype='success';terminal_reason='api_error';result='SUBSCRIPTION ACCESS DISABLED for Claude Code';permission_denials=@()})
+            $nested=ConvertFrom-ClaudeResult ([pscustomobject]@{is_error=$true;subtype='Success';terminal_reason='API-ERROR';error=[pscustomobject]@{status=403;message='Claude Code subscription access is unavailable'}})
+            Assert-True ($top.apiErrorStatus -eq 403 -and $top.isError -and $top.subtype -eq 'success' -and $top.terminalReason -eq 'api_error') 'Claude top-level structured error fields were not preserved'
+            Assert-True ((Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $top) -eq 'PROVIDER_AUTH') 'top-level subscription-disabled response was not failover eligible'
+            Assert-True ($nested.httpStatus -eq 403 -and (Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $nested) -eq 'PROVIDER_AUTH') 'nested or mixed-case subscription-disabled response was not normalized'
+            Assert-True ((ConvertTo-CanonicalFailureClass (Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $top) $top) -eq 'TEMPORARY_AUTH_FAILURE') 'subscription-disabled response did not map to the canonical provider class'
+        }
+        Check 'RD-48' {
+            $generic=ConvertFrom-ClaudeResult ([pscustomobject]@{api_error_status=403;is_error=$true;subtype='error';terminal_reason='api_error';result='request forbidden'})
+            $denial=ConvertFrom-ClaudeResult ([pscustomobject]@{api_error_status=403;is_error=$true;subtype='success';terminal_reason='api_error';result='subscription access disabled';permission_denials=@('Read')})
+            $refusal=ConvertFrom-ClaudeResult ([pscustomobject]@{api_error_status=403;is_error=$true;subtype='success';terminal_reason='model_refusal';result='I cannot comply with that request'})
+            Assert-True ((Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $generic) -eq 'APPLICATION_ERROR') 'generic HTTP 403 became failover eligible'
+            Assert-True ((Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $denial) -eq 'TOOL_ERROR') 'tool permission denial became provider unavailability'
+            Assert-True ((Get-FailureClassV2 -Provider claude -ExitCode 1 -Control $refusal) -eq 'APPLICATION_ERROR') 'normal model refusal became provider unavailability'
+        }
+        Check 'RD-49' {
+            $f=New-ProviderFailureRecoveryFixture 'RD49'
+            $p=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True ($p.eligible -and $p.derivedClass -eq 'TEMPORARY_AUTH_FAILURE') 'intact historical Claude provider failure was not recovery eligible'
+        }
+        Check 'RD-50' {
+            $f=New-ProviderFailureRecoveryFixture 'RD50';Add-Content -LiteralPath $f.stdoutPath -Value 'tampered'
+            $p=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'hash') 'tampered provider evidence was accepted'
+        }
+        Check 'RD-51' {
+            $f=New-ProviderFailureRecoveryFixture 'RD51'
+            $badInvocation=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId ('att-'+('0'*32)) -EvidenceHash $f.evidenceHash
+            $f.state.providerHistory[-1].provider='codex';$badProvider=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            $f.state.providerHistory[-1].provider='claude';$f.state.providerHistory[-1].attempt=2;$badAttempt=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $badInvocation.eligible -and -not $badProvider.eligible -and -not $badAttempt.eligible) 'invocation/provider/attempt drift was accepted'
+        }
+        Check 'RD-52' {
+            $f=New-ProviderFailureRecoveryFixture 'RD52';& git -C $f.workspace checkout $f.state.baseSha --quiet
+            $badWorkspace=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            & git -C $f.workspace checkout $f.state.implementationCommit --quiet
+            $f.source.hash='sha256:'+('0'*64);$badSource=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $badWorkspace.eligible -and -not $badSource.eligible) 'workspace or task-source drift was accepted'
+        }
+        Check 'RD-53' {
+            $f=New-ProviderFailureRecoveryFixture 'RD53';Write-Utf8 (Join-Path (Split-Path -Parent $f.stdoutPath) 'dirty.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('r'*16))
+            $p=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'scan') 'dirty current artifact scan was accepted'
+        }
+        Check 'RD-54' {
+            $f=New-ProviderFailureRecoveryFixture 'RD54';$bindings=Get-AttestationBindings -TaskVersionId $f.contract.taskVersionId -WorktreeDir $f.workspace -BaseSha $f.state.baseSha -HeadSha $f.state.implementationCommit
+            New-Attestation -Kind check -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$bindings) -Result PASS|Out-Null
+            $p=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'attestation') 'successor attestation was ignored during recovery'
+        }
+        Check 'RD-55' {
+            $f=New-ProviderFailureRecoveryFixture 'RD55';$gate=Get-HumanGatePath $f.contract.taskVersionId $f.task.ownerGate;$approval=Read-V2Json $gate;$approval.taskId='OTHER';Write-V2JsonCanonical $gate $approval
+            $p=Test-DispatcherHistoricalProviderFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'approval') 'drifted exact approval was accepted'
+        }
+        Check 'RD-56' {
+            $f=New-ProviderFailureRecoveryFixture 'RD56';$run=$f.runId;$workspace=$f.workspace;$version=$f.contract.taskVersionId;$historyCount=@($f.state.providerHistory).Count
+            $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null}
+            try{$first=Recover-DispatcherHistoricalProviderFailure -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash;$seq=(Get-LedgerState $version).seq;$second=Recover-DispatcherHistoricalProviderFailure -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash}
+            finally{$script:ProviderHealthFaults=$null}
+            $durable=Get-DispatcherState;$events=@(Get-Content -LiteralPath (Get-LedgerPath $version)|ForEach-Object{$_|ConvertFrom-Json})
+            Assert-True ($first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED') 'official provider recovery was not restart-idempotent'
+            Assert-True ($durable.runId -eq $run -and $durable.workspace -eq $workspace -and $durable.taskVersionId -eq $version) 'provider recovery changed run/workspace/taskVersionId'
+            Assert-True ($durable.provider -eq 'codex' -and [int]$durable.failovers -eq 1 -and (Get-LedgerState $version).seq -eq $seq) 'restart duplicated or lost the real provider failover'
+            Assert-True (@($durable.providerHistory).Count -eq $historyCount -and @($durable.providerRecoveryHistory).Count -eq 1) 'historical provider event was altered or recovery evidence duplicated'
+            Assert-True (@($events|Where-Object event -eq 'provider-failure-reclassified').Count -eq 1 -and @($events|Where-Object event -eq 'provider-failover').Count -eq 1) 'durable reclassification/failover transitions were missing or duplicated'
         }
     } finally {Pop-Location}
 
