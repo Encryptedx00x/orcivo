@@ -843,8 +843,11 @@ function Invoke-NativeCaptured {
     [void]$proc.Start()
 
     if ($StdinFile -and (Test-Path $StdinFile)) {
-        $in = [System.IO.File]::ReadAllText($StdinFile)
-        $proc.StandardInput.Write($in)
+        $inputBytes = [System.IO.File]::ReadAllBytes($StdinFile)
+        $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+        [void]$strictUtf8.GetString($inputBytes)
+        $proc.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
+        $proc.StandardInput.BaseStream.Flush()
     }
     $proc.StandardInput.Close()
 

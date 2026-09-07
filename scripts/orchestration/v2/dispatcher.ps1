@@ -697,6 +697,94 @@ function Recover-DispatcherHistoricalProviderFailure {
     return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;recovery=$recovery}
 }
 
+function Test-DispatcherUtf8StdinFailureRecovery {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,
+        [Parameter(Mandatory)][string]$PromptHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    foreach($hash in @($EvidenceHash,$PromptHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid evidence hash'}}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.runId -ne $RunId){return &$deny 'task or run mismatch'}
+    if([string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSource -ne [string]$TaskSource.path){return &$deny 'task source drift'}
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.provider -ne 'codex'){return &$deny 'state is not recoverable Codex AGENT_FAILURE/IMPLEMENT'}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId)
+    if([string]$ledger.state -ne 'FAILED'){return &$deny 'ledger is not FAILED'}
+    $ledgerEvents=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)))
+    $lastLedger=$ledgerEvents[-1]
+    if([string]$lastLedger.event -ne 'execute-failed' -or [string]$lastLedger.runId -ne $RunId -or [string]$lastLedger.note -ne 'AGENT_FAILURE'){return &$deny 'ledger failure does not match the agent failure'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.integration){return &$deny 'successor implementation or integration already exists'}
+    if(@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'successor already has attestations'}
+    if([int]$State.failovers -ne 1 -or @($State.unavailableProviders) -notcontains 'claude'){return &$deny 'historical provider failover binding mismatch'}
+    $providerRecoveries=@($State.providerRecoveryHistory|Where-Object{$_})
+    if($providerRecoveries.Count -ne 1 -or [string]$providerRecoveries[0].previousClass -ne 'AGENT_FAILURE' -or [string]$providerRecoveries[0].derivedClass -ne 'TEMPORARY_AUTH_FAILURE' -or [string]$providerRecoveries[0].nextProvider -ne 'codex'){return &$deny 'historical Claude recovery binding mismatch'}
+    $contract=Get-Contract ([string]$State.taskVersionId)
+    if([string]$contract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return &$deny 'frozen contract task source drift'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$contract.planningHead)
+    if([string]$revalidated.taskVersionId -ne [string]$State.taskVersionId){return &$deny 'task contract drift'}
+    if($Task.ownerGate -and [string]$Task.ownerGate -ne 'none'){
+        $gate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$Task.ownerGate)
+        if(-not $gate.satisfied -or [string]$gate.approval -ne 'APPROVED'){return &$deny 'exact approval is not valid'}
+    }
+    $expectedHead=[string]$State.recoveredCandidateCommit
+    if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.implementationCommit -ne $expectedHead){return &$deny 'expected implementation head mismatch'}
+    if(-not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){return &$deny 'workspace HEAD drift'}
+    $gitStatus=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'utf8-recovery-status'
+    if($gitStatus.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$gitStatus.stdout)){return &$deny 'workspace is dirty'}
+    $history=@($State.providerHistory);if(-not $history.Count){return &$deny 'provider history missing'};$last=$history[-1]
+    if([string]$last.invocationId -ne $InvocationId -or [string]$last.provider -ne 'codex' -or [int]$last.attempt -ne [int]$State.attempt){return &$deny 'invocation, provider, or attempt mismatch'}
+    if([string]$last.providerClass -ne 'AGENT_FAILURE' -or [string]$last.resultClass -ne 'AGENT_FAILURE' -or [int]$last.exitCode -ne 1){return &$deny 'historical agent failure class is incompatible'}
+    if([string]$State.reason -ne "provider invocation $InvocationId ended as AGENT_FAILURE/AGENT_FAILURE"){return &$deny 'failure reason mismatch'}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
+    $runLogs=[System.IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
+    $stdoutPath=[System.IO.Path]::GetFullPath([string]$last.stdoutArtifact)
+    $expectedLeaf=('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$last.attempt,$suffix)
+    if(-not $stdoutPath.StartsWith(($runLogs.TrimEnd('\')+'\'),[System.StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne $expectedLeaf){return &$deny 'stdout evidence path mismatch'}
+    $stderrPath=$stdoutPath -replace '\.stdout\.log$','.stderr.log';$promptPath=$stdoutPath -replace '\.stdout\.log$','.prompt.txt'
+    $artifacts=@($State.importantArtifacts)
+    if($artifacts.Count -lt 2 -or [System.IO.Path]::GetFullPath([string]$artifacts[-2]) -ne $stdoutPath -or [System.IO.Path]::GetFullPath([string]$artifacts[-1]) -ne $stderrPath){return &$deny 'provider evidence artifact binding mismatch'}
+    $emptyHash='sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $emptyHash -or [string]$last.stdoutHash -ne $emptyHash -or [string]$last.controlRecordHash -ne $emptyHash){return &$deny 'stdout evidence is not the expected empty control channel'}
+    if(-not(Test-Path -LiteralPath $stderrPath) -or (New-FileHash $stderrPath) -ne $EvidenceHash){return &$deny 'stderr evidence hash mismatch'}
+    $diagnostic=[System.IO.File]::ReadAllText($stderrPath,[System.Text.Encoding]::UTF8).Trim()
+    if($diagnostic -notmatch '^Failed to read prompt from stdin: input is not valid UTF-8 \(invalid byte at offset [0-9]+\)\. Convert it to UTF-8 and retry \(e\.g\., `iconv -f <ENC> -t UTF-8 prompt\.txt`\)\.$'){return &$deny 'stderr is not the canonical UTF-8 stdin failure'}
+    if(-not(Test-Path -LiteralPath $promptPath) -or (New-FileHash $promptPath) -ne $PromptHash){return &$deny 'prompt evidence hash mismatch'}
+    try{$strict=New-Object System.Text.UTF8Encoding($false,$true);[void]$strict.GetString([System.IO.File]::ReadAllBytes($promptPath))}catch{return &$deny 'prompt artifact is not valid UTF-8'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead
+    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'current secret scan is dirty'}
+    return [ordered]@{eligible=$true;reason='canonical UTF-8 stdin infrastructure failure verified';last=$last;stderrHash=$EvidenceHash;promptHash=$PromptHash;stderrPath=$stderrPath;promptPath=$promptPath;expectedHead=$expectedHead}
+}
+
+function Recover-DispatcherUtf8StdinFailure {
+    param(
+        [Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,
+        [Parameter(Mandatory)][string]$PromptHash
+    )
+    $state=Get-DispatcherState
+    if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'UTF-8 stdin recovery: durable task version mismatch'}
+    $existing=@($state.agentInfrastructureRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.promptHash -eq $PromptHash})
+    if($existing.Count){return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;recovery=$existing[-1]}}
+    $proof=Test-DispatcherUtf8StdinFailureRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PromptHash $PromptHash
+    if(-not $proof.eligible){throw "UTF-8 stdin recovery: $($proof.reason)"}
+    $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.last.attempt;stderrHash=$proof.stderrHash;promptHash=$proof.promptHash;previousClass='AGENT_FAILURE';derivedClass='AGENT_INFRASTRUCTURE_FAILURE'}
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'agent-infrastructure-recovered' -ToState 'READY' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'verified UTF-8 stdin transport failure'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'agent-infrastructure-retry' -ToState 'DISPATCHED' -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'retry same Codex provider without consuming failover'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'running' -ToState 'RUNNING' -RunId $RunId -Evidence $evidence -Note 'resume same implementation lineage after launcher repair'|Out-Null
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.last.attempt;evidenceHash=$proof.stderrHash;promptHash=$proof.promptHash;previousClass='AGENT_FAILURE';derivedClass='AGENT_INFRASTRUCTURE_FAILURE';runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead;failovers=[int]$state.failovers;cycle=[int]$state.cycle}
+    $state.agentInfrastructureRecoveryHistory=@($state.agentInfrastructureRecoveryHistory|Where-Object{$_})+@($recovery)
+    $state.status='RUNNING';$state.reason='';$state.lastErrorClass='AGENT_INFRASTRUCTURE_FAILURE'
+    Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$recovery}
+}
+
 function Set-DispatcherSecretBlock {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$Scan)
     Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'secret-block' -ToState 'FAILED' -RunId $State.runId|Out-Null

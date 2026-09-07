@@ -89,6 +89,22 @@ function New-ProviderFailureRecoveryFixture([string]$Id){
     return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$f.workspace;runId=$f.state.runId;stdoutPath=$stdoutPath;evidenceHash=(New-FileHash $stdoutPath);invocation=$invocation}
 }
 
+function New-Utf8StdinRecoveryFixture([string]$Id){
+    $f=New-ProviderFailureRecoveryFixture $Id
+    $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null}
+    try{Recover-DispatcherHistoricalProviderFailure -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash|Out-Null}
+    finally{$script:ProviderHealthFaults=$null}
+    $state=Get-DispatcherState;$invocation='att-'+[guid]::NewGuid().ToString('N');$suffix=$invocation.Substring(4,8);$logs=Split-Path -Parent $f.stdoutPath
+    $stem=('implementer-004-codex-{0}' -f $suffix);$promptPath=Join-Path $logs "$stem.prompt.txt";$stdoutPath=Join-Path $logs "$stem.stdout.log";$stderrPath=Join-Path $logs "$stem.stderr.log"
+    $unicodePrompt="Corre$([char]0x00E7)$([char]0x00E3)o transacional $([char]0x2014) a$([char]0x00E7)$([char]0x00E3)o v$([char]0x00E1)lida.`n"
+    Write-Utf8 $promptPath $unicodePrompt;Write-Utf8 $stdoutPath '';Write-Utf8 $stderrPath 'Failed to read prompt from stdin: input is not valid UTF-8 (invalid byte at offset 17). Convert it to UTF-8 and retry (e.g., `iconv -f <ENC> -t UTF-8 prompt.txt`).'
+    $state.attempt=4;$state.status='AGENT_FAILURE';$state.stage='IMPLEMENT';$state.provider='codex';$state.reason="provider invocation $invocation ended as AGENT_FAILURE/AGENT_FAILURE";$state.implementationComplete=$false;$state.candidateHead='';$state.integration=$null
+    $state.providerHistory=@($state.providerHistory)+@([ordered]@{invocationId=$invocation;role='CORRECTOR';provider='codex';attempt=4;providerClass='AGENT_FAILURE';resultClass='AGENT_FAILURE';exitCode=1;stdoutArtifact=$stdoutPath;stdoutHash=(New-FileHash $stdoutPath);controlRecordHash=(New-StringHash '')})
+    $state.importantArtifacts=@($state.importantArtifacts)+@($stdoutPath,$stderrPath);Write-DispatcherState $state|Out-Null
+    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event execute-failed -ToState FAILED -RunId $state.runId -Note AGENT_FAILURE|Out-Null
+    return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;promptPath=$promptPath;stdoutPath=$stdoutPath;stderrPath=$stderrPath;evidenceHash=(New-FileHash $stderrPath);promptHash=(New-FileHash $promptPath)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -246,6 +262,14 @@ try{
             Assert-True (-not (Test-DispatcherCandidateResumeEligible $s)) 'unrelated blocked candidate became restart-eligible'
             $s.reason='secret scan failed before review';$s.implementationComplete=$false
             Assert-True (-not (Test-DispatcherCandidateResumeEligible $s)) 'incomplete implementation became secret-scan restart-eligible'
+        }
+        Check 'RG-07' {
+            $node=(Get-Command node.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
+            $expected="Corre$([char]0x00E7)$([char]0x00E3)o transacional $([char]0x2014) a$([char]0x00E7)$([char]0x00E3)o v$([char]0x00E1)lida.`n"
+            $stdinPath=Join-Path $Root 'rg07.stdin.txt';Write-Utf8 $stdinPath $expected
+            $expectedHash=(Get-FileHash -LiteralPath $stdinPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $p=Invoke-NativeCaptured -Exe $node -Arguments @('-e',"const c=require('crypto').createHash('sha256');process.stdin.on('data',b=>c.update(b));process.stdin.on('end',()=>process.stdout.write(c.digest('hex')))") -WorkingDirectory $Fixture -StdinFile $stdinPath -StdoutLog (Join-Path $Root 'rg07.stdout.log') -StderrLog (Join-Path $Root 'rg07.stderr.log') -TimeoutSec 30
+            Assert-True ($p.exitCode -eq 0 -and $p.stdout.Trim() -ceq $expectedHash) 'native stdin bytes did not round-trip as strict UTF-8'
         }
         Check 'RD-21' {
             $path=Join-Path $Root 'utf8-state.json';$expected='ação — orçamento';Write-V2JsonCanonical $path ([ordered]@{text=$expected})
@@ -492,6 +516,48 @@ try{
             Assert-True ($durable.provider -eq 'codex' -and [int]$durable.failovers -eq 1 -and (Get-LedgerState $version).seq -eq $seq) 'restart duplicated or lost the real provider failover'
             Assert-True (@($durable.providerHistory).Count -eq $historyCount -and @($durable.providerRecoveryHistory).Count -eq 1) 'historical provider event was altered or recovery evidence duplicated'
             Assert-True (@($events|Where-Object event -eq 'provider-failure-reclassified').Count -eq 1 -and @($events|Where-Object event -eq 'provider-failover').Count -eq 1) 'durable reclassification/failover transitions were missing or duplicated'
+        }
+        Check 'RD-57' {
+            $f=New-Utf8StdinRecoveryFixture 'RD57'
+            $p=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            Assert-True ($p.eligible -and $p.expectedHead -eq $f.state.implementationCommit) 'intact UTF-8 stdin infrastructure failure was not recovery eligible'
+        }
+        Check 'RD-58' {
+            $f=New-Utf8StdinRecoveryFixture 'RD58';Add-Content -LiteralPath $f.promptPath -Value 'tampered'
+            $badPrompt=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            $f=New-Utf8StdinRecoveryFixture 'RD58B';Add-Content -LiteralPath $f.stderrPath -Value 'tampered'
+            $badEvidence=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            Assert-True (-not $badPrompt.eligible -and $badPrompt.reason -match 'prompt' -and -not $badEvidence.eligible -and $badEvidence.reason -match 'stderr') 'tampered UTF-8 recovery evidence was accepted'
+        }
+        Check 'RD-59' {
+            $f=New-Utf8StdinRecoveryFixture 'RD59';$badInvocation=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId ('att-'+('0'*32)) -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            $f.state.providerHistory[-1].provider='claude';$badProvider=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            $f.state.providerHistory[-1].provider='codex';$f.state.providerHistory[-1].attempt=5;$badAttempt=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            Assert-True (-not $badInvocation.eligible -and -not $badProvider.eligible -and -not $badAttempt.eligible) 'UTF-8 recovery accepted invocation/provider/attempt drift'
+        }
+        Check 'RD-60' {
+            $f=New-Utf8StdinRecoveryFixture 'RD60';$run=$f.runId;$workspace=$f.workspace;$version=$f.contract.taskVersionId;$historyCount=@($f.state.providerHistory).Count;$failovers=[int]$f.state.failovers;$cycle=[int]$f.state.cycle
+            $first=Recover-DispatcherUtf8StdinFailure -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            $seq=(Get-LedgerState $version).seq
+            $second=Recover-DispatcherUtf8StdinFailure -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            $durable=Get-DispatcherState;$events=@(Get-Content -LiteralPath (Get-LedgerPath $version)|ForEach-Object{$_|ConvertFrom-Json})
+            Assert-True ($first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED') 'official UTF-8 infrastructure recovery was not restart-idempotent'
+            Assert-True ($durable.runId -eq $run -and $durable.workspace -eq $workspace -and $durable.taskVersionId -eq $version -and $durable.provider -eq 'codex') 'UTF-8 recovery changed run/workspace/taskVersionId/provider'
+            Assert-True ([int]$durable.failovers -eq $failovers -and [int]$durable.cycle -eq $cycle -and (Get-LedgerState $version).seq -eq $seq) 'UTF-8 recovery consumed a failover/cycle or duplicated ledger transitions'
+            Assert-True (@($durable.providerHistory).Count -eq $historyCount -and @($durable.agentInfrastructureRecoveryHistory).Count -eq 1) 'historical provider event was altered or infrastructure recovery duplicated'
+            Assert-True (@($events|Where-Object event -eq 'agent-infrastructure-recovered').Count -eq 1 -and @($events|Where-Object event -eq 'agent-infrastructure-retry').Count -eq 1) 'durable UTF-8 recovery transitions were missing or duplicated'
+        }
+        Check 'RD-61' {
+            $f=New-Utf8StdinRecoveryFixture 'RD61';& git -C $f.workspace checkout $f.state.baseSha --quiet
+            $badWorkspace=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            & git -C $f.workspace checkout $f.state.implementationCommit --quiet
+            $f.source.hash='sha256:'+('0'*64);$badSource=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            Assert-True (-not $badWorkspace.eligible -and -not $badSource.eligible) 'UTF-8 recovery accepted workspace or task-source drift'
+        }
+        Check 'RD-62' {
+            $f=New-Utf8StdinRecoveryFixture 'RD62';Write-Utf8 (Join-Path (Split-Path -Parent $f.stderrPath) 'dirty.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('u'*16))
+            $p=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'scan') 'UTF-8 recovery accepted a dirty current artifact scan'
         }
     } finally {Pop-Location}
 
