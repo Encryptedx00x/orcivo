@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -46,6 +46,7 @@ param(
     [string]$InvocationId = '',
     [string]$EvidenceHash = '',
     [string]$PromptHash = '',
+    [string]$StopHash = '',
     [string]$ApprovalScope = '',
     [string]$ApprovedBy = 'owner',
     [string]$ApprovalSource = 'pilot.ps1 approve-gate'
@@ -413,6 +414,15 @@ switch ($Command) {
         $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
         if(-not $task){throw "recover-agent-infrastructure-failure: task '$TaskId' not found"}
         $result=Recover-DispatcherUtf8StdinFailure -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PromptHash $PromptHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-stopped-implementation' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $StopHash){throw 'recover-stopped-implementation requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, and -StopHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-stopped-implementation: task '$TaskId' not found"}
+        $result=Recover-DispatcherStoppedImplementation -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash
         $result|ConvertTo-Json -Depth 12
     }
     { $_ -in @('run','run-once','start') } {

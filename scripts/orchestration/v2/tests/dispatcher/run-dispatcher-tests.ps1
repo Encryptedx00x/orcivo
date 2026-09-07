@@ -105,6 +105,33 @@ function New-Utf8StdinRecoveryFixture([string]$Id){
     return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;promptPath=$promptPath;stdoutPath=$stdoutPath;stderrPath=$stderrPath;evidenceHash=(New-FileHash $stderrPath);promptHash=(New-FileHash $promptPath)}
 }
 
+function New-StoppedPartialRecoveryFixture([string]$Id){
+    $f=New-Utf8StdinRecoveryFixture $Id
+    Recover-DispatcherUtf8StdinFailure -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash|Out-Null
+    $state=Get-DispatcherState;$state.cycle=1
+    $partialDir=Join-Path $f.workspace 'work';New-Item -ItemType Directory -Force -Path $partialDir|Out-Null
+    Write-Utf8 (Join-Path $partialDir 'partial.ts') "export const partial = 'preserved';`n"
+    Write-Utf8 (Join-Path $partialDir 'partial.spec.ts') "export const partialTest = true;`n"
+    $invocation='att-'+[guid]::NewGuid().ToString('N');$suffix=$invocation.Substring(4,8);$logs=Split-Path -Parent $f.stdoutPath
+    $stdoutPath=Join-Path $logs ('implementer-005-codex-{0}.stdout.log' -f $suffix)
+    $quota=[ordered]@{type='turn.failed';error=[ordered]@{message="You've hit your usage limit. Try again later."}}
+    Write-Utf8 $stdoutPath (($quota|ConvertTo-Json -Compress -Depth 5)+"`n")
+    $quotaEntry=[ordered]@{invocationId=$invocation;role='CORRECTOR';provider='codex';attempt=5;providerClass='QUOTA_EXHAUSTED';resultClass='AGENT_FAILURE';exitCode=1;stdoutArtifact=$stdoutPath;stdoutHash=(New-FileHash $stdoutPath);controlRecordHash=(New-FileHash $stdoutPath)}
+    $claudeInvocation='att-'+[guid]::NewGuid().ToString('N')
+    $claudeEntry=[ordered]@{invocationId=$claudeInvocation;role='CORRECTOR';provider='claude';attempt=6;providerClass='TEMPORARY_AUTH_FAILURE';resultClass='AGENT_FAILURE';exitCode=1}
+    $state.providerHistory=@($state.providerHistory)+@($quotaEntry,$claudeEntry);$state.importantArtifacts=@($state.importantArtifacts)+@($stdoutPath)
+    $state.attempt=6;$state.provider='claude';$state.status='STOPPED';$state.stage='IMPLEMENT';$state.reason='explicit stop requested';$state.implementationComplete=$false;$state.candidateHead='';$state.integration=$null;$state.unavailableProviders=@();$state.failovers=1
+    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event provider-unavailable -ToState WAITING_PROVIDER -RunId $state.runId -Note 'claude/TEMPORARY_AUTH_FAILURE/IMPLEMENT'|Out-Null
+    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event provider-resume -ToState DISPATCHED -RunId $state.runId -Note 'resume stage IMPLEMENT'|Out-Null
+    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event running -ToState RUNNING -RunId $state.runId|Out-Null
+    Write-DispatcherState $state|Out-Null
+    $stopPath=Join-Path (Get-V2Dir) (Get-V2Config).pilot.stopFile;Set-Content -LiteralPath $stopPath -Value "stop requested $((Get-Date).ToString('o'))" -Encoding ascii
+    Start-Sleep -Milliseconds 5
+    $checkpoint=[ordered]@{schemaVersion='orcivo.orchestration.v2.pilot-checkpoint/1';runId=$state.runId;writtenAt=(Get-Date).ToUniversalTime().ToString('o');holder=[ordered]@{pid=2147483000;startTime='2000-01-01T00:00:00.0000000Z';host=$env:COMPUTERNAME;alive=$true};taskId=$state.taskId;taskVersionId=$state.taskVersionId;status='STOPPED';reason='explicit stop requested';stage='IMPLEMENT';provider='claude';providerHistory=@($state.providerHistory);ledgerState='RUNNING';candidateHead=''}
+    $pilotDir=Join-Path (Get-V2Dir) 'pilot';Write-V2JsonCanonical (Join-Path $pilotDir "$($state.runId).json") $checkpoint;Write-V2JsonCanonical (Join-Path $pilotDir 'latest.json') $checkpoint
+    return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=(New-FileHash $stdoutPath);stopPath=$stopPath;stopHash=(New-FileHash $stopPath)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -558,6 +585,68 @@ try{
             $f=New-Utf8StdinRecoveryFixture 'RD62';Write-Utf8 (Join-Path (Split-Path -Parent $f.stderrPath) 'dirty.log') ('ORCIVO_'+'SYNTHETIC_SECRET_'+('u'*16))
             $p=Test-DispatcherUtf8StdinFailureRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PromptHash $f.promptHash
             Assert-True (-not $p.eligible -and $p.reason -match 'scan') 'UTF-8 recovery accepted a dirty current artifact scan'
+        }
+        Check 'RD-63' {
+            $f=New-StoppedPartialRecoveryFixture 'RD63';$p=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True ($p.eligible -and @($p.partial.paths).Count -eq 2) 'valid authorized dirty workspace was not recovery eligible'
+        }
+        Check 'RD-64' {
+            $f=New-StoppedPartialRecoveryFixture 'RD64';Write-Utf8 (Join-Path $f.workspace 'outside.ts') 'export const outside = true;'
+            $p=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'out-of-scope') 'out-of-scope partial change was accepted'
+        }
+        Check 'RD-65' {
+            $f=New-StoppedPartialRecoveryFixture 'RD65';$f.state.recoveredCandidateCommit=$f.state.baseSha
+            $p=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'HEAD') 'divergent workspace HEAD was accepted'
+        }
+        Check 'RD-66' {
+            $f=New-StoppedPartialRecoveryFixture 'RD66';Write-Utf8 (Join-Path $f.workspace 'work\secret.ts') ("export const cloudCredential = 'AKIA"+('Z'*16)+"';")
+            $p=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'secret scan') 'secret-bearing partial diff was accepted'
+        }
+        Check 'RD-67' {
+            $f=New-StoppedPartialRecoveryFixture 'RD67';Add-Content -LiteralPath $f.stdoutPath -Value 'tampered'
+            $badHash=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            $f=New-StoppedPartialRecoveryFixture 'RD67B';$f.state.providerHistory|Where-Object invocationId -eq $f.invocation|ForEach-Object{$_.attempt=99}
+            $badBinding=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            Assert-True (-not $badHash.eligible -and -not $badBinding.eligible) 'tampered invocation evidence or binding was accepted'
+        }
+        Check 'RD-68' {
+            $f=New-StoppedPartialRecoveryFixture 'RD68';$script:DispatcherRecoveryRunnerProbe=$true
+            try{$active=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash}finally{$script:DispatcherRecoveryRunnerProbe=$null}
+            $lease=New-Lease -Namespace scheduler -Key main -RunId $f.runId
+            try{$leased=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash}finally{if($lease.ok){Remove-Lease -Namespace scheduler -Key main -LeaseId $lease.leaseId|Out-Null}}
+            Assert-True (-not $active.eligible -and -not $leased.eligible) 'active runner or lease was accepted'
+        }
+        Check 'RD-69' {
+            $f=New-StoppedPartialRecoveryFixture 'RD69';Write-Utf8 $f.stopPath 'unproven stop'
+            $p=Test-DispatcherStoppedImplementationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash (New-FileHash $f.stopPath)
+            Assert-True (-not $p.eligible -and $p.reason -match 'provenance') 'stop without official provenance was accepted'
+        }
+        Check 'RD-70' {
+            $f=New-StoppedPartialRecoveryFixture 'RD70';$version=$f.contract.taskVersionId;$run=$f.runId;$workspace=$f.workspace;$before=@(git -C $workspace status --porcelain=v1)
+            $first=Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash;$seq=(Get-LedgerState $version).seq
+            $second=Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash;$durable=Get-DispatcherState;$after=@(git -C $workspace status --porcelain=v1)
+            Assert-True ($first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED' -and (Get-LedgerState $version).seq -eq $seq) 'repeated recovery duplicated its transition'
+            Assert-True ($durable.status -eq 'WAITING_PROVIDER' -and $durable.runId -eq $run -and $durable.workspace -eq $workspace -and [int]$durable.failovers -eq 1 -and [int]$durable.cycle -eq 1) 'recovery changed lineage, cycle, or failover count'
+            Assert-True (($before -join "`n") -eq ($after -join "`n")) 'recovery did not preserve the partial workspace'
+        }
+        Check 'RD-71' {
+            $f=New-StoppedPartialRecoveryFixture 'RD71';$script:StoppedRecoveryFaultAfterLedger=$true
+            try{try{Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null}catch{}}finally{$script:StoppedRecoveryFaultAfterLedger=$null}
+            $resumed=Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash
+            $events=@(Read-JsonLines (Get-LedgerPath $f.contract.taskVersionId)|Where-Object event -eq 'stopped-implementation-recovered')
+            Assert-True ($resumed.status -eq 'RECOVERED' -and $events.Count -eq 1) 'restart after recovery crash duplicated or lost the durable transition'
+        }
+        Check 'RD-72' {
+            $f=New-StoppedPartialRecoveryFixture 'RD72';Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null
+            $wait=Get-ProviderWait $f.contract.taskVersionId;$wait.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $f.contract.taskVersionId) $wait
+            $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex='PROVIDER_QUOTA'};try{$none=Resume-DispatcherProviderWait (Get-DispatcherState)}finally{$script:ProviderHealthFaults=$null}
+            $still=Get-DispatcherState;$wasWaiting=($still.status -eq 'WAITING_PROVIDER');$wait=Get-ProviderWait $f.contract.taskVersionId;$wait.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $f.contract.taskVersionId) $wait
+            $script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null};try{$codex=Resume-DispatcherProviderWait $still}finally{$script:ProviderHealthFaults=$null};$durable=Get-DispatcherState
+            Assert-True (-not $none -and $wasWaiting) 'both unavailable providers did not remain durably waiting'
+            Assert-True ($codex -and $durable.status -eq 'RUNNING' -and $durable.provider -eq 'codex' -and [int]$durable.failovers -eq 1) 'returning Codex did not resume once without another failover'
         }
     } finally {Pop-Location}
 

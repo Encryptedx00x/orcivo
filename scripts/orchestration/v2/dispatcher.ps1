@@ -589,6 +589,12 @@ function Resume-DispatcherProviderWait {
         return $false
     }
     $selected = [string]$ready.provider
+    # A recovered partial implementation remains owned by its implementer.  If
+    # that provider is healthy again, prefer it over the global routing order;
+    # REVIEW still enforces the opposite-provider rule below.
+    if ($State.stage -eq 'IMPLEMENT' -and $State.provider -and @($ready.healthy) -contains [string]$State.provider) {
+        $selected = [string]$State.provider
+    }
     if ($State.stage -eq 'REVIEW') {
         $requiredReviewer = $(if ($State.provider -eq 'claude') { 'codex' } else { 'claude' })
         if (@($ready.healthy) -notcontains $requiredReviewer) {
@@ -782,6 +788,136 @@ function Recover-DispatcherUtf8StdinFailure {
     $state.agentInfrastructureRecoveryHistory=@($state.agentInfrastructureRecoveryHistory|Where-Object{$_})+@($recovery)
     $state.status='RUNNING';$state.reason='';$state.lastErrorClass='AGENT_INFRASTRUCTURE_FAILURE'
     Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$recovery}
+}
+
+function Get-DispatcherDirtyWorkspaceProof {
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task)
+    $deny={param([string]$Reason)return [ordered]@{clean=$false;reason=$Reason}}
+    # `--untracked-files=all` is security-critical: the default may collapse a
+    # whole untracked directory to one entry, which would otherwise evade both
+    # per-file scope validation and source scanning.
+    $status=Invoke-GitV2 -Dir $Workspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'stopped-recovery-status'
+    if($status.exitCode -ne 0){return &$deny 'workspace status failed'}
+    $entries=@($status.stdout -split '\r?\n'|Where-Object{$_})
+    if(-not $entries.Count){return &$deny 'workspace has no preserved partial changes'}
+    $paths=@()
+    foreach($entry in $entries){
+        if($entry.Length -lt 4 -or $entry.Substring(0,2) -match '[RC]'){return &$deny 'unsupported or renamed workspace change'}
+        $path=$entry.Substring(3).Replace('\','/').Trim()
+        if(-not $path -or $path -match '(^|/)\.\.(/|$)' -or [System.IO.Path]::IsPathRooted($path)){return &$deny 'unsafe changed path'}
+        $paths+=,$path
+    }
+    $declared=@($Task.scope|Where-Object{$_});if(-not $declared.Count){return &$deny 'declared scope is empty'}
+    $grants=@($Task.protectedPathGrants|Where-Object{$_});$cfg=Get-V2Config
+    foreach($path in $paths){
+        if(-not(Test-RelPathUnder $path $declared)){return &$deny "out-of-scope change: $path"}
+        if((Test-RelPathUnder $path @($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)) -and -not(Test-RelPathUnder $path $grants)){return &$deny "ungranted protected change: $path"}
+    }
+    $diff=Invoke-GitV2 -Dir $Workspace -Arguments @('diff','--no-ext-diff','--no-color','HEAD','--') -LogLabel 'stopped-recovery-diff' -ReviewedSourceOutput
+    if($diff.exitCode -ne 0){return &$deny 'partial diff failed'}
+    $root=Join-Path ([System.IO.Path]::GetTempPath()) ('orcivo-stopped-recovery-'+[guid]::NewGuid().ToString('N'))
+    try{
+        $sourceRoot=Join-Path $root 'source';$reviewRoot=Join-Path $root 'review-000'
+        New-Item -ItemType Directory -Force -Path $sourceRoot,$reviewRoot|Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $reviewRoot 'diff.patch'),[string]$diff.stdout,(New-Utf8NoBom))
+        foreach($path in $paths){
+            $src=Resolve-SafePath $Workspace $path
+            if(Test-Path -LiteralPath $src -PathType Leaf){$dst=Resolve-SafePath $sourceRoot $path;New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dst)|Out-Null;[System.IO.File]::WriteAllBytes($dst,[System.IO.File]::ReadAllBytes($src))}
+        }
+        $sourceScan=Test-ArtifactsClean -Root $sourceRoot -SourceTree
+        $diffScan=Test-ArtifactsClean -Root $reviewRoot
+        if(-not $sourceScan.clean -or -not $diffScan.clean){return &$deny 'partial workspace secret scan is dirty'}
+        $fileBindings=@($paths|Sort-Object -Unique|ForEach-Object{$p=$_;$full=Resolve-SafePath $Workspace $p;"$p=$(if(Test-Path -LiteralPath $full -PathType Leaf){New-FileHash $full}else{'deleted'})"})
+        return [ordered]@{clean=$true;reason='authorized partial workspace verified';paths=@($paths|Sort-Object -Unique);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
+    }finally{
+        $temp=[System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath());$full=[System.IO.Path]::GetFullPath($root)
+        if($full.StartsWith($temp,[System.StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $full) -like 'orcivo-stopped-recovery-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
+    }
+}
+
+function Test-DispatcherRecoveryExecutionActive {
+    if($null -ne $script:DispatcherRecoveryRunnerProbe){return [bool]$script:DispatcherRecoveryRunnerProbe}
+    if(@(Get-ChildItem (Join-Path (Get-V2Dir) 'leases') -Recurse -File -Filter '*.lease' -ErrorAction SilentlyContinue).Count){return $true}
+    try{
+        $running=@(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object{$_.CommandLine -match '(?i)pilot\.ps1\s+(?:run|run-once|start)(?:\s|$)'})
+        if($running.Count){return $true}
+    }catch{return $true}
+    return $false
+}
+
+function Test-DispatcherStoppedImplementationRecovery {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$StopHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    foreach($hash in @($EvidenceHash,$StopHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid evidence hash'}}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'STOPPED' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.reason -ne 'explicit stop requested'){return &$deny 'state is not an official STOPPED/IMPLEMENT'}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.runId -ne $RunId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSource -ne [string]$TaskSource.path){return &$deny 'task, run, or task source drift'}
+    $contract=Get-Contract ([string]$State.taskVersionId)
+    if([string]$contract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return &$deny 'frozen contract task source drift'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$contract.planningHead)
+    if([string]$revalidated.taskVersionId -ne [string]$State.taskVersionId){return &$deny 'task contract drift'}
+    if($Task.ownerGate -and [string]$Task.ownerGate -ne 'none'){$gate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$Task.ownerGate);if(-not $gate.satisfied -or [string]$gate.approval -ne 'APPROVED'){return &$deny 'exact approval is not valid'}}
+    $stopPath=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile)
+    if(-not(Test-Path -LiteralPath $stopPath) -or (New-FileHash $stopPath) -ne $StopHash){return &$deny 'stop evidence hash mismatch'}
+    $stopText=[System.IO.File]::ReadAllText($stopPath,[System.Text.Encoding]::ASCII)
+    if($stopText -notmatch '^stop requested ([^\r\n]+)\r?\n?$'){return &$deny 'stop lacks official pilot provenance'}
+    $stopAt=[datetime]::MinValue;if(-not[datetime]::TryParse($Matches[1],[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$stopAt)){return &$deny 'stop timestamp is invalid'}
+    $checkpointPath=Join-Path (Get-V2Dir) "pilot\$RunId.json"
+    if(-not(Test-Path -LiteralPath $checkpointPath)){return &$deny 'pilot stop checkpoint missing'}
+    try{$checkpoint=Read-V2Json $checkpointPath}catch{return &$deny 'pilot stop checkpoint invalid'}
+    if([string]$checkpoint.status -ne 'STOPPED' -or [string]$checkpoint.stage -ne 'IMPLEMENT' -or [string]$checkpoint.reason -ne 'explicit stop requested' -or [string]$checkpoint.runId -ne $RunId -or [string]$checkpoint.taskVersionId -ne [string]$State.taskVersionId -or [string]$checkpoint.ledgerState -ne 'RUNNING'){return &$deny 'pilot stop checkpoint binding mismatch'}
+    if(Test-HolderLive (_ToHashtable $checkpoint.holder)){return &$deny 'pilot checkpoint holder is still active'}
+    $written=[datetime]::MinValue;if(-not[datetime]::TryParse([string]$checkpoint.writtenAt,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$written) -or $written -lt $stopAt){return &$deny 'pilot checkpoint predates stop request'}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId);if($ledger.corrupt){return &$deny 'ledger is corrupt'}
+    $events=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)));if(-not $events.Count){return &$deny 'ledger history missing'}
+    $recoveryEvents=@($events|Where-Object{[string]$_.event -eq 'stopped-implementation-recovered' -and [string]$_.runId -eq $RunId -and [string]$_.attemptId -eq $InvocationId})
+    $ledgerRecovered=$false
+    if([string]$ledger.state -eq 'RUNNING'){
+        if([string]$events[-1].event -ne 'running' -or [string]$events[-1].runId -ne $RunId -or $events.Count -lt 3 -or [string]$events[-2].event -ne 'provider-resume' -or [string]$events[-3].event -ne 'provider-unavailable'){return &$deny 'ledger RUNNING provenance mismatch'}
+    }elseif([string]$ledger.state -eq 'WAITING_PROVIDER' -and $recoveryEvents.Count -eq 1){
+        $ev=$recoveryEvents[0];if([string]$ev.evidence.stdoutHash -ne $EvidenceHash -or [string]$ev.evidence.stopHash -ne $StopHash){return &$deny 'partial recovery ledger evidence mismatch'};$ledgerRecovered=$true
+    }else{return &$deny 'ledger is not recoverable RUNNING'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.integration){return &$deny 'successor candidate or integration already exists'}
+    if(@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'successor already has attestations'}
+    if([int]$State.failovers -ne 1 -or [int]$State.cycle -ne 1){return &$deny 'failover or bounded-cycle mismatch'}
+    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.implementationCommit -ne $expectedHead -or -not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){return &$deny 'workspace HEAD drift'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task;if(-not $partial.clean){return &$deny $partial.reason}
+    $history=@($State.providerHistory);$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1){return &$deny 'invocation history binding mismatch'};$attempt=$matches[0];$index=[array]::IndexOf($history,$attempt)
+    if([string]$attempt.provider -ne 'codex' -or [string]$attempt.providerClass -ne 'QUOTA_EXHAUSTED' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -eq 0){return &$deny 'invocation is not a Codex quota failure'}
+    $laterHistory=@();if($index -lt ($history.Count-1)){$laterHistory=@($history[($index+1)..($history.Count-1)])}
+    if(@($laterHistory|Where-Object{[string]$_.resultClass -eq 'SUCCESS'}).Count){return &$deny 'provider success exists after quota failure'}
+    $stdoutPath=[System.IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[System.IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
+    if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash -or [string]$attempt.stdoutHash -ne $EvidenceHash -or [string]$attempt.controlRecordHash -ne $EvidenceHash){return &$deny 'invocation evidence hash mismatch'}
+    $parsed=ConvertFrom-RealCodexOutput ([System.IO.File]::ReadAllText($stdoutPath,[System.Text.Encoding]::UTF8));$legacy=Get-FailureClassV2 -Provider codex -ExitCode ([int]$attempt.exitCode) -Control $parsed.control;$derived=ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
+    if($derived -ne 'QUOTA_EXHAUSTED'){return &$deny 'raw invocation is not canonical quota evidence'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'current candidate or artifact scan is dirty'}
+    return [ordered]@{eligible=$true;reason='official stopped partial implementation verified';attempt=$attempt;expectedHead=$expectedHead;partial=$partial;stopPath=$stopPath;checkpointHash=(New-FileHash $checkpointPath);ledgerRecovered=$ledgerRecovered;derivedClass=$derived}
+}
+
+function Recover-DispatcherStoppedImplementation {
+    param([Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$StopHash)
+    $state=Get-DispatcherState;if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'stopped implementation recovery: durable task version mismatch'}
+    $existing=@($state.stoppedImplementationRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.stopHash -eq $StopHash})
+    if($existing.Count){$stop=Join-Path (Get-V2Dir) ([string](Get-V2Config).pilot.stopFile);if((Test-Path -LiteralPath $stop) -and -not(Invoke-FileCas -Path $stop -ExpectedHash $StopHash -NewContent '' -Delete)){throw 'stopped implementation recovery: stop evidence changed before idempotent consume'};return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$existing[-1]}}
+    $proof=Test-DispatcherStoppedImplementationRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash
+    if(-not $proof.eligible){throw "stopped implementation recovery: $($proof.reason)"}
+    $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;stdoutHash=$EvidenceHash;stopHash=$StopHash;checkpointHash=$proof.checkpointHash;diffHash=$proof.partial.diffHash;filesHash=$proof.partial.filesHash;derivedClass=$proof.derivedClass}
+    if(-not $proof.ledgerRecovered){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'stopped-implementation-recovered' -ToState 'WAITING_PROVIDER' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'preserved authorized partial workspace after official stop'|Out-Null}
+    if($script:StoppedRecoveryFaultAfterLedger){throw 'injected stopped recovery crash after ledger transition'}
+    Enter-WaitingProvider -TaskVersionId $TaskVersionId -RunId $RunId -Context @{taskId=$state.taskId;generation='dispatcher';workspace=$state.workspace;candidateCommit='';candidateTree='';attemptHistory=@($state.attempt);providerHistory=@($state.providerHistory);verificationState='';reviewState='';checkpoint=@{nextAction='resume IMPLEMENT with preserved partial workspace';taskSourceHash=$state.taskSourceHash};lastErrorClass='QUOTA_EXHAUSTED'}|Out-Null
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;evidenceHash=$EvidenceHash;stopHash=$StopHash;checkpointHash=$proof.checkpointHash;diffHash=$proof.partial.diffHash;filesHash=$proof.partial.filesHash;changedFiles=@($proof.partial.paths);derivedClass=$proof.derivedClass;runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead;failovers=[int]$state.failovers;cycle=[int]$state.cycle}
+    $state.stoppedImplementationRecoveryHistory=@($state.stoppedImplementationRecoveryHistory|Where-Object{$_})+@($recovery);$state.status='WAITING_PROVIDER';$state.reason='providers unavailable; preserved partial implementation is resumable';$state.provider='codex';$state.unavailableProviders=@('claude','codex');$state.lastErrorClass='QUOTA_EXHAUSTED';Write-DispatcherState $state|Out-Null
+    if(-not(Invoke-FileCas -Path $proof.stopPath -ExpectedHash $StopHash -NewContent '' -Delete)){throw 'stopped implementation recovery: stop evidence changed before consume'}
     return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$recovery}
 }
 
