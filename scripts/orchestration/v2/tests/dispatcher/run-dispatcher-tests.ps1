@@ -688,6 +688,25 @@ try{
             Assert-True (Set-DispatcherStoppedAfterAgentIfRequested $state) 'post-agent stop marker was not given precedence'
             $durable=Get-DispatcherState;Assert-True ($durable.status -eq 'STOPPED' -and $durable.reason -eq 'explicit stop requested' -and (Get-LedgerState $state.taskVersionId).seq -eq $seq) 'post-agent stop mutated the ledger or failed to persist STOPPED'
         }
+        Check 'RD-76' {
+            $f=New-StoppedPartialRecoveryFixture 'RD76';Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null
+            $state=Get-DispatcherState;$first=Get-ProviderWait $state.taskVersionId;$first.resolvedAt=(Get-Date).ToUniversalTime().ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $state.taskVersionId) $first
+            Enter-DispatcherProviderWait $state 'QUOTA_EXHAUSTED' 'codex'|Out-Null;$second=Get-ProviderWait $state.taskVersionId
+            $second.resolvedAt=(Get-Date).ToUniversalTime().ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $state.taskVersionId) $second
+            Enter-DispatcherProviderWait $state 'QUOTA_EXHAUSTED' 'codex'|Out-Null;$third=Get-ProviderWait $state.taskVersionId
+            Assert-True ([int]$second.pollCount -gt [int]$first.pollCount -and [int]$third.pollCount -gt [int]$second.pollCount) 'failed real probes reset the durable provider backoff'
+            Assert-True ([int]$third.nextBackoffSec -ge [int]$second.nextBackoffSec -and @($third.unavailableProviders) -contains 'codex') 'provider wait lost unavailable-provider evidence or reduced backoff'
+        }
+        Check 'RD-77' {
+            $f=New-StoppedPartialRecoveryFixture 'RD77';Recover-DispatcherStoppedImplementation -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -StopHash $f.stopHash|Out-Null
+            $state=Get-DispatcherState;$wait=Get-ProviderWait $state.taskVersionId;$wait.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $state.taskVersionId) $wait
+            $before=@($state.unavailableProviders);$script:ProviderHealthFaults=@{claude='PROVIDER_AUTH';codex=$null}
+            try{$resumed=Resume-DispatcherProviderWait $state}finally{$script:ProviderHealthFaults=$null}
+            $durable=Get-DispatcherState
+            Assert-True ($resumed -and $durable.status -eq 'RUNNING') 'healthy probe did not resume the preserved implementation'
+            Assert-True (@($before|Where-Object{@($durable.unavailableProviders) -notcontains $_}).Count -eq 0) 'PATH-level health probe erased durable provider failures before a successful turn'
+            Assert-True ([int]$durable.failovers -eq 1 -and [int]$durable.cycle -eq 1) 'provider probe changed failover or correction budgets'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

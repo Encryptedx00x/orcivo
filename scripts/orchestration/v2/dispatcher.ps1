@@ -574,6 +574,7 @@ function Enter-DispatcherProviderWait {
         taskId=$State.taskId; generation='dispatcher'; workspace=$State.workspace; candidateCommit=[string]$State.candidateHead; candidateTree=[string]$State.candidateTree
         attemptHistory=@($State.attempt); providerHistory=@($State.providerHistory); verificationState=[string]$State.verification.pass; reviewState=[string]$State.reviewVerdict
         checkpoint=@{ nextAction="resume $($State.stage)"; taskSourceHash=$State.taskSourceHash }; lastErrorClass=$FailureClass
+        unavailableProviders=@($State.unavailableProviders)
     } | Out-Null
     $State.status='WAITING_PROVIDER'; $State.lastErrorClass=$FailureClass
     Write-DispatcherState $State | Out-Null
@@ -611,7 +612,10 @@ function Resume-DispatcherProviderWait {
     if ($State.stage -eq 'IMPLEMENT' -and $State.provider -ne $selected) {
         $old=[string]$State.provider; $State.provider=$selected; memoryHandoff ([hashtable]$State.task) $old $selected ([string]$State.logicalProjectId) | Out-Null
     }
-    $State.status='RUNNING'; $State.unavailableProviders=@(); Write-DispatcherState $State | Out-Null
+    # Keep provider failures durable until a real structured invocation
+    # succeeds.  The PATH/version health probe only authorizes a bounded probe;
+    # it does not prove that quota/auth access has recovered.
+    $State.status='RUNNING'; Write-DispatcherState $State | Out-Null
     return $true
 }
 
@@ -1173,7 +1177,7 @@ function Invoke-RealDispatcherTask {
                     $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
                 }
                 if(Test-IsCanonicalProviderClass $ar.providerClass){
-                    $state.unavailableProviders=@($state.unavailableProviders)+$state.provider|Select-Object -Unique
+                    $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
                     $other=@($cfg.providerFailover.order|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
                     if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
                         $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
@@ -1190,6 +1194,7 @@ function Invoke-RealDispatcherTask {
                     if(-not $failureSummary){$failureSummary="provider invocation $($ar.invocationId) ended as $($ar.providerClass)/$($ar.resultClass)"}
                     $state.status=$ar.resultClass;$state.reason=$failureSummary;Write-DispatcherState $state|Out-Null;return $state
                 }
+                $state.unavailableProviders=@($state.unavailableProviders|Where-Object{$_ -ne $state.provider})
                 $state.implementationComplete=$true;$state.requiresCorrection=$false;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
             $candidate=Complete-DispatcherCandidateCommit -State $state
