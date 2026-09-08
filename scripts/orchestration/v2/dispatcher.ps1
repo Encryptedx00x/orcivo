@@ -232,10 +232,12 @@ function New-DispatcherContract {
 }
 
 function New-DispatcherWorkspace {
-    param([string]$RunId, [string]$BaseSha)
+    param([string]$RunId, [string]$BaseSha, [string]$WorkspaceId='')
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'orcivo-dispatcher'
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
-    $workspace = Join-Path $tempRoot $RunId
+    if(-not $WorkspaceId){$WorkspaceId=$RunId}
+    if($WorkspaceId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){throw 'dispatcher: invalid isolated workspace identity'}
+    $workspace = Join-Path $tempRoot $WorkspaceId
     if (Test-Path -LiteralPath $workspace) { throw "dispatcher: workspace already exists: $workspace" }
     Assert-SafeGitV2 @('clone','--no-hardlinks','--no-local',(Get-RepoRoot),$workspace)
     $clone = Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('-c','core.autocrlf=false','-c','core.safecrlf=false','clone','--no-hardlinks','--no-local','--quiet',(Get-RepoRoot),$workspace) -LogLabel 'dispatcher-clone'
@@ -246,7 +248,7 @@ function New-DispatcherWorkspace {
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('config','core.autocrlf','false') -LogLabel 'dispatcher-config-autocrlf') 'dispatcher candidate core.autocrlf config' | Out-Null
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('config','core.safecrlf','false') -LogLabel 'dispatcher-config-safecrlf') 'dispatcher candidate core.safecrlf config' | Out-Null
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('remote','remove','origin') -LogLabel 'dispatcher-remove-origin') 'dispatcher remove candidate origin' | Out-Null
-    $branch = "orch-v2/$RunId"
+    $branch = "orch-v2/$WorkspaceId"
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('checkout','-b',$branch,$BaseSha,'--quiet') -LogLabel 'dispatcher-checkout') 'dispatcher candidate branch creation' | Out-Null
     return @{ workspace=$workspace; branch=$branch }
 }
@@ -979,7 +981,7 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     # writer runs.  Accept only the exact, hash-chained recovery prefix in that
     # narrow window; any other post-FAILED transition fails closed.
     if($ledger.corrupt){return &$deny 'ledger is corrupt'}
-    $recoveryEvents=@($ledger.history|Where-Object{[string]$_.event -match '^incomplete-provider-result-(recovery-ready|recovered|gate-hold)$'})
+    $recoveryEvents=@($ledger.history|Where-Object{[string]$_.event -match '^incomplete-provider-result-(recovery-ready|recovered|gate-hold|abandoned|clean-dispatch|clean-running)$'})
     if([string]$ledger.state -ne 'FAILED'){
         if([string]$ledger.state -notin @('READY','DISPATCHED','RUNNING','WAITING_HUMAN') -or $recoveryEvents.Count -eq 0 -or $recoveryEvents.Count -gt 3){return &$deny 'ledger is not an intact FAILED state or exact recovery prefix'}
     }
@@ -1078,6 +1080,7 @@ function Recover-DispatcherIncompleteProviderResult {
     $existing=@($state.incompleteProviderResultRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.partialDiffHash -eq $PartialDiffHash -and [string]$_.partialFilesHash -eq $PartialFilesHash})
     if($existing.Count){return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;recovery=$existing[-1]}}
     $prior=@($state.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.runId -eq $RunId -and [int]$_.attempt -lt [int]$state.attempt}|Select-Object -Last 1)[0]
+    if(@($state.incompleteProviderResultAbandonmentHistory|Where-Object{$_}).Count -or @((Get-LedgerState $TaskVersionId).history|Where-Object{[string]$_.event -match '^incomplete-provider-result-(abandoned|clean-dispatch|clean-running)$'}).Count){throw 'incomplete provider recovery: invocation is under the public quarantine flow'}
     if($prior -and ([string]$prior.partialDiffHash -ne $PartialDiffHash -or [string]$prior.partialFilesHash -ne $PartialFilesHash) -and (-not $WorkspaceMutationSnapshotHash -or -not $WorkspaceMutationResultHash)){throw 'incomplete provider recovery: additional workspace changes require the public workspace-mutation recovery flow'}
     $proof=Test-DispatcherIncompleteProviderResultRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
     if(-not $proof.eligible){throw "incomplete provider recovery: $($proof.reason)"}
@@ -1107,6 +1110,102 @@ function Recover-DispatcherIncompleteProviderResult {
     if($script:IncompleteProviderResultRecoveryFaultAfterLedger){throw 'injected incomplete provider result recovery crash after ledger transition'}
     Write-DispatcherState $state|Out-Null
     return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;dispatcherStatus=$state.status;stage=$state.stage;approvalAuthority=[string]$authority.approval;recovery=$recovery}
+}
+
+# An exit-zero provider process without a terminal envelope is never candidate
+# provenance.  When an older invocation predates the launch/result manifests,
+# its dirty worktree can be retained as evidence but cannot be resumed as work.
+function Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId {
+    param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId)
+    if($RunId -notmatch '^run-[0-9A-Za-z-]{8,120}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'incomplete provider quarantine: invalid run or invocation identity'}
+    return ($RunId+'-quarantine-'+$InvocationId.Substring(4,12))
+}
+
+function Test-DispatcherIncompleteProviderResultAbandonment {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash,
+        [string]$TrustedHead='046969b76b5e4d5e046e8e9f62c724daf87a5aa0'
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    if($TrustedHead -notmatch '^[0-9a-f]{40}$'){return &$deny 'invalid trusted workspace head'}
+    # Reuse the strict evidence, scope, scanner, runner/lease, lineage, and
+    # owner-gate checks. It intentionally does not require a manifest because
+    # absence of both manifests is the condition this branch quarantines.
+    $base=Test-DispatcherIncompleteProviderResultRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+    if(-not $base.eligible){return &$deny $base.reason}
+    if([string]$base.expectedHead -ne $TrustedHead){return &$deny 'workspace is not at the declared trusted head'}
+    if(-not $base.authority.satisfied -or [string]$base.authority.approval -ne 'APPROVED'){return &$deny 'exact hash-bound Level C approval is not valid'}
+    $attempt=$base.attempt
+    if([string]$attempt.workspaceResultSnapshotHash -or (Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId) -or (Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId)){return &$deny 'invocation has recoverable workspace-manifest provenance; abandonment is not permitted'}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId)
+    $events=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)))
+    $abandoned=@($events|Where-Object{[string]$_.event -eq 'incomplete-provider-result-abandoned' -and [string]$_.runId -eq $RunId -and [string]$_.attemptId -eq $InvocationId})
+    if($abandoned.Count -gt 1){return &$deny 'duplicate incomplete-provider abandonment ledger evidence'}
+    if($abandoned.Count -eq 1){
+        if([string]$ledger.state -ne 'RUNNING' -or $events.Count -lt 3 -or [string]$events[-3].event -ne 'incomplete-provider-result-abandoned' -or [string]$events[-2].event -ne 'incomplete-provider-result-clean-dispatch' -or [string]$events[-1].event -ne 'incomplete-provider-result-clean-running'){return &$deny 'incomplete-provider abandonment ledger prefix is inconsistent'}
+        $event=$abandoned[0]
+        if([string]$event.evidence.evidenceHash -ne $EvidenceHash -or [string]$event.evidence.partialDiffHash -ne $PartialDiffHash -or [string]$event.evidence.partialFilesHash -ne $PartialFilesHash -or [string]$event.evidence.trustedHead -ne $TrustedHead){return &$deny 'incomplete-provider abandonment ledger evidence mismatch'}
+        $newWorkspace=[string]$event.evidence.cleanWorkspace
+        if(-not $newWorkspace -or -not(Test-Path -LiteralPath $newWorkspace) -or (Get-GitHeadV2 $newWorkspace) -ne $TrustedHead){return &$deny 'clean quarantine retry workspace is missing or drifted'}
+        $cleanStatus=Invoke-GitV2 -Dir $newWorkspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'incomplete-provider-quarantine-restart-status'
+        if($cleanStatus.exitCode -ne 0 -or $cleanStatus.stdout.Trim()){return &$deny 'clean quarantine retry workspace is dirty'}
+        return [ordered]@{eligible=$true;reason='verified incomplete invocation abandonment restart prefix';base=$base;ledger=$ledger;ledgerEvent=$event;cleanWorkspace=$newWorkspace;restart=$true}
+    }
+    if([string]$ledger.state -ne 'FAILED'){return &$deny 'ledger is not FAILED before incomplete-provider abandonment'}
+    return [ordered]@{eligible=$true;reason='unrecoverable incomplete provider result verified for quarantine';base=$base;ledger=$ledger;restart=$false}
+}
+
+function Quarantine-DispatcherIncompleteProviderResult {
+    param(
+        [Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,
+        [Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash,
+        [string]$TrustedHead='046969b76b5e4d5e046e8e9f62c724daf87a5aa0'
+    )
+    $state=Get-DispatcherState
+    if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'incomplete provider quarantine: durable task version mismatch'}
+    $existing=@($state.incompleteProviderResultAbandonmentHistory|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.partialDiffHash -eq $PartialDiffHash -and [string]$_.partialFilesHash -eq $PartialFilesHash})
+    if($existing.Count -eq 1){
+        $record=$existing[0]
+        if([string]$state.status -ne 'RUNNING' -or [string]$state.stage -ne 'IMPLEMENT' -or [string]$state.runId -ne $RunId -or [string]$state.workspace -ne [string]$record.cleanWorkspace -or -not(Test-Path -LiteralPath ([string]$record.cleanWorkspace)) -or (Get-GitHeadV2 ([string]$record.cleanWorkspace)) -ne $TrustedHead){throw 'incomplete provider quarantine: durable replay state is inconsistent'}
+        return [ordered]@{status='ALREADY_QUARANTINED';taskVersionId=$TaskVersionId;runId=$RunId;workspace=$state.workspace;quarantine=$record}
+    }
+    if($existing.Count -gt 1){throw 'incomplete provider quarantine: duplicate durable abandonment records'}
+    $proof=Test-DispatcherIncompleteProviderResultAbandonment -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -TrustedHead $TrustedHead
+    if(-not $proof.eligible){throw "incomplete provider quarantine: $($proof.reason)"}
+    # A route is selected before any retry workspace is created, so an
+    # unavailable provider cannot leave an unregistered clone behind.
+    $classification=Get-TaskClassification -Task $Task
+    $route=Resolve-Route -Classification ([hashtable]$classification) -HealthyProviders @(Get-HealthyProviders)
+    if(-not $route.ok){throw "incomplete provider quarantine: no eligible provider route: $($route.reason)"}
+    $workspaceId=Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId -RunId $RunId -InvocationId $InvocationId
+    $cleanWorkspace=[string]$proof.cleanWorkspace
+    if(-not $cleanWorkspace){
+        $ws=New-DispatcherWorkspace -RunId $RunId -WorkspaceId $workspaceId -BaseSha $TrustedHead
+        $cleanWorkspace=[string]$ws.workspace
+    }else{
+        $ws=[ordered]@{workspace=$cleanWorkspace;branch=('orch-v2/'+$workspaceId)}
+    }
+    $cleanStatus=Invoke-GitV2 -Dir $cleanWorkspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'incomplete-provider-quarantine-clean-status'
+    if($cleanStatus.exitCode -ne 0 -or $cleanStatus.stdout.Trim()){throw 'incomplete provider quarantine: newly created workspace has changes'}
+    if((Get-GitHeadV2 $cleanWorkspace) -ne $TrustedHead){throw 'incomplete provider quarantine: newly created workspace trusted head mismatch'}
+    $oldWorkspace=[string]$state.workspace
+    $evidence=[ordered]@{invocationId=$InvocationId;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;partialFiles=@($proof.base.partial.fileBindings);changedFiles=@($proof.base.partial.paths);trustedHead=$TrustedHead;oldWorkspace=$oldWorkspace;cleanWorkspace=$cleanWorkspace;quarantinePolicy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';approvalAuthority=[string]$proof.base.authority.approval;gateHash=[string]$proof.base.authority.gateHash}
+    $ledger=Get-LedgerState $TaskVersionId
+    if([string]$ledger.state -eq 'FAILED'){
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-abandoned' -ToState READY -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'incomplete provider result abandoned: pre/post workspace provenance is absent; old workspace retained only as evidence'|Out-Null
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-clean-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'dispatch a clean workspace from the trusted head; quarantined content is non-authoritative'|Out-Null
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-clean-running' -ToState RUNNING -RunId $RunId -Evidence $evidence -Note 'same task version and lineage resumed in a clean isolated workspace'|Out-Null
+    }
+    $record=[ordered]@{abandonedAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;attempt=[int]$proof.base.attempt.attempt;provider=[string]$proof.base.attempt.provider;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;partialFiles=@($proof.base.partial.fileBindings);changedFiles=@($proof.base.partial.paths);trustedHead=$TrustedHead;oldWorkspace=$oldWorkspace;cleanWorkspace=$cleanWorkspace;cleanBranch=[string]$ws.branch;quarantinePolicy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';approvalAuthority=[string]$proof.base.authority.approval;gateHash=[string]$proof.base.authority.gateHash;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);route=[ordered]@{provider=[string]$route.provider;model=[string]$route.model;profile=[string]$route.profile}}
+    if($script:IncompleteProviderResultQuarantineFaultAfterLedger){throw 'injected incomplete provider quarantine crash after ledger transition'}
+    $state.workspace=$cleanWorkspace;$state.branch=[string]$ws.branch;$state.baseSha=$TrustedHead;$state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.lastErrorClass='INCOMPLETE_PROVIDER_RESULT';$state.implementationComplete=$false;$state.provider=[string]$route.provider;$state.model=[string]$route.model;$state.profile=[string]$route.profile;$state.classification=$classification
+    $state.quarantineReference=[ordered]@{oldWorkspace=$oldWorkspace;invocationId=$InvocationId;policy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';contentLoaded=$false}
+    $state.incompleteProviderResultAbandonmentHistory=@($state.incompleteProviderResultAbandonmentHistory|Where-Object{$_})+@($record)
+    Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='QUARANTINED_AND_REDISPATCHED';taskVersionId=$TaskVersionId;runId=$RunId;workspace=$cleanWorkspace;oldWorkspace=$oldWorkspace;dispatcherStatus=$state.status;stage=$state.stage;quarantine=$record}
 }
 
 function Test-DispatcherStoppedImplementationRecovery {

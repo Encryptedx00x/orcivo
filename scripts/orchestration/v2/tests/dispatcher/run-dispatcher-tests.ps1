@@ -1,5 +1,5 @@
 <# RD-01..RD-20 dispatcher regression suite. -IncludeReal invokes both paid CLIs. #>
-param([switch]$IncludeReal)
+param([switch]$IncludeReal,[string[]]$Only=@())
 $ErrorActionPreference='Stop'
 $V2=[System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $Repo=[System.IO.Path]::GetFullPath((Join-Path $V2 '..\..\..'))
@@ -9,7 +9,7 @@ $results=New-Object System.Collections.Generic.List[object]
 
 function Ok([string]$Id,[string]$Detail){$results.Add([ordered]@{id=$Id;status='PASS';detail=$Detail})}
 function Fail([string]$Id,[string]$Detail){$results.Add([ordered]@{id=$Id;status='FAIL';detail=$Detail})}
-function Check([string]$Id,[scriptblock]$Body){try{& $Body;Ok $Id 'ok'}catch{Fail $Id $_.Exception.Message}}
+function Check([string]$Id,[scriptblock]$Body){if($Only.Count -and $Id -notin $Only){return};try{& $Body;Ok $Id 'ok'}catch{Fail $Id $_.Exception.Message}}
 function Assert-True($Value,[string]$Message){if(-not $Value){throw $Message}}
 function Write-Utf8([string]$Path,[string]$Text){$d=Split-Path -Parent $Path;if($d){New-Item -ItemType Directory -Force -Path $d|Out-Null};[IO.File]::WriteAllText($Path,$Text,(New-Object Text.UTF8Encoding($false)))}
 function Task([string]$Id,[string[]]$Deps=@(),[string]$Risk='B',[string]$Gate='none',[string]$Status='SCHEDULED'){
@@ -204,6 +204,29 @@ function New-IncompleteProviderWorkspaceMutationFixture([string]$Id){
     $state.providerHistory=@([ordered]@{invocationId=$invocation;role='IMPLEMENTER';provider='codex';model='gpt-5.6-terra';reasoningEffort='high';attempt=8;providerClass='INCOMPLETE_PROVIDER_RESULT';resultClass='AGENT_FAILURE';exitCode=0;promptArtifact=[IO.Path]::GetFullPath($promptPath);promptHash=(New-FileHash $promptPath);workspaceResultSnapshotHash=$resultSnapshot.resultHash;stdoutArtifact=$stdoutPath;stdoutHash=$hash;controlRecordHash=$hash})
     Write-DispatcherState $state|Out-Null;$partial=Get-DispatcherDirtyWorkspaceProof -Workspace $workspace -Task $f.task;$snapshot=(Get-DispatcherWorkspaceInvocationSnapshot -State $state -InvocationId $invocation)
     return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;snapshotHash=$snapshot.snapshotHash;resultHash=$resultSnapshot.resultHash;paths=@($partial.paths)}
+}
+
+function New-IncompleteProviderQuarantineFixture([string]$Id){
+    $f=New-IncompleteProviderResultFixture $Id
+    # These six files model an old, incomplete invocation predating manifest
+    # support.  They remain in the old workspace only; no launch/result manifest
+    # is created, so the public mutation-recovery flow must reject it.
+    Write-Utf8 (Join-Path $f.workspace 'work\partial.integration.spec.ts') "export const integration = true;`n"
+    Write-Utf8 (Join-Path $f.workspace 'work\partial.authorization.spec.ts') "export const authorization = true;`n"
+    Write-Utf8 (Join-Path $f.workspace 'work\test-setup.ts') "export const setup = () => undefined;`n"
+    Write-Utf8 (Join-Path $f.workspace 'work\test-setup.spec.ts') "import { setup } from './test-setup';`nvoid setup;`n"
+    $state=Get-DispatcherState
+    $state.reason="provider invocation $($f.invocation) ended as INCOMPLETE_PROVIDER_RESULT/AGENT_FAILURE"
+    $state.providerHistory[-1].providerClass='INCOMPLETE_PROVIDER_RESULT'
+    $state.workspaceInvocationSnapshots=@();$state.workspaceInvocationResultSnapshots=@()
+    Write-DispatcherState $state|Out-Null
+    # New-DispatcherWorkspace deliberately clones dispatcher authority instead
+    # of the untrusted old worktree. Make this fixture's trusted commit reachable
+    # from that disposable authority, just as the real trusted candidate is.
+    & git -C $Fixture fetch --quiet $f.workspace $state.implementationCommit
+    & git -C $Fixture branch ('trusted-'+$Id.ToLowerInvariant()) $state.implementationCommit
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace $f.workspace -Task $f.task
+    return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$f.invocation;stdoutPath=$f.stdoutPath;evidenceHash=$f.evidenceHash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;paths=@($partial.paths)}
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
@@ -829,6 +852,42 @@ try{
         Check 'RD-91' {
             $f=New-IncompleteProviderWorkspaceMutationFixture 'RD91';$restart=Get-DispatcherState;$p=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $restart -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
             Assert-True ($p.eligible -and [string]$restart.workspaceInvocationSnapshots[0].snapshotHash -eq $f.snapshotHash) 'workspace mutation manifest did not survive dispatcher restart'
+        }
+        Check 'RD-92' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD92';$trusted=$f.state.implementationCommit;$before=@(git -C $f.workspace status --porcelain=v1 --untracked-files=all);$proof=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            $first=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted;$state=Get-DispatcherState;$after=@(git -C $f.workspace status --porcelain=v1 --untracked-files=all);$clean=@(git -C $first.workspace status --porcelain=v1 --untracked-files=all);$seq=(Get-LedgerState $f.contract.taskVersionId).seq
+            $again=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            Assert-True ($proof.eligible -and @($f.paths).Count -eq 6 -and $first.status -eq 'QUARANTINED_AND_REDISPATCHED' -and $again.status -eq 'ALREADY_QUARANTINED' -and ((Get-LedgerState $f.contract.taskVersionId).seq -eq $seq)) 'unattributed six-file incomplete result was not quarantined idempotently'
+            Assert-True ((($before -join "`n") -eq ($after -join "`n")) -and $state.workspace -eq $first.workspace -and $state.workspace -ne $f.workspace -and $clean.Count -eq 0 -and [int]$state.failovers -eq 1 -and [int]$state.cycle -eq 1 -and $state.quarantineReference.contentLoaded -eq $false -and $state.quarantineReference.policy -match 'NON_AUTHORITATIVE') 'quarantine changed old evidence, imported it, or failed to create a clean retry workspace'
+            Remove-DispatcherWorkspace -Workspace $first.workspace
+        }
+        Check 'RD-93' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD93';$trusted=$f.state.implementationCommit;$script:IncompleteProviderResultQuarantineFaultAfterLedger=$true
+            try{try{Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted|Out-Null}catch{}}finally{$script:IncompleteProviderResultQuarantineFaultAfterLedger=$null}
+            $restart=Get-DispatcherState;$resumed=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted;$durable=Get-DispatcherState
+            Assert-True ($restart.status -eq 'AGENT_FAILURE' -and $resumed.status -eq 'QUARANTINED_AND_REDISPATCHED' -and $durable.status -eq 'RUNNING' -and $durable.workspace -ne $f.workspace -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'RUNNING') 'quarantine was not restart-safe after its durable ledger prefix'
+            Remove-DispatcherWorkspace -Workspace $durable.workspace
+        }
+        Check 'RD-94' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD94';$bad=@();$n=0;foreach($path in @($f.paths)){$n++;$g=New-IncompleteProviderQuarantineFixture ('RD94-'+$n);Add-Content -LiteralPath (Join-Path $g.workspace $path) -Value 'tampered' -Encoding utf8;$p=Test-DispatcherIncompleteProviderResultAbandonment -State $g.state -Task $g.task -TaskSource $g.source -RunId $g.runId -InvocationId $g.invocation -EvidenceHash $g.evidenceHash -PartialDiffHash $g.partialDiffHash -PartialFilesHash $g.partialFilesHash -TrustedHead $g.state.implementationCommit;if($p.eligible){$bad+=,$path}}
+            Assert-True ($bad.Count -eq 0) 'quarantine accepted tampering of one of the six retained evidence files'
+        }
+        Check 'RD-95' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD95';$trusted=$f.state.implementationCommit;$script:DispatcherRecoveryRunnerProbe=$true;try{$runner=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted}finally{$script:DispatcherRecoveryRunnerProbe=$null}
+            $lease=New-Lease -Namespace scheduler -Key main -TaskVersionId $f.contract.taskVersionId;try{$leased=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted}finally{if($lease.ok){Remove-Lease -Namespace scheduler -Key main -LeaseId $lease.leaseId|Out-Null}}
+            Write-Utf8 (Join-Path $f.workspace 'outside.ts') 'export const outside = true;' ;$scope=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            Assert-True (-not $runner.eligible -and -not $leased.eligible -and -not $scope.eligible) 'quarantine accepted an active runner/lease or out-of-scope evidence file'
+        }
+        Check 'RD-96' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD96';$trusted=$f.state.implementationCommit;$gate=Get-HumanGatePath $f.contract.taskVersionId $f.task.ownerGate;Remove-Item -LiteralPath $gate -Force;$approval=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            $wrong=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId 'run-wrong-version' -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            Assert-True (-not $approval.eligible -and -not $wrong.eligible) 'quarantine accepted missing approval or a divergent run/version binding'
+        }
+        Check 'RD-97' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD97';$trusted=$f.state.implementationCommit;$id=Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId -RunId $f.runId -InvocationId $f.invocation;$target=Join-Path ([System.IO.Path]::GetTempPath()) ('orcivo-dispatcher\'+$id);$blocked=$false
+            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex='PROVIDER_UNAVAILABLE';deepseek='PROVIDER_UNAVAILABLE'}
+            try{try{Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted|Out-Null}catch{$blocked=$_.Exception.Message -match 'no eligible provider route'}}finally{$script:ProviderHealthFaults=$null}
+            Assert-True ($blocked -and -not(Test-Path -LiteralPath $target)) 'quarantine created an unregistered retry workspace before provider routing was eligible'
         }
     } finally {Pop-Location}
 

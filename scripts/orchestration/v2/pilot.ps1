@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -454,6 +454,15 @@ switch ($Command) {
         $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
         if(-not $task){throw "recover-incomplete-provider-result-with-mutation: task '$TaskId' not found"}
         $result=Recover-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -WorkspaceMutationSnapshotHash $WorkspaceMutationSnapshotHash -WorkspaceMutationResultHash $WorkspaceMutationResultHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'quarantine-incomplete-provider-result' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PartialDiffHash -or -not $PartialFilesHash){throw 'quarantine-incomplete-provider-result requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, -PartialDiffHash, and -PartialFilesHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "quarantine-incomplete-provider-result: task '$TaskId' not found"}
+        $result=Quarantine-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
         $result|ConvertTo-Json -Depth 12
     }
     { $_ -in @('run','run-once','start') } {
