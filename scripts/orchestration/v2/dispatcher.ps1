@@ -232,15 +232,17 @@ function New-DispatcherContract {
 }
 
 function New-DispatcherWorkspace {
-    param([string]$RunId, [string]$BaseSha, [string]$WorkspaceId='')
+    param([string]$RunId, [string]$BaseSha, [string]$WorkspaceId='', [string]$SourceRepo='')
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'orcivo-dispatcher'
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     if(-not $WorkspaceId){$WorkspaceId=$RunId}
     if($WorkspaceId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){throw 'dispatcher: invalid isolated workspace identity'}
     $workspace = Join-Path $tempRoot $WorkspaceId
     if (Test-Path -LiteralPath $workspace) { throw "dispatcher: workspace already exists: $workspace" }
-    Assert-SafeGitV2 @('clone','--no-hardlinks','--no-local',(Get-RepoRoot),$workspace)
-    $clone = Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('-c','core.autocrlf=false','-c','core.safecrlf=false','clone','--no-hardlinks','--no-local','--quiet',(Get-RepoRoot),$workspace) -LogLabel 'dispatcher-clone'
+    $source=$(if($SourceRepo){[IO.Path]::GetFullPath($SourceRepo)}else{Get-RepoRoot})
+    if(-not(Test-Path -LiteralPath $source) -or (Get-GitHeadV2 $source) -ne $BaseSha){throw 'dispatcher: isolated workspace source does not expose the trusted base commit'}
+    Assert-SafeGitV2 @('clone','--no-hardlinks','--no-local',$source,$workspace)
+    $clone = Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('-c','core.autocrlf=false','-c','core.safecrlf=false','clone','--no-hardlinks','--no-local','--quiet',$source,$workspace) -LogLabel 'dispatcher-clone'
     Assert-GitSucceededV2 $clone 'dispatcher isolated clone' | Out-Null
     # Candidate bytes are the reviewed authority.  Disable platform newline
     # conversion in this disposable clone so staging cannot mutate them or
@@ -1122,7 +1124,7 @@ function Recover-DispatcherIncompleteProviderResult {
 function Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId {
     param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId)
     if($RunId -notmatch '^run-[0-9A-Za-z-]{8,120}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'incomplete provider quarantine: invalid run or invocation identity'}
-    return ($RunId+'-quarantine-'+$InvocationId.Substring(4,12))
+    return ($RunId+'-quarantine-'+$InvocationId.Substring(4,12)+'-retry2')
 }
 
 function Test-DispatcherIncompleteProviderResultAbandonment {
@@ -1187,7 +1189,10 @@ function Quarantine-DispatcherIncompleteProviderResult {
     $workspaceId=Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId -RunId $RunId -InvocationId $InvocationId
     $cleanWorkspace=[string]$proof.cleanWorkspace
     if(-not $cleanWorkspace){
-        $ws=New-DispatcherWorkspace -RunId $RunId -WorkspaceId $workspaceId -BaseSha $TrustedHead
+        # The historical workspace is only an object source. Its worktree bytes
+        # are never copied into the retry: clone then exact checkout gives the
+        # clean trusted commit, while retaining the old directory as evidence.
+        $ws=New-DispatcherWorkspace -RunId $RunId -WorkspaceId $workspaceId -BaseSha $TrustedHead -SourceRepo ([string]$state.workspace)
         $cleanWorkspace=[string]$ws.workspace
     }else{
         $ws=[ordered]@{workspace=$cleanWorkspace;branch=('orch-v2/'+$workspaceId)}
