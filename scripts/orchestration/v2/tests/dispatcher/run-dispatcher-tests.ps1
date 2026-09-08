@@ -889,6 +889,12 @@ try{
             try{try{Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted|Out-Null}catch{$blocked=$_.Exception.Message -match 'no eligible provider route'}}finally{$script:ProviderHealthFaults=$null}
             Assert-True ($blocked -and -not(Test-Path -LiteralPath $target)) 'quarantine created an unregistered retry workspace before provider routing was eligible'
         }
+        Check 'RD-98' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD98';Add-Content -LiteralPath $f.stdoutPath -Value 'legacy non-json capture fragment' -Encoding utf8;$hash=New-FileHash $f.stdoutPath;$f.state.providerHistory[-1].stdoutHash=$hash;$f.state.providerHistory[-1].controlRecordHash=$hash
+            $generic=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            $quarantine=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $f.state.implementationCommit
+            Assert-True (-not $generic.eligible -and $quarantine.eligible) ("legacy malformed incomplete evidence was accepted for work recovery or rejected for evidence-only quarantine: generic=$($generic.reason); quarantine=$($quarantine.reason)")
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

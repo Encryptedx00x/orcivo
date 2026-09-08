@@ -966,7 +966,8 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
         [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
-        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash,
+        [switch]$AllowUnparseableIncompleteEvidence
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
     foreach($hash in @($EvidenceHash,$PartialDiffHash,$PartialFilesHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid recovery hash'}}
@@ -1001,6 +1002,7 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
     if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash -or [string]$attempt.stdoutHash -ne $EvidenceHash -or [string]$attempt.controlRecordHash -ne $EvidenceHash){return &$deny 'invocation evidence hash mismatch'}
     $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$events=@();$opaque=@()
+    $unrecognizedMalformed=$false
     foreach($line in @($raw -split "`r?`n"|Where-Object{$_})){
         try{$events+=,($line|ConvertFrom-Json -ErrorAction Stop)}catch{
             # Captured stdout is redacted before it becomes evidence.  A known
@@ -1009,7 +1011,7 @@ function Test-DispatcherIncompleteProviderResultRecovery {
             # every other malformed line remains a hard failure.
             $safeOversize=$line -match '^\[REDACTED: over-long line withheld \([0-9]+ chars > 16384\)\]$'
             $safeRedactedStart=$line -match '^\{"type":"item\.started","item":\{' -and $line -match '\[REDACTED' -and $line -notmatch '(?i)turn\.completed|response\.completed|resultClass|structured_output|"error"|turn\.failed'
-            if(-not $safeOversize -and -not $safeRedactedStart){return &$deny 'invocation evidence contains unrecognized malformed output'}
+            if(-not $safeOversize -and -not $safeRedactedStart){$unrecognizedMalformed=$true;break}
             $opaque+=,[ordered]@{kind=$(if($safeOversize){'REDACTED_OVERSIZE'}else{'REDACTED_ITEM_STARTED'})}
         }
     }
@@ -1018,7 +1020,9 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     $parsed=ConvertFrom-RealCodexOutput $raw
     $last=$events[-1];$lastIsNonterminal=[string]$last.type -eq 'item.started' -and [string]$last.item.status -eq 'in_progress'
     if($opaque.Count -and [string]$opaque[-1].kind -eq 'REDACTED_ITEM_STARTED'){$lastIsNonterminal=$true}
-    if($turnStarted -ne 1 -or $turnCompleted -ne 0 -or $hasStructuredError -or $parsed.structured -or $parsed.control -or -not $lastIsNonterminal){return &$deny 'invocation is not a provably incomplete provider result'}
+    $provablyIncomplete=(-not $unrecognizedMalformed -and $turnStarted -eq 1 -and $turnCompleted -eq 0 -and -not $hasStructuredError -and -not $parsed.structured -and -not $parsed.control -and $lastIsNonterminal)
+    $safeUnparseable=($AllowUnparseableIncompleteEvidence -and $unrecognizedMalformed -and [string]$attempt.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [string]$attempt.resultClass -eq 'AGENT_FAILURE' -and $raw -notmatch '(?i)turn\.completed|response\.completed|turn\.failed|"error"|resultClass|structured_output')
+    if(-not $provablyIncomplete -and -not $safeUnparseable){return &$deny $(if($unrecognizedMalformed){'invocation evidence contains unrecognized malformed output'}else{'invocation is not a provably incomplete provider result'})}
     $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
     if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or artifact scan is dirty'}
     $wait=Get-ProviderWait ([string]$State.taskVersionId)
@@ -1133,7 +1137,7 @@ function Test-DispatcherIncompleteProviderResultAbandonment {
     # Reuse the strict evidence, scope, scanner, runner/lease, lineage, and
     # owner-gate checks. It intentionally does not require a manifest because
     # absence of both manifests is the condition this branch quarantines.
-    $base=Test-DispatcherIncompleteProviderResultRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+    $base=Test-DispatcherIncompleteProviderResultRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -AllowUnparseableIncompleteEvidence
     if(-not $base.eligible){return &$deny $base.reason}
     if([string]$base.expectedHead -ne $TrustedHead){return &$deny 'workspace is not at the declared trusted head'}
     if(-not $base.authority.satisfied -or [string]$base.authority.approval -ne 'APPROVED'){return &$deny 'exact hash-bound Level C approval is not valid'}
