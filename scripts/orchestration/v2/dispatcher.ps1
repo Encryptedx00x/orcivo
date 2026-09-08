@@ -934,12 +934,25 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
     if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
     if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash -or [string]$attempt.stdoutHash -ne $EvidenceHash -or [string]$attempt.controlRecordHash -ne $EvidenceHash){return &$deny 'invocation evidence hash mismatch'}
-    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$events=@();foreach($line in @($raw -split "`r?`n"|Where-Object{$_})){try{$events+=,($line|ConvertFrom-Json -ErrorAction Stop)}catch{return &$deny 'invocation evidence contains invalid JSONL'}}
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$events=@();$opaque=@()
+    foreach($line in @($raw -split "`r?`n"|Where-Object{$_})){
+        try{$events+=,($line|ConvertFrom-Json -ErrorAction Stop)}catch{
+            # Captured stdout is redacted before it becomes evidence.  A known
+            # oversized-line placeholder, or a redacted non-terminal
+            # item.started prefix, cannot be upgraded into a terminal result;
+            # every other malformed line remains a hard failure.
+            $safeOversize=$line -match '^\[REDACTED: over-long line withheld \([0-9]+ chars > 16384\)\]$'
+            $safeRedactedStart=$line -match '^\{"type":"item\.started","item":\{' -and $line -match '\[REDACTED' -and $line -notmatch '(?i)turn\.completed|response\.completed|resultClass|structured_output|"error"|turn\.failed'
+            if(-not $safeOversize -and -not $safeRedactedStart){return &$deny 'invocation evidence contains unrecognized malformed output'}
+            $opaque+=,[ordered]@{kind=$(if($safeOversize){'REDACTED_OVERSIZE'}else{'REDACTED_ITEM_STARTED'})}
+        }
+    }
     $turnStarted=@($events|Where-Object{[string]$_.type -eq 'turn.started'}).Count;$turnCompleted=@($events|Where-Object{[string]$_.type -eq 'turn.completed'}).Count
     $hasStructuredError=@($events|Where-Object{[string]$_.type -match '(?i)error|failed' -or $_.error}).Count -gt 0
     $parsed=ConvertFrom-RealCodexOutput $raw
-    $last=$events[-1]
-    if($turnStarted -ne 1 -or $turnCompleted -ne 0 -or $hasStructuredError -or $parsed.structured -or $parsed.control -or [string]$last.type -ne 'item.started' -or [string]$last.item.status -ne 'in_progress'){return &$deny 'invocation is not a provably incomplete provider result'}
+    $last=$events[-1];$lastIsNonterminal=[string]$last.type -eq 'item.started' -and [string]$last.item.status -eq 'in_progress'
+    if($opaque.Count -and [string]$opaque[-1].kind -eq 'REDACTED_ITEM_STARTED'){$lastIsNonterminal=$true}
+    if($turnStarted -ne 1 -or $turnCompleted -ne 0 -or $hasStructuredError -or $parsed.structured -or $parsed.control -or -not $lastIsNonterminal){return &$deny 'invocation is not a provably incomplete provider result'}
     $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
     if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or artifact scan is dirty'}
     $wait=Get-ProviderWait ([string]$State.taskVersionId)

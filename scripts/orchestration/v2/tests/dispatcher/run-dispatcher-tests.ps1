@@ -775,6 +775,16 @@ try{
             $lease=New-Lease -Namespace scheduler -Key main -TaskVersionId $f.contract.taskVersionId;try{$leased=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash}finally{if($lease.ok){Remove-Lease -Namespace scheduler -Key main -LeaseId $lease.leaseId|Out-Null}}
             Assert-True (-not $runner.eligible -and -not $leased.eligible) 'incomplete-result recovery accepted an active runner or lease'
         }
+        Check 'RD-85' {
+            $f=New-IncompleteProviderResultFixture 'RD85';Add-Content -LiteralPath $f.stdoutPath -Value '{"type":"item.started","item":{"id":"redacted","command":"[REDACTED]"' -Encoding utf8;$hash=New-FileHash $f.stdoutPath;$f.state.providerHistory[-1].stdoutHash=$hash;$f.state.providerHistory[-1].controlRecordHash=$hash
+            $p=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            Assert-True ($p.eligible) 'redacted non-terminal Codex output was not recognized as incomplete safely'
+        }
+        Check 'RD-86' {
+            $f=New-IncompleteProviderResultFixture 'RD86';Add-Content -LiteralPath $f.stdoutPath -Value 'not a structured provider event' -Encoding utf8;$hash=New-FileHash $f.stdoutPath;$f.state.providerHistory[-1].stdoutHash=$hash;$f.state.providerHistory[-1].controlRecordHash=$hash
+            $p=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'malformed') 'opaque malformed provider output was accepted'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
