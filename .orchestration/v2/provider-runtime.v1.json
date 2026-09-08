@@ -28,5 +28,10 @@
       "source": null,
       "reason": "No current DeepSeek V4 price schedule was supplied and network lookup is prohibited for this maintenance. Paid invocation is fail-closed until a verifiable schedule is provided."
     }
+  },
+  "codex": {
+    "profiles": {
+      "CRITICAL": { "model": "gpt-5.6-terra", "reasoning": "high" }
+    }
   }
 }

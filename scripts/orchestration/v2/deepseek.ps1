@@ -49,6 +49,13 @@ function Get-DeepSeekModelPlan {
     return [ordered]@{ok=$true;model=[string]$plan.model;reasoning=[string]$plan.reasoning}
 }
 
+function Get-OrcivoCodexModelPlan {
+    param([Parameter(Mandatory)][ValidateSet('CRITICAL')][string]$Profile)
+    $cfg=Get-DeepSeekRuntimeConfig;$plan=$cfg.codex.profiles.$Profile
+    if(-not $plan -or [string]$plan.model -ne 'gpt-5.6-terra' -or [string]$plan.reasoning -ne 'high'){return [ordered]@{ok=$false;reason="Codex profile '$Profile' is not an approved Terra/high plan"}}
+    return [ordered]@{ok=$true;model=[string]$plan.model;reasoning=[string]$plan.reasoning}
+}
+
 function Get-DeepSeekBudgetPath {
     param([datetime]$At=(Get-Date).ToUniversalTime())
     return (Join-Path $script:DeepSeekBudgetDir ('deepseek-'+$At.ToString('yyyy-MM')+'.json'))

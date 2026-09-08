@@ -162,7 +162,10 @@ function Resolve-Provider {
     if (-not $cap.installed) { return [ordered]@{ ok = $false; provider = $Provider; reason = "CLI '$($cap.bin)' not installed" } }
 
     $intent = $cfg.router.profileIntent.$Profile
-    $ra = _ReasoningArgs -Cap $cap -Intent ([string]$intent.reasoning)
+    $codexPlan=$(if($Provider -eq 'codex' -and $Profile -eq 'CRITICAL'){Get-OrcivoCodexModelPlan -Profile CRITICAL}else{$null})
+    if($codexPlan -and -not $codexPlan.ok){return [ordered]@{ok=$false;provider='codex';reason=$codexPlan.reason}}
+    if($codexPlan){$ModelOverride=$codexPlan.model;$ra=[ordered]@{args=@('-c',('model_reasoning_effort="'+$codexPlan.reasoning+'"'));limitations=@()};$intent=[ordered]@{reasoning=$codexPlan.reasoning}}
+    else{$ra = _ReasoningArgs -Cap $cap -Intent ([string]$intent.reasoning)}
 
     $invocationArgs = @()
     if ($cap.headlessFlag) { $invocationArgs += $cap.headlessFlag }
