@@ -76,7 +76,7 @@ function ConvertFrom-CodexEvents {
 # The classifier. $Control is the normalized control-channel shape (or $null).
 function Get-FailureClassV2 {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
         [int]$ExitCode = 0,
         $Control = $null,
         [string]$AppStdout = ''          # UNTRUSTED - used ONLY for the explicit HUMAN_GATE sentinel
@@ -85,11 +85,11 @@ function Get-FailureClassV2 {
     if ($AppStdout -match '(?im)^\s*HUMAN_GATE\s*:') { return 'HUMAN_GATE' }
     if ($AppStdout -match '(?im)^\s*POLICY_BLOCK\s*:') { return 'POLICY_BLOCK' }
 
-    if ($ExitCode -eq 124) { return 'TIMEOUT' }
+    if ($ExitCode -eq 124) { return $(if($Provider -eq 'deepseek'){'PROVIDER_TRANSIENT'}else{'TIMEOUT'}) }
 
     if ($null -eq $Control) {
         # no structured signal -> we cannot attribute this to the provider
-        if ($ExitCode -eq 0) { return 'OK' }
+        if ($ExitCode -eq 0) { return 'INCOMPLETE_PROVIDER_RESULT' }
         return 'UNKNOWN'
     }
 
@@ -104,9 +104,9 @@ function Get-FailureClassV2 {
     if ([int]$Control.permissionDenialCount -gt 0) { return 'TOOL_ERROR' }
     if ($Provider -eq 'claude' -and (Test-ClaudeSubscriptionAccessDisabled $Control)) { return 'PROVIDER_AUTH' }
     if ($t -match 'auth|unauthorized|invalid[_ ]?api[_ ]?key|login|token[_ ]?expired|401' -or $s -eq 401) { return 'PROVIDER_AUTH' }
-    if ($t -match 'insufficient_quota|credit balance|usage limit|quota' -and $t -notmatch 'test|assert') { return 'PROVIDER_QUOTA' }
+    if ($s -eq 402 -or $t -match 'insufficient_quota|insufficient balance|credit balance|usage limit|quota' -and $t -notmatch 'test|assert') { return 'PROVIDER_QUOTA' }
     if ($t -match 'rate[_ ]?limit|too many requests|429' -or $s -eq 429) { return 'PROVIDER_RATE_LIMIT' }
-    if ($t -match 'overloaded|unavailable|upstream|gateway|stream (disconnected|error)|5\d\d' -or $s -in @(500,502,503,504)) { return 'PROVIDER_TRANSIENT' }
+    if ($t -match 'overloaded|unavailable|upstream|gateway|stream (disconnected|error)|network|connection|dns|socket|timeout|5\d\d' -or $s -in @(500,502,503,504)) { return 'PROVIDER_TRANSIENT' }
     if ($t -match 'tool[_ ]?error|permission denied|sandbox') { return 'TOOL_ERROR' }
 
     # the model/runtime reported an error that is NOT a provider transport issue

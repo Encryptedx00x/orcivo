@@ -154,6 +154,35 @@ function New-StoppedInflightRecoveryFixture([string]$Id){
     return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;stopPath=$stopPath;stopHash=(New-FileHash $stopPath)}
 }
 
+function New-IncompleteProviderResultFixture([string]$Id){
+    $workspace=Join-Path $Root ("incomplete-"+$Id);& git init -b main --quiet $workspace
+    Write-Utf8 (Join-Path $workspace 'README.md') "base`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+    $base=(& git -C $workspace rev-parse HEAD).Trim()
+    $task=Task ("INCOMPLETE-"+$Id) @() 'C' 'level-c-persistent-migration'
+    $sourcePath=Join-Path $Fixture ("incomplete-"+$Id+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+    $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0];$contract=New-DispatcherContract -Task $task -TaskSource $source
+    New-OwnerGateApproval -TaskId $task.taskId -TaskVersionId $contract.taskVersionId -GateId $task.ownerGate -ApprovalScope 'fixture-local incomplete result recovery only' -ApprovedBy owner -ApprovalSource 'dispatcher incomplete result regression'|Out-Null
+    $runId='run-incomplete-'+$Id.ToLowerInvariant();$logs=Join-Path (Get-V2Dir) "runs\$runId\logs";$invocation='att-'+[guid]::NewGuid().ToString('N');$suffix=$invocation.Substring(4,8)
+    $stdoutPath=Join-Path $logs ('implementer-007-codex-{0}.stdout.log' -f $suffix)
+    $thread=[ordered]@{type='thread.started';thread_id='fixture'}|ConvertTo-Json -Compress
+    $turn=[ordered]@{type='turn.started'}|ConvertTo-Json -Compress
+    $inflight=[ordered]@{type='item.started';item=[ordered]@{id='item_1';type='command_execution';status='in_progress'}}|ConvertTo-Json -Compress
+    Write-Utf8 $stdoutPath "$thread`n$turn`n$inflight`n"
+    $partialDir=Join-Path $workspace 'work';New-Item -ItemType Directory -Force -Path $partialDir|Out-Null
+    Write-Utf8 (Join-Path $partialDir 'partial.ts') "export const partial = 'preserved';`n"
+    Write-Utf8 (Join-Path $partialDir 'partial.spec.ts') "export const partialTest = true;`n"
+    Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event execute-failed -ToState FAILED -RunId $runId -AttemptId $invocation -Note AGENT_FAILURE|Out-Null
+    $hash=New-FileHash $stdoutPath
+    $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$runId;workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;status='AGENT_FAILURE';stage='IMPLEMENT';reason="provider invocation $invocation ended as NONE/AGENT_FAILURE";cycle=1;attempt=7;implementationComplete=$false;implementationCommit=$base;recoveredCandidateCommit=$base;candidateHead='';candidateTree='';diffHash='';provider='codex';profile='CRITICAL';failovers=1;rollovers=0;unavailableProviders=@();providerHistory=@([ordered]@{invocationId=$invocation;role='IMPLEMENTER';provider='codex';attempt=7;providerClass='NONE';resultClass='AGENT_FAILURE';exitCode=0;stdoutArtifact=$stdoutPath;stdoutHash=$hash;controlRecordHash=$hash});importantArtifacts=@($stdoutPath);findings=@();decisions=@();reviewVerdict='';logicalProjectId='fixture';integration=$null;gate=[ordered]@{required=$true;approval='STALE';reason=$task.ownerGate;taskVersionId=$contract.taskVersionId}}
+    Write-DispatcherState $state|Out-Null
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace $workspace -Task $task
+    return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;runId=$runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -706,6 +735,45 @@ try{
             Assert-True ($resumed -and $durable.status -eq 'RUNNING') 'healthy probe did not resume the preserved implementation'
             Assert-True (@($before|Where-Object{@($durable.unavailableProviders) -notcontains $_}).Count -eq 0) 'PATH-level health probe erased durable provider failures before a successful turn'
             Assert-True ([int]$durable.failovers -eq 1 -and [int]$durable.cycle -eq 1) 'provider probe changed failover or correction budgets'
+        }
+        Check 'RD-78' {
+            $f=New-IncompleteProviderResultFixture 'RD78';$authority=Get-DispatcherOwnerGateAuthority -State $f.state -Task $f.task -TaskSource $f.source
+            $first=Reconcile-DispatcherOwnerGateProjection -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId;$second=Reconcile-DispatcherOwnerGateProjection -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId;$durable=Get-DispatcherState
+            Assert-True ($authority.satisfied -and $authority.approval -eq 'APPROVED' -and $first.status -eq 'RECONCILED' -and $second.status -eq 'ALREADY_RECONCILED' -and $durable.gate.approval -eq 'APPROVED') 'hash-bound approval did not reconcile a stale snapshot idempotently'
+        }
+        Check 'RD-79' {
+            $f=New-IncompleteProviderResultFixture 'RD79';$p=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            $badHash=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash ('sha256:'+('0'*64)) -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            $badDiff=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash ('sha256:'+('0'*64)) -PartialFilesHash $f.partialFilesHash
+            Assert-True ($p.eligible -and -not $badHash.eligible -and -not $badDiff.eligible) 'incomplete exit-zero result or recovery hash bindings were accepted incorrectly'
+        }
+        Check 'RD-80' {
+            $f=New-IncompleteProviderResultFixture 'RD80';$run=$f.runId;$workspace=$f.workspace;$version=$f.contract.taskVersionId;$before=@(git -C $workspace status --porcelain=v1 --untracked-files=all)
+            $first=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash;$seq=(Get-LedgerState $version).seq
+            $second=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $version -RunId $run -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash;$durable=Get-DispatcherState;$after=@(git -C $workspace status --porcelain=v1 --untracked-files=all)
+            Assert-True ($first.status -eq 'RECOVERED' -and $first.dispatcherStatus -eq 'RUNNING' -and $second.status -eq 'ALREADY_RECOVERED' -and (Get-LedgerState $version).seq -eq $seq) 'approved incomplete-result recovery was not idempotent'
+            Assert-True ($durable.runId -eq $run -and $durable.workspace -eq $workspace -and [int]$durable.failovers -eq 1 -and [int]$durable.cycle -eq 1 -and (($before -join "`n") -eq ($after -join "`n"))) 'incomplete-result recovery changed preserved lineage or workspace'
+        }
+        Check 'RD-81' {
+            $f=New-IncompleteProviderResultFixture 'RD81';$f.state.gate.approval='APPROVED';$gate=Get-HumanGatePath $f.contract.taskVersionId $f.task.ownerGate;Remove-Item -LiteralPath $gate -Force
+            $r=Reconcile-DispatcherOwnerGateProjection -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId;$durable=Get-DispatcherState
+            Assert-True ($r.authority.approval -ne 'APPROVED' -and $durable.gate.approval -ne 'APPROVED') 'snapshot alone granted authority after hash-bound approval removal'
+        }
+        Check 'RD-82' {
+            $f=New-IncompleteProviderResultFixture 'RD82';$script:IncompleteProviderResultRecoveryFaultAfterLedger=$true
+            try{try{Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash|Out-Null}catch{}}finally{$script:IncompleteProviderResultRecoveryFaultAfterLedger=$null}
+            $first=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash;$second=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
+            Assert-True ($first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'RUNNING') 'incomplete-result recovery was not crash-safe across restart'
+        }
+        Check 'RD-83' {
+            $f=New-IncompleteProviderResultFixture 'RD83';$gate=Get-HumanGatePath $f.contract.taskVersionId $f.task.ownerGate;Remove-Item -LiteralPath $gate -Force
+            $r=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash;$durable=Get-DispatcherState
+            Assert-True ($r.dispatcherStatus -eq 'WAITING_HUMAN' -and $durable.stage -eq 'GATE' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'WAITING_HUMAN') 'missing hash-bound approval did not hold incomplete recovery at Level C gate'
+        }
+        Check 'RD-84' {
+            $f=New-IncompleteProviderResultFixture 'RD84';$script:DispatcherRecoveryRunnerProbe=$true;try{$runner=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash}finally{$script:DispatcherRecoveryRunnerProbe=$null}
+            $lease=New-Lease -Namespace scheduler -Key main -TaskVersionId $f.contract.taskVersionId;try{$leased=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash}finally{if($lease.ok){Remove-Lease -Namespace scheduler -Key main -LeaseId $lease.leaseId|Out-Null}}
+            Assert-True (-not $runner.eligible -and -not $leased.eligible) 'incomplete-result recovery accepted an active runner or lease'
         }
     } finally {Pop-Location}
 

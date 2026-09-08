@@ -25,6 +25,7 @@ there is no environment variable for it.
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'ledger.ps1')
 . (Join-Path $PSScriptRoot 'classify.ps1')
+. (Join-Path $PSScriptRoot 'deepseek.ps1')
 
 $script:ProviderHealthFaults = $null   # $null in every real path
 function _phFault { param([string]$Provider) return ($script:ProviderHealthFaults -and $script:ProviderHealthFaults.ContainsKey($Provider)) }
@@ -36,9 +37,14 @@ $script:ProviderWaitDir = Join-Path (Get-V2Dir) 'provider-waits'
 # report an unrecoverable provider condition. The probe is intentionally cheap;
 # the authoritative signal during a run is still the control channel (classify.ps1).
 function Get-ProviderHealth {
-    param([Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$Provider)
+    param([Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$Provider)
     $cfg = Get-V2Config
-    $bin = $cfg.providers.$Provider.bin
+    if($Provider -eq 'deepseek'){
+        $budget=Get-DeepSeekBudgetStatus
+        if(-not $budget.ok){return [ordered]@{provider='deepseek';healthy=$false;reason=$budget.reason;class='PROVIDER_UNAVAILABLE';probedAt=(Get-Date).ToUniversalTime().ToString('o')}}
+        if(-not $env:DEEPSEEK_API_KEY){return [ordered]@{provider='deepseek';healthy=$false;reason='DEEPSEEK_API_KEY is unavailable';class='PROVIDER_AUTH';probedAt=(Get-Date).ToUniversalTime().ToString('o')}}
+        $bin='codex'
+    }else{$bin = $cfg.providers.$Provider.bin}
 
     if ($script:ProviderHealthFaults -ne $null) {
         # deterministic harness mode: health is exactly what the harness declares
@@ -65,7 +71,7 @@ function Get-ProviderHealth {
 
 function Get-HealthyProviders {
     $out = @()
-    foreach ($p in @((Get-V2Config).providerFailover.order)) {
+    foreach ($p in @(Get-OrcivoEnabledProviders)) {
         if ((Get-ProviderHealth -Provider $p).healthy) { $out += $p }
     }
     return @($out)
@@ -76,7 +82,7 @@ function Get-HealthyProviders {
 #   @{ action = 'FAILOVER'|'WAITING_PROVIDER'|'NO_FAILOVER'; nextProvider; reason }
 function Get-FailoverDecision {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$CurrentProvider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$CurrentProvider,
         [Parameter(Mandatory)][string]$Class,
         [int]$FailoversSoFar = 0
     )
@@ -84,7 +90,7 @@ function Get-FailoverDecision {
     if (-not (Test-IsProviderClass $Class)) {
         return [ordered]@{ action = 'NO_FAILOVER'; nextProvider = $null; reason = "class '$Class' is not a provider class - a task failure never fails over" }
     }
-    $order = @($cfg.providerFailover.order)
+    $order = @(Get-OrcivoEnabledProviders)
     $others = @($order | Where-Object { $_ -ne $CurrentProvider })
     $max = [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage
 

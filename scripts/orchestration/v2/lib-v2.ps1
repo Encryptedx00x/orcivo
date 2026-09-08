@@ -650,7 +650,7 @@ function Test-ArtifactsClean {
             foreach($line in ($scanTxt -split "`n")){
                 if($line -match '^--- (?:a/)?(.+)$'){$oldPath=$Matches[1];continue}
                 if($line -match '^\+\+\+ (?:b/)?(.+)$'){$currentPath=$(if($Matches[1] -eq '/dev/null'){$oldPath}else{$Matches[1]});continue}
-                if(-not $currentPath -or $line.Length -eq 0 -or '+- ' -notlike "*$($line[0])*" -or $line -match '^(\+\+\+|---) '){continue}
+                if(-not $currentPath -or $line.Length -eq 0 -or -not ('+- '.Contains([string]$line[0])) -or $line -match '^(\+\+\+|---) '){continue}
                 $body=$line.Substring(1)
                 $ext=[System.IO.Path]::GetExtension($currentPath).ToLowerInvariant()
                 $name=[System.IO.Path]::GetFileName($currentPath)

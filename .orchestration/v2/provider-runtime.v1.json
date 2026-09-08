@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "orcivo.orchestration.v2.provider-runtime/1",
+  "enabled": true,
+  "enabledProviders": ["deepseek", "codex"],
+  "excludedProviders": ["claude"],
+  "budgets": {
+    "monthlyDeepSeekBudgetUsd": 5,
+    "monthlyOpenAiApiBudgetUsd": 0,
+    "monthlyAnthropicApiBudgetUsd": 0,
+    "allowCodexSubscription": true,
+    "allowCodexExtraCredits": false,
+    "maxParallel": 1,
+    "maxBoundedCorrectionsNormal": 1
+  },
+  "deepseek": {
+    "baseUrl": "https://api.deepseek.com/",
+    "wireApi": "responses",
+    "envKey": "DEEPSEEK_API_KEY",
+    "codexHomeRoot": "orcivo-dispatcher/providers/deepseek-codex",
+    "profiles": {
+      "FAST": { "model": "deepseek-v4-flash", "reasoning": "low", "maxEstimatedUsd": 0.03 },
+      "BALANCED": { "model": "deepseek-v4-pro", "reasoning": "high", "maxEstimatedUsd": 0.2 },
+      "REASONING": { "model": "deepseek-v4-pro", "reasoning": "high", "maxEstimatedUsd": 0.2 }
+    },
+    "pricing": {
+      "status": "UNCONFIGURED",
+      "effectiveDate": null,
+      "source": null,
+      "reason": "No current DeepSeek V4 price schedule was supplied and network lookup is prohibited for this maintenance. Paid invocation is fail-closed until a verifiable schedule is provided."
+    }
+  }
+}

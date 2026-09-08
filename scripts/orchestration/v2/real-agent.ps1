@@ -17,7 +17,7 @@ function Get-AgentResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\agen
 function Get-ReviewResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json') }
 
 function Get-ProviderLaunchPlan {
-    param([ValidateSet('claude','codex')][string]$Provider, [string[]]$Arguments)
+    param([ValidateSet('claude','codex','deepseek')][string]$Provider, [string[]]$Arguments)
     if ($Provider -eq 'claude') {
         $cmd = Get-Command 'claude' -CommandType Application -ErrorAction Stop | Select-Object -First 1
         return @{ exe=$cmd.Source; arguments=@($Arguments) }
@@ -41,6 +41,7 @@ function ConvertTo-CanonicalFailureClass {
         'PROVIDER_UNAVAILABLE'{ return 'PROVIDER_UNAVAILABLE' }
         'PROVIDER_TRANSIENT'  {
             $t = ("$($Control.errorType) $($Control.message)").ToLowerInvariant()
+            if(-not $Control){return 'TRANSIENT_PROVIDER_NETWORK'}
             if ($t -match 'network|connection|dns|socket|stream|timeout') { return 'TRANSIENT_PROVIDER_NETWORK' }
             return 'PROVIDER_UNAVAILABLE'
         }
@@ -98,7 +99,7 @@ function ConvertFrom-RealCodexOutput {
 
 function Invoke-RealAgent {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
         [Parameter(Mandatory)][ValidateSet('implementer','reviewer','classifier')][string]$Role,
         [Parameter(Mandatory)][string]$TaskVersion,
         [Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile,
@@ -166,6 +167,13 @@ function Invoke-RealAgent {
         GIT_CONFIG_KEY_1 = 'remote.origin.pushurl'
         GIT_CONFIG_VALUE_1 = 'disabled://dispatcher/no-push'
     }
+    if($Provider -eq 'deepseek'){
+        # Budget preflight occurs immediately before the paid child launch.  The
+        # key remains inherited from the parent and is never copied into config,
+        # artifacts, arguments, state, or this environment map.
+        [void](Assert-DeepSeekInvocationBudget -EstimatedUsd ([decimal]$route.estimatedUsd))
+        foreach($k in @($route.environment.Keys)){$envBlock[$k]=$route.environment[$k]}
+    }
     $launch = Get-ProviderLaunchPlan -Provider $Provider -Arguments $args
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
@@ -182,18 +190,27 @@ function Invoke-RealAgent {
     if (($structured -and "$($structured.resultClass)" -eq 'CONTEXT_ROLLOVER') -or (Test-IsContextExhaustion $parsed.control)) {
         $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
     }
+    if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
     if ($proc.exitCode -eq 0 -and $structured -and $providerClass -eq 'NONE' -and $Role -ne 'reviewer') {
         $schemaErrors = Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $structured)) (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
         if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
     }
 
+    $usage=$null;$cost=$null;$telemetryConsistent=$true
+    if($Provider -eq 'deepseek'){
+        $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
+        if($usage){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false}}
+        else{$telemetryConsistent=$false}
+        if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
+    }
     return [ordered]@{
         invocationId=$invocationId
-        provider=$Provider; model=$route.model; profile=$Profile; attempt=$Attempt
+        provider=$Provider; model=$route.model; reasoningIntent=$route.reasoningIntent; profile=$Profile; attempt=$Attempt
         exitCode=$proc.exitCode; providerClass=$providerClass; resultClass=$resultClass
         structuredResult=$structured; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
         stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
+        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
     }
 }

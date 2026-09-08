@@ -13,6 +13,7 @@ only the deterministic integrator may import an approved candidate and push.
 . (Join-Path $PSScriptRoot 'lease.ps1')
 . (Join-Path $PSScriptRoot 'taskclass.ps1')
 . (Join-Path $PSScriptRoot 'taskgraph.ps1')
+. (Join-Path $PSScriptRoot 'deepseek.ps1')
 . (Join-Path $PSScriptRoot 'router.ps1')
 . (Join-Path $PSScriptRoot 'providers.ps1')
 . (Join-Path $PSScriptRoot 'continuation.ps1')
@@ -54,6 +55,44 @@ function Test-DispatcherOwnerGateResumeState {
     return [bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and
         "$($State.status)" -eq 'WAITING_HUMAN' -and "$($State.stage)" -eq 'GATE' -and
         "$($State.reason)" -eq "Level C: $($Task.ownerGate)" -and "$($State.taskVersionId)" -match '^[0-9a-f]{64}$')
+}
+
+# The hash-bound owner-gate record is the sole Level C approval authority.  The
+# state.gate member is an operational projection for status/restart UX only; it
+# is never used to grant or revoke execution permission.
+function Get-DispatcherOwnerGateAuthority {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason;approval='INVALID';satisfied=$false}}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskSource -ne [string]$TaskSource.path -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'state task/source binding mismatch'}
+    $contract=$null;try{$contract=Get-Contract ([string]$State.taskVersionId)}catch{return &$deny 'frozen contract is unavailable or invalid'}
+    if([string]$contract.taskId -ne [string]$Task.taskId -or [string]$contract.gate -ne [string]$Task.ownerGate){return &$deny 'frozen contract task/gate mismatch'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$contract.planningHead)
+    if([string]$revalidated.taskVersionId -ne [string]$State.taskVersionId -or [string]$revalidated.specHash -ne [string]$contract.specHash -or [string]$revalidated.configHash -ne [string]$contract.configHash){return &$deny 'task source, spec, or config contract drift'}
+    if(-not $Task.ownerGate -or [string]$Task.ownerGate -eq 'none'){return [ordered]@{ok=$true;authority='NO_GATE';approval='NOT_REQUIRED';satisfied=$true;contract=$contract;gateId='none'}}
+    $gate=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$Task.ownerGate)
+    return [ordered]@{ok=$true;authority='HASH_BOUND_OWNER_GATE';approval=[string]$gate.approval;satisfied=[bool]$gate.satisfied;reason=[string]$gate.reason;gateId=[string]$Task.ownerGate;gateHash=[string]$gate.gateHash;approvedAt=[string]$gate.approvedAt;approvedBy=[string]$gate.approvedBy;approvalSource=[string]$gate.approvalSource;approvalScope=[string]$gate.approvalScope;contract=$contract}
+}
+
+function Reconcile-DispatcherOwnerGateProjection {
+    param([Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[string]$TaskVersionId='')
+    $state=Get-DispatcherState
+    if(-not $state){throw 'owner-gate reconciliation: no current dispatcher state'}
+    if($TaskVersionId -and [string]$state.taskVersionId -ne $TaskVersionId){throw 'owner-gate reconciliation: taskVersionId mismatch'}
+    if(Test-DispatcherRecoveryExecutionActive){throw 'owner-gate reconciliation: runner or lease is active'}
+    $authority=Get-DispatcherOwnerGateAuthority -State $state -Task $Task -TaskSource $TaskSource
+    if(-not $authority.ok){throw "owner-gate reconciliation: $($authority.reason)"}
+    $before=$(if($state.gate){[string]$state.gate.approval}else{'ABSENT'})
+    $projection=[ordered]@{required=([string]$Task.ownerGate -ne 'none');approval=[string]$authority.approval;reason=[string]$authority.gateId;taskVersionId=[string]$state.taskVersionId;authority=[string]$authority.authority;gateHash=[string]$authority.gateHash}
+    $fingerprint=New-ContentHash ([ordered]@{v='orcivo.owner-gate-reconciliation/1';taskVersionId=[string]$state.taskVersionId;runId=[string]$state.runId;gateId=[string]$authority.gateId;approval=[string]$authority.approval;gateHash=[string]$authority.gateHash;contractHash=[string]$authority.contract.contractHash})
+    $prior=@($state.gateReconciliationHistory|Where-Object{[string]$_.fingerprint -eq $fingerprint})
+    if($prior.Count){return [ordered]@{status='ALREADY_RECONCILED';authority=$authority;projection=$state.gate;reconciliation=$prior[-1]}}
+    $checkpointPath=Join-Path (Get-V2Dir) "pilot\$($state.runId).json";$checkpointStatus='MISSING'
+    if(Test-Path -LiteralPath $checkpointPath){try{$cp=Read-V2Json $checkpointPath;if([string]$cp.runId -eq [string]$state.runId -and [string]$cp.taskVersionId -eq [string]$state.taskVersionId){$checkpointStatus='BOUND'}else{$checkpointStatus='MISMATCH'}}catch{$checkpointStatus='INVALID'}}
+    $record=[ordered]@{reconciledAt=(Get-Date).ToUniversalTime().ToString('o');fingerprint=$fingerprint;authority='HASH_BOUND_OWNER_GATE';beforeApproval=$before;afterApproval=[string]$authority.approval;gateId=[string]$authority.gateId;gateHash=[string]$authority.gateHash;contractHash=[string]$authority.contract.contractHash;checkpoint=$checkpointStatus}
+    $state.gate=$projection
+    $state.gateReconciliationHistory=@($state.gateReconciliationHistory|Where-Object{$_})+@($record)
+    Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECONCILED';authority=$authority;projection=$projection;reconciliation=$record}
 }
 
 function Approve-DispatcherOwnerGate {
@@ -858,6 +897,94 @@ function Test-DispatcherRecoveryExecutionActive {
     return $false
 }
 
+function Test-DispatcherIncompleteProviderResultRecovery {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    foreach($hash in @($EvidenceHash,$PartialDiffHash,$PartialFilesHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid recovery hash'}}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.reason -ne "provider invocation $InvocationId ended as NONE/AGENT_FAILURE"){return &$deny 'state is not the canonical incomplete Codex failure'}
+    $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource
+    if(-not $authority.ok){return &$deny $authority.reason}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId)
+    # A crash is possible after an append/seal and before the canonical state
+    # writer runs.  Accept only the exact, hash-chained recovery prefix in that
+    # narrow window; any other post-FAILED transition fails closed.
+    if($ledger.corrupt){return &$deny 'ledger is corrupt'}
+    $recoveryEvents=@($ledger.history|Where-Object{[string]$_.event -match '^incomplete-provider-result-(recovery-ready|recovered|gate-hold)$'})
+    if([string]$ledger.state -ne 'FAILED'){
+        if([string]$ledger.state -notin @('READY','DISPATCHED','RUNNING','WAITING_HUMAN') -or $recoveryEvents.Count -eq 0 -or $recoveryEvents.Count -gt 3){return &$deny 'ledger is not an intact FAILED state or exact recovery prefix'}
+    }
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.candidateTree -or $State.integration -or @(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'candidate, attestation, or integration exists after the incomplete invocation'}
+    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.implementationCommit -ne $expectedHead -or -not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){return &$deny 'workspace HEAD drift'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $partial.clean){return &$deny $partial.reason}
+    if([string]$partial.diffHash -ne $PartialDiffHash){return &$deny 'partial diff hash mismatch'}
+    if([string]$partial.filesHash -ne $PartialFilesHash){return &$deny 'partial files hash mismatch'}
+    $history=@($State.providerHistory);$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'invocation history binding mismatch'}
+    $attempt=$matches[0]
+    if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'invocation is not an exit-zero incomplete Codex result'}
+    if([int]$State.failovers -ne 1 -or [int]$State.cycle -ne 1){return &$deny 'failover or bounded-cycle mismatch'}
+    $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
+    if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $EvidenceHash -or [string]$attempt.stdoutHash -ne $EvidenceHash -or [string]$attempt.controlRecordHash -ne $EvidenceHash){return &$deny 'invocation evidence hash mismatch'}
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$events=@();foreach($line in @($raw -split "`r?`n"|Where-Object{$_})){try{$events+=,($line|ConvertFrom-Json -ErrorAction Stop)}catch{return &$deny 'invocation evidence contains invalid JSONL'}}
+    $turnStarted=@($events|Where-Object{[string]$_.type -eq 'turn.started'}).Count;$turnCompleted=@($events|Where-Object{[string]$_.type -eq 'turn.completed'}).Count
+    $hasStructuredError=@($events|Where-Object{[string]$_.type -match '(?i)error|failed' -or $_.error}).Count -gt 0
+    $parsed=ConvertFrom-RealCodexOutput $raw
+    $last=$events[-1]
+    if($turnStarted -ne 1 -or $turnCompleted -ne 0 -or $hasStructuredError -or $parsed.structured -or $parsed.control -or [string]$last.type -ne 'item.started' -or [string]$last.item.status -ne 'in_progress'){return &$deny 'invocation is not a provably incomplete provider result'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or artifact scan is dirty'}
+    $wait=Get-ProviderWait ([string]$State.taskVersionId)
+    if($wait -and ([string]$wait.runId -ne $RunId -or -not $wait.resolvedAt)){return &$deny 'provider wait is active or lineage-mismatched'}
+    if($wait -and (@($wait.unavailableProviders|Where-Object{$_}) -join '|') -ne (@($State.unavailableProviders|Where-Object{$_}) -join '|')){return &$deny 'provider wait unavailable-provider projection mismatch'}
+    return [ordered]@{eligible=$true;reason='hash-bound incomplete Codex result verified';authority=$authority;attempt=$attempt;expectedHead=$expectedHead;partial=$partial;candidateScan=$candidateScan;artifactScan=$artifactScan;ledger=$ledger;providerWait=$wait}
+}
+
+function Recover-DispatcherIncompleteProviderResult {
+    param(
+        [Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,
+        [Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash
+    )
+    $state=Get-DispatcherState;if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'incomplete provider recovery: durable task version mismatch'}
+    $existing=@($state.incompleteProviderResultRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.partialDiffHash -eq $PartialDiffHash -and [string]$_.partialFilesHash -eq $PartialFilesHash})
+    if($existing.Count){return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;recovery=$existing[-1]}}
+    $proof=Test-DispatcherIncompleteProviderResultRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+    if(-not $proof.eligible){throw "incomplete provider recovery: $($proof.reason)"}
+    $reconcile=Reconcile-DispatcherOwnerGateProjection -Task $Task -TaskSource $TaskSource -TaskVersionId $TaskVersionId
+    $authority=$reconcile.authority
+    $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;stdoutHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;previousClass='AGENT_FAILURE';derivedClass='INCOMPLETE_PROVIDER_RESULT';approvalAuthority=[string]$authority.approval;gateHash=[string]$authority.gateHash}
+    $ledger=Get-LedgerState $TaskVersionId
+    if([string]$ledger.state -eq 'FAILED'){
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-recovery-ready' -ToState 'READY' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'verified exit-zero provider result without a terminal structured event'|Out-Null
+        $ledger=Get-LedgerState $TaskVersionId
+    }
+    if([string]$ledger.state -ne 'READY' -and [string]$ledger.state -ne 'DISPATCHED' -and [string]$ledger.state -ne 'RUNNING' -and [string]$ledger.state -ne 'WAITING_HUMAN'){throw 'incomplete provider recovery: ledger recovery prefix is inconsistent'}
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;changedFiles=@($proof.partial.paths);previousClass='AGENT_FAILURE';derivedClass='INCOMPLETE_PROVIDER_RESULT';approvalAuthority=[string]$authority.approval;gateHash=[string]$authority.gateHash;runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);providerWaitPollCount=$(if($proof.providerWait){[int]$proof.providerWait.pollCount}else{$null});providerWaitBackoffSec=$(if($proof.providerWait){[int]$proof.providerWait.nextBackoffSec}else{$null})}
+    $state.incompleteProviderResultRecoveryHistory=@($state.incompleteProviderResultRecoveryHistory|Where-Object{$_})+@($recovery)
+    if(-not $authority.satisfied -or [string]$authority.approval -ne 'APPROVED'){
+        if([string]$ledger.state -eq 'READY'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-gate-hold' -ToState 'WAITING_HUMAN' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'incomplete provider recovery requires a valid exact Level C approval'|Out-Null}
+        elseif([string]$ledger.state -ne 'WAITING_HUMAN'){throw 'incomplete provider recovery: stale approval recovery ledger branch is inconsistent'}
+        $state.status='WAITING_HUMAN';$state.stage='GATE';$state.reason="Level C: $($Task.ownerGate)";$state.decisionNeeded='owner approval for the declared Level C decision';$state.resumes='same preserved task after a durable owner approval';$state.gate=[ordered]@{required=$true;approval=[string]$authority.approval;reason=[string]$Task.ownerGate;taskVersionId=$TaskVersionId;authority='HASH_BOUND_OWNER_GATE';gateHash=[string]$authority.gateHash}
+    }else{
+        if([string]$ledger.state -eq 'READY'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-recovered' -ToState 'DISPATCHED' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'resume preserved partial implementation under existing exact owner approval'|Out-Null;$ledger=Get-LedgerState $TaskVersionId}
+        if([string]$ledger.state -eq 'DISPATCHED'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'running' -ToState 'RUNNING' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'recovered same implementation lineage after incomplete provider result'|Out-Null}
+        elseif([string]$ledger.state -ne 'RUNNING'){throw 'incomplete provider recovery: approved recovery ledger branch is inconsistent'}
+        $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.lastErrorClass='INCOMPLETE_PROVIDER_RESULT'
+    }
+    if($script:IncompleteProviderResultRecoveryFaultAfterLedger){throw 'injected incomplete provider result recovery crash after ledger transition'}
+    Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;dispatcherStatus=$state.status;stage=$state.stage;approvalAuthority=[string]$authority.approval;recovery=$recovery}
+}
+
 function Test-DispatcherStoppedImplementationRecovery {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
@@ -1167,7 +1294,7 @@ function Invoke-RealDispatcherTask {
                 if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
                 $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
                 $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
-                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash}
+                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;model=$ar.model;reasoningEffort=$ar.reasoningIntent;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash;usage=$ar.usage;cachedTokens=$ar.cachedTokens;costUsd=$ar.costUsd;telemetryConsistent=$ar.telemetryConsistent}
                 $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
                 if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
                 Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
@@ -1178,7 +1305,7 @@ function Invoke-RealDispatcherTask {
                 }
                 if(Test-IsCanonicalProviderClass $ar.providerClass){
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
-                    $other=@($cfg.providerFailover.order|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
+                    $other=@((Get-OrcivoEnabledProviders)|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
                     if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
                         $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
                         Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
@@ -1236,7 +1363,7 @@ function Invoke-RealDispatcherTask {
             $rr=Invoke-RealAgent -Provider $reviewer -Role 'reviewer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $reviewDir -StructuredPrompt $rp -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$cfg.budgets.reviewTimeoutSec) -Attempt ([int]$state.cycle+1)
             $reviewDataAfter=Get-ReviewDataSnapshot $reviewDir
             if($reviewDataAfter -ne $reviewDataBefore){$rr.structuredResult=$null;$rr.resultClass='AGENT_FAILURE';$state.findings+=,'reviewer mutated its review-data workspace'}
-            $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;exitCode=$rr.exitCode;stdoutArtifact=$rr.stdoutArtifact;stdoutHash=$rr.stdoutHash;controlRecordHash=$rr.controlRecordHash}
+            $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;model=$rr.model;reasoningEffort=$rr.reasoningIntent;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;exitCode=$rr.exitCode;stdoutArtifact=$rr.stdoutArtifact;stdoutHash=$rr.stdoutHash;controlRecordHash=$rr.controlRecordHash;usage=$rr.usage;cachedTokens=$rr.cachedTokens;costUsd=$rr.costUsd;telemetryConsistent=$rr.telemetryConsistent}
             Write-DispatcherState $state|Out-Null
             if(Test-IsCanonicalProviderClass $rr.providerClass){return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)}
             if($rr.structuredResult){foreach($f in @($rr.structuredResult.findings)){if($f -is [System.Collections.IDictionary]){if($null -eq $f.file){$f.Remove('file')};if($null -eq $f.line){$f.Remove('line')}}}}
