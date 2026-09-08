@@ -183,6 +183,29 @@ function New-IncompleteProviderResultFixture([string]$Id){
     return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;runId=$runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash}
 }
 
+function New-IncompleteProviderWorkspaceMutationFixture([string]$Id){
+    $f=New-IncompleteProviderResultFixture $Id
+    $state=Get-DispatcherState;$workspace=$f.workspace;$logs=Split-Path -Parent $f.stdoutPath
+    # Four bound files are the pre-existing recovery result; two more are
+    # deliberately added after the pre-launch manifest to model a provider
+    # process that exits without a terminal envelope.
+    Write-Utf8 (Join-Path $workspace 'work\partial.integration.spec.ts') "export const integration = true;`n"
+    Write-Utf8 (Join-Path $workspace 'work\partial.authorization.spec.ts') "export const authorization = true;`n"
+    $pre=Get-DispatcherDirtyWorkspaceProof -Workspace $workspace -Task $f.task
+    $state.incompleteProviderResultRecoveryHistory=@([ordered]@{recoveredAt='2026-09-08T00:00:00.0000000Z';invocationId='att-11111111111111111111111111111111';provider='codex';attempt=7;evidenceHash='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';partialDiffHash=$pre.diffHash;partialFilesHash=$pre.filesHash;changedFiles=@($pre.paths);runId=$f.runId;workspace=$workspace;expectedHead=$state.implementationCommit;failovers=1;cycle=1})
+    $invocation='att-'+[guid]::NewGuid().ToString('N');$suffix=$invocation.Substring(4,8);$promptPath=Join-Path $logs ('implementer-008-codex-{0}.prompt.txt' -f $suffix);$stdoutPath=Join-Path $logs ('implementer-008-codex-{0}.stdout.log' -f $suffix)
+    Write-Utf8 $promptPath 'sanitized immutable prompt';$thread=[ordered]@{type='thread.started';thread_id='fixture'}|ConvertTo-Json -Compress;$turn=[ordered]@{type='turn.started'}|ConvertTo-Json -Compress;$inflight=[ordered]@{type='item.started';item=[ordered]@{id='item_1';type='command_execution';status='in_progress'}}|ConvertTo-Json -Compress;Write-Utf8 $stdoutPath "$thread`n$turn`n$inflight`n"
+    $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.attempt=8;$state.provider='codex';$state.profile='CRITICAL';$state.model='gpt-5.6-terra';$state.workspaceInvocationSnapshots=@()
+    New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId $invocation -PromptArtifact $promptPath -PromptHash (New-FileHash $promptPath) -Provider codex -Model gpt-5.6-terra -ReasoningEffort high -Attempt 8|Out-Null
+    Write-Utf8 (Join-Path $workspace 'work\test-setup.ts') "export const setup = () => undefined;`n"
+    Write-Utf8 (Join-Path $workspace 'work\test-setup.spec.ts') "import { setup } from './test-setup';`nvoid setup;`n"
+    $hash=New-FileHash $stdoutPath;$agentResult=[ordered]@{invocationId=$invocation;provider='codex';model='gpt-5.6-terra';reasoningIntent='high';attempt=8;promptHash=(New-FileHash $promptPath);stdoutHash=$hash};$resultSnapshot=New-DispatcherWorkspaceInvocationResultSnapshot -State $state -Task $f.task -AgentResult $agentResult
+    $state.status='AGENT_FAILURE';$state.stage='IMPLEMENT';$state.reason="provider invocation $invocation ended as INCOMPLETE_PROVIDER_RESULT/AGENT_FAILURE"
+    $state.providerHistory=@([ordered]@{invocationId=$invocation;role='IMPLEMENTER';provider='codex';model='gpt-5.6-terra';reasoningEffort='high';attempt=8;providerClass='INCOMPLETE_PROVIDER_RESULT';resultClass='AGENT_FAILURE';exitCode=0;promptArtifact=[IO.Path]::GetFullPath($promptPath);promptHash=(New-FileHash $promptPath);workspaceResultSnapshotHash=$resultSnapshot.resultHash;stdoutArtifact=$stdoutPath;stdoutHash=$hash;controlRecordHash=$hash})
+    Write-DispatcherState $state|Out-Null;$partial=Get-DispatcherDirtyWorkspaceProof -Workspace $workspace -Task $f.task;$snapshot=(Get-DispatcherWorkspaceInvocationSnapshot -State $state -InvocationId $invocation)
+    return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$workspace;runId=$f.runId;invocation=$invocation;stdoutPath=$stdoutPath;evidenceHash=$hash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;snapshotHash=$snapshot.snapshotHash;resultHash=$resultSnapshot.resultHash;paths=@($partial.paths)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -784,6 +807,28 @@ try{
             $f=New-IncompleteProviderResultFixture 'RD86';Add-Content -LiteralPath $f.stdoutPath -Value 'not a structured provider event' -Encoding utf8;$hash=New-FileHash $f.stdoutPath;$f.state.providerHistory[-1].stdoutHash=$hash;$f.state.providerHistory[-1].controlRecordHash=$hash
             $p=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
             Assert-True (-not $p.eligible -and $p.reason -match 'malformed') 'opaque malformed provider output was accepted'
+        }
+        Check 'RD-87' {
+            $f=New-IncompleteProviderWorkspaceMutationFixture 'RD87';$p=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
+            $r=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash;$again=Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
+            Assert-True ($p.eligible -and @($p.addedPaths).Count -eq 2 -and @($f.paths).Count -eq 6 -and $r.status -eq 'RECOVERED' -and $again.status -eq 'ALREADY_RECOVERED') 'attributed six-file incomplete workspace mutation was not recovered idempotently'
+        }
+        Check 'RD-88' {
+            $f=New-IncompleteProviderWorkspaceMutationFixture 'RD88';$plain=$false;try{Recover-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash|Out-Null}catch{$plain=$_.Exception.Message -match 'workspace-mutation'}
+            $f.state.workspaceInvocationSnapshots=@();Write-DispatcherState $f.state;$missing=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
+            Assert-True ($plain -and -not $missing.eligible -and $missing.reason -match 'absent') 'additional workspace changes bypassed the dedicated pre-invocation manifest flow'
+        }
+        Check 'RD-89' {
+            $f=New-IncompleteProviderWorkspaceMutationFixture 'RD89';$failures=@();$i=0;foreach($path in @($f.paths)){$i++;$g=New-IncompleteProviderWorkspaceMutationFixture ('RD89-'+$i);Add-Content -LiteralPath (Join-Path $g.workspace $path) -Value 'tampered' -Encoding utf8;$p=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $g.state -Task $g.task -TaskSource $g.source -RunId $g.runId -InvocationId $g.invocation -EvidenceHash $g.evidenceHash -PartialDiffHash $g.partialDiffHash -PartialFilesHash $g.partialFilesHash -WorkspaceMutationSnapshotHash $g.snapshotHash -WorkspaceMutationResultHash $g.resultHash;if($p.eligible){$failures+=,$path}}
+            Assert-True ($failures.Count -eq 0) 'one of the six partial files could be altered after the launch manifest without rejection'
+        }
+        Check 'RD-90' {
+            $f=New-IncompleteProviderWorkspaceMutationFixture 'RD90';$f.state.workspaceInvocationSnapshots[0].promptHash='sha256:'+('0'*64);Write-DispatcherState $f.state;$p=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
+            Assert-True (-not $p.eligible -and $p.reason -match 'corrupt|mismatch') 'tampered prompt-bound workspace manifest was accepted'
+        }
+        Check 'RD-91' {
+            $f=New-IncompleteProviderWorkspaceMutationFixture 'RD91';$restart=Get-DispatcherState;$p=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $restart -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -WorkspaceMutationSnapshotHash $f.snapshotHash -WorkspaceMutationResultHash $f.resultHash
+            Assert-True ($p.eligible -and [string]$restart.workspaceInvocationSnapshots[0].snapshotHash -eq $f.snapshotHash) 'workspace mutation manifest did not survive dispatcher restart'
         }
     } finally {Pop-Location}
 

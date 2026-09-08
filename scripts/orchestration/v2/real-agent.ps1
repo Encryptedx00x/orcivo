@@ -108,11 +108,14 @@ function Invoke-RealAgent {
         [Parameter(Mandatory)][string]$ArtifactDir,
         [int]$TimeoutSec = 900,
         [int]$Attempt = 1,
-        [string]$ContinuationCheckpoint = ''
+        [string]$ContinuationCheckpoint = '',
+        [string]$InvocationId = '',
+        [scriptblock]$BeforeLaunch = $null
     )
     if (-not (Test-Path -LiteralPath $Workspace)) { throw "real-agent: workspace does not exist: $Workspace" }
     New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
-    $invocationId=New-AttemptId
+    $invocationId=$(if($InvocationId){$InvocationId}else{New-AttemptId})
+    if($invocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'real-agent: invalid invocation id'}
     $stamp = '{0}-{1:000}-{2}-{3}' -f $Role, $Attempt, $Provider,$invocationId.Substring(4,8)
     $promptFile = Join-Path $ArtifactDir "$stamp.prompt.txt"
     [System.IO.File]::WriteAllText($promptFile, (Protect-ArtifactText $StructuredPrompt), (New-Utf8NoBom))
@@ -175,6 +178,11 @@ function Invoke-RealAgent {
         foreach($k in @($route.environment.Keys)){$envBlock[$k]=$route.environment[$k]}
     }
     $launch = Get-ProviderLaunchPlan -Provider $Provider -Arguments $args
+    if($BeforeLaunch){
+        # The callback is the only lifecycle point after the redacted prompt is
+        # immutable and before a provider child can mutate the workspace.
+        & $BeforeLaunch ([ordered]@{invocationId=$invocationId;promptArtifact=[IO.Path]::GetFullPath($promptFile);promptHash=(New-FileHash $promptFile);provider=$Provider;model=[string]$route.model;reasoningEffort=[string]$route.reasoningIntent;profile=$Profile;attempt=$Attempt})
+    }
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
 
@@ -207,7 +215,7 @@ function Invoke-RealAgent {
         invocationId=$invocationId
         provider=$Provider; model=$route.model; reasoningIntent=$route.reasoningIntent; profile=$Profile; attempt=$Attempt
         exitCode=$proc.exitCode; providerClass=$providerClass; resultClass=$resultClass
-        structuredResult=$structured; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
+        structuredResult=$structured; promptArtifact=$promptFile;promptHash=(New-FileHash $promptFile);stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
         stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint

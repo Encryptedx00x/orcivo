@@ -880,11 +880,74 @@ function Get-DispatcherDirtyWorkspaceProof {
         $diffScan=Test-ArtifactsClean -Root $reviewRoot
         if(-not $sourceScan.clean -or -not $diffScan.clean){return &$deny 'partial workspace secret scan is dirty'}
         $fileBindings=@($paths|Sort-Object -Unique|ForEach-Object{$p=$_;$full=Resolve-SafePath $Workspace $p;"$p=$(if(Test-Path -LiteralPath $full -PathType Leaf){New-FileHash $full}else{'deleted'})"})
-        return [ordered]@{clean=$true;reason='authorized partial workspace verified';paths=@($paths|Sort-Object -Unique);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
+        return [ordered]@{clean=$true;reason='authorized partial workspace verified';paths=@($paths|Sort-Object -Unique);fileBindings=@($fileBindings);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
     }finally{
         $temp=[System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath());$full=[System.IO.Path]::GetFullPath($root)
         if($full.StartsWith($temp,[System.StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $full) -like 'orcivo-stopped-recovery-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
     }
+}
+
+# A pre-invocation manifest is written through the canonical dispatcher writer
+# after the redacted prompt exists, but before the provider child is launched.
+# It is deliberately per-file as an aggregate files hash cannot prove that a
+# pre-existing untracked file survived a later incomplete invocation unchanged.
+function New-DispatcherWorkspaceInvocationSnapshot {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$PromptArtifact,
+        [Parameter(Mandatory)][string]$PromptHash,[Parameter(Mandatory)][string]$Provider,
+        [Parameter(Mandatory)][string]$Model,[Parameter(Mandatory)][string]$ReasoningEffort,
+        [Parameter(Mandatory)][int]$Attempt
+    )
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'workspace invocation snapshot: invalid invocation id'}
+    if($PromptHash -notmatch '^sha256:[0-9a-f]{64}$' -or -not(Test-Path -LiteralPath $PromptArtifact) -or (New-FileHash $PromptArtifact) -ne $PromptHash){throw 'workspace invocation snapshot: prompt hash mismatch'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT' -or [int]$State.attempt -ne $Attempt){throw 'workspace invocation snapshot: dispatcher is not at the exact pre-launch implementation state'}
+    if(@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count){throw 'workspace invocation snapshot: invocation already has a snapshot'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $partial.clean){throw "workspace invocation snapshot: $($partial.reason)"}
+    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation snapshot: workspace HEAD drift'}
+    $prior=@($State.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.runId -eq [string]$State.runId -and [string]$_.workspace -eq [string]$State.workspace}|Select-Object -Last 1)[0]
+    $stateBinding=[ordered]@{runId=[string]$State.runId;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;taskSourceHash=[string]$State.taskSourceHash;status=[string]$State.status;stage=[string]$State.stage;attempt=$Attempt;cycle=[int]$State.cycle;failovers=[int]$State.failovers;provider=[string]$Provider;model=[string]$Model;reasoningEffort=[string]$ReasoningEffort;workspace=[string]$State.workspace;workspaceHead=$expectedHead;unavailableProviders=@($State.unavailableProviders);priorRecoveryEvidenceHash=$(if($prior){[string]$prior.evidenceHash}else{''});priorRecoveryFilesHash=$(if($prior){[string]$prior.partialFilesHash}else{''});priorRecoveryDiffHash=$(if($prior){[string]$prior.partialDiffHash}else{''})}
+    $snapshot=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-snapshot/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;promptArtifact=[IO.Path]::GetFullPath($PromptArtifact);promptHash=$PromptHash;provider=$Provider;model=$Model;reasoningEffort=$ReasoningEffort;attempt=$Attempt;stateBinding=$stateBinding;stateHash=(New-StringHash (ConvertTo-CanonicalJson $stateBinding));partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
+    $snapshot.snapshotHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$snapshot.schemaVersion;invocationId=$snapshot.invocationId;promptHash=$snapshot.promptHash;provider=$snapshot.provider;model=$snapshot.model;reasoningEffort=$snapshot.reasoningEffort;attempt=$snapshot.attempt;stateHash=$snapshot.stateHash;partialDiffHash=$snapshot.partialDiffHash;partialFilesHash=$snapshot.partialFilesHash;paths=@($snapshot.paths);fileBindings=@($snapshot.fileBindings)}))
+    $State.workspaceInvocationSnapshots=@($State.workspaceInvocationSnapshots|Where-Object{$_})+@($snapshot)
+    Write-DispatcherState $State|Out-Null
+    return $snapshot
+}
+
+function Get-DispatcherWorkspaceInvocationSnapshot {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$InvocationId)
+    $matches=@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1){return $null}
+    return $matches[0]
+}
+
+# The result manifest closes the interval opened by the pre-launch manifest.
+# It is persisted immediately after the child exits, before provider history is
+# updated or any recovery command can see the failed invocation.
+function New-DispatcherWorkspaceInvocationResultSnapshot {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$AgentResult)
+    $invocationId=[string]$AgentResult.invocationId;$pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $invocationId
+    if(-not $pre){throw 'workspace invocation result snapshot: pre-invocation snapshot is absent'}
+    if(@($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $invocationId}).Count){throw 'workspace invocation result snapshot: invocation already has a result snapshot'}
+    if([int]$AgentResult.attempt -ne [int]$State.attempt -or [string]$AgentResult.provider -ne [string]$pre.provider -or [string]$AgentResult.promptHash -ne [string]$pre.promptHash){throw 'workspace invocation result snapshot: agent result is not bound to launch snapshot'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $partial.clean){throw "workspace invocation result snapshot: $($partial.reason)"}
+    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
+    $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
+    $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
+    $State.workspaceInvocationResultSnapshots=@($State.workspaceInvocationResultSnapshots|Where-Object{$_})+@($result)
+    Write-DispatcherState $State|Out-Null
+    return $result
+}
+
+function Get-DispatcherWorkspaceInvocationResultSnapshot {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$InvocationId)
+    $matches=@($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1){return $null}
+    return $matches[0]
 }
 
 function Test-DispatcherRecoveryExecutionActive {
@@ -907,7 +970,8 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     foreach($hash in @($EvidenceHash,$PartialDiffHash,$PartialFilesHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid recovery hash'}}
     if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
     if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
-    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.reason -ne "provider invocation $InvocationId ended as NONE/AGENT_FAILURE"){return &$deny 'state is not the canonical incomplete Codex failure'}
+    $expectedReasons=@("provider invocation $InvocationId ended as NONE/AGENT_FAILURE","provider invocation $InvocationId ended as INCOMPLETE_PROVIDER_RESULT/AGENT_FAILURE")
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.reason -notin $expectedReasons){return &$deny 'state is not the canonical incomplete Codex failure'}
     $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource
     if(-not $authority.ok){return &$deny $authority.reason}
     $ledger=Get-LedgerState ([string]$State.taskVersionId)
@@ -929,7 +993,7 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     $history=@($State.providerHistory);$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
     if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'invocation history binding mismatch'}
     $attempt=$matches[0]
-    if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'invocation is not an exit-zero incomplete Codex result'}
+    if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -notin @('NONE','INCOMPLETE_PROVIDER_RESULT') -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'invocation is not an exit-zero incomplete Codex result'}
     if([int]$State.failovers -ne 1 -or [int]$State.cycle -ne 1){return &$deny 'failover or bounded-cycle mismatch'}
     $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
     if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
@@ -961,17 +1025,64 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     return [ordered]@{eligible=$true;reason='hash-bound incomplete Codex result verified';authority=$authority;attempt=$attempt;expectedHead=$expectedHead;partial=$partial;candidateScan=$candidateScan;artifactScan=$artifactScan;ledger=$ledger;providerWait=$wait}
 }
 
+function Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash,
+        [Parameter(Mandatory)][string]$WorkspaceMutationSnapshotHash,[Parameter(Mandatory)][string]$WorkspaceMutationResultHash
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    if($WorkspaceMutationSnapshotHash -notmatch '^sha256:[0-9a-f]{64}$' -or $WorkspaceMutationResultHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid workspace mutation snapshot or result hash'}
+    $base=Test-DispatcherIncompleteProviderResultRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+    if(-not $base.eligible){return &$deny $base.reason}
+    $snapshot=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId
+    if(-not $snapshot){return &$deny 'pre-invocation workspace snapshot is absent'}
+    if([string]$snapshot.snapshotHash -ne $WorkspaceMutationSnapshotHash){return &$deny 'workspace mutation snapshot hash mismatch'}
+    $snapshotExpected=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=[string]$snapshot.schemaVersion;invocationId=[string]$snapshot.invocationId;promptHash=[string]$snapshot.promptHash;provider=[string]$snapshot.provider;model=[string]$snapshot.model;reasoningEffort=[string]$snapshot.reasoningEffort;attempt=[int]$snapshot.attempt;stateHash=[string]$snapshot.stateHash;partialDiffHash=[string]$snapshot.partialDiffHash;partialFilesHash=[string]$snapshot.partialFilesHash;paths=@($snapshot.paths);fileBindings=@($snapshot.fileBindings)}))
+    if([string]$snapshot.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-snapshot/1' -or $snapshotExpected -ne $WorkspaceMutationSnapshotHash){return &$deny 'workspace mutation snapshot is corrupt'}
+    $attempt=$base.attempt
+    if([string]$snapshot.invocationId -ne $InvocationId -or [string]$snapshot.provider -ne [string]$attempt.provider -or [int]$snapshot.attempt -ne [int]$attempt.attempt -or [int]$snapshot.attempt -ne [int]$State.attempt){return &$deny 'workspace mutation snapshot invocation binding mismatch'}
+    $promptPath=[IO.Path]::GetFullPath([string]$snapshot.promptArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"))
+    if(-not $promptPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or -not(Test-Path -LiteralPath $promptPath) -or [string]$snapshot.promptHash -notmatch '^sha256:[0-9a-f]{64}$' -or (New-FileHash $promptPath) -ne [string]$snapshot.promptHash){return &$deny 'workspace mutation prompt binding mismatch'}
+    if([string]$attempt.promptArtifact -ne $promptPath -or [string]$attempt.promptHash -ne [string]$snapshot.promptHash){return &$deny 'invocation history is not bound to the pre-launch prompt'}
+    $result=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+    if(-not $result){return &$deny 'post-invocation workspace result snapshot is absent'}
+    if([string]$result.resultHash -ne $WorkspaceMutationResultHash -or [string]$attempt.workspaceResultSnapshotHash -ne $WorkspaceMutationResultHash){return &$deny 'workspace mutation result snapshot hash mismatch'}
+    $resultExpected=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=[string]$result.schemaVersion;invocationId=[string]$result.invocationId;preInvocationSnapshotHash=[string]$result.preInvocationSnapshotHash;promptHash=[string]$result.promptHash;stdoutHash=[string]$result.stdoutHash;provider=[string]$result.provider;model=[string]$result.model;reasoningEffort=[string]$result.reasoningEffort;attempt=[int]$result.attempt;workspaceHead=[string]$result.workspaceHead;partialDiffHash=[string]$result.partialDiffHash;partialFilesHash=[string]$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
+    if([string]$result.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/1' -or $resultExpected -ne $WorkspaceMutationResultHash -or [string]$result.preInvocationSnapshotHash -ne [string]$snapshot.snapshotHash -or [string]$result.promptHash -ne [string]$snapshot.promptHash -or [string]$result.stdoutHash -ne $EvidenceHash -or [string]$result.provider -ne [string]$attempt.provider -or [int]$result.attempt -ne [int]$attempt.attempt -or [string]$result.workspaceHead -ne [string]$base.expectedHead){return &$deny 'workspace mutation result snapshot is corrupt or unbound'}
+    if([string]$result.partialDiffHash -ne $PartialDiffHash -or [string]$result.partialFilesHash -ne $PartialFilesHash -or ((@($result.paths)|Sort-Object) -join "`n") -ne ((@($base.partial.paths)|Sort-Object) -join "`n") -or ((@($result.fileBindings)|Sort-Object) -join "`n") -ne ((@($base.partial.fileBindings)|Sort-Object) -join "`n")){return &$deny 'workspace result changed after invocation completion'}
+    $binding=[hashtable]$snapshot.stateBinding
+    if(-not $binding -or [string]$snapshot.stateHash -ne (New-StringHash (ConvertTo-CanonicalJson $binding))){return &$deny 'workspace mutation pre-invocation state binding is corrupt'}
+    $expectedHead=[string]$base.expectedHead
+    if([string]$binding.runId -ne $RunId -or [string]$binding.taskId -ne [string]$State.taskId -or [string]$binding.taskVersionId -ne [string]$State.taskVersionId -or [string]$binding.taskSourceHash -ne [string]$State.taskSourceHash -or [string]$binding.status -ne 'RUNNING' -or [string]$binding.stage -ne 'IMPLEMENT' -or [int]$binding.attempt -ne [int]$attempt.attempt -or [int]$binding.cycle -ne [int]$State.cycle -or [int]$binding.failovers -ne [int]$State.failovers -or [string]$binding.workspace -ne [string]$State.workspace -or [string]$binding.workspaceHead -ne $expectedHead){return &$deny 'workspace mutation pre-invocation state does not bind this lineage'}
+    $prior=@($State.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.evidenceHash -eq [string]$binding.priorRecoveryEvidenceHash -and [string]$_.partialFilesHash -eq [string]$binding.priorRecoveryFilesHash -and [string]$_.partialDiffHash -eq [string]$binding.priorRecoveryDiffHash -and [string]$_.runId -eq $RunId -and [string]$_.workspace -eq [string]$State.workspace})
+    if($prior.Count -ne 1 -or [string]$snapshot.partialFilesHash -ne [string]$prior[0].partialFilesHash -or [string]$snapshot.partialDiffHash -ne [string]$prior[0].partialDiffHash -or ((@($snapshot.paths)|Sort-Object) -join "`n") -ne ((@($prior[0].changedFiles)|Sort-Object) -join "`n")){return &$deny 'workspace mutation has no exact prior recovered partial binding'}
+    if(@($snapshot.fileBindings).Count -ne @($snapshot.paths).Count -or @($snapshot.fileBindings|Where-Object{$_ -notmatch '^[^=]+=sha256:[0-9a-f]{64}$'}).Count){return &$deny 'workspace mutation file manifest is invalid'}
+    $currentBindings=@($base.partial.fileBindings);$missing=@($snapshot.fileBindings|Where-Object{$currentBindings -notcontains $_})
+    if($missing.Count){return &$deny 'pre-existing partial file changed after invocation launch'}
+    $added=@($base.partial.paths|Where-Object{@($snapshot.paths) -notcontains $_})
+    if(-not $added.Count){return &$deny 'workspace mutation recovery requires attributed additional files'}
+    if(@($base.partial.paths|Where-Object{@($snapshot.paths+$added) -notcontains $_}).Count){return &$deny 'workspace mutation path set is inconsistent'}
+    return [ordered]@{eligible=$true;reason='hash-bound incomplete result with an attributed workspace mutation verified';base=$base;snapshot=$snapshot;result=$result;prior=$prior[0];addedPaths=$added}
+}
+
 function Recover-DispatcherIncompleteProviderResult {
     param(
         [Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,
         [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,
-        [Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash
+        [Parameter(Mandatory)][string]$PartialDiffHash,[Parameter(Mandatory)][string]$PartialFilesHash,
+        [string]$WorkspaceMutationSnapshotHash = '',[string]$WorkspaceMutationResultHash = ''
     )
     $state=Get-DispatcherState;if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'incomplete provider recovery: durable task version mismatch'}
     $existing=@($state.incompleteProviderResultRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash -and [string]$_.partialDiffHash -eq $PartialDiffHash -and [string]$_.partialFilesHash -eq $PartialFilesHash})
     if($existing.Count){return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;recovery=$existing[-1]}}
+    $prior=@($state.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.runId -eq $RunId -and [int]$_.attempt -lt [int]$state.attempt}|Select-Object -Last 1)[0]
+    if($prior -and ([string]$prior.partialDiffHash -ne $PartialDiffHash -or [string]$prior.partialFilesHash -ne $PartialFilesHash) -and (-not $WorkspaceMutationSnapshotHash -or -not $WorkspaceMutationResultHash)){throw 'incomplete provider recovery: additional workspace changes require the public workspace-mutation recovery flow'}
     $proof=Test-DispatcherIncompleteProviderResultRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
     if(-not $proof.eligible){throw "incomplete provider recovery: $($proof.reason)"}
+    $mutation=$null
+    if($WorkspaceMutationSnapshotHash -or $WorkspaceMutationResultHash){if(-not $WorkspaceMutationSnapshotHash -or -not $WorkspaceMutationResultHash){throw 'incomplete provider workspace-mutation recovery: both launch and result hashes are required'};$mutation=Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -WorkspaceMutationSnapshotHash $WorkspaceMutationSnapshotHash -WorkspaceMutationResultHash $WorkspaceMutationResultHash;if(-not $mutation.eligible){throw "incomplete provider workspace-mutation recovery: $($mutation.reason)"}}
     $reconcile=Reconcile-DispatcherOwnerGateProjection -Task $Task -TaskSource $TaskSource -TaskVersionId $TaskVersionId
     $authority=$reconcile.authority
     $evidence=@{invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;stdoutHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;previousClass='AGENT_FAILURE';derivedClass='INCOMPLETE_PROVIDER_RESULT';approvalAuthority=[string]$authority.approval;gateHash=[string]$authority.gateHash}
@@ -981,7 +1092,7 @@ function Recover-DispatcherIncompleteProviderResult {
         $ledger=Get-LedgerState $TaskVersionId
     }
     if([string]$ledger.state -ne 'READY' -and [string]$ledger.state -ne 'DISPATCHED' -and [string]$ledger.state -ne 'RUNNING' -and [string]$ledger.state -ne 'WAITING_HUMAN'){throw 'incomplete provider recovery: ledger recovery prefix is inconsistent'}
-    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;changedFiles=@($proof.partial.paths);previousClass='AGENT_FAILURE';derivedClass='INCOMPLETE_PROVIDER_RESULT';approvalAuthority=[string]$authority.approval;gateHash=[string]$authority.gateHash;runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);providerWaitPollCount=$(if($proof.providerWait){[int]$proof.providerWait.pollCount}else{$null});providerWaitBackoffSec=$(if($proof.providerWait){[int]$proof.providerWait.nextBackoffSec}else{$null})}
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;provider='codex';attempt=[int]$proof.attempt.attempt;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;changedFiles=@($proof.partial.paths);previousClass='AGENT_FAILURE';derivedClass='INCOMPLETE_PROVIDER_RESULT';approvalAuthority=[string]$authority.approval;gateHash=[string]$authority.gateHash;runId=$RunId;workspace=[string]$state.workspace;expectedHead=$proof.expectedHead;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);providerWaitPollCount=$(if($proof.providerWait){[int]$proof.providerWait.pollCount}else{$null});providerWaitBackoffSec=$(if($proof.providerWait){[int]$proof.providerWait.nextBackoffSec}else{$null});workspaceMutationSnapshotHash=$(if($mutation){[string]$mutation.snapshot.snapshotHash}else{''});workspaceMutationResultHash=$(if($mutation){[string]$mutation.result.resultHash}else{''});preInvocationPartialDiffHash=$(if($mutation){[string]$mutation.snapshot.partialDiffHash}else{''});preInvocationPartialFilesHash=$(if($mutation){[string]$mutation.snapshot.partialFilesHash}else{''});attributedAddedFiles=$(if($mutation){@($mutation.addedPaths)}else{@()})}
     $state.incompleteProviderResultRecoveryHistory=@($state.incompleteProviderResultRecoveryHistory|Where-Object{$_})+@($recovery)
     if(-not $authority.satisfied -or [string]$authority.approval -ne 'APPROVED'){
         if([string]$ledger.state -eq 'READY'){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-gate-hold' -ToState 'WAITING_HUMAN' -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'incomplete provider recovery requires a valid exact Level C approval'|Out-Null}
@@ -1306,8 +1417,10 @@ function Invoke-RealDispatcherTask {
                 $state.memoryWriteCount=[int]$mem.writeCount
                 if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
                 $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
-                $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint)
-                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;model=$ar.model;reasoningEffort=$ar.reasoningIntent;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash;usage=$ar.usage;cachedTokens=$ar.cachedTokens;costUsd=$ar.costUsd;telemetryConsistent=$ar.telemetryConsistent}
+                $preLaunch={param($launch) New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $Task -InvocationId ([string]$launch.invocationId) -PromptArtifact ([string]$launch.promptArtifact) -PromptHash ([string]$launch.promptHash) -Provider ([string]$launch.provider) -Model ([string]$launch.model) -ReasoningEffort ([string]$launch.reasoningEffort) -Attempt ([int]$launch.attempt)|Out-Null}
+                $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint) -BeforeLaunch $preLaunch
+                $resultSnapshot=New-DispatcherWorkspaceInvocationResultSnapshot -State $state -Task $Task -AgentResult $ar
+                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;model=$ar.model;reasoningEffort=$ar.reasoningIntent;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;promptArtifact=$ar.promptArtifact;promptHash=$ar.promptHash;workspaceResultSnapshotHash=$resultSnapshot.resultHash;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash;usage=$ar.usage;cachedTokens=$ar.cachedTokens;costUsd=$ar.costUsd;telemetryConsistent=$ar.telemetryConsistent}
                 $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
                 if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
                 Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
