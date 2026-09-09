@@ -908,7 +908,20 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT' -or [int]$State.attempt -ne $Attempt){throw 'workspace invocation snapshot: dispatcher is not at the exact pre-launch implementation state'}
     if(@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count){throw 'workspace invocation snapshot: invocation already has a snapshot'}
     $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
-    if(-not $partial.clean){throw "workspace invocation snapshot: $($partial.reason)"}
+    if(-not $partial.clean){
+        # A quarantined retry deliberately starts from the trusted commit rather
+        # than importing the untrusted partial worktree.  It is therefore the
+        # one case where an empty, verified worktree is a valid launch baseline.
+        # Do not generalize this exception: a normal implementation still needs
+        # the scoped per-file proof above, and a dirty retry still goes through
+        # that same proof (including scope and secret scanning).
+        $quarantine=[hashtable]$State.quarantineReference;$retry=[hashtable]$State.quarantineRetryRoute
+        $isBoundRetry=($retry -and [string]$retry.provider -eq [string]$Provider -and [string]$retry.model -eq [string]$Model -and [string]$retry.profile -eq [string]$State.profile)
+        $isRequiredDeepSeekRetry=([string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH' -and [string]$retry.provider -eq 'deepseek' -and [string]$retry.model -eq 'deepseek-v4-pro' -and [string]$retry.reasoning -eq 'high')
+        $isCleanRetry=($partial.reason -eq 'workspace has no preserved partial changes' -and $quarantine -and $isBoundRetry -and [string]$quarantine.policy -eq 'NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT' -and [bool](-not $quarantine.contentLoaded) -and ([string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY' -or $isRequiredDeepSeekRetry))
+        if(-not $isCleanRetry){throw "workspace invocation snapshot: $($partial.reason)"}
+        $partial=[ordered]@{clean=$true;reason='verified clean quarantined retry baseline';paths=@();fileBindings=@();diffHash=(New-StringHash '');filesHash=(New-StringHash '')}
+    }
     $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
     if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation snapshot: workspace HEAD drift'}
     $prior=@($State.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.runId -eq [string]$State.runId -and [string]$_.workspace -eq [string]$State.workspace}|Select-Object -Last 1)[0]
@@ -1212,6 +1225,9 @@ function Quarantine-DispatcherIncompleteProviderResult {
     if($script:IncompleteProviderResultQuarantineFaultAfterLedger){throw 'injected incomplete provider quarantine crash after ledger transition'}
     $state.workspace=$cleanWorkspace;$state.branch=[string]$ws.branch;$state.baseSha=$TrustedHead;$state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.lastErrorClass='INCOMPLETE_PROVIDER_RESULT';$state.implementationComplete=$false;$state.provider=[string]$route.provider;$state.model=[string]$route.model;$state.profile=[string]$route.profile;$state.classification=$classification
     $state.quarantineReference=[ordered]@{oldWorkspace=$oldWorkspace;invocationId=$InvocationId;policy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';contentLoaded=$false}
+    if([string]$route.provider -eq 'deepseek' -and [string]$route.model -eq 'deepseek-v4-pro' -and [string]$route.profile -eq 'REASONING'){
+        $state.quarantineRetryRoute=[ordered]@{provider='deepseek';model='deepseek-v4-pro';profile='REASONING';reasoning='high';policy='CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH';selectedAt=(Get-Date).ToUniversalTime().ToString('o')}
+    }else{$state.quarantineRetryRoute=[ordered]@{provider=[string]$route.provider;model=[string]$route.model;profile=[string]$route.profile;reasoning='';policy='CLEAN_QUARANTINED_RETRY';selectedAt=(Get-Date).ToUniversalTime().ToString('o')}}
     $state.incompleteProviderResultAbandonmentHistory=@($state.incompleteProviderResultAbandonmentHistory|Where-Object{$_})+@($record)
     Write-DispatcherState $state|Out-Null
     return [ordered]@{status='QUARANTINED_AND_REDISPATCHED';taskVersionId=$TaskVersionId;runId=$RunId;workspace=$cleanWorkspace;oldWorkspace=$oldWorkspace;dispatcherStatus=$state.status;stage=$state.stage;quarantine=$record}

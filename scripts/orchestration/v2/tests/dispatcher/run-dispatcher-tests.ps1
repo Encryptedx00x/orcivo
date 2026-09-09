@@ -878,6 +878,23 @@ try{
             Write-Utf8 (Join-Path $f.workspace 'outside.ts') 'export const outside = true;' ;$scope=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
             Assert-True (-not $runner.eligible -and -not $leased.eligible -and -not $scope.eligible) 'quarantine accepted an active runner/lease or out-of-scope evidence file'
         }
+        Check 'RD-99' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD99';$trusted=$f.state.implementationCommit
+            $q=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            $state=Get-DispatcherState;$route=[hashtable]$state.quarantineRetryRoute;$logs=Join-Path (Get-V2Dir) "runs\$($state.runId)\logs";$launch='att-'+[guid]::NewGuid().ToString('N');$prompt=Join-Path $logs ('implementer-{0:000}-{1}.prompt.txt' -f [int]$state.attempt,$launch.Substring(4,8));Write-Utf8 $prompt 'sanitized clean retry prompt'
+            $snap=New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId $launch -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider ([string]$route.provider) -Model ([string]$route.model) -ReasoningEffort $(if([string]$route.reasoning){[string]$route.reasoning}else{'high'}) -Attempt ([int]$state.attempt)
+            $restart=Get-DispatcherState;$durable=Get-DispatcherWorkspaceInvocationSnapshot -State $restart -InvocationId $launch
+            Assert-True ($q.status -eq 'QUARANTINED_AND_REDISPATCHED' -and @($snap.paths).Count -eq 0 -and @($snap.fileBindings).Count -eq 0 -and $snap.partialDiffHash -eq (New-StringHash '') -and $snap.partialFilesHash -eq (New-StringHash '') -and $durable -and $durable.snapshotHash -eq $snap.snapshotHash) 'clean quarantined retry did not receive a durable empty launch baseline'
+            Remove-DispatcherWorkspace -Workspace $q.workspace
+        }
+        Check 'RD-100' {
+            $f=New-IncompleteProviderQuarantineFixture 'RD100';$trusted=$f.state.implementationCommit
+            $q=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            $state=Get-DispatcherState;$route=[hashtable]$state.quarantineRetryRoute;Write-Utf8 (Join-Path $q.workspace 'outside.ts') 'export const outside = true;';$logs=Join-Path (Get-V2Dir) "runs\$($state.runId)\logs";$launch='att-'+[guid]::NewGuid().ToString('N');$prompt=Join-Path $logs ('implementer-{0:000}-{1}.prompt.txt' -f [int]$state.attempt,$launch.Substring(4,8));Write-Utf8 $prompt 'sanitized dirty retry prompt';$failed=$false
+            try{New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId $launch -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider ([string]$route.provider) -Model ([string]$route.model) -ReasoningEffort $(if([string]$route.reasoning){[string]$route.reasoning}else{'high'}) -Attempt ([int]$state.attempt)|Out-Null}catch{$failed=$_.Exception.Message -match 'out-of-scope'}
+            Assert-True $failed 'clean retry exception accepted an out-of-scope workspace mutation'
+            Remove-DispatcherWorkspace -Workspace $q.workspace
+        }
         Check 'RD-96' {
             $f=New-IncompleteProviderQuarantineFixture 'RD96';$trusted=$f.state.implementationCommit;$gate=Get-HumanGatePath $f.contract.taskVersionId $f.task.ownerGate;Remove-Item -LiteralPath $gate -Force;$approval=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
             $wrong=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId 'run-wrong-version' -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
