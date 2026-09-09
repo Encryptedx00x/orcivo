@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'configure-deepseek-pricing', 'smoke-deepseek', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -53,7 +53,8 @@ param(
     [string]$StopHash = '',
     [string]$ApprovalScope = '',
     [string]$ApprovedBy = 'owner',
-    [string]$ApprovalSource = 'pilot.ps1 approve-gate'
+    [string]$ApprovalSource = 'pilot.ps1 approve-gate',
+    [string]$SmokeRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -442,6 +443,11 @@ switch ($Command) {
         $result=Invoke-DeepSeekSmoke
         $result|ConvertTo-Json -Depth 12
         exit $(if($result.status -eq 'PASS'){0}else{1})
+    }
+    'reconcile-deepseek-local-prelaunch' {
+        if(-not $InvocationId -or -not $SmokeRoot){throw 'reconcile-deepseek-local-prelaunch requires -InvocationId and -SmokeRoot'}
+        $result=Resolve-DeepSeekLocalPrelaunchTelemetry -InvocationId $InvocationId -SmokeRoot $SmokeRoot
+        $result|ConvertTo-Json -Depth 12
     }
     'recover-provider-failure' {
         if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash){throw 'recover-provider-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, and -EvidenceHash'}

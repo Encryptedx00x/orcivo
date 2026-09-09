@@ -134,7 +134,7 @@ function Get-DeepSeekBudgetStatus {
     $record=$null;$path=Get-DeepSeekBudgetPath $At
     if(Test-Path -LiteralPath $path){try{$record=Read-V2Json $path}catch{return [ordered]@{ok=$false;reason='DeepSeek budget telemetry is unreadable';capUsd=$cap;spentUsd=0;remainingUsd=0}}}
     $spent=$(if($record){[decimal]$record.spentUsd}else{[decimal]0})
-    $telemetryBad=[bool]($record -and @($record.invocations|Where-Object{$null -eq $_.costUsd -or [string]$_.telemetryStatus -eq 'UNKNOWN'}).Count -gt 0)
+    $telemetryBad=[bool]($record -and @($record.invocations|Where-Object{($null -eq $_.costUsd -or [string]$_.telemetryStatus -eq 'UNKNOWN') -and [string]$_.billingDisposition -ne 'NOT_INCURRED_LOCAL_PRELAUNCH'}).Count -gt 0)
     $pricing=Get-DeepSeekPriceManifest -At $At
     return [ordered]@{ok=($cfg.enabled -and $pricing.ok -and -not $telemetryBad -and $cap -gt 0 -and $spent -le $cap);reason=$(if(-not $cfg.enabled){[string]$cfg.reason}elseif(-not $pricing.ok){[string]$pricing.reason}elseif($telemetryBad){'DeepSeek budget telemetry contains an unknown cost'}elseif($spent -gt $cap){'DeepSeek monthly budget exhausted'}else{'ok'});month=$At.ToString('yyyy-MM');capUsd=$cap;spentUsd=$spent;remainingUsd=($cap-$spent);pricingStatus=$(if($pricing.ok){'VERIFIED'}else{'UNCONFIGURED'});pricingManifestHash=$(if($pricing.ok){$pricing.manifestHash}else{$null});path=$path}
 }
@@ -154,7 +154,7 @@ function Get-DeepSeekLaunchConfiguration {
     [void](Get-DeepSeekCodexHome)
     return [ordered]@{
         codexHome=(Get-DeepSeekCodexHome)
-        configArgs=@('-c','model_provider="deepseek"','-c','model_providers.deepseek.base_url="https://api.deepseek.com/"','-c','model_providers.deepseek.wire_api="responses"','-c','model_providers.deepseek.env_key="DEEPSEEK_API_KEY"','-m',$Model,'-c',('model_reasoning_effort="'+$Reasoning+'"'))
+        configArgs=@('-c','model_provider="deepseek"','-c','model_providers.deepseek.name="DeepSeek"','-c','model_providers.deepseek.base_url="https://api.deepseek.com/"','-c','model_providers.deepseek.wire_api="responses"','-c','model_providers.deepseek.env_key="DEEPSEEK_API_KEY"','-m',$Model,'-c',('model_reasoning_effort="'+$Reasoning+'"'))
         environment=@{CODEX_HOME=(Get-DeepSeekCodexHome)}
     }
 }
@@ -209,4 +209,24 @@ function Register-DeepSeekUnknownUsage {
     $entry=[ordered]@{invocationId=$InvocationId;model=$Model;returnedModels=@($ReturnedModels);inputTokens=$(if($Usage){$Usage.inputTokens}else{$null});outputTokens=$(if($Usage){$Usage.outputTokens}else{$null});cachedTokens=$(if($Usage){$Usage.cachedTokens}else{$null});costUsd=$null;telemetryStatus='UNKNOWN';reason=$Reason;resultClass=$ResultClass;exitCode=$ExitCode;recordedAt=(Get-Date).ToUniversalTime().ToString('o')}
     $prior.invocations=@($prior.invocations)+@($entry);Write-V2JsonCanonical $path $prior
     return $entry
+}
+
+function Resolve-DeepSeekLocalPrelaunchTelemetry {
+    param([Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$SmokeRoot)
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'DeepSeek telemetry reconciliation: invalid invocation id'}
+    $base=[IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'orcivo-dispatcher\provider-smokes'))
+    $root=[IO.Path]::GetFullPath($SmokeRoot);$prefix=$base.TrimEnd([char[]]@('\','/'))+[IO.Path]::DirectorySeparatorChar
+    if(-not $root.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'DeepSeek telemetry reconciliation: smoke root escapes the runtime provider-smokes root'}
+    $postPath=Join-Path $root 'artifacts\post-result-manifest.json';if(-not(Test-Path -LiteralPath $postPath)){throw 'DeepSeek telemetry reconciliation: post-result manifest is missing'}
+    try{$post=Read-V2Json $postPath}catch{throw 'DeepSeek telemetry reconciliation: post-result manifest is unreadable'}
+    if([string]$post.invocationId -ne $InvocationId -or [int]$post.exitCode -ne 1 -or [string]$post.providerClass -ne 'PROVIDER_UNAVAILABLE' -or [string]$post.resultClass -ne 'AGENT_FAILURE' -or $null -ne $post.usage -or @($post.returnedModels).Count -ne 0 -or $null -ne $post.costUsd){throw 'DeepSeek telemetry reconciliation: result is not an unbilled local prelaunch failure'}
+    $stdout=@(Get-ChildItem -LiteralPath (Join-Path $root 'artifacts') -Filter '*-deepseek-*.stdout.log' -File);$stderr=@(Get-ChildItem -LiteralPath (Join-Path $root 'artifacts') -Filter '*-deepseek-*.stderr.log' -File)
+    if($stdout.Count -ne 1 -or $stderr.Count -ne 1 -or $stdout[0].Length -ne 0){throw 'DeepSeek telemetry reconciliation: process output is inconsistent'}
+    $err=[IO.File]::ReadAllText($stderr[0].FullName,[Text.Encoding]::UTF8)
+    if($err -notmatch '^Error loading config\.toml:' -or $err -match '(?i)https?://|\b401\b|\b402\b|\b429\b'){throw 'DeepSeek telemetry reconciliation: stderr does not prove a local configuration parse failure'}
+    $path=Get-DeepSeekBudgetPath;$budget=Read-V2Json $path;$records=@($budget.invocations|Where-Object{[string]$_.invocationId -eq $InvocationId})
+    if($records.Count -ne 1 -or $null -ne $records[0].costUsd -or [string]$records[0].telemetryStatus -ne 'UNKNOWN'){throw 'DeepSeek telemetry reconciliation: durable unknown-cost record is not eligible'}
+    $records[0].billingDisposition='NOT_INCURRED_LOCAL_PRELAUNCH';$records[0].reconciledAt=(Get-Date).ToUniversalTime().ToString('o');$records[0].reconciliationEvidence=[ordered]@{postManifestHash=(New-FileHash $postPath);stdoutHash=(New-FileHash $stdout[0].FullName);stderrHash=(New-FileHash $stderr[0].FullName);proof='LOCAL_CONFIG_PARSE_BEFORE_PROVIDER_REQUEST'}
+    Write-V2JsonCanonical $path $budget
+    return [ordered]@{status='RECONCILED_NOT_INCURRED_LOCAL_PRELAUNCH';invocationId=$InvocationId;costUsd=$null;billingDisposition='NOT_INCURRED_LOCAL_PRELAUNCH';evidence=$records[0].reconciliationEvidence}
 }
