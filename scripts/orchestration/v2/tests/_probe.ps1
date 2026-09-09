@@ -713,8 +713,13 @@ switch ($Do) {
     ExpectThrow {&$invoke $x} 'successor lease was accepted'
     $script:OrphanedSchedulerLeaseBeforeReleaseHook=$null
     Expect ((Read-LeaseRaw $path).lease.leaseId -eq 'lease-88888888888888888888888888888888') 'successor lease was removed'
+    # An external owner-run process blocks, while the public invoker's own
+    # ancestor chain is ignored because it carries OwnerRunId as an argument.
+    $x=&$make 'lease-99999999999999999999999999999999'
+    $ownerProc=Start-Process -WindowStyle Hidden -FilePath powershell.exe -ArgumentList @('-NoProfile','-Command',"Start-Sleep -Seconds 45 # $ownerRun") -PassThru
+    try { Start-Sleep -Milliseconds 100;ExpectThrow {&$invoke $x} 'external owner-run process was accepted' } finally { Stop-Process -Id $ownerProc.Id -Force -ErrorAction SilentlyContinue }
     # A foreign host and an owner-run checkpoint with a live holder are both hard blocks.
-    $x=&$make 'lease-99999999999999999999999999999999' @{holder=[ordered]@{pid=999999;host='FOREIGN-HOST';startTime='2026-01-01T00:00:00.0000000Z'}}
+    $x=&$make 'lease-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' @{holder=[ordered]@{pid=999999;host='FOREIGN-HOST';startTime='2026-01-01T00:00:00.0000000Z'}}
     ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost 'FOREIGN-HOST' -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z'} 'foreign host was accepted'
     $x=&$make 'lease-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     $cp=Join-Path (Get-V2Dir) "pilot\$ownerRun.json";Write-V2JsonCanonical $cp ([ordered]@{runId=$ownerRun;holder=(Get-ProcessIdentity)})

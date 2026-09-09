@@ -303,8 +303,15 @@ function Test-OrphanedSchedulerLeaseProcessSafety {
     # work, irrespective of its executable name.
     $children=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|Where-Object{[int]$_.ParentProcessId -eq $holderProcessId})
     if($children.Count){return [ordered]@{ok=$false;reason='a descendant of the lease holder is still active'}}
-    foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)){
-        if([int]$p.ProcessId -eq $PID){continue}
+    # The public command necessarily carries OwnerRunId in its own arguments.
+    # Exclude only the invoker's ancestry; an independently launched process
+    # mentioning this run remains live-work evidence and blocks reconciliation.
+    $ancestors=New-Object 'System.Collections.Generic.HashSet[int]'
+    $byId=@{};foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)){$byId[[int]$p.ProcessId]=$p}
+    $cursor=[int]$PID
+    while($byId.ContainsKey($cursor) -and $ancestors.Add($cursor)){$cursor=[int]$byId[$cursor].ParentProcessId}
+    foreach($p in @($byId.Values)){
+        if($ancestors.Contains([int]$p.ProcessId)){continue}
         if([string]$p.CommandLine -match [regex]::Escape($OwnerRunId)){return [ordered]@{ok=$false;reason='a process for the owner run is still active'}}
     }
     return [ordered]@{ok=$true;reason='holder, descendants, and owner-run processes are absent'}
