@@ -126,6 +126,11 @@ function Invoke-RealAgent {
     if (-not $route.ok) {
         return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false }
     }
+    $deepSeekRequestManifest=$null;$deepSeekRequestManifestPath=''
+    if($Provider -eq 'deepseek'){
+        $deepSeekRequestManifest=New-DeepSeekRequestManifest -InvocationId $invocationId -PromptHash (New-FileHash $promptFile) -Model ([string]$route.model) -Reasoning ([string]$route.reasoningIntent) -Profile $Profile
+        $deepSeekRequestManifestPath=Join-Path $ArtifactDir "$stamp.request-manifest.json";Write-V2JsonCanonical $deepSeekRequestManifestPath $deepSeekRequestManifest
+    }
     $schemaPath = $(if ($Role -eq 'reviewer') { Get-ReviewResultSchemaPath } else { Get-AgentResultSchemaPath })
     $args = @($route.invocationArgs)
     if ($Provider -eq 'claude') {
@@ -181,7 +186,13 @@ function Invoke-RealAgent {
     if($BeforeLaunch){
         # The callback is the only lifecycle point after the redacted prompt is
         # immutable and before a provider child can mutate the workspace.
-        & $BeforeLaunch ([ordered]@{invocationId=$invocationId;promptArtifact=[IO.Path]::GetFullPath($promptFile);promptHash=(New-FileHash $promptFile);provider=$Provider;model=[string]$route.model;reasoningEffort=[string]$route.reasoningIntent;profile=$Profile;attempt=$Attempt})
+        & $BeforeLaunch ([ordered]@{invocationId=$invocationId;promptArtifact=[IO.Path]::GetFullPath($promptFile);promptHash=(New-FileHash $promptFile);provider=$Provider;model=[string]$route.model;reasoningEffort=[string]$route.reasoningIntent;profile=$Profile;attempt=$Attempt;requestManifestPath=$deepSeekRequestManifestPath;requestManifestHash=$(if($deepSeekRequestManifest){[string]$deepSeekRequestManifest.manifestHash}else{''})})
+    }
+    if($Provider -eq 'deepseek'){
+        # This is a durable upper bound reservation, not a cost estimate
+        # recorded as spend. It prevents a retry loop from consuming the
+        # monthly balance before the provider returns billable usage.
+        [void](Reserve-DeepSeekInvocationBudget -InvocationId $invocationId -MaxUsd ([decimal]$route.estimatedUsd) -Model ([string]$route.model))
     }
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
@@ -208,9 +219,11 @@ function Invoke-RealAgent {
     if($Provider -eq 'deepseek'){
         $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
         $returnedModels=Get-DeepSeekReturnedModel -Events @($parsed.events)
-        if($usage -and $returnedModels.Count -eq 1){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
-        else{$telemetryConsistent=$false;$unknownReason=$(if(-not $usage){'usage is absent'}else{'returned model is absent or ambiguous'})}
+        $resolution=$(if($deepSeekRequestManifest){Resolve-DeepSeekBillableModel -RequestManifest $deepSeekRequestManifest -Events @($parsed.events) -ExitCode $proc.exitCode}else{$null})
+        if($resolution -and $resolution.ok){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -BillableResolution $resolution -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
+        else{$telemetryConsistent=$false;$unknownReason=$(if($resolution){$resolution.reason}elseif(-not $usage){'usage is absent'}else{'request manifest is absent'})}
         if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
+        if($usage -and [int64]$usage.outputTokens -gt [int64]$route.maxOutputTokens){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
         if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
     }
     return [ordered]@{
@@ -221,6 +234,6 @@ function Invoke-RealAgent {
         stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
-        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);costUsd=$cost;telemetryConsistent=$telemetryConsistent
+        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);requestManifestPath=$deepSeekRequestManifestPath;requestManifestHash=$(if($deepSeekRequestManifest){[string]$deepSeekRequestManifest.manifestHash}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
     }
 }

@@ -154,8 +154,8 @@ function Resolve-Provider {
         if(-not $env:DEEPSEEK_API_KEY){return [ordered]@{ok=$false;provider='deepseek';reason='DEEPSEEK_API_KEY is unavailable'}}
         $budget=Get-DeepSeekBudgetStatus;if(-not $budget.ok){return [ordered]@{ok=$false;provider='deepseek';reason="DeepSeek budget preflight: $($budget.reason)"}}
         $cap=Get-CliCapabilities -Provider 'codex';if(-not $cap.installed){return [ordered]@{ok=$false;provider='deepseek';reason="Codex CLI '$($cap.bin)' not installed"}}
-        $launch=Get-DeepSeekLaunchConfiguration -Model $(if($ModelOverride){$ModelOverride}else{$plan.model}) -Reasoning $plan.reasoning
-        return [ordered]@{ok=$true;provider='deepseek';bin=$cap.bin;profile=$Profile;reasoningIntent=$plan.reasoning;model=$(if($ModelOverride){$ModelOverride}else{$plan.model});invocationArgs=@('exec')+@($launch.configArgs);environment=$launch.environment;outputJson=$true;freshContextFlag='(codex exec is fresh by default)';sandboxFlag=$cap.sandboxFlag;supportsExplicitReasoning=$true;limitations=@();capabilityVersion=$cap.version;estimatedUsd=[decimal]$((Get-DeepSeekRuntimeConfig).deepseek.profiles.$Profile.maxEstimatedUsd)}
+        $launch=Get-DeepSeekLaunchConfiguration -Model $(if($ModelOverride){$ModelOverride}else{$plan.model}) -Reasoning $plan.reasoning -MaxOutputTokens $plan.maxOutputTokens
+        return [ordered]@{ok=$true;provider='deepseek';bin=$cap.bin;profile=$Profile;reasoningIntent=$plan.reasoning;model=$(if($ModelOverride){$ModelOverride}else{$plan.model});maxOutputTokens=$plan.maxOutputTokens;maxInvocationsPerTask=$plan.maxInvocationsPerTask;invocationArgs=@('exec')+@($launch.configArgs);environment=$launch.environment;outputJson=$true;freshContextFlag='(codex exec is fresh by default)';sandboxFlag=$cap.sandboxFlag;supportsExplicitReasoning=$true;limitations=@();capabilityVersion=$cap.version;estimatedUsd=[decimal]$((Get-DeepSeekRuntimeConfig).deepseek.profiles.$Profile.maxEstimatedUsd)}
     }
     $cfg = Get-V2Config
     $cap = Get-CliCapabilities -Provider $Provider

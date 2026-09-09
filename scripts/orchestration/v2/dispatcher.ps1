@@ -1529,6 +1529,10 @@ function Invoke-RealDispatcherTask {
         if(Test-Path (Join-Path (Get-V2Dir) $pcfg.stopFile)){ $state.status='STOPPED';$state.reason='explicit stop requested';Write-DispatcherState $state|Out-Null;return $state }
         if($state.stage -eq 'IMPLEMENT'){
             if(-not (Test-DispatcherImplementationCompleted $state)){
+                if($state.provider -eq 'deepseek'){
+                    $plan=Get-DeepSeekModelPlan -Profile $state.profile;$used=@($state.providerHistory|Where-Object{[string]$_.provider -eq 'deepseek' -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')}).Count
+                    if(-not $plan.ok -or $used -ge [int]$plan.maxInvocationsPerTask){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'deepseek-invocation-budget-hold' -ToState WAITING_HUMAN -RunId $state.runId -Note 'DeepSeek implementation invocation cap reached or invalid'|Out-Null;$state.status='WAITING_HUMAN';$state.reason='DeepSeek implementation invocation cap reached or invalid';Write-DispatcherState $state|Out-Null;return $state}
+                }
                 $state.attempt=[int]$state.attempt+1; Write-DispatcherState $state|Out-Null
                 $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
                 $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
