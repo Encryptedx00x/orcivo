@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'configure-deepseek-pricing', 'smoke-deepseek', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -83,6 +83,29 @@ function Get-PilotCheckpointDir { return (Join-Path (Get-V2Dir) 'pilot') }
 function Test-RealExecutionAuthorized {
     $cfg = Get-PilotConfig
     return (Test-Path -LiteralPath (Join-Path (Get-V2Dir) "$($cfg.realExecutionAuthFile)"))
+}
+
+function Invoke-DeepSeekSmoke {
+    # Public paid smoke: separate from task lineage and from any product
+    # workspace.  It leaves only redacted, hash-bound artifacts under the
+    # runtime directory; credentials stay inherited by the child process.
+    if(-not $env:DEEPSEEK_API_KEY){throw 'DeepSeek smoke: DEEPSEEK_API_KEY is unavailable'}
+    [void](Assert-DeepSeekInvocationBudget -EstimatedUsd ([decimal]0.03))
+    $root=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) ('orcivo-dispatcher\provider-smokes\deepseek-'+[guid]::NewGuid().ToString('N'))
+    $workspace=Join-Path $root 'workspace';$artifacts=Join-Path $root 'artifacts';New-Item -ItemType Directory -Force -Path $workspace,$artifacts|Out-Null
+    $init=Invoke-GitV2 -Dir $workspace -Arguments @('init','--quiet') -LogLabel 'deepseek-smoke-init';Assert-GitSucceededV2 $init 'DeepSeek smoke git initialization'|Out-Null
+    $prompt=@'
+Connectivity smoke only. Do not modify files, run tools, or inspect unrelated data.
+Return exactly one JSON object matching this schema:
+{"schemaVersion":"orcivo.orchestration.v2.agent-result/1","role":"IMPLEMENTER","resultClass":"SUCCESS","summary":"DeepSeek Responses smoke completed","decisions":[],"tests":[],"nextAction":"stop","importantArtifacts":[]}
+'@
+    $prePath=Join-Path $artifacts 'pre-launch-manifest.json';$postPath=Join-Path $artifacts 'post-result-manifest.json'
+    $before={param($launch)Write-V2JsonCanonical $prePath ([ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-smoke-manifest/1';phase='PRE_LAUNCH';invocationId=[string]$launch.invocationId;provider=[string]$launch.provider;model=[string]$launch.model;reasoning=[string]$launch.reasoningEffort;profile=[string]$launch.profile;promptArtifact=[string]$launch.promptArtifact;promptHash=[string]$launch.promptHash})}
+    $result=Invoke-RealAgent -Provider deepseek -Role implementer -TaskVersion ('f'*64) -Profile FAST -Workspace $workspace -StructuredPrompt $prompt -ArtifactDir $artifacts -TimeoutSec 120 -Attempt 1 -BeforeLaunch $before
+    Write-V2JsonCanonical $postPath ([ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-smoke-manifest/1';phase='POST_RESULT';invocationId=[string]$result.invocationId;provider=[string]$result.provider;model=[string]$result.model;returnedModels=@($result.returnedModels);exitCode=[int]$result.exitCode;providerClass=[string]$result.providerClass;resultClass=[string]$result.resultClass;promptHash=[string]$result.promptHash;stdoutHash=[string]$result.stdoutHash;controlRecordHash=[string]$result.controlRecordHash;usage=$result.usage;cachedTokens=$result.cachedTokens;costUsd=$result.costUsd;telemetryConsistent=[bool]$result.telemetryConsistent})
+    $scan=Test-TreeSecretsClean -Roots @($root)
+    $ok=($result.exitCode -eq 0 -and $result.providerClass -eq 'NONE' -and $result.resultClass -eq 'SUCCESS' -and $result.telemetryConsistent -and $null -ne $result.costUsd -and (Test-Path -LiteralPath $prePath) -and (Test-Path -LiteralPath $postPath) -and $scan.clean)
+    return [ordered]@{status=$(if($ok){'PASS'}else{'FAIL'});workspace=$workspace;artifacts=$artifacts;invocationId=$result.invocationId;model=$result.model;returnedModels=@($result.returnedModels);usage=$result.usage;costUsd=$result.costUsd;telemetryConsistent=$result.telemetryConsistent;secretScanClean=[bool]$scan.clean}
 }
 
 # --- durable pilot checkpoint --------------------------------------------------
@@ -410,6 +433,15 @@ switch ($Command) {
         if(-not $task){throw "reconcile-owner-gate: task '$TaskId' not found"}
         $result=Reconcile-DispatcherOwnerGateProjection -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId
         $result|ConvertTo-Json -Depth 12
+    }
+    'configure-deepseek-pricing' {
+        $result=Enable-DeepSeekVerifiedPricing
+        $result|ConvertTo-Json -Depth 12
+    }
+    'smoke-deepseek' {
+        $result=Invoke-DeepSeekSmoke
+        $result|ConvertTo-Json -Depth 12
+        exit $(if($result.status -eq 'PASS'){0}else{1})
     }
     'recover-provider-failure' {
         if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash){throw 'recover-provider-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, and -EvidenceHash'}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "orcivo.orchestration.v2.deepseek-price-registry/1",
+  "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing",
+  "verifiedAt": "2026-09-08T00:00:00Z",
+  "expiresAt": "2026-10-08T00:00:00Z",
+  "currency": "USD",
+  "unit": "USD_PER_1M_TOKENS",
+  "timezone": "UTC",
+  "peak": {
+    "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    "windows": [
+      { "start": "01:00", "end": "04:00" },
+      { "start": "06:00", "end": "10:00" }
+    ]
+  },
+  "models": {
+    "deepseek-v4-pro": {
+      "resolvedModel": "DeepSeek-V4-Pro-0813",
+      "OFF_PEAK": { "cachedInput": 0.022, "uncachedInput": 0.66, "output": 1.98 },
+      "PEAK": { "cachedInput": 0.044, "uncachedInput": 1.32, "output": 3.96 }
+    },
+    "deepseek-v4-flash": {
+      "resolvedModel": "DeepSeek-V4-Flash-0731",
+      "OFF_PEAK": { "cachedInput": 0.007, "uncachedInput": 0.22, "output": 0.66 },
+      "PEAK": { "cachedInput": 0.014, "uncachedInput": 0.44, "output": 1.32 }
+    }
+  },
+  "manifestHash": "sha256:c4b49abd321fd5acea5454c0b10f5a60aa8b9dd3fcdf369fea453240d0b7e439"
+}

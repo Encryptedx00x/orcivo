@@ -640,7 +640,7 @@ function Resume-DispatcherProviderWait {
         $selected = [string]$State.provider
     }
     if ($State.stage -eq 'REVIEW') {
-        $requiredReviewer = $(if ($State.provider -eq 'claude') { 'codex' } else { 'claude' })
+        $requiredReviewer = $(if ($State.provider -in @('claude','deepseek')) { 'codex' } else { 'deepseek' })
         if (@($ready.healthy) -notcontains $requiredReviewer) {
             Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId
             return $false
@@ -1510,6 +1510,20 @@ function Invoke-RealDispatcherTask {
     }
     if(-not (Test-Path -LiteralPath $state.workspace)){ $state.status='BLOCKED';$state.reason='durable workspace is missing';Write-DispatcherState $state|Out-Null;return $state }
 
+    # A clean retry created by the public quarantine flow is a new, fully
+    # attested implementation attempt.  The dispatcher (not an owner flag)
+    # selects the isolated paid provider policy for this exceptional lineage:
+    # Pro/high is required because the original task is authorization and
+    # transaction sensitive.  The selection is durable and idempotent before
+    # the first retry launch; no quarantined bytes are imported or trusted.
+    if($state.quarantineReference -and -not $state.quarantineRetryRoute -and $state.stage -eq 'IMPLEMENT' -and $state.status -eq 'RUNNING' -and -not(Test-DispatcherImplementationCompleted $state)){
+        $retryRoute=Resolve-Provider -Profile REASONING -Provider deepseek
+        if(-not $retryRoute.ok){$state.status='WAITING_HUMAN';$state.reason="quarantined clean retry cannot start: $($retryRoute.reason)";Write-DispatcherState $state|Out-Null;return $state}
+        $state.provider=[string]$retryRoute.provider;$state.profile=[string]$retryRoute.profile;$state.model=[string]$retryRoute.model
+        $state.quarantineRetryRoute=[ordered]@{provider=[string]$retryRoute.provider;model=[string]$retryRoute.model;reasoning=[string]$retryRoute.reasoningIntent;profile=[string]$retryRoute.profile;selectedAt=(Get-Date).ToUniversalTime().ToString('o');policy='CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH'}
+        Write-DispatcherState $state|Out-Null
+    }
+
     $maxAttempts=[int]$cfg.ledger.maxAttemptsPerVersion; $maxCycles=[int]$cfg.correctionLoop.maxCycles
     while($true){
         if(Test-Path (Join-Path (Get-V2Dir) $pcfg.stopFile)){ $state.status='STOPPED';$state.reason='explicit stop requested';Write-DispatcherState $state|Out-Null;return $state }
@@ -1589,7 +1603,7 @@ function Invoke-RealDispatcherTask {
         }
 
         if($state.stage -eq 'REVIEW'){
-            $reviewer=$(if($state.provider -eq 'claude'){'codex'}else{'claude'});$state.reviewerProvider=$reviewer
+            $reviewer=$(if($state.provider -in @('claude','deepseek')){'codex'}else{'deepseek'});$state.reviewerProvider=$reviewer
             $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff' -ReviewedSourceOutput;Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
             $reviewDir=Join-Path (Get-V2Dir) "runs\$($state.runId)\review-$('{0:000}' -f ([int]$state.cycle))"
             $rp=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $state.taskVersionId -Head $state.candidateHead -TreeHash $state.candidateTree -DiffHash $state.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "PASS profile=$($contract.verificationProfile); secretScan=CLEAN" -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput

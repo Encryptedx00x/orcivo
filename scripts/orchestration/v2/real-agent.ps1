@@ -204,11 +204,13 @@ function Invoke-RealAgent {
         if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
     }
 
-    $usage=$null;$cost=$null;$telemetryConsistent=$true
+    $usage=$null;$cost=$null;$telemetryConsistent=$true;$returnedModels=@()
     if($Provider -eq 'deepseek'){
         $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
-        if($usage){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false}}
-        else{$telemetryConsistent=$false}
+        $returnedModels=Get-DeepSeekReturnedModel -Events @($parsed.events)
+        if($usage -and $returnedModels.Count -eq 1){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
+        else{$telemetryConsistent=$false;$unknownReason=$(if(-not $usage){'usage is absent'}else{'returned model is absent or ambiguous'})}
+        if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
         if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
     }
     return [ordered]@{
@@ -219,6 +221,6 @@ function Invoke-RealAgent {
         stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
-        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
+        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);costUsd=$cost;telemetryConsistent=$telemetryConsistent
     }
 }
