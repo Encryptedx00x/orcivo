@@ -625,8 +625,23 @@ function Enter-DispatcherProviderWait {
     return $State
 }
 
+function Get-DispatcherPinnedQuarantinedRetryRoute {
+    param($State)
+    $retry=[hashtable]$State.quarantineRetryRoute
+    if(-not $retry){return $null}
+    if([string]$retry.policy -ne 'CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH'){return $null}
+    if([string]$retry.provider -ne 'deepseek' -or [string]$retry.model -ne 'deepseek-v4-pro' -or [string]$retry.profile -ne 'REASONING' -or [string]$retry.reasoning -ne 'high'){
+        throw 'quarantined retry route is malformed'
+    }
+    return $retry
+}
+
 function Resume-DispatcherProviderWait {
     param($State)
+    $pinned=Get-DispatcherPinnedQuarantinedRetryRoute $State
+    if($pinned -and ($State.stage -ne 'IMPLEMENT' -or [string]$State.provider -ne [string]$pinned.provider -or [string]$State.model -ne [string]$pinned.model -or [string]$State.profile -ne [string]$pinned.profile)){
+        throw 'quarantined retry route binding drift'
+    }
     $ready = Test-ProviderResumeReady -TaskVersionId $State.taskVersionId
     if (-not $ready.ready) {
         if ($ready.reason -notlike 'backoff:*') { Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId }
@@ -636,7 +651,10 @@ function Resume-DispatcherProviderWait {
     # A recovered partial implementation remains owned by its implementer.  If
     # that provider is healthy again, prefer it over the global routing order;
     # REVIEW still enforces the opposite-provider rule below.
-    if ($State.stage -eq 'IMPLEMENT' -and $State.provider -and @($ready.healthy) -contains [string]$State.provider) {
+    if($pinned){
+        if(@($ready.healthy) -notcontains [string]$pinned.provider){Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId;return $false}
+        $selected=[string]$pinned.provider
+    }elseif ($State.stage -eq 'IMPLEMENT' -and $State.provider -and @($ready.healthy) -contains [string]$State.provider) {
         $selected = [string]$State.provider
     }
     if ($State.stage -eq 'REVIEW') {
@@ -1573,6 +1591,7 @@ function Invoke-RealDispatcherTask {
                 }
                 if(Test-IsCanonicalProviderClass $ar.providerClass){
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
+                    if(Get-DispatcherPinnedQuarantinedRetryRoute $state){return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)}
                     $other=@((Get-OrcivoEnabledProviders)|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
                     if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
                         $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null

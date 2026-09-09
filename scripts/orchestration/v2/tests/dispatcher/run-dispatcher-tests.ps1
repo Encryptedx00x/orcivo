@@ -887,6 +887,12 @@ try{
             Assert-True ($q.status -eq 'QUARANTINED_AND_REDISPATCHED' -and @($snap.paths).Count -eq 0 -and @($snap.fileBindings).Count -eq 0 -and $snap.partialDiffHash -eq (New-StringHash '') -and $snap.partialFilesHash -eq (New-StringHash '') -and $durable -and $durable.snapshotHash -eq $snap.snapshotHash) 'clean quarantined retry did not receive a durable empty launch baseline'
             Remove-DispatcherWorkspace -Workspace $q.workspace
         }
+        Check 'RD-101' {
+            $pinned=[ordered]@{taskVersionId=('a'*64);stage='IMPLEMENT';provider='deepseek';model='deepseek-v4-pro';profile='REASONING';quarantineRetryRoute=[ordered]@{provider='deepseek';model='deepseek-v4-pro';profile='REASONING';reasoning='high';policy='CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH'}}
+            $route=Get-DispatcherPinnedQuarantinedRetryRoute $pinned;$drift=[ordered]@{}+$pinned;$drift.provider='codex';$failed=$false
+            try{Resume-DispatcherProviderWait $drift|Out-Null}catch{$failed=$_.Exception.Message -eq 'quarantined retry route binding drift'}
+            Assert-True ($route -and [string]$route.provider -eq 'deepseek' -and $failed) 'quarantined DeepSeek retry accepted a cross-provider resume'
+        }
         Check 'RD-100' {
             $f=New-IncompleteProviderQuarantineFixture 'RD100';$trusted=$f.state.implementationCommit
             $q=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
