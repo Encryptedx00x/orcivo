@@ -1029,7 +1029,9 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     $history=@($State.providerHistory);$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
     if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'invocation history binding mismatch'}
     $attempt=$matches[0]
-    if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -notin @('NONE','INCOMPLETE_PROVIDER_RESULT') -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'invocation is not an exit-zero incomplete Codex result'}
+    $isExitZeroIncomplete=([int]$attempt.exitCode -eq 0 -and [string]$attempt.providerClass -in @('NONE','INCOMPLETE_PROVIDER_RESULT'))
+    $isReconciledRunningIncomplete=([int]$attempt.exitCode -eq -1 -and [string]$attempt.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and @($State.incompleteRunningInvocationRecoveryHistory|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count -eq 1)
+    if([string]$attempt.provider -ne 'codex' -or [int]$attempt.attempt -ne [int]$State.attempt -or (-not $isExitZeroIncomplete -and -not $isReconciledRunningIncomplete) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'invocation is not a canonical incomplete Codex result'}
     if([int]$State.failovers -ne 1 -or [int]$State.cycle -ne 1){return &$deny 'failover or bounded-cycle mismatch'}
     $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
     if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-codex-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'invocation evidence path mismatch'}
@@ -1192,6 +1194,36 @@ function Test-DispatcherIncompleteProviderResultAbandonment {
     }
     if([string]$ledger.state -ne 'FAILED'){return &$deny 'ledger is not FAILED before incomplete-provider abandonment'}
     return [ordered]@{eligible=$true;reason='unrecoverable incomplete provider result verified for quarantine';base=$base;ledger=$ledger;restart=$false}
+}
+
+# A crash after the RUNNING ledger append but before canonical result handling
+# leaves no terminal envelope.  This narrow recovery proves that exact interval,
+# then uses the normal ledger/state writers to close it as an incomplete result.
+function Test-DispatcherIncompleteRunningInvocationRecovery {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PreManifestHash,[Parameter(Mandatory)][string]$PostManifestHash)
+    $deny={param($r)[ordered]@{eligible=$false;reason=$r}}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.taskId -ne 'PB1-P02-audit-service' -or [int]$State.attempt -ne 348 -or [string]$State.provider -ne 'codex'){return &$deny 'state binding mismatch'}
+    $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource;if(-not $authority.ok -or -not $authority.satisfied){return &$deny 'owner gate authority is not valid'}
+    $ledger=Get-LedgerState ([string]$State.taskVersionId);$tail=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId))|Select-Object -Last 1)[0];if($ledger.corrupt -or [string]$ledger.state -ne 'RUNNING' -or -not $tail -or [string]$tail.event -ne 'running' -or [string]$tail.runId -ne $RunId -or [int]$tail.seq -ne 1042){return &$deny 'ledger tail binding mismatch'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.candidateTree -or $State.integration -or @(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){return &$deny 'candidate, attestation, or integration exists'}
+    $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId});if($attempt.Count -ne 1 -or [string]$attempt[0].provider -ne 'codex' -or [int]$attempt[0].attempt -ne 348 -or [int]$attempt[0].exitCode -ne -1 -or [string]$attempt[0].resultClass -ne 'AGENT_FAILURE' -or [string]$attempt[0].providerClass -ne 'AGENT_FAILURE' -or [string]$attempt[0].stdoutHash -ne $EvidenceHash){return &$deny 'invocation binding mismatch'}
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId;if(-not $pre -or -not $post -or [string]$pre.snapshotHash -ne $PreManifestHash -or [string]$post.resultHash -ne $PostManifestHash -or [string]$post.preInvocationSnapshotHash -ne $PreManifestHash -or [string]$post.stdoutHash -ne $EvidenceHash){return &$deny 'workspace manifest binding mismatch'}
+    $expectedHead='046969b76b5e4d5e046e8e9f62c724daf87a5aa0';if((Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead -or [string]$post.workspaceHead -ne $expectedHead){return &$deny 'workspace head drift'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task;if(-not $partial.clean -or [string]$partial.diffHash -ne [string]$post.partialDiffHash -or [string]$partial.filesHash -ne [string]$post.partialFilesHash){return &$deny 'workspace post-manifest drift'}
+    $stdout=[string]$attempt[0].stdoutArtifact;if(-not(Test-Path $stdout) -or (New-FileHash $stdout) -ne $EvidenceHash){return &$deny 'stdout hash mismatch'};$raw=Get-Content $stdout -Raw;if($raw -match '(?i)turn\.completed|response\.completed|structured_output|"result"\s*:|turn\.failed'){return &$deny 'terminal or structured result exists'}
+    return [ordered]@{eligible=$true;attempt=$attempt[0];pre=$pre;post=$post;partial=$partial;authority=$authority;ledger=$ledger}
+}
+
+function Recover-DispatcherIncompleteRunningInvocation {
+    param([Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$EvidenceHash,[Parameter(Mandatory)][string]$PreManifestHash,[Parameter(Mandatory)][string]$PostManifestHash)
+    $state=Get-DispatcherState;if(-not $state -or [string]$state.taskVersionId -ne $TaskVersionId){throw 'incomplete running recovery: durable task version mismatch'}
+    $done=@($state.incompleteRunningInvocationRecoveryHistory|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId -and [string]$_.evidenceHash -eq $EvidenceHash});if($done.Count -eq 1 -and [string]$state.status -eq 'AGENT_FAILURE'){return [ordered]@{status='ALREADY_RECOVERED';recovery=$done[0]}};if($done.Count -gt 1){throw 'incomplete running recovery: duplicate recovery'}
+    $proof=Test-DispatcherIncompleteRunningInvocationRecovery -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PreManifestHash $PreManifestHash -PostManifestHash $PostManifestHash;if(-not $proof.eligible){throw "incomplete running recovery: $($proof.reason)"}
+    $evidence=[ordered]@{invocationId=$InvocationId;provider='codex';attempt=348;evidenceHash=$EvidenceHash;preManifestHash=$PreManifestHash;postManifestHash=$PostManifestHash;partialDiffHash=$proof.partial.diffHash;partialFilesHash=$proof.partial.filesHash;derivedClass='INCOMPLETE_PROVIDER_RESULT'}
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-running-invocation-reconciled' -ToState FAILED -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'running invocation has no terminal envelope; reconciled as incomplete provider result'|Out-Null
+    $proof.attempt.providerClass='INCOMPLETE_PROVIDER_RESULT';$state.status='AGENT_FAILURE';$state.reason="provider invocation $InvocationId ended as INCOMPLETE_PROVIDER_RESULT/AGENT_FAILURE";$state.incompleteRunningInvocationRecoveryHistory=@($state.incompleteRunningInvocationRecoveryHistory|Where-Object{$_})+@([ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;evidenceHash=$EvidenceHash;preManifestHash=$PreManifestHash;postManifestHash=$PostManifestHash;partialDiffHash=$proof.partial.diffHash;partialFilesHash=$proof.partial.filesHash});Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$RunId;recovery=$state.incompleteRunningInvocationRecoveryHistory[-1]}
 }
 
 function Quarantine-DispatcherIncompleteProviderResult {
