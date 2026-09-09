@@ -138,6 +138,7 @@ Check 'H-05: malformed lease record -> quarantined, not granted'      { ProbeOK 
 Check 'H3-04: malformed lease quarantine is STICKY (1st..8th refuse)' { ProbeOK (New-V2Fixture) 'lease-quarantine-sticky' }
 Check 'H3-04: 8 concurrent acquires on a quarantined key all refuse'  { ProbeOK (New-V2Fixture) 'lease-quarantine-concurrent' }
 Check 'H-05: heartbeat renewal is holder-only (CAS)'                  { ProbeOK (New-V2Fixture) 'lease-heartbeat-renewal' }
+Check 'H-05: orphaned global scheduler lease is archived and reconciled fail-closed' { ProbeOK (New-V2Fixture) 'orphaned-scheduler-lease-reconciliation' }
 Check 'H-05: 8 processes race for one lease - exactly one wins' {
     $fx = New-V2Fixture
     $barrier = Join-Path $env:TEMP ("barrier-" + [guid]::NewGuid().ToString('N').Substring(0,8))

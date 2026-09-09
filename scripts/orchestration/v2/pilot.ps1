@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -51,6 +51,14 @@ param(
     [string]$WorkspaceMutationResultHash = '',
     [string]$PromptHash = '',
     [string]$StopHash = '',
+    [string]$LeaseId = '',
+    [string]$LeaseHash = '',
+    [string]$LeaseOwnerRunId = '',
+    [string]$LeaseHolderHost = '',
+    [int]$LeaseHolderPid = 0,
+    [string]$LeaseHolderStartTime = '',
+    [string]$LeaseNonce = '',
+    [string]$LeaseFencingToken = '',
     [string]$ApprovalScope = '',
     [string]$ApprovedBy = 'owner',
     [string]$ApprovalSource = 'pilot.ps1 approve-gate',
@@ -506,6 +514,11 @@ switch ($Command) {
         $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
         if(-not $task){throw "quarantine-incomplete-provider-result: task '$TaskId' not found"}
         $result=Quarantine-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'reconcile-orphaned-scheduler-lease' {
+        if(-not $LeaseId -or -not $LeaseHash -or -not $LeaseOwnerRunId -or -not $LeaseHolderHost -or -not $LeaseHolderPid -or -not $LeaseHolderStartTime){throw 'reconcile-orphaned-scheduler-lease requires -LeaseId, -LeaseHash, -LeaseOwnerRunId, -LeaseHolderHost, -LeaseHolderPid, and -LeaseHolderStartTime'}
+        $result=Reconcile-OrphanedSchedulerLease -LeaseId $LeaseId -LeaseHash $LeaseHash -OwnerRunId $LeaseOwnerRunId -HolderHost $LeaseHolderHost -HolderPid $LeaseHolderPid -HolderStartTime $LeaseHolderStartTime -ExpectedNonce $LeaseNonce -ExpectedFencingToken $LeaseFencingToken
         $result|ConvertTo-Json -Depth 12
     }
     { $_ -in @('run','run-once','start') } {

@@ -659,6 +659,72 @@ switch ($Do) {
     OK
 }
 
+'orphaned-scheduler-lease-reconciliation' {
+    # This exercises the public primitive in a disposable repository.  The
+    # scheduler lease is deliberately owned by a different run: reconciliation
+    # must not reach into dispatcher/ledger/workspace state for the active task.
+    $path=Get-LeasePath scheduler main
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path)|Out-Null
+    $ownerRun='run-owner-dead-000000000000000000000001'
+    $make={param([string]$Id='lease-11111111111111111111111111111111',[hashtable]$Extra=@{})
+        $rec=[ordered]@{schemaVersion='orcivo.orchestration.v2.lease/2';leaseId=$Id;namespace='scheduler';key='main';taskVersionId='';runId=$ownerRun;scope='';holder=[ordered]@{pid=999999;host=$env:COMPUTERNAME;startTime='2026-01-01T00:00:00.0000000Z';alive=$true};createdAt='2026-01-01T00:00:00.0000000Z';heartbeat='2026-01-01T00:00:01.0000000Z'}
+        foreach($k in $Extra.Keys){$rec[$k]=$Extra[$k]}
+        $json=ConvertTo-CanonicalJson $rec;[System.IO.File]::WriteAllText($path,$json,(New-Utf8NoBom));return [ordered]@{id=$Id;hash=(New-StringHash $json);record=$rec}
+    }
+    $invoke={param($x)
+        Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z'
+    }
+    # Valid orphan, archive + tombstone + release, then durable replay.
+    $x=&$make; $r=&$invoke $x
+    Expect ($r.status -eq 'RECONCILED' -and -not(Test-Path -LiteralPath $path)) 'valid orphan scheduler lease was not reconciled'
+    Expect ((New-FileHash $r.archivePath) -eq $x.hash) 'archive does not preserve the exact original bytes'
+    Expect ((Test-Path $r.tombstonePath) -and (Test-Path $r.releasedPath)) 'tombstone or release receipt missing'
+    $again=&$invoke $x;Expect ($again.status -eq 'ALREADY_RECONCILED') 'replay was not idempotent'
+    # Active holder and PID reuse both refuse; a live PID is never reclaimed.
+    $live=Get-ProcessIdentity
+    $x=&$make 'lease-22222222222222222222222222222222' @{holder=$live}
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid $PID -HolderStartTime $live.startTime} 'live holder was reconciled'
+    $reuse=[ordered]@{pid=$PID;host=$env:COMPUTERNAME;startTime='2000-01-01T00:00:00.0000000Z';alive=$true}
+    $x=&$make 'lease-33333333333333333333333333333333' @{holder=$reuse}
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid $PID -HolderStartTime $reuse.startTime} 'PID-reuse record was reconciled'
+    # Every supplied identity component is a hard precondition.
+    $x=&$make 'lease-44444444444444444444444444444444' @{fencingToken='fence-a'}
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash ('sha256:'+('0'*64)) -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z'} 'hash mismatch was accepted'
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId 'lease-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z'} 'leaseId mismatch was accepted'
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost $env:COMPUTERNAME -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z' -ExpectedFencingToken 'wrong'} 'fencing token mismatch was accepted'
+    # Renewal after verified read loses the final CAS; no successor is removed.
+    $x=&$make 'lease-55555555555555555555555555555555'
+    $script:OrphanedSchedulerLeaseBeforeReleaseHook={Update-LeaseHeartbeat -Namespace scheduler -Key main -LeaseId $x.id|Out-Null}
+    ExpectThrow {&$invoke $x} 'heartbeat renewal during reconciliation was accepted'
+    $script:OrphanedSchedulerLeaseBeforeReleaseHook=$null
+    Expect (Test-Path -LiteralPath $path) 'renewed lease was removed'
+    # Archive/tombstone interruption resumes only with the same original bytes.
+    $x=&$make 'lease-66666666666666666666666666666666'
+    $script:OrphanedSchedulerLeaseAfterArchiveHook={throw 'injected archive/tombstone interruption'}
+    ExpectThrow {&$invoke $x} 'archive/tombstone interruption was not surfaced'
+    $script:OrphanedSchedulerLeaseAfterArchiveHook=$null
+    $r=&$invoke $x;Expect ($r.status -eq 'RECONCILED') 'restart after archive interruption did not recover'
+    # A valid successor written after archive causes CAS failure, never deletion.
+    $x=&$make 'lease-77777777777777777777777777777777'
+    $script:OrphanedSchedulerLeaseBeforeReleaseHook={
+        $successor=ConvertTo-CanonicalJson ([ordered]@{schemaVersion='orcivo.orchestration.v2.lease/2';leaseId='lease-88888888888888888888888888888888';namespace='scheduler';key='main';taskVersionId='';runId='run-successor';scope='';holder=[ordered]@{pid=999998;host=$env:COMPUTERNAME;startTime='2026-01-01T00:00:00.0000000Z'};createdAt='2026-01-01T00:00:00.0000000Z';heartbeat='2026-01-01T00:00:00.0000000Z'})
+        if(-not(Invoke-FileCas -Path $path -ExpectedHash $x.hash -NewContent $successor)){throw 'successor CAS failed'}
+    }
+    ExpectThrow {&$invoke $x} 'successor lease was accepted'
+    $script:OrphanedSchedulerLeaseBeforeReleaseHook=$null
+    Expect ((Read-LeaseRaw $path).lease.leaseId -eq 'lease-88888888888888888888888888888888') 'successor lease was removed'
+    # A foreign host and an owner-run checkpoint with a live holder are both hard blocks.
+    $x=&$make 'lease-99999999999999999999999999999999' @{holder=[ordered]@{pid=999999;host='FOREIGN-HOST';startTime='2026-01-01T00:00:00.0000000Z'}}
+    ExpectThrow {Reconcile-OrphanedSchedulerLease -LeaseId $x.id -LeaseHash $x.hash -OwnerRunId $ownerRun -HolderHost 'FOREIGN-HOST' -HolderPid 999999 -HolderStartTime '2026-01-01T00:00:00.0000000Z'} 'foreign host was accepted'
+    $x=&$make 'lease-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    $cp=Join-Path (Get-V2Dir) "pilot\$ownerRun.json";Write-V2JsonCanonical $cp ([ordered]@{runId=$ownerRun;holder=(Get-ProcessIdentity)})
+    ExpectThrow {&$invoke $x} 'active owner-run checkpoint was accepted'
+    # Reconciliation never writes dispatcher, ledger, or a workspace.
+    Expect (-not(Test-Path -LiteralPath (Join-Path (Get-V2Dir) 'dispatcher\current.json'))) 'lease reconciliation wrote dispatcher state'
+    Expect (-not(Test-Path -LiteralPath (Join-Path (Get-V2Dir) 'ledger\PB1.jsonl'))) 'lease reconciliation wrote ledger state'
+    OK
+}
+
 'env-bypass-attempt' {
     # every legacy switch set; no .orch-v2-fixture marker removed check here (fixture has it),
     # instead point Invoke-SpineRun at a NON-disposable path -> must refuse regardless of env.
