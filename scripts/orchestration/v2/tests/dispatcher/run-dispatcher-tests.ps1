@@ -229,6 +229,35 @@ function New-IncompleteProviderQuarantineFixture([string]$Id){
     return @{state=$state;task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$f.invocation;stdoutPath=$f.stdoutPath;evidenceHash=$f.evidenceHash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;paths=@($partial.paths)}
 }
 
+# Models the one narrow -1 branch: a public recovery closed a RUNNING
+# invocation, and both manifests prove its process added nothing to the
+# pre-existing dirty baseline. It is intentionally distinct from legacy
+# manifest-less abandonment fixtures.
+function New-ReconciledIncompleteProviderQuarantineFixture([string]$Id){
+    $f=New-IncompleteProviderResultFixture $Id;$state=Get-DispatcherState
+    foreach($path in @('work\partial.integration.spec.ts','work\partial.authorization.spec.ts','work\test-setup.ts')){Write-Utf8 (Join-Path $f.workspace $path) ("export const fixture = '"+$Id+"';`n")}
+    $logs=Split-Path -Parent $f.stdoutPath;$prompt=Join-Path $logs ('implementer-007-codex-'+$f.invocation.Substring(4,8)+'.prompt.txt');Write-Utf8 $prompt 'sanitized immutable reconciled-incomplete prompt'
+    $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason='';$state.provider='codex';$state.workspaceInvocationSnapshots=@();$state.workspaceInvocationResultSnapshots=@()
+    $snapshot=New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId $f.invocation -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider codex -Model gpt-5.6-terra -ReasoningEffort high -Attempt 7
+    $hash=New-FileHash $f.stdoutPath;$result=New-DispatcherWorkspaceInvocationResultSnapshot -State $state -Task $f.task -AgentResult ([ordered]@{invocationId=$f.invocation;provider='codex';model='gpt-5.6-terra';reasoningIntent='high';attempt=7;promptHash=(New-FileHash $prompt);stdoutHash=$hash})
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace $f.workspace -Task $f.task
+    $state.status='AGENT_FAILURE';$state.stage='IMPLEMENT';$state.reason="provider invocation $($f.invocation) ended as INCOMPLETE_PROVIDER_RESULT/AGENT_FAILURE"
+    $state.providerHistory=@([ordered]@{invocationId=$f.invocation;role='IMPLEMENTER';provider='codex';model='gpt-5.6-terra';reasoningEffort='high';attempt=7;providerClass='INCOMPLETE_PROVIDER_RESULT';resultClass='AGENT_FAILURE';exitCode=-1;promptArtifact=[IO.Path]::GetFullPath($prompt);promptHash=(New-FileHash $prompt);workspaceResultSnapshotHash=$result.resultHash;stdoutArtifact=$f.stdoutPath;stdoutHash=$hash;controlRecordHash=$hash})
+    $state.incompleteRunningInvocationRecoveryHistory=@([ordered]@{recoveredAt='2026-09-09T00:00:00.0000000Z';invocationId=$f.invocation;evidenceHash=$hash;preManifestHash=$snapshot.snapshotHash;postManifestHash=$result.resultHash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash})
+    Write-DispatcherState $state|Out-Null
+    # Rebuild only this disposable fixture ledger through its public state
+    # transitions so the reconciled event genuinely follows RUNNING.
+    Initialize-LedgerTask -TaskVersionId $f.contract.taskVersionId -Identity @{taskId=$f.task.taskId}|Out-Null
+    Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event ready -ToState READY -RunId $f.runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.runId -AttemptId $f.invocation|Out-Null
+    Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event running -ToState RUNNING -RunId $f.runId -AttemptId $f.invocation|Out-Null
+    $evidence=[ordered]@{invocationId=$f.invocation;provider='codex';attempt=7;evidenceHash=$hash;preManifestHash=$snapshot.snapshotHash;postManifestHash=$result.resultHash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;derivedClass='INCOMPLETE_PROVIDER_RESULT'}
+    Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event 'incomplete-running-invocation-reconciled' -ToState FAILED -RunId $f.runId -AttemptId $f.invocation -Evidence $evidence|Out-Null
+    & git -C $Fixture fetch --quiet $f.workspace $state.implementationCommit
+    & git -C $Fixture branch ('trusted-reconciled-'+$Id.ToLowerInvariant()) $state.implementationCommit
+    return @{state=(Get-DispatcherState);task=$f.task;source=$f.source;contract=$f.contract;workspace=$f.workspace;runId=$f.runId;invocation=$f.invocation;stdoutPath=$f.stdoutPath;evidenceHash=$hash;partialDiffHash=$partial.diffHash;partialFilesHash=$partial.filesHash;snapshotHash=$snapshot.snapshotHash;resultHash=$result.resultHash;paths=@($partial.paths)}
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Fixture '.orchestration\v2\schemas')|Out-Null
 Copy-Item (Join-Path $Repo '.orchestration\v2\config.v2.json') (Join-Path $Fixture '.orchestration\v2\config.v2.json')
 Copy-Item (Join-Path $Repo '.orchestration\v2\schemas\*.json') (Join-Path $Fixture '.orchestration\v2\schemas')
@@ -917,6 +946,34 @@ try{
             $generic=Test-DispatcherIncompleteProviderResultRecovery -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash
             $quarantine=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $hash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $f.state.implementationCommit
             Assert-True (-not $generic.eligible -and $quarantine.eligible) ("legacy malformed incomplete evidence was accepted for work recovery or rejected for evidence-only quarantine: generic=$($generic.reason); quarantine=$($quarantine.reason)")
+        }
+        Check 'RD-102' {
+            $legacy=New-IncompleteProviderQuarantineFixture 'RD102-legacy';$legacyProof=Test-DispatcherIncompleteProviderResultAbandonment -State $legacy.state -Task $legacy.task -TaskSource $legacy.source -RunId $legacy.runId -InvocationId $legacy.invocation -EvidenceHash $legacy.evidenceHash -PartialDiffHash $legacy.partialDiffHash -PartialFilesHash $legacy.partialFilesHash -TrustedHead $legacy.state.implementationCommit
+            $f=New-ReconciledIncompleteProviderQuarantineFixture 'RD102';$proof=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $f.state.implementationCommit
+            Assert-True ($legacyProof.eligible -and $proof.eligible -and $proof.base.attempt.exitCode -eq -1) 'reconciled hash-bound -1 invocation was not eligible or legacy exit-zero quarantine regressed'
+        }
+        Check 'RD-103a' {
+            $f=New-ReconciledIncompleteProviderQuarantineFixture 'RD103a';$f.state.incompleteRunningInvocationRecoveryHistory=@();Write-DispatcherState $f.state|Out-Null;$p=Test-DispatcherIncompleteProviderResultAbandonment -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $f.state.implementationCommit
+            Assert-True (-not $p.eligible) "reconciled -1 branch accepted missing receipt: $($p.reason)"
+        }
+        Check 'RD-103b' {
+            $g=New-ReconciledIncompleteProviderQuarantineFixture 'RD103b';Add-LedgerEvent -TaskVersionId $g.contract.taskVersionId -Event retry -ToState READY -RunId $g.runId|Out-Null;Add-LedgerEvent -TaskVersionId $g.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $g.runId -AttemptId $g.invocation|Out-Null;Add-LedgerEvent -TaskVersionId $g.contract.taskVersionId -Event unrelated -ToState FAILED -RunId $g.runId -AttemptId $g.invocation|Out-Null;$p=Test-DispatcherIncompleteProviderResultAbandonment -State $g.state -Task $g.task -TaskSource $g.source -RunId $g.runId -InvocationId $g.invocation -EvidenceHash $g.evidenceHash -PartialDiffHash $g.partialDiffHash -PartialFilesHash $g.partialFilesHash -TrustedHead $g.state.implementationCommit
+            Assert-True (-not $p.eligible) "reconciled -1 branch accepted non-tail event: $($p.reason)"
+        }
+        Check 'RD-103c' {
+            $h=New-ReconciledIncompleteProviderQuarantineFixture 'RD103c';$h.state.incompleteRunningInvocationRecoveryHistory[0].postManifestHash='sha256:'+('0'*64);Write-DispatcherState $h.state|Out-Null;$p=Test-DispatcherIncompleteProviderResultAbandonment -State (Get-DispatcherState) -Task $h.task -TaskSource $h.source -RunId $h.runId -InvocationId $h.invocation -EvidenceHash $h.evidenceHash -PartialDiffHash $h.partialDiffHash -PartialFilesHash $h.partialFilesHash -TrustedHead $h.state.implementationCommit
+            Assert-True (-not $p.eligible) "reconciled -1 branch accepted tampered receipt: $($p.reason)"
+        }
+        Check 'RD-104' {
+            $f=New-ReconciledIncompleteProviderQuarantineFixture 'RD104';Add-Content -LiteralPath $f.stdoutPath -Value '{"type":"turn.completed"}' -Encoding utf8;$terminal=Test-DispatcherIncompleteProviderResultAbandonment -State $f.state -Task $f.task -TaskSource $f.source -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $f.state.implementationCommit
+            $g=New-ReconciledIncompleteProviderQuarantineFixture 'RD104-drift';Add-Content -LiteralPath (Join-Path $g.workspace $g.paths[0]) -Value 'tampered' -Encoding utf8;$drift=Test-DispatcherIncompleteProviderResultAbandonment -State $g.state -Task $g.task -TaskSource $g.source -RunId $g.runId -InvocationId $g.invocation -EvidenceHash $g.evidenceHash -PartialDiffHash $g.partialDiffHash -PartialFilesHash $g.partialFilesHash -TrustedHead $g.state.implementationCommit
+            $h=New-ReconciledIncompleteProviderQuarantineFixture 'RD104-generic';$h.state.incompleteRunningInvocationRecoveryHistory=@();Write-DispatcherState $h.state|Out-Null;$generic=Test-DispatcherIncompleteProviderResultAbandonment -State (Get-DispatcherState) -Task $h.task -TaskSource $h.source -RunId $h.runId -InvocationId $h.invocation -EvidenceHash $h.evidenceHash -PartialDiffHash $h.partialDiffHash -PartialFilesHash $h.partialFilesHash -TrustedHead $h.state.implementationCommit
+            Assert-True (-not $terminal.eligible -and -not $drift.eligible -and -not $generic.eligible) 'reconciled branch accepted terminal output, workspace drift, or generic -1 failure'
+        }
+        Check 'RD-105' {
+            $f=New-ReconciledIncompleteProviderQuarantineFixture 'RD105';$trusted=$f.state.implementationCommit;$first=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted;$restart=Get-DispatcherState;$again=Quarantine-DispatcherIncompleteProviderResult -Task $f.task -TaskSource $f.source -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation -EvidenceHash $f.evidenceHash -PartialDiffHash $f.partialDiffHash -PartialFilesHash $f.partialFilesHash -TrustedHead $trusted
+            Assert-True ($first.status -eq 'QUARANTINED_AND_REDISPATCHED' -and $again.status -eq 'ALREADY_QUARANTINED' -and $restart.workspace -eq $first.workspace -and (Get-GitHeadV2 $first.workspace) -eq $trusted) 'reconciled -1 quarantine was not restart-safe and idempotent'
+            Remove-DispatcherWorkspace -Workspace $first.workspace
         }
     } finally {Pop-Location}
 

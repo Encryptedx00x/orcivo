@@ -1057,7 +1057,22 @@ function Test-DispatcherIncompleteProviderResultRecovery {
     if($opaque.Count -and [string]$opaque[-1].kind -eq 'REDACTED_ITEM_STARTED'){$lastIsNonterminal=$true}
     $provablyIncomplete=(-not $unrecognizedMalformed -and $turnStarted -eq 1 -and $turnCompleted -eq 0 -and -not $hasStructuredError -and -not $parsed.structured -and -not $parsed.control -and $lastIsNonterminal)
     $safeUnparseable=($AllowUnparseableIncompleteEvidence -and $unrecognizedMalformed -and [string]$attempt.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [string]$attempt.resultClass -eq 'AGENT_FAILURE' -and $raw -notmatch '(?i)turn\.completed|response\.completed|turn\.failed|"error"|resultClass|structured_output')
-    if(-not $provablyIncomplete -and -not $safeUnparseable){return &$deny $(if($unrecognizedMalformed){'invocation evidence contains unrecognized malformed output'}else{'invocation is not a provably incomplete provider result'})}
+    # This is deliberately separate from the legacy exit-zero branch above.
+    # A -1 is eligible only after the public running-invocation recovery has
+    # written both its exact ledger tail and its immutable state receipt.
+    $reconciledRunningIncomplete=$false
+    if([int]$attempt.exitCode -eq -1 -and [string]$attempt.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [string]$attempt.resultClass -eq 'AGENT_FAILURE'){
+        $receipts=@($State.incompleteRunningInvocationRecoveryHistory|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
+        $tail=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId))|Select-Object -Last 1)[0]
+        $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+        $manifestNoMutation=$pre -and $post -and [string]$pre.partialDiffHash -eq [string]$post.partialDiffHash -and [string]$pre.partialFilesHash -eq [string]$post.partialFilesHash -and (New-StringHash (ConvertTo-CanonicalJson @($pre.paths))) -eq (New-StringHash (ConvertTo-CanonicalJson @($post.paths))) -and (New-StringHash (ConvertTo-CanonicalJson @($pre.fileBindings))) -eq (New-StringHash (ConvertTo-CanonicalJson @($post.fileBindings)))
+        if($receipts.Count -eq 1 -and $tail -and [string]$tail.event -eq 'incomplete-running-invocation-reconciled' -and [string]$tail.fromState -eq 'RUNNING' -and [string]$tail.toState -eq 'FAILED' -and [string]$tail.runId -eq $RunId -and [string]$tail.attemptId -eq $InvocationId -and [string]$tail.evidence.invocationId -eq $InvocationId -and [int]$tail.evidence.attempt -eq [int]$attempt.attempt -and [string]$tail.evidence.provider -eq 'codex' -and [string]$tail.evidence.derivedClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [string]$tail.evidence.evidenceHash -eq $EvidenceHash -and [string]$tail.evidence.partialDiffHash -eq $PartialDiffHash -and [string]$tail.evidence.partialFilesHash -eq $PartialFilesHash -and $manifestNoMutation -and [string]$tail.evidence.preManifestHash -eq [string]$pre.snapshotHash -and [string]$tail.evidence.postManifestHash -eq [string]$post.resultHash -and [string]$receipts[0].evidenceHash -eq $EvidenceHash -and [string]$receipts[0].partialDiffHash -eq $PartialDiffHash -and [string]$receipts[0].partialFilesHash -eq $PartialFilesHash -and [string]$receipts[0].preManifestHash -eq [string]$pre.snapshotHash -and [string]$receipts[0].postManifestHash -eq [string]$post.resultHash -and [string]$post.partialDiffHash -eq $PartialDiffHash -and [string]$post.partialFilesHash -eq $PartialFilesHash -and $raw -notmatch '(?i)turn\.completed|response\.completed|turn\.failed|"error"|resultClass|structured_output'){$reconciledRunningIncomplete=$true}
+    }
+    # Never let a reconciled-running (-1) invocation borrow the legacy
+    # non-terminal-output predicate. Its receipt, exact ledger tail, and all
+    # immutable bindings are the authority; any failure there is terminal.
+    if([int]$attempt.exitCode -eq -1 -and -not $reconciledRunningIncomplete){return &$deny 'reconciled running invocation receipt or ledger-tail binding is invalid'}
+    if(-not $provablyIncomplete -and -not $safeUnparseable -and -not $reconciledRunningIncomplete){return &$deny $(if($unrecognizedMalformed){'invocation evidence contains unrecognized malformed output'}else{'invocation is not a provably incomplete provider result'})}
     $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref $expectedHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
     if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or artifact scan is dirty'}
     $wait=Get-ProviderWait ([string]$State.taskVersionId)
@@ -1170,14 +1185,20 @@ function Test-DispatcherIncompleteProviderResultAbandonment {
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
     if($TrustedHead -notmatch '^[0-9a-f]{40}$'){return &$deny 'invalid trusted workspace head'}
     # Reuse the strict evidence, scope, scanner, runner/lease, lineage, and
-    # owner-gate checks. It intentionally does not require a manifest because
-    # absence of both manifests is the condition this branch quarantines.
+    # owner-gate checks. The legacy branch quarantines an invocation which
+    # predates manifests. The separate reconciled-running branch below accepts
+    # manifests only when they prove the invocation added no bytes after its
+    # already-dirty baseline.
     $base=Test-DispatcherIncompleteProviderResultRecovery -State $State -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -AllowUnparseableIncompleteEvidence
     if(-not $base.eligible){return &$deny $base.reason}
     if([string]$base.expectedHead -ne $TrustedHead){return &$deny 'workspace is not at the declared trusted head'}
     if(-not $base.authority.satisfied -or [string]$base.authority.approval -ne 'APPROVED'){return &$deny 'exact hash-bound Level C approval is not valid'}
-    $attempt=$base.attempt
-    if([string]$attempt.workspaceResultSnapshotHash -or (Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId) -or (Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId)){return &$deny 'invocation has recoverable workspace-manifest provenance; abandonment is not permitted'}
+    $attempt=$base.attempt;$pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+    $reconciledRunning=([int]$attempt.exitCode -eq -1 -and [string]$attempt.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [string]$attempt.resultClass -eq 'AGENT_FAILURE')
+    if($reconciledRunning){
+        $sameManifestBaseline=$pre -and $post -and [string]$attempt.workspaceResultSnapshotHash -eq [string]$post.resultHash -and [string]$pre.partialDiffHash -eq [string]$post.partialDiffHash -and [string]$pre.partialFilesHash -eq [string]$post.partialFilesHash -and (New-StringHash (ConvertTo-CanonicalJson @($pre.paths))) -eq (New-StringHash (ConvertTo-CanonicalJson @($post.paths))) -and (New-StringHash (ConvertTo-CanonicalJson @($pre.fileBindings))) -eq (New-StringHash (ConvertTo-CanonicalJson @($post.fileBindings)))
+        if(-not $sameManifestBaseline){return &$deny 'reconciled invocation manifests do not prove an unchanged baseline'}
+    } elseif([string]$attempt.workspaceResultSnapshotHash -or $pre -or $post){return &$deny 'invocation has recoverable workspace-manifest provenance; abandonment is not permitted'}
     $ledger=Get-LedgerState ([string]$State.taskVersionId)
     $events=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)))
     $abandoned=@($events|Where-Object{[string]$_.event -eq 'incomplete-provider-result-abandoned' -and [string]$_.runId -eq $RunId -and [string]$_.attemptId -eq $InvocationId})
