@@ -60,7 +60,7 @@ function ConvertFrom-CodexEvents {
     if (-not $Events) { return $null }
     $err = @($Events | Where-Object { "$($_.type)" -match 'error' -or $_.error }) | Select-Object -Last 1
     if (-not $err) {
-        $done = @($Events | Where-Object { "$($_.type)" -match 'task_complete|turn_complete|result' }) | Select-Object -Last 1
+        $done = @($Events | Where-Object { "$($_.type)" -match 'task[._]complete|turn[._]completed|result' }) | Select-Object -Last 1
         if ($done) { return [ordered]@{ channel = 'codex'; isError = $false; errorType = ''; httpStatus = 0; message = 'complete' } }
         return $null
     }
