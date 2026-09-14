@@ -8,7 +8,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import Decimal from 'decimal.js';
-import { ApproveQuoteDto, QuoteCreateDto, assertValidTransition } from '@orcivo/shared-types';
+import {
+  ApproveQuoteDto,
+  QuoteCreateDto,
+  QuoteStatus,
+  assertValidTransition,
+} from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +23,9 @@ import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+
+const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
 
 @Injectable()
 export class QuoteService {
@@ -182,7 +190,7 @@ export class QuoteService {
     }
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
-    const fromStatus = quote.status as string;
+    const fromStatus = quote.status as QuoteStatus;
 
     // Gerar PDF e salvar no MinIO
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
@@ -202,8 +210,7 @@ export class QuoteService {
     );
 
     const token = crypto.randomUUID();
-    const ttl = 7 * 24 * 60 * 60; // 7 dias em segundos = 604800
-    await this.redis.set(`quote:approval:${token}`, id, 'EX', ttl);
+    await this.redis.set(`quote:approval:${token}`, id, 'EX', APPROVAL_TOKEN_TTL_SECONDS);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const q = await tx.quote.update({
@@ -342,7 +349,7 @@ export class QuoteService {
     }
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
-    const fromStatus = quote.status as string;
+    const fromStatus = quote.status as QuoteStatus;
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.quote.update({
@@ -386,14 +393,24 @@ export class QuoteService {
     }
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
-    const fromStatus = quote.status as string;
+    const fromStatus = quote.status as QuoteStatus;
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.quote.update({
-        where: { id },
+      const result = await tx.quote.updateMany({
+        where: { id, status: fromStatus },
         data: { status: 'REJECTED' },
+      });
+      if (result.count === 0) {
+        throw new ConflictException(`Transicao invalida: ${fromStatus} -> REJECTED`);
+      }
+      const persisted = await tx.quote.findUnique({
+        where: { id },
         include: { items: true, customer: true, approval: true },
       });
+      if (!persisted) {
+        throw new ConflictException('Orcamento nao encontrado apos atualizacao');
+      }
+      const updated = persisted;
       await this.auditService.record(tx, {
         companyId,
         actorType: 'USER',
@@ -457,7 +474,7 @@ export class QuoteService {
     },
   ) {
     const quote = await this.findOne(id, companyId);
-    const fromStatus = quote.status as string;
+    const fromStatus = quote.status as QuoteStatus;
     if (!opts.allowedFrom.includes(fromStatus)) {
       throw new BadRequestException(
         `Transição inválida: ${fromStatus} → ${opts.to} (${opts.verb})`,
@@ -470,12 +487,35 @@ export class QuoteService {
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.quote.update({
+    const newApprovalToken = opts.to === 'SENT' ? crypto.randomUUID() : undefined;
+    const newValidUntil =
+      opts.to === 'SENT' ? new Date(Date.now() + APPROVAL_TOKEN_TTL_MS) : undefined;
+    const previousApprovalToken =
+      (quote as unknown as { approval_token?: string | null }).approval_token ?? undefined;
+    const data: { status: 'SENT' | 'DRAFT'; approval_token?: string; valid_until?: Date } = {
+      status: opts.to,
+    };
+    if (opts.to === 'SENT' && newApprovalToken && newValidUntil) {
+      data.approval_token = newApprovalToken;
+      data.valid_until = newValidUntil;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.quote.updateMany({
+        where: { id, status: fromStatus },
+        data,
+      });
+      if (result.count === 0) {
+        throw new ConflictException(`Transicao invalida: ${fromStatus} -> ${opts.to}`);
+      }
+      const persisted = await tx.quote.findUnique({
         where: { id },
-        data: { status: opts.to },
         include: { items: true, customer: true, approval: true },
       });
+      if (!persisted) {
+        throw new ConflictException('Orcamento nao encontrado apos atualizacao');
+      }
+      const winning = persisted;
       await this.auditService.record(tx, {
         companyId,
         actorType: 'USER',
@@ -486,10 +526,31 @@ export class QuoteService {
         from: fromStatus,
         to: opts.to,
         reason: trimmedReason,
-        humanText: opts.describe(updated.number, customerName, trimmedReason),
+        humanText: opts.describe(winning.number, customerName, trimmedReason),
       });
-      return updated;
+      return winning;
     });
+
+    if (opts.to === 'SENT' && newApprovalToken) {
+      await this.redis.set(
+        `quote:approval:${newApprovalToken}`,
+        id,
+        'EX',
+        APPROVAL_TOKEN_TTL_SECONDS,
+      );
+      if (previousApprovalToken && previousApprovalToken !== newApprovalToken) {
+        await this.redis.del(`quote:approval:${previousApprovalToken}`);
+      }
+    }
+
+    const signed = await this.withSignedUrls(updated);
+    if (opts.to === 'SENT' && newApprovalToken) {
+      return {
+        ...signed,
+        approvalUrl: `${this.config.get('APP_WEB_URL', 'http://localhost:3000')}/approve/${newApprovalToken}`,
+      };
+    }
+    return signed;
   }
 
   async getByApprovalToken(token: string) {
@@ -502,6 +563,7 @@ export class QuoteService {
       number: true,
       status: true,
       valid_until: true,
+      approval_token: true,
       total: true,
       title: true,
       discount_type: true,
@@ -532,7 +594,12 @@ export class QuoteService {
         });
 
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
-    return quote;
+    if (quote.approval_token !== token) {
+      throw new NotFoundException('Orcamento nao encontrado ou link invalido');
+    }
+    const { approval_token, ...safeQuote } = quote;
+    void approval_token;
+    return safeQuote;
   }
 
   /**

@@ -59,6 +59,7 @@ const mockRedis = {
   incr: jest.fn(),
   set: jest.fn(),
   get: jest.fn(),
+  del: jest.fn(),
 };
 
 const mockConfig = {
@@ -228,12 +229,23 @@ describe('QuoteService', () => {
         customer: { name: 'Maria' },
         approval: null,
       });
-      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 5, status: 'REJECTED' });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 5,
+        status: 'REJECTED',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
 
       await service.reject('q1', 'comp-1', 'user-1', 'Cliente achou caro');
 
-      expect(mockTx.quote.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'REJECTED' } }),
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'SENT' },
+          data: { status: 'REJECTED' },
+        }),
       );
       expect(mockAudit.record).toHaveBeenCalledTimes(1);
       expect(mockAudit.record).toHaveBeenCalledWith(
@@ -282,6 +294,52 @@ describe('QuoteService', () => {
         BadRequestException,
       );
     });
+
+    it('Test R3b: reject() com transicao concorrente vencida nao grava auditoria', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.reject('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1', status: 'SENT' } }),
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test R3c: falha na auditoria propaga o erro da transacao de reject', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 5,
+        status: 'REJECTED',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockAudit.record.mockRejectedValueOnce(new Error('audit write failed'));
+
+      await expect(service.reject('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        'audit write failed',
+      );
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('reopen() / correct()', () => {
@@ -294,12 +352,31 @@ describe('QuoteService', () => {
         customer: { name: 'João' },
         approval: null,
       });
-      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 8, status: 'SENT' });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 8,
+        status: 'SENT',
+        valid_until: new Date('2030-01-01T00:00:00.000Z'),
+        approval_token: 'new-token',
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockRedis.set.mockResolvedValue(undefined);
+      mockRedis.del.mockResolvedValue(undefined);
 
       await service.reopen('q1', 'comp-1', 'user-1', 'Cliente voltou atrás');
 
-      expect(mockTx.quote.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'SENT' } }),
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'REJECTED' },
+          data: expect.objectContaining({
+            status: 'SENT',
+            approval_token: expect.any(String),
+            valid_until: expect.any(Date),
+          }),
+        }),
       );
       expect(mockAudit.record).toHaveBeenCalledTimes(1);
       expect(mockAudit.record).toHaveBeenCalledWith(
@@ -313,6 +390,13 @@ describe('QuoteService', () => {
         }),
       );
       expect(mockAudit.record.mock.calls[0][1].humanText).toContain('João');
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        expect.stringContaining('quote:approval:'),
+        'q1',
+        'EX',
+        expect.any(Number),
+      );
+      expect(mockRedis.del).not.toHaveBeenCalled();
     });
 
     it('Test R5: correct() APPROVED→DRAFT grava uma auditoria com from/to/reason', async () => {
@@ -324,12 +408,23 @@ describe('QuoteService', () => {
         customer: { name: 'Ana' },
         approval: null,
       });
-      mockTx.quote.update.mockResolvedValue({ id: 'q1', number: 12, status: 'DRAFT' });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 12,
+        status: 'DRAFT',
+        items: [],
+        customer: { name: 'Ana' },
+        approval: null,
+      });
 
       await service.correct('q1', 'comp-1', 'user-1', 'Erro no valor de um item');
 
-      expect(mockTx.quote.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'q1' }, data: { status: 'DRAFT' } }),
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'APPROVED' },
+          data: { status: 'DRAFT' },
+        }),
       );
       expect(mockAudit.record).toHaveBeenCalledWith(
         mockTx,
@@ -340,6 +435,120 @@ describe('QuoteService', () => {
           reason: 'Erro no valor de um item',
         }),
       );
+    });
+
+    it('Test R5b: reopen() EXPIRED renova valid_until e rotaciona approval token', async () => {
+      const pastValidUntil = new Date('2020-01-01T00:00:00.000Z');
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'EXPIRED',
+        valid_until: pastValidUntil,
+        approval_token: 'old-expired-token',
+        number: 9,
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 9,
+        status: 'SENT',
+        valid_until: new Date('2030-01-01T00:00:00.000Z'),
+        approval_token: 'new-rotated-token',
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockRedis.set.mockResolvedValue(undefined);
+      mockRedis.del.mockResolvedValue(undefined);
+
+      const result = await service.reopen('q1', 'comp-1', 'user-1', 'cliente retornou');
+
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'EXPIRED' },
+          data: expect.objectContaining({
+            status: 'SENT',
+            approval_token: expect.any(String),
+            valid_until: expect.any(Date),
+          }),
+        }),
+      );
+      const dataArg = mockTx.quote.updateMany.mock.calls[0][0].data;
+      expect(dataArg.valid_until.getTime()).toBeGreaterThan(Date.now());
+      expect(dataArg.approval_token).not.toBe('old-expired-token');
+      expect(result.approval_token).toBe('new-rotated-token');
+      expect(result.valid_until).toEqual(new Date('2030-01-01T00:00:00.000Z'));
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.reopened',
+          from: 'EXPIRED',
+          to: 'SENT',
+        }),
+      );
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        expect.stringContaining('quote:approval:'),
+        'q1',
+        'EX',
+        expect.any(Number),
+      );
+      expect(mockRedis.del).toHaveBeenCalledWith('quote:approval:old-expired-token');
+    });
+
+    it('Test R5c: reopen() com transicao concorrente vencida nao grava auditoria', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'EXPIRED',
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.reopen('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1', status: 'EXPIRED' } }),
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+      expect(mockRedis.set).not.toHaveBeenCalled();
+      expect(mockRedis.del).not.toHaveBeenCalled();
+    });
+
+    it('Test R5d: falha na auditoria propaga o erro da transacao de reopen', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'REJECTED',
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 8,
+        status: 'SENT',
+        valid_until: new Date('2030-01-01T00:00:00.000Z'),
+        approval_token: 'new-token',
+        items: [],
+        customer: { name: 'Joao' },
+        approval: null,
+      });
+      mockAudit.record.mockRejectedValueOnce(new Error('audit write failed'));
+
+      await expect(service.reopen('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        'audit write failed',
+      );
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+      expect(mockRedis.set).not.toHaveBeenCalled();
+      expect(mockRedis.del).not.toHaveBeenCalled();
     });
 
     it('Test R6: reopen() de estado não-terminal (SENT) lança BadRequestException', async () => {
@@ -384,6 +593,7 @@ describe('QuoteService', () => {
       title: 'Instalacao',
       status: 'SENT',
       valid_until: null,
+      approval_token: quoteToken,
       total: '200.00',
       subtotal: '200.00',
       discount_type: 'PERCENT',
@@ -482,6 +692,7 @@ describe('QuoteService', () => {
         number: 1,
         status: 'SENT',
         valid_until: null,
+        approval_token: 'some-token',
         total: '30.00',
         title: 'Orçamento 1',
         discount_type: 'PERCENT',
@@ -500,6 +711,28 @@ describe('QuoteService', () => {
         status: 'SENT',
         total: '30.00',
       });
+    });
+
+    it('Test 7b: getByApprovalToken() rejeita token antigo em cache Redis dessincronizado', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        created_by_user_id: 'user-1',
+        number: 1,
+        status: 'SENT',
+        valid_until: null,
+        approval_token: 'token-rotacionado',
+        total: '30.00',
+        title: 'Orcamento 1',
+        discount_type: 'PERCENT',
+        discount_value: '0',
+        subtotal: '30.00',
+        customer: { id: 'cust-1', name: 'Cliente', phone: '11999999999' },
+        items: [],
+      });
+
+      await expect(service.getByApprovalToken('token-antigo')).rejects.toThrow(NotFoundException);
     });
   });
 
