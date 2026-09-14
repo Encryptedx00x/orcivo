@@ -1434,6 +1434,176 @@ function Reconcile-DispatcherDeepSeekCacheAwareReservation {
     return @{status='RECONCILED_CACHE_AWARE';costUsd=$cost;receiptHash=$receipt.receiptHash}
 }
 
+# A completed provider stream can be stranded in WAITING_PROVIDER when the
+# original telemetry parser failed closed after the provider had already
+# produced a valid terminal envelope.  This verifier is intentionally narrower
+# than normal resume: it proves the immutable request, stream, workspace and
+# reconciled budget record before permitting the existing result to become a
+# candidate.  It never launches an implementer.
+function Test-DispatcherCompletedImplementationRecovery {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$ExpectedRequestManifestHash,[Parameter(Mandatory)][string]$ExpectedStdoutHash,
+        [Parameter(Mandatory)][string]$ExpectedPreManifestHash,[Parameter(Mandatory)][string]$ExpectedPostManifestHash,
+        [Parameter(Mandatory)][string]$ExpectedPartialDiffHash,[Parameter(Mandatory)][string]$ExpectedPartialFilesHash,
+        [Parameter(Mandatory)][string]$ExpectedTelemetryReceiptHash,[Parameter(Mandatory)][string]$ExpectedGateHash,
+        [Parameter(Mandatory)][int]$ExpectedAttempt,[Parameter(Mandatory)][int]$ExpectedTailSeq,
+        [Parameter(Mandatory)][string]$ExpectedTailEventHash,[Parameter(Mandatory)][string]$TrustedHead,
+        [Parameter(Mandatory)][decimal]$ExpectedCostUsd,[Parameter(Mandatory)][string[]]$ExpectedPaths,
+        [string]$BudgetPath='',[string]$V2Root=''
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    foreach($hash in @($ExpectedRequestManifestHash,$ExpectedStdoutHash,$ExpectedPreManifestHash,$ExpectedPostManifestHash,$ExpectedPartialDiffHash,$ExpectedPartialFilesHash,$ExpectedTelemetryReceiptHash,$ExpectedGateHash,$ExpectedTailEventHash)){
+        if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid recovery hash'}
+    }
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$' -or $TrustedHead -notmatch '^[0-9a-f]{40}$' -or $ExpectedAttempt -lt 1 -or $ExpectedTailSeq -lt 1 -or $ExpectedCostUsd -le 0){return &$deny 'invalid recovery identity or numeric binding'}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'WAITING_PROVIDER' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [int]$State.attempt -ne $ExpectedAttempt){return &$deny 'dispatcher state binding mismatch'}
+    if([bool]$State.implementationComplete -or $State.candidateHead -or $State.candidateTree -or $State.integration -or $State.reviewVerdict){return &$deny 'candidate, review, or integration already exists'}
+    if(@(Get-Attestations -TaskVersionId $TaskVersionId).Count){return &$deny 'successor attestation already exists'}
+    $route=$null;try{$route=Get-DispatcherPinnedQuarantinedRetryRoute $State}catch{return &$deny 'pinned recovery route is malformed'}
+    if(-not $route -or [string]$route.provider -ne 'deepseek' -or [string]$route.model -ne 'deepseek-v4-pro' -or [string]$route.profile -ne 'REASONING' -or [string]$route.reasoning -ne 'high'){return &$deny 'exact DeepSeek Pro/high route is not pinned'}
+    if([string]$State.provider -ne 'deepseek' -or [string]$State.model -ne 'deepseek-v4-pro' -or [string]$State.profile -ne 'REASONING'){return &$deny 'active route differs from the pinned recovery route'}
+    if([string]$State.taskSource -ne [string]$TaskSource.path -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task source drift'}
+    $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource
+    if(-not $authority.ok -or -not $authority.satisfied -or [string]$authority.approval -ne 'APPROVED' -or [string]$authority.gateHash -ne $ExpectedGateHash){return &$deny 'exact Level C approval is not valid'}
+    if($State.gate -and ([string]$State.gate.approval -ne 'APPROVED' -or [string]$State.gate.gateHash -ne $ExpectedGateHash)){return &$deny 'owner-gate projection diverges from authority'}
+
+    $ledger=Get-LedgerState $TaskVersionId
+    if($ledger.corrupt -or [int]$ledger.seq -ne $ExpectedTailSeq -or [string]$ledger.state -ne 'WAITING_PROVIDER'){return &$deny 'ledger tail binding mismatch'}
+    $events=@(Read-JsonLines (Get-LedgerPath $TaskVersionId));if(-not $events.Count){return &$deny 'ledger history is absent'}
+    $tail=$events[-1]
+    if([int]$tail.seq -ne $ExpectedTailSeq -or [string]$tail.eventHash -ne $ExpectedTailEventHash -or [string]$tail.event -ne 'deepseek-cache-aware-reservation-reconciled' -or [string]$tail.runId -ne $RunId -or [string]$tail.attemptId -ne $InvocationId){return &$deny 'ledger tail event binding mismatch'}
+    if([string]$tail.evidence.receiptHash -ne $ExpectedTelemetryReceiptHash -or [string]$tail.evidence.requestManifestHash -ne $ExpectedRequestManifestHash -or [string]$tail.evidence.stdoutHash -ne $ExpectedStdoutHash -or [decimal]$tail.evidence.costUsd -ne $ExpectedCostUsd){return &$deny 'ledger telemetry evidence mismatch'}
+
+    $history=@($State.providerHistory);$matches=@($history|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'provider history binding mismatch'}
+    $attempt=$matches[0]
+    if([string]$attempt.role -ne 'CORRECTOR' -or [string]$attempt.provider -ne 'deepseek' -or [string]$attempt.model -ne 'deepseek-v4-pro' -or [string]$attempt.reasoningEffort -ne 'high' -or [int]$attempt.attempt -ne $ExpectedAttempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [string]$attempt.providerClass -ne 'PROVIDER_UNAVAILABLE'){return &$deny 'provider attempt is not the exact telemetry-stranded implementation'}
+    if([string]$attempt.stdoutHash -ne $ExpectedStdoutHash -or [string]$attempt.controlRecordHash -ne $ExpectedStdoutHash){return &$deny 'provider history stdout binding mismatch'}
+
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+    if(-not $pre -or -not $post){return &$deny 'workspace invocation manifests are absent'}
+    $preSigned=[ordered]@{schemaVersion=$pre.schemaVersion;invocationId=$pre.invocationId;promptHash=$pre.promptHash;provider=$pre.provider;model=$pre.model;reasoningEffort=$pre.reasoningEffort;attempt=[int]$pre.attempt;stateHash=$pre.stateHash;partialDiffHash=$pre.partialDiffHash;partialFilesHash=$pre.partialFilesHash;paths=@($pre.paths);fileBindings=@($pre.fileBindings)}
+    $preStateHash=New-StringHash (ConvertTo-CanonicalJson $pre.stateBinding)
+    if([string]$pre.snapshotHash -ne (New-StringHash (ConvertTo-CanonicalJson $preSigned)) -or [string]$pre.snapshotHash -ne $ExpectedPreManifestHash -or [string]$pre.stateHash -ne $preStateHash){return &$deny 'pre-launch manifest hash mismatch'}
+    if([string]$pre.invocationId -ne $InvocationId -or [string]$pre.provider -ne 'deepseek' -or [string]$pre.model -ne 'deepseek-v4-pro' -or [string]$pre.reasoningEffort -ne 'high' -or [int]$pre.attempt -ne $ExpectedAttempt -or [string]$pre.stateBinding.runId -ne $RunId -or [string]$pre.stateBinding.taskId -ne [string]$Task.taskId -or [string]$pre.stateBinding.taskVersionId -ne $TaskVersionId -or [string]$pre.stateBinding.workspace -ne [string]$State.workspace -or [string]$pre.stateBinding.workspaceHead -ne $TrustedHead){return &$deny 'pre-launch manifest identity mismatch'}
+    $postSigned=[ordered]@{schemaVersion=$post.schemaVersion;invocationId=$post.invocationId;preInvocationSnapshotHash=$post.preInvocationSnapshotHash;promptHash=$post.promptHash;stdoutHash=$post.stdoutHash;provider=$post.provider;model=$post.model;reasoningEffort=$post.reasoningEffort;attempt=[int]$post.attempt;workspaceHead=$post.workspaceHead;partialDiffHash=$post.partialDiffHash;partialFilesHash=$post.partialFilesHash;paths=@($post.paths);fileBindings=@($post.fileBindings)}
+    if([string]$post.resultHash -ne (New-StringHash (ConvertTo-CanonicalJson $postSigned)) -or [string]$post.resultHash -ne $ExpectedPostManifestHash -or [string]$post.preInvocationSnapshotHash -ne $ExpectedPreManifestHash -or [string]$post.promptHash -ne [string]$pre.promptHash -or [string]$post.stdoutHash -ne $ExpectedStdoutHash){return &$deny 'post-execution manifest hash mismatch'}
+    if([string]$post.invocationId -ne $InvocationId -or [string]$post.provider -ne 'deepseek' -or [string]$post.model -ne 'deepseek-v4-pro' -or [string]$post.reasoningEffort -ne 'high' -or [int]$post.attempt -ne $ExpectedAttempt -or [string]$post.workspaceHead -ne $TrustedHead -or [string]$post.partialDiffHash -ne $ExpectedPartialDiffHash -or [string]$post.partialFilesHash -ne $ExpectedPartialFilesHash){return &$deny 'post-execution manifest identity mismatch'}
+
+    if(-not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $TrustedHead -or [string]$State.implementationCommit -ne $TrustedHead -or [string]$State.recoveredCandidateCommit -ne $TrustedHead){return &$deny 'workspace trusted HEAD mismatch'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $partial.clean){return &$deny $partial.reason}
+    $actualPaths=@($partial.paths|Sort-Object -Unique);$boundPaths=@($ExpectedPaths|ForEach-Object{$_.Replace('\','/')}|Sort-Object -Unique)
+    if(($actualPaths -join "`n") -ne ($boundPaths -join "`n") -or (@($post.paths|Sort-Object -Unique) -join "`n") -ne ($boundPaths -join "`n")){return &$deny 'changed path binding mismatch'}
+    if([string]$partial.diffHash -ne $ExpectedPartialDiffHash -or [string]$partial.filesHash -ne $ExpectedPartialFilesHash -or (@($partial.fileBindings) -join "`n") -ne (@($post.fileBindings) -join "`n")){return &$deny 'current workspace differs from the post-execution manifest'}
+
+    $logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$suffix=$InvocationId.Substring(4,8)
+    if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-deepseek-{1}.stdout.log' -f $ExpectedAttempt,$suffix)){return &$deny 'stdout evidence path mismatch'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne $ExpectedStdoutHash){return &$deny 'stdout evidence hash mismatch'}
+    $requestPath=Join-Path $logs ('implementer-{0:000}-deepseek-{1}.request-manifest.json' -f $ExpectedAttempt,$suffix)
+    if(-not(Test-Path -LiteralPath $requestPath)){return &$deny 'request manifest is absent'}
+    try{$request=Read-V2Json $requestPath}catch{return &$deny 'request manifest is invalid'}
+    $requestSigned=[ordered]@{};foreach($k in $request.Keys){if($k -ne 'manifestHash'){$requestSigned[$k]=$request[$k]}}
+    $requestProof=Test-DeepSeekRequestManifest $request
+    if([string]$request.manifestHash -ne (New-ContentHash $requestSigned) -or [string]$request.manifestHash -ne $ExpectedRequestManifestHash -or -not $requestProof.ok -or [string]$request.invocationId -ne $InvocationId -or [string]$request.promptHash -ne [string]$pre.promptHash -or [string]$request.provider -ne 'deepseek' -or [string]$request.requestedBillableSku -ne 'deepseek-v4-pro' -or [string]$request.reasoning -ne 'high' -or [string]$request.profile -ne 'REASONING'){return &$deny 'request manifest binding mismatch'}
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8);$parsed=ConvertFrom-RealCodexOutput $raw;$stream=@($parsed.events)
+    $terminal=@($stream|Where-Object{[string]$_.type -eq 'turn.completed'});$errors=@($stream|Where-Object{[string]$_.type -match '(?i)error|failed' -or $_.error})
+    if($terminal.Count -ne 1 -or $errors.Count -or -not $parsed.control -or [bool]$parsed.control.isError -or -not(Test-DeepSeekFinalStructuredEvent $stream)){return &$deny 'provider stream is not one successful completed turn'}
+    $structured=$parsed.structured
+    if(-not $structured -or [string]$structured.schemaVersion -ne 'orcivo.orchestration.v2.agent-result/1' -or [string]$structured.role -ne 'CORRECTOR' -or [string]$structured.resultClass -ne 'SUCCESS'){return &$deny 'structured implementation envelope is not SUCCESS'}
+    if(@($structured.tests|Where-Object{[string]$_.status -ne 'PASS'}).Count){return &$deny 'structured implementation reports a failed or unknown test'}
+    $terminalUsage=$terminal[0].usage
+    if($null -eq $terminalUsage.input_tokens -or $null -eq $terminalUsage.cached_input_tokens -or $null -eq $terminalUsage.output_tokens){return &$deny 'terminal usage is incomplete'}
+    $usage=[ordered]@{inputTokens=[int64]$terminalUsage.input_tokens;cachedTokens=[int64]$terminalUsage.cached_input_tokens;outputTokens=[int64]$terminalUsage.output_tokens;reasoningOutputTokens=$(if($null -eq $terminalUsage.reasoning_output_tokens){[int64]0}else{[int64]$terminalUsage.reasoning_output_tokens})}
+    if([int64]$usage.cachedTokens -gt [int64]$usage.inputTokens -or [int64]$usage.reasoningOutputTokens -gt [int64]$usage.outputTokens){return &$deny 'terminal usage counters are inconsistent'}
+
+    if(-not $BudgetPath){$BudgetPath=Get-DeepSeekBudgetPath};if(-not(Test-Path -LiteralPath $BudgetPath)){return &$deny 'budget record is absent'}
+    try{$budget=Read-V2Json $BudgetPath}catch{return &$deny 'budget record is invalid'}
+    $records=@($budget.invocations|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId});$active=@($budget.reservations|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId -and [string]$_.status -eq 'ACTIVE'})
+    if($records.Count -ne 1 -or $active.Count -or [string]$records[0].telemetryStatus -ne 'RECONCILED' -or [decimal]$records[0].costUsd -ne $ExpectedCostUsd -or [string]$records[0].reconciliationEvidence.receiptHash -ne $ExpectedTelemetryReceiptHash){return &$deny 'reconciled budget binding mismatch'}
+    $budgetStatus=Get-DeepSeekBudgetStatus;if(-not $budgetStatus.ok){return &$deny 'DeepSeek budget is inconsistent'}
+    if(-not $V2Root){$V2Root=Get-V2Dir};$telemetryPath=Join-Path $V2Root "runs\$RunId\reconciliations\deepseek-$InvocationId.cache-aware.json"
+    if(-not(Test-Path -LiteralPath $telemetryPath)){return &$deny 'telemetry reconciliation receipt is absent'}
+    try{$telemetry=Read-V2Json $telemetryPath}catch{return &$deny 'telemetry reconciliation receipt is invalid'}
+    $telemetrySigned=[ordered]@{};foreach($k in $telemetry.Keys){if($k -ne 'receiptHash'){$telemetrySigned[$k]=$telemetry[$k]}}
+    if([string]$telemetry.receiptHash -ne (New-ContentHash $telemetrySigned) -or [string]$telemetry.receiptHash -ne $ExpectedTelemetryReceiptHash -or [string]$telemetry.taskVersionId -ne $TaskVersionId -or [string]$telemetry.runId -ne $RunId -or [int]$telemetry.attempt -ne $ExpectedAttempt -or [string]$telemetry.invocationId -ne $InvocationId -or [string]$telemetry.requestManifestHash -ne $ExpectedRequestManifestHash -or [string]$telemetry.stdoutHash -ne $ExpectedStdoutHash -or [string]$telemetry.preSnapshotHash -ne $ExpectedPreManifestHash -or [string]$telemetry.postSnapshotHash -ne $ExpectedPostManifestHash -or [decimal]$telemetry.costUsd -ne $ExpectedCostUsd){return &$deny 'telemetry reconciliation receipt binding mismatch'}
+    if([int64]$telemetry.terminalUsage.inputTokens -ne [int64]$usage.inputTokens -or [int64]$telemetry.terminalUsage.cachedInputTokens -ne [int64]$usage.cachedTokens -or [int64]$telemetry.terminalUsage.outputTokens -ne [int64]$usage.outputTokens){return &$deny 'terminal usage differs from reconciled telemetry'}
+    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"));if(-not $artifactScan.clean){return &$deny 'run artifact scan is dirty'}
+    return [ordered]@{eligible=$true;reason='completed DeepSeek implementation and cache-aware telemetry verified';attempt=$attempt;attemptIndex=[array]::IndexOf($history,$attempt);pre=$pre;post=$post;partial=$partial;request=$request;structured=$structured;usage=$usage;telemetry=$telemetry;authority=$authority;contract=$authority.contract;artifactScan=$artifactScan;stdoutPath=$stdoutPath;requestPath=$requestPath;telemetryPath=$telemetryPath;tail=$tail}
+}
+
+function Recover-DispatcherCompletedImplementation {
+    param(
+        [Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$ExpectedRequestManifestHash,[Parameter(Mandatory)][string]$ExpectedStdoutHash,
+        [Parameter(Mandatory)][string]$ExpectedPreManifestHash,[Parameter(Mandatory)][string]$ExpectedPostManifestHash,
+        [Parameter(Mandatory)][string]$ExpectedPartialDiffHash,[Parameter(Mandatory)][string]$ExpectedPartialFilesHash,
+        [Parameter(Mandatory)][string]$ExpectedTelemetryReceiptHash,[Parameter(Mandatory)][string]$ExpectedGateHash,
+        [Parameter(Mandatory)][int]$ExpectedAttempt,[Parameter(Mandatory)][int]$ExpectedTailSeq,
+        [Parameter(Mandatory)][string]$ExpectedTailEventHash,[Parameter(Mandatory)][string]$TrustedHead,
+        [Parameter(Mandatory)][decimal]$ExpectedCostUsd,[Parameter(Mandatory)][string[]]$ExpectedPaths,
+        [string]$BudgetPath='',[string]$V2Root=''
+    )
+    $state=Get-DispatcherState
+    if(-not $state){throw 'completed implementation recovery: dispatcher state is absent'}
+    $prior=@($state.completedImplementationRecoveryHistory|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
+    if($prior.Count){
+        $record=$prior[-1];$ledger=Get-LedgerState $TaskVersionId
+        if($prior.Count -ne 1 -or [string]$record.runId -ne $RunId -or [string]$record.taskVersionId -ne $TaskVersionId -or [string]$record.stdoutHash -ne $ExpectedStdoutHash -or [string]$record.telemetryReceiptHash -ne $ExpectedTelemetryReceiptHash -or [string]$record.candidateHead -ne [string]$state.candidateHead -or [string]$state.status -ne 'RUNNING' -or [string]$state.stage -ne 'REVIEW' -or -not [bool]$state.implementationComplete -or [string]$ledger.state -ne 'REVIEWING'){throw 'completed implementation recovery: prior recovery does not match durable REVIEW state'}
+        $receiptPath=[string]$record.receiptPath;if(-not(Test-Path -LiteralPath $receiptPath)){throw 'completed implementation recovery: prior receipt is absent'}
+        $receipt=Read-V2Json $receiptPath;$signed=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$signed[$k]=$receipt[$k]}}
+        if([string]$receipt.receiptHash -ne (New-ContentHash $signed) -or [string]$receipt.receiptHash -ne [string]$record.receiptHash){throw 'completed implementation recovery: prior receipt is invalid'}
+        return [ordered]@{status='ALREADY_RECOVERED';taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=$state.candidateHead;receiptHash=$record.receiptHash}
+    }
+    $proof=Test-DispatcherCompletedImplementationRecovery -State $state -Task $Task -TaskSource $TaskSource -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash $ExpectedRequestManifestHash -ExpectedStdoutHash $ExpectedStdoutHash -ExpectedPreManifestHash $ExpectedPreManifestHash -ExpectedPostManifestHash $ExpectedPostManifestHash -ExpectedPartialDiffHash $ExpectedPartialDiffHash -ExpectedPartialFilesHash $ExpectedPartialFilesHash -ExpectedTelemetryReceiptHash $ExpectedTelemetryReceiptHash -ExpectedGateHash $ExpectedGateHash -ExpectedAttempt $ExpectedAttempt -ExpectedTailSeq $ExpectedTailSeq -ExpectedTailEventHash $ExpectedTailEventHash -TrustedHead $TrustedHead -ExpectedCostUsd $ExpectedCostUsd -ExpectedPaths $ExpectedPaths -BudgetPath $BudgetPath -V2Root $V2Root
+    if(-not $proof.eligible){throw "completed implementation recovery: $($proof.reason)"}
+    if(-not $V2Root){$V2Root=Get-V2Dir};$dir=Join-Path $V2Root "runs\$RunId\reconciliations";New-Item -ItemType Directory -Force -Path $dir|Out-Null
+    $preparedPath=Join-Path $dir "deepseek-$InvocationId.completed-implementation.prepared.json"
+    $prepared=[ordered]@{schemaVersion='orcivo.orchestration.v2.completed-implementation-recovery-prepared/1';taskId=[string]$Task.taskId;taskVersionId=$TaskVersionId;runId=$RunId;attempt=$ExpectedAttempt;invocationId=$InvocationId;requestManifestHash=$ExpectedRequestManifestHash;stdoutHash=$ExpectedStdoutHash;preManifestHash=$ExpectedPreManifestHash;postManifestHash=$ExpectedPostManifestHash;partialDiffHash=$ExpectedPartialDiffHash;partialFilesHash=$ExpectedPartialFilesHash;telemetryReceiptHash=$ExpectedTelemetryReceiptHash;gateHash=$ExpectedGateHash;tailSeq=$ExpectedTailSeq;tailEventHash=$ExpectedTailEventHash;trustedHead=$TrustedHead;costUsd=$ExpectedCostUsd;paths=@($ExpectedPaths|Sort-Object -Unique);receiptHash=''}
+    $signed=[ordered]@{};foreach($k in $prepared.Keys){if($k -ne 'receiptHash'){$signed[$k]=$prepared[$k]}};$prepared.receiptHash=New-ContentHash $signed
+    if(Test-Path -LiteralPath $preparedPath){$old=Read-V2Json $preparedPath;if([string]$old.receiptHash -ne [string]$prepared.receiptHash){throw 'completed implementation recovery: prepared receipt conflicts'}}else{Write-V2JsonCanonical $preparedPath $prepared}
+
+    $evidence=@{preparedReceiptHash=$prepared.receiptHash;requestManifestHash=$ExpectedRequestManifestHash;stdoutHash=$ExpectedStdoutHash;preManifestHash=$ExpectedPreManifestHash;postManifestHash=$ExpectedPostManifestHash;partialDiffHash=$ExpectedPartialDiffHash;partialFilesHash=$ExpectedPartialFilesHash;telemetryReceiptHash=$ExpectedTelemetryReceiptHash;gateHash=$ExpectedGateHash;costUsd=$ExpectedCostUsd}
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'completed-implementation-recovered' -ToState DISPATCHED -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'validated existing DeepSeek SUCCESS without a new implementation invocation'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'completed-implementation-candidate' -ToState RUNNING -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'materialize only the validated post-manifest files'|Out-Null
+
+    $attempt=$state.providerHistory[[int]$proof.attemptIndex];$attempt.providerClass='NONE';$attempt.resultClass='SUCCESS';$attempt.usage=$proof.usage;$attempt.cachedTokens=[int64]$proof.usage.cachedTokens;$attempt.costUsd=$ExpectedCostUsd;$attempt.telemetryConsistent=$true;$attempt.recoveredFromTelemetryFailure=$true;$attempt.recoveryReceiptHash=$prepared.receiptHash;$state.providerHistory[[int]$proof.attemptIndex]=$attempt
+    $state.unavailableProviders=@($state.unavailableProviders|Where-Object{[string]$_ -ne 'deepseek'});$state.status='RUNNING';$state.reason='';$state.lastErrorClass='NONE';$state.implementationComplete=$true;$state.requiresCorrection=$false;$state.implementationInvocationId=$InvocationId
+    Write-DispatcherState $state|Out-Null
+
+    $candidate=Complete-DispatcherCandidateCommit -State $state
+    if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'execute-failed' -ToState FAILED -RunId $RunId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'RESUMABLE'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;throw "completed implementation recovery: $($candidate.reason)"}
+    $state.implementationCommit=$candidate.head;Write-DispatcherState $state|Out-Null
+    $target=(Get-V2Config).target.branch;$fetch=Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('fetch','--no-tags','--quiet',(Get-RepoRoot),$target) -LogLabel 'completed-recovery-fetch-target'
+    if($fetch.exitCode -ne 0){throw (Get-GitFailureSummaryV2 $fetch 'completed recovery fetch current target')}
+    $fetchHead=Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('rev-parse','FETCH_HEAD') -LogLabel 'completed-recovery-fetch-head';Assert-GitSucceededV2 $fetchHead 'completed recovery resolve FETCH_HEAD'|Out-Null;$candidateBase=$fetchHead.stdout.Trim()
+    $merge=Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('merge',$candidateBase,'--no-edit','--quiet') -LogLabel 'completed-recovery-merge-target'
+    if($merge.exitCode -ne 0){[void](Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('merge','--abort') -LogLabel 'completed-recovery-merge-abort');$state.status='BLOCKED';$state.reason='candidate conflicts with current target; rebuild required';Write-DispatcherState $state|Out-Null;throw 'completed implementation recovery: candidate conflicts with current target'}
+    $candidateHead=Get-GitHeadV2 ([string]$state.workspace);$compliance=Test-ContractCompliance -TaskVersionId $TaskVersionId -WorktreeDir ([string]$state.workspace) -BaseSha $candidateBase -HeadSha $candidateHead
+    if(-not $compliance.compliant){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'policy-block' -ToState FAILED -RunId $RunId -Note ($compliance.violations -join '; ')|Out-Null;$state.status='BLOCKED';$state.reason=$compliance.violations -join '; ';Write-DispatcherState $state|Out-Null;throw "completed implementation recovery: $($state.reason)"}
+    Enter-DispatcherLedgerPhase -TaskVersionId $TaskVersionId -RunId $RunId -Phase CHECKING
+    $verification=Invoke-VerificationProfile -ProfileId $proof.contract.verificationProfile -WorktreeDir ([string]$state.workspace) -BaseSha $candidateBase -HeadSha $candidateHead
+    $bindings=Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir ([string]$state.workspace) -BaseSha $candidateBase -HeadSha $candidateHead
+    $checkAttestation=New-Attestation -Kind check -TaskVersionId $TaskVersionId -RunId $RunId -Bindings $bindings -Result $(if($verification.pass){'PASS'}else{'FAIL'}) -Payload @{profileId=$verification.profileId;effectiveInvocationHash=$verification.effectiveInvocationHash;checks=@($verification.checks)} -ProducerMeta @{verifier='v2-deterministic';profileId=$verification.profileId;verificationDefinitionHash=$verification.verificationDefinitionHash}
+    if(-not $verification.pass){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'check-failed' -ToState FAILED -RunId $RunId|Out-Null;$state.status='TEST_FAILURE';$state.reason='deterministic verification failed';Write-DispatcherState $state|Out-Null;throw 'completed implementation recovery: deterministic verification failed'}
+    $treeScan=Test-GitTreeSecretsClean -RepoDir ([string]$state.workspace) -BaseRef $candidateBase -Ref $candidateHead;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    $scan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$candidateBase;headSha=$candidateHead;hits=@($treeScan.hits)};artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)};hits=@($treeScan.hits)+@($artifactScan.hits)}
+    if(-not $scan.clean){return (Set-DispatcherSecretBlock -State $state -Scan $scan)}
+    Enter-DispatcherLedgerPhase -TaskVersionId $TaskVersionId -RunId $RunId -Phase REVIEWING
+
+    $receiptPath=Join-Path $dir "deepseek-$InvocationId.completed-implementation.json"
+    $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.completed-implementation-recovery/1';taskId=[string]$Task.taskId;taskVersionId=$TaskVersionId;runId=$RunId;attempt=$ExpectedAttempt;invocationId=$InvocationId;preparedReceiptHash=$prepared.receiptHash;telemetryReceiptHash=$ExpectedTelemetryReceiptHash;stdoutHash=$ExpectedStdoutHash;postManifestHash=$ExpectedPostManifestHash;partialDiffHash=$ExpectedPartialDiffHash;partialFilesHash=$ExpectedPartialFilesHash;candidateBase=$candidateBase;candidateHead=$candidateHead;candidateTree=$bindings.treeHash;candidateDiffHash=$bindings.diffHash;checkAttestationHash=$checkAttestation.attestationHash;verificationHash=$verification.effectiveInvocationHash;secretScanClean=$true;receiptHash=''}
+    $signed=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$signed[$k]=$receipt[$k]}};$receipt.receiptHash=New-ContentHash $signed
+    if(Test-Path -LiteralPath $receiptPath){$old=Read-V2Json $receiptPath;if([string]$old.receiptHash -ne [string]$receipt.receiptHash){throw 'completed implementation recovery: completion receipt conflicts'}}else{Write-V2JsonCanonical $receiptPath $receipt}
+    $record=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;stdoutHash=$ExpectedStdoutHash;telemetryReceiptHash=$ExpectedTelemetryReceiptHash;preparedReceiptHash=$prepared.receiptHash;candidateBase=$candidateBase;candidateHead=$candidateHead;receiptPath=$receiptPath;receiptHash=$receipt.receiptHash}
+    $state.completedImplementationRecoveryHistory=@($state.completedImplementationRecoveryHistory|Where-Object{$_})+@($record);$state.candidateBase=$candidateBase;$state.candidateHead=$candidateHead;$state.candidateTree=$bindings.treeHash;$state.diffHash=$bindings.diffHash;$state.verification=$verification;$state.secretScan=$scan;$state.stage='REVIEW';$state.reviewerProvider='codex';$state.status='RUNNING';$state.reason='';Write-DispatcherState $state|Out-Null
+    return [ordered]@{status='RECOVERED_TO_REVIEW';taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateBase=$candidateBase;candidateHead=$candidateHead;candidateTree=$bindings.treeHash;candidateDiffHash=$bindings.diffHash;receiptHash=$receipt.receiptHash}
+}
+
 function Test-DispatcherStoppedImplementationRecovery {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
