@@ -37,14 +37,34 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
     [string]$TaskVersionId = '',
+    [string]$RunId = '',
+    [string]$InvocationId = '',
+    [string]$EvidenceHash = '',
+    [string]$PartialDiffHash = '',
+    [string]$PartialFilesHash = '',
+    [string]$WorkspaceMutationSnapshotHash = '',
+    [string]$WorkspaceMutationResultHash = '',
+    [string]$PromptHash = '',
+    [string]$StopHash = '',
+    [string]$PreManifestHash = '',
+    [string]$PostManifestHash = '',
+    [string]$LeaseId = '',
+    [string]$LeaseHash = '',
+    [string]$LeaseOwnerRunId = '',
+    [string]$LeaseHolderHost = '',
+    [int]$LeaseHolderPid = 0,
+    [string]$LeaseHolderStartTime = '',
+    [string]$LeaseNonce = '',
+    [string]$LeaseFencingToken = '',
     [string]$ApprovalScope = '',
     [string]$ApprovedBy = 'owner',
-    [string]$ApprovalSource = 'pilot.ps1 approve-gate'
+    [string]$ApprovalSource = 'pilot.ps1 approve-gate',
+    [string]$SmokeRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,6 +94,29 @@ function Get-PilotCheckpointDir { return (Join-Path (Get-V2Dir) 'pilot') }
 function Test-RealExecutionAuthorized {
     $cfg = Get-PilotConfig
     return (Test-Path -LiteralPath (Join-Path (Get-V2Dir) "$($cfg.realExecutionAuthFile)"))
+}
+
+function Invoke-DeepSeekSmoke {
+    # Public paid smoke: separate from task lineage and from any product
+    # workspace.  It leaves only redacted, hash-bound artifacts under the
+    # runtime directory; credentials stay inherited by the child process.
+    if(-not $env:DEEPSEEK_API_KEY){throw 'DeepSeek smoke: DEEPSEEK_API_KEY is unavailable'}
+    [void](Assert-DeepSeekInvocationBudget -EstimatedUsd ([decimal]0.03))
+    $root=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) ('orcivo-dispatcher\provider-smokes\deepseek-'+[guid]::NewGuid().ToString('N'))
+    $workspace=Join-Path $root 'workspace';$artifacts=Join-Path $root 'artifacts';New-Item -ItemType Directory -Force -Path $workspace,$artifacts|Out-Null
+    $init=Invoke-GitV2 -Dir $workspace -Arguments @('init','--quiet') -LogLabel 'deepseek-smoke-init';Assert-GitSucceededV2 $init 'DeepSeek smoke git initialization'|Out-Null
+    $prompt=@'
+Connectivity smoke only. Do not modify files, run tools, or inspect unrelated data.
+Return exactly one JSON object matching this schema:
+{"schemaVersion":"orcivo.orchestration.v2.agent-result/1","role":"IMPLEMENTER","resultClass":"SUCCESS","summary":"DeepSeek Responses smoke completed","decisions":[],"tests":[],"nextAction":"stop","importantArtifacts":[]}
+'@
+    $prePath=Join-Path $artifacts 'pre-launch-manifest.json';$postPath=Join-Path $artifacts 'post-result-manifest.json'
+    $before={param($launch)Write-V2JsonCanonical $prePath ([ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-smoke-manifest/1';phase='PRE_LAUNCH';invocationId=[string]$launch.invocationId;provider=[string]$launch.provider;model=[string]$launch.model;reasoning=[string]$launch.reasoningEffort;profile=[string]$launch.profile;promptArtifact=[string]$launch.promptArtifact;promptHash=[string]$launch.promptHash;requestManifestPath=[string]$launch.requestManifestPath;requestManifestHash=[string]$launch.requestManifestHash})}
+    $result=Invoke-RealAgent -Provider deepseek -Role implementer -TaskVersion ('f'*64) -Profile FAST -Workspace $workspace -StructuredPrompt $prompt -ArtifactDir $artifacts -TimeoutSec 120 -Attempt 1 -BeforeLaunch $before
+    Write-V2JsonCanonical $postPath ([ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-smoke-manifest/1';phase='POST_RESULT';invocationId=[string]$result.invocationId;provider=[string]$result.provider;model=[string]$result.model;returnedModels=@($result.returnedModels);exitCode=[int]$result.exitCode;providerClass=[string]$result.providerClass;resultClass=[string]$result.resultClass;promptHash=[string]$result.promptHash;requestManifestHash=$result.requestManifestHash;stdoutHash=[string]$result.stdoutHash;controlRecordHash=[string]$result.controlRecordHash;usage=$result.usage;cachedTokens=$result.cachedTokens;costUsd=$result.costUsd;telemetryConsistent=[bool]$result.telemetryConsistent})
+    $scan=Test-TreeSecretsClean -Roots @($root)
+    $ok=($result.exitCode -eq 0 -and $result.providerClass -eq 'NONE' -and $result.resultClass -eq 'SUCCESS' -and $result.telemetryConsistent -and $null -ne $result.costUsd -and (Test-Path -LiteralPath $prePath) -and (Test-Path -LiteralPath $postPath) -and $scan.clean)
+    return [ordered]@{status=$(if($ok){'PASS'}else{'FAIL'});workspace=$workspace;artifacts=$artifacts;invocationId=$result.invocationId;model=$result.model;returnedModels=@($result.returnedModels);usage=$result.usage;costUsd=$result.costUsd;telemetryConsistent=$result.telemetryConsistent;secretScanClean=[bool]$scan.clean}
 }
 
 # --- durable pilot checkpoint --------------------------------------------------
@@ -392,6 +435,119 @@ switch ($Command) {
         if(-not $TaskId -or -not $TaskVersionId -or -not $ApprovalScope){throw 'approve-gate requires -TaskId, -TaskVersionId, and -ApprovalScope'}
         $result=Approve-DispatcherOwnerGate -TaskId $TaskId -TaskVersionId $TaskVersionId -ApprovalScope $ApprovalScope -ApprovedBy $ApprovedBy -ApprovalSource $ApprovalSource -TaskFile $TaskFile
         $result|ConvertTo-Json -Depth 10
+    }
+    'reconcile-owner-gate' {
+        if(-not $TaskId -or -not $TaskVersionId){throw 'reconcile-owner-gate requires -TaskId and -TaskVersionId'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "reconcile-owner-gate: task '$TaskId' not found"}
+        $result=Reconcile-DispatcherOwnerGateProjection -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId
+        $result|ConvertTo-Json -Depth 12
+    }
+    'configure-deepseek-pricing' {
+        $result=Enable-DeepSeekVerifiedPricing
+        $result|ConvertTo-Json -Depth 12
+    }
+    'smoke-deepseek' {
+        $result=Invoke-DeepSeekSmoke
+        $result|ConvertTo-Json -Depth 12
+        exit $(if($result.status -eq 'PASS'){0}else{1})
+    }
+    'reconcile-deepseek-local-prelaunch' {
+        if(-not $InvocationId -or -not $SmokeRoot){throw 'reconcile-deepseek-local-prelaunch requires -InvocationId and -SmokeRoot'}
+        $result=Resolve-DeepSeekLocalPrelaunchTelemetry -InvocationId $InvocationId -SmokeRoot $SmokeRoot
+        $result|ConvertTo-Json -Depth 12
+    }
+    'reconcile-deepseek-request-manifest-upper-bound' {
+        if(-not $InvocationId -or -not $SmokeRoot){throw 'reconcile-deepseek-request-manifest-upper-bound requires -InvocationId and -SmokeRoot'}
+        $result=Reconcile-DeepSeekRequestManifestUpperBound -InvocationId $InvocationId -SmokeRoot $SmokeRoot
+        $result|ConvertTo-Json -Depth 12
+    }
+    'reconcile-deepseek-run-reservation-ceiling' {
+        if($TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-e39d82529f7446cc9e0b556a022e103e'){throw 'reconcile-deepseek-run-reservation-ceiling is closed to the authorized DeepSeek reservation'}
+        $state=Get-DispatcherState
+        Reconcile-DispatcherDeepSeekUnknownReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:044b808b61256f7ddee8695413b2f12ee43aed70f691bc2abb18e71ad3aee200' -ExpectedStdoutHash 'sha256:462a168d91d6b78712f8d8971f469a2295f98513f3e6c669bd1a02a009fc5bf4' | ConvertTo-Json -Depth 12
+    }
+    'reconcile-deepseek-run-cache-aware' {
+        if($TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'reconcile-deepseek-run-cache-aware is closed to attempt 349'}
+        $state=Get-DispatcherState
+        Reconcile-DispatcherDeepSeekCacheAwareReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:dd5c6fc4de437333e9380c5f2146188c8913a57285b682e4e2daa18d4581c385' -ExpectedStdoutHash 'sha256:f2bd5d36ec5dd29f7e6e0716a3b929e93c0e81531be7b2fdb868b61c9915f8d2' -ExpectedAttempt 349 -ExpectedTailSeq 1051 | ConvertTo-Json -Depth 12
+    }
+    'recover-completed-implementation' {
+        if($TaskId -ne 'PB1-P02-audit-service' -or $TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'recover-completed-implementation is closed to the owner-authorized attempt 349'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')};$source=Read-DispatcherTaskSource $TaskFile;$task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0];if(-not $task){throw "recover-completed-implementation: task '$TaskId' not found"}
+        Recover-DispatcherCompletedImplementation -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:dd5c6fc4de437333e9380c5f2146188c8913a57285b682e4e2daa18d4581c385' -ExpectedStdoutHash 'sha256:f2bd5d36ec5dd29f7e6e0716a3b929e93c0e81531be7b2fdb868b61c9915f8d2' -ExpectedControlRecordHash 'sha256:fc21b963402339caa9c66cac00c021c18f3559dfe3d31f6fad031d25672c5e93' -ExpectedPreManifestHash 'sha256:7792a5b84e5aeb75a9afa81856fe4606690a883113c1919f92e1f7e0c3ed3960' -ExpectedPostManifestHash 'sha256:ca02dc4d0f1f112d3495adfb9d358ce095b7d5e371129e512b4f25e4c1be72fb' -ExpectedPartialDiffHash 'sha256:9e49c36ef68e45f0ebcf93256ba212910108eda30120ca5b2e313d828ef7de7c' -ExpectedPartialFilesHash 'sha256:ff382c1e62bfe2ba4e9d0f8304a9aa0634ab3e85f469d6a096d1587afad29617' -ExpectedTelemetryReceiptHash 'sha256:5ca2f65873cca126b46a2b8a93408353ff1305e61319def8eceecb772e0f6ee5' -ExpectedGateHash 'sha256:08f03f366d69d53d099e1cb938404ba86b8597e81c87b523879520e6d9392e23' -ExpectedAttempt 349 -ExpectedTailSeq 1052 -ExpectedTailEventHash 'sha256:8632f7c772afd2ad2f4217eb8c99df9566b5f44f9d98767d14252dd9e8b3519c' -TrustedHead '046969b76b5e4d5e046e8e9f62c724daf87a5aa0' -ExpectedCostUsd ([decimal]0.91820872) -ExpectedPaths @('apps/backend/src/quote/quote.service.spec.ts','apps/backend/src/quote/quote.service.ts')|ConvertTo-Json -Depth 12
+    }
+    'recover-provider-failure' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash){throw 'recover-provider-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, and -EvidenceHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-provider-failure: task '$TaskId' not found"}
+        $result=Recover-DispatcherHistoricalProviderFailure -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-agent-infrastructure-failure' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PromptHash){throw 'recover-agent-infrastructure-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, and -PromptHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-agent-infrastructure-failure: task '$TaskId' not found"}
+        $result=Recover-DispatcherUtf8StdinFailure -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PromptHash $PromptHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-stopped-implementation' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $StopHash){throw 'recover-stopped-implementation requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, and -StopHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-stopped-implementation: task '$TaskId' not found"}
+        $result=Recover-DispatcherStoppedImplementation -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -StopHash $StopHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-incomplete-provider-result' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PartialDiffHash -or -not $PartialFilesHash){throw 'recover-incomplete-provider-result requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, -PartialDiffHash, and -PartialFilesHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-incomplete-provider-result: task '$TaskId' not found"}
+        $result=Recover-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-incomplete-provider-result-with-mutation' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PartialDiffHash -or -not $PartialFilesHash -or -not $WorkspaceMutationSnapshotHash -or -not $WorkspaceMutationResultHash){throw 'recover-incomplete-provider-result-with-mutation requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, -PartialDiffHash, -PartialFilesHash, -WorkspaceMutationSnapshotHash, and -WorkspaceMutationResultHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "recover-incomplete-provider-result-with-mutation: task '$TaskId' not found"}
+        $result=Recover-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -WorkspaceMutationSnapshotHash $WorkspaceMutationSnapshotHash -WorkspaceMutationResultHash $WorkspaceMutationResultHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-incomplete-running-invocation' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PreManifestHash -or -not $PostManifestHash){throw 'recover-incomplete-running-invocation requires task/run/invocation/evidence and both manifest hashes'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\\')}
+        $source=Read-DispatcherTaskSource $TaskFile;$task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0];if(-not $task){throw "recover-incomplete-running-invocation: task '$TaskId' not found"}
+        Recover-DispatcherIncompleteRunningInvocation -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PreManifestHash $PreManifestHash -PostManifestHash $PostManifestHash|ConvertTo-Json -Depth 12
+    }
+    'quarantine-incomplete-provider-result' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PartialDiffHash -or -not $PartialFilesHash){throw 'quarantine-incomplete-provider-result requires -TaskId, -TaskVersionId, -RunId, -InvocationId, -EvidenceHash, -PartialDiffHash, and -PartialFilesHash'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\\')}
+        $source=Read-DispatcherTaskSource $TaskFile
+        $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0]
+        if(-not $task){throw "quarantine-incomplete-provider-result: task '$TaskId' not found"}
+        $result=Quarantine-DispatcherIncompleteProviderResult -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash
+        $result|ConvertTo-Json -Depth 12
+    }
+    'recover-quarantined-retry-route' {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash -or -not $PartialDiffHash -or -not $PartialFilesHash){throw 'recover-quarantined-retry-route requires task, run, invocation, evidence, and partial hashes'}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\\')};$source=Read-DispatcherTaskSource $TaskFile;$task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId}|Select-Object -First 1)[0];if(-not $task){throw "recover-quarantined-retry-route: task '$TaskId' not found"}
+        Recover-DispatcherQuarantinedRetryRoute -Task ([hashtable]$task) -TaskSource $source -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash|ConvertTo-Json -Depth 12
+    }
+    'reconcile-orphaned-scheduler-lease' {
+        if(-not $LeaseId -or -not $LeaseHash -or -not $LeaseOwnerRunId -or -not $LeaseHolderHost -or -not $LeaseHolderPid -or -not $LeaseHolderStartTime){throw 'reconcile-orphaned-scheduler-lease requires -LeaseId, -LeaseHash, -LeaseOwnerRunId, -LeaseHolderHost, -LeaseHolderPid, and -LeaseHolderStartTime'}
+        $result=Reconcile-OrphanedSchedulerLease -LeaseId $LeaseId -LeaseHash $LeaseHash -OwnerRunId $LeaseOwnerRunId -HolderHost $LeaseHolderHost -HolderPid $LeaseHolderPid -HolderStartTime $LeaseHolderStartTime -ExpectedNonce $LeaseNonce -ExpectedFencingToken $LeaseFencingToken
+        $result|ConvertTo-Json -Depth 12
     }
     { $_ -in @('run','run-once','start') } {
         if ($Command -eq 'start') { Write-Host "pilot start is deprecated; using real 'run'." -ForegroundColor Yellow }

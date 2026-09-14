@@ -232,6 +232,166 @@ function Remove-Lease {
     return $false
 }
 
+# Scheduler/main is global infrastructure, rather than task-owned state.  A
+# dead holder may therefore be reconciled only through this explicit, hash-bound
+# operation.  It deliberately does not call New-Lease: breaking and retaking a
+# lease is appropriate for a live caller, whereas reconciliation must first
+# preserve the exact old bytes and leave a durable audit trail.
+function Get-OrphanedSchedulerLeaseReconciliationPaths {
+    param([Parameter(Mandatory)][string]$LeaseId,[Parameter(Mandatory)][string]$LeaseHash)
+    if($LeaseId -notmatch '^lease-[0-9a-f]{32}$'){throw 'scheduler lease reconciliation: invalid lease id'}
+    if($LeaseHash -notmatch '^sha256:[0-9a-f]{64}$'){throw 'scheduler lease reconciliation: invalid lease hash'}
+    $path=Get-LeasePath scheduler main
+    $tag="$LeaseId-$($LeaseHash.Substring(7,16))"
+    return [ordered]@{
+        leasePath=$path
+        archivePath="$path.orphaned-$tag.archive"
+        tombstonePath="$path.orphaned-$tag.tombstone.json"
+        releasedPath="$path.orphaned-$tag.released.json"
+    }
+}
+
+function Write-LeaseBytesExclusive {
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][byte[]]$Bytes)
+    $dir=Split-Path -Parent $Path;if($dir -and -not(Test-Path -LiteralPath $dir)){New-Item -ItemType Directory -Force -Path $dir|Out-Null}
+    try{
+        $fs=New-Object System.IO.FileStream($Path,[System.IO.FileMode]::CreateNew,[System.IO.FileAccess]::Write,[System.IO.FileShare]::None)
+        try{$fs.Write($Bytes,0,$Bytes.Length);$fs.Flush($true)}finally{$fs.Dispose()}
+        return $true
+    }catch [System.IO.IOException]{if(Test-Path -LiteralPath $Path){return $false};throw}
+}
+
+function Get-OrphanedSchedulerLeaseOwnerEvidence {
+    param([Parameter(Mandatory)][string]$OwnerRunId)
+    $checkpointPath=Join-Path (Get-V2Dir) "pilot\$OwnerRunId.json"
+    $checkpoint=$null;$checkpointState='ABSENT'
+    if(Test-Path -LiteralPath $checkpointPath){
+        try{$checkpoint=Read-V2Json $checkpointPath}catch{throw 'scheduler lease reconciliation: owner checkpoint is malformed'}
+        if([string]$checkpoint.runId -ne $OwnerRunId){throw 'scheduler lease reconciliation: owner checkpoint run binding mismatch'}
+        $checkpointState='BOUND'
+        if($checkpoint.holder -and (Test-HolderLive (_ToHashtable $checkpoint.holder))){return [ordered]@{active=$true;reason='owner checkpoint holder is active';checkpoint=$checkpointState;dispatcherStates=@();ledgerRuns=@()}}
+    }
+    $dispatcherStates=@()
+    $taskDir=Join-Path (Get-V2Dir) 'dispatcher\tasks'
+    if(Test-Path -LiteralPath $taskDir){
+        foreach($path in @(Get-ChildItem -LiteralPath $taskDir -File -Filter '*.json' -ErrorAction SilentlyContinue)){
+            try{$state=Read-V2Json $path.FullName}catch{throw 'scheduler lease reconciliation: a dispatcher task state is malformed'}
+            if([string]$state.runId -eq $OwnerRunId){
+                $dispatcherStates+=,[ordered]@{path=$path.FullName;status=[string]$state.status;stage=[string]$state.stage;taskVersionId=[string]$state.taskVersionId}
+                if([string]$state.status -in @('RUNNING','DISPATCHED','CHECKING','REVIEWING','INTEGRATING')){return [ordered]@{active=$true;reason='owner dispatcher state is active';checkpoint=$checkpointState;dispatcherStates=$dispatcherStates;ledgerRuns=@()}}
+            }
+        }
+    }
+    $ledgerRuns=@()
+    $ledgerDir=Join-Path (Get-V2Dir) 'ledger'
+    if(Test-Path -LiteralPath $ledgerDir){
+        foreach($path in @(Get-ChildItem -LiteralPath $ledgerDir -File -Filter '*.jsonl' -ErrorAction SilentlyContinue)){
+            foreach($event in @(Read-JsonLines $path.FullName)){
+                if([string]$event.runId -eq $OwnerRunId){$ledgerRuns+=,[ordered]@{path=$path.FullName;seq=[int]$event.seq;toState=[string]$event.toState}}
+            }
+        }
+    }
+    return [ordered]@{active=$false;reason='owner run is not active';checkpoint=$checkpointState;dispatcherStates=$dispatcherStates;ledgerRuns=$ledgerRuns}
+}
+
+function Test-OrphanedSchedulerLeaseProcessSafety {
+    param([Parameter(Mandatory)]$Lease,[Parameter(Mandatory)][string]$OwnerRunId)
+    if([string]$Lease.holder.host -ne [string]$env:COMPUTERNAME){return [ordered]@{ok=$false;reason='lease holder host is not the local host'}}
+    $holderProcessId=[int]$Lease.holder.pid
+    if(Get-Process -Id $holderProcessId -ErrorAction SilentlyContinue){return [ordered]@{ok=$false;reason='lease holder PID is still present (including PID reuse)'}}
+    # A child can outlive the parent.  Treat every direct descendant as live
+    # work, irrespective of its executable name.
+    $children=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|Where-Object{[int]$_.ParentProcessId -eq $holderProcessId})
+    if($children.Count){return [ordered]@{ok=$false;reason='a descendant of the lease holder is still active'}}
+    # The public command necessarily carries OwnerRunId in its own arguments.
+    # Exclude only the invoker's ancestry; an independently launched process
+    # mentioning this run remains live-work evidence and blocks reconciliation.
+    $ancestors=New-Object 'System.Collections.Generic.HashSet[int]'
+    $byId=@{};foreach($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)){$byId[[int]$p.ProcessId]=$p}
+    $cursor=[int]$PID
+    while($byId.ContainsKey($cursor) -and $ancestors.Add($cursor)){$cursor=[int]$byId[$cursor].ParentProcessId}
+    foreach($p in @($byId.Values)){
+        if($ancestors.Contains([int]$p.ProcessId)){continue}
+        if([string]$p.CommandLine -match [regex]::Escape($OwnerRunId)){return [ordered]@{ok=$false;reason='a process for the owner run is still active'}}
+    }
+    return [ordered]@{ok=$true;reason='holder, descendants, and owner-run processes are absent'}
+}
+
+function New-OrphanedSchedulerLeaseTombstone {
+    param([Parameter(Mandatory)]$Lease,[Parameter(Mandatory)][string]$LeaseHash,[Parameter(Mandatory)][string]$ArchivePath,[Parameter(Mandatory)][string]$ArchiveHash,[Parameter(Mandatory)]$OwnerEvidence)
+    $material=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.orphaned-scheduler-lease/1'
+        leaseId=[string]$Lease.leaseId;leaseHash=$LeaseHash;holder=$Lease.holder
+        ownerRunId=[string]$Lease.runId;taskVersionId=[string]$Lease.taskVersionId;scope=[string]$Lease.scope
+        createdAt=[string]$Lease.createdAt;heartbeat=[string]$Lease.heartbeat
+        nonce=[string]$Lease.nonce;fencingToken=[string]$Lease.fencingToken
+        archivePath=$ArchivePath;archiveHash=$ArchiveHash;reason='HOLDER_DEAD'
+        authorizedBy='owner';source='owner decision via pilot.ps1';ownerEvidence=$OwnerEvidence
+    }
+    return [ordered]@{}+$material+[ordered]@{reconciliationHash=(New-ContentHash $material);preparedAt=(Get-Date).ToUniversalTime().ToString('o')}
+}
+
+function Test-OrphanedSchedulerLeaseTombstone {
+    param([Parameter(Mandatory)]$Tombstone,[Parameter(Mandatory)][string]$LeaseId,[Parameter(Mandatory)][string]$LeaseHash,[Parameter(Mandatory)][string]$OwnerRunId)
+    if([string]$Tombstone.schemaVersion -ne 'orcivo.orchestration.v2.orphaned-scheduler-lease/1' -or [string]$Tombstone.leaseId -ne $LeaseId -or [string]$Tombstone.leaseHash -ne $LeaseHash -or [string]$Tombstone.ownerRunId -ne $OwnerRunId -or [string]$Tombstone.reason -ne 'HOLDER_DEAD'){return $false}
+    $material=[ordered]@{schemaVersion=[string]$Tombstone.schemaVersion;leaseId=[string]$Tombstone.leaseId;leaseHash=[string]$Tombstone.leaseHash;holder=$Tombstone.holder;ownerRunId=[string]$Tombstone.ownerRunId;taskVersionId=[string]$Tombstone.taskVersionId;scope=[string]$Tombstone.scope;createdAt=[string]$Tombstone.createdAt;heartbeat=[string]$Tombstone.heartbeat;nonce=[string]$Tombstone.nonce;fencingToken=[string]$Tombstone.fencingToken;archivePath=[string]$Tombstone.archivePath;archiveHash=[string]$Tombstone.archiveHash;reason=[string]$Tombstone.reason;authorizedBy=[string]$Tombstone.authorizedBy;source=[string]$Tombstone.source;ownerEvidence=$Tombstone.ownerEvidence}
+    return ((New-ContentHash $material) -eq [string]$Tombstone.reconciliationHash)
+}
+
+function Reconcile-OrphanedSchedulerLease {
+    param(
+        [Parameter(Mandatory)][string]$LeaseId,[Parameter(Mandatory)][string]$LeaseHash,
+        [Parameter(Mandatory)][string]$OwnerRunId,[Parameter(Mandatory)][string]$HolderHost,
+        [Parameter(Mandatory)][int]$HolderPid,[Parameter(Mandatory)][string]$HolderStartTime,
+        [string]$ExpectedTaskVersionId='',[string]$ExpectedScope='',[string]$ExpectedNonce='',[string]$ExpectedFencingToken=''
+    )
+    $paths=Get-OrphanedSchedulerLeaseReconciliationPaths -LeaseId $LeaseId -LeaseHash $LeaseHash
+    $path=[string]$paths.leasePath
+    $archive=[string]$paths.archivePath;$tombstonePath=[string]$paths.tombstonePath;$releasedPath=[string]$paths.releasedPath
+    $info=Read-LeaseRaw $path
+    if(-not $info.lease){
+        if(-not(Test-Path -LiteralPath $archive) -or -not(Test-Path -LiteralPath $tombstonePath)){throw 'scheduler lease reconciliation: lease absent without a complete reconciliation trail'}
+        $tombstone=Read-V2Json $tombstonePath
+        if(-not(Test-OrphanedSchedulerLeaseTombstone -Tombstone $tombstone -LeaseId $LeaseId -LeaseHash $LeaseHash -OwnerRunId $OwnerRunId) -or (New-FileHash $archive) -ne $LeaseHash){throw 'scheduler lease reconciliation: existing reconciliation trail is invalid'}
+        if(-not(Test-Path -LiteralPath $releasedPath)){
+            $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.orphaned-scheduler-lease-release/1';reconciliationHash=[string]$tombstone.reconciliationHash;leaseId=$LeaseId;leaseHash=$LeaseHash;releasedAt=(Get-Date).ToUniversalTime().ToString('o');releasedByProcess=(Get-ProcessIdentity)}
+            if(-not(New-ExclusiveFile $releasedPath (ConvertTo-CanonicalJson $receipt))){throw 'scheduler lease reconciliation: release receipt creation raced'}
+        }
+        return [ordered]@{status='ALREADY_RECONCILED';leaseId=$LeaseId;leaseHash=$LeaseHash;archivePath=$archive;tombstonePath=$tombstonePath;releasedPath=$releasedPath}
+    }
+    if($info.malformed -or $info.contentHash -ne $LeaseHash){throw 'scheduler lease reconciliation: lease hash or schema changed'}
+    $lease=$info.lease
+    if([string]$lease.schemaVersion -ne 'orcivo.orchestration.v2.lease/2' -or [string]$lease.namespace -ne 'scheduler' -or [string]$lease.key -ne 'main' -or [string]$lease.leaseId -ne $LeaseId){throw 'scheduler lease reconciliation: lease identity mismatch'}
+    if([string]$lease.runId -ne $OwnerRunId -or [string]$lease.taskVersionId -ne $ExpectedTaskVersionId -or [string]$lease.scope -ne $ExpectedScope){throw 'scheduler lease reconciliation: owner run, task version, or scope mismatch'}
+    if([string]$lease.holder.host -ne $HolderHost -or [int]$lease.holder.pid -ne $HolderPid -or [string]$lease.holder.startTime -ne $HolderStartTime){throw 'scheduler lease reconciliation: holder identity mismatch'}
+    if($lease.Contains('nonce') -and [string]$lease.nonce -ne $ExpectedNonce){throw 'scheduler lease reconciliation: nonce mismatch'}
+    if($lease.Contains('fencingToken') -and [string]$lease.fencingToken -ne $ExpectedFencingToken){throw 'scheduler lease reconciliation: fencing token mismatch'}
+    $processSafety=Test-OrphanedSchedulerLeaseProcessSafety -Lease $lease -OwnerRunId $OwnerRunId
+    if(-not $processSafety.ok){throw "scheduler lease reconciliation: $($processSafety.reason)"}
+    $ownerEvidence=Get-OrphanedSchedulerLeaseOwnerEvidence -OwnerRunId $OwnerRunId
+    if($ownerEvidence.active){throw "scheduler lease reconciliation: $($ownerEvidence.reason)"}
+    # Re-read immediately before preserving any evidence.  This catches heartbeat
+    # renewal, a substituted holder, and every byte-level replacement.
+    $again=Read-LeaseRaw $path
+    if($again.malformed -or -not $again.lease -or $again.contentHash -ne $LeaseHash -or [string]$again.lease.leaseId -ne $LeaseId -or [string]$again.lease.heartbeat -ne [string]$lease.heartbeat -or [string]$again.lease.holder.startTime -ne $HolderStartTime){throw 'scheduler lease reconciliation: lease changed during verification'}
+    $bytes=[System.IO.File]::ReadAllBytes($path)
+    if((New-FileHash $path) -ne $LeaseHash){throw 'scheduler lease reconciliation: lease bytes changed before archive'}
+    if(-not(Write-LeaseBytesExclusive -Path $archive -Bytes $bytes) -and (New-FileHash $archive) -ne $LeaseHash){throw 'scheduler lease reconciliation: archive path contains different bytes'}
+    if($script:OrphanedSchedulerLeaseAfterArchiveHook){& $script:OrphanedSchedulerLeaseAfterArchiveHook}
+    $tombstone=New-OrphanedSchedulerLeaseTombstone -Lease $lease -LeaseHash $LeaseHash -ArchivePath $archive -ArchiveHash (New-FileHash $archive) -OwnerEvidence $ownerEvidence
+    $tombstoneJson=ConvertTo-CanonicalJson $tombstone
+    if(-not(New-ExclusiveFile $tombstonePath $tombstoneJson)){
+        $existing=Read-V2Json $tombstonePath
+        if(-not(Test-OrphanedSchedulerLeaseTombstone -Tombstone $existing -LeaseId $LeaseId -LeaseHash $LeaseHash -OwnerRunId $OwnerRunId)){throw 'scheduler lease reconciliation: tombstone path contains conflicting record'}
+        $tombstone=$existing
+    }
+    if($script:OrphanedSchedulerLeaseBeforeReleaseHook){& $script:OrphanedSchedulerLeaseBeforeReleaseHook}
+    if(-not(Invoke-FileCas -Path $path -ExpectedHash $LeaseHash -NewContent '' -Delete)){throw 'scheduler lease reconciliation: lease changed before release'}
+    $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.orphaned-scheduler-lease-release/1';reconciliationHash=[string]$tombstone.reconciliationHash;leaseId=$LeaseId;leaseHash=$LeaseHash;releasedAt=(Get-Date).ToUniversalTime().ToString('o');releasedByProcess=(Get-ProcessIdentity)}
+    if(-not(New-ExclusiveFile $releasedPath (ConvertTo-CanonicalJson $receipt))){throw 'scheduler lease reconciliation: release receipt creation raced'}
+    return [ordered]@{status='RECONCILED';leaseId=$LeaseId;leaseHash=$LeaseHash;archivePath=$archive;tombstonePath=$tombstonePath;releasedPath=$releasedPath;ownerEvidence=$ownerEvidence}
+}
+
 # H3-04: the ONLY way out of lease quarantine. Explicit, authenticated, audited,
 # and separate from acquire. Proves there is no live owner where it can.
 function Repair-QuarantinedLease {

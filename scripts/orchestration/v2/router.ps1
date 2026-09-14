@@ -15,6 +15,7 @@ used and the limitation is recorded in the route (`limitations`).
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
+. (Join-Path $PSScriptRoot 'deepseek.ps1')
 
 $script:CapCachePath = Join-Path (Get-V2Dir) 'state\cli-capabilities.json'
 
@@ -144,15 +145,27 @@ function _ReasoningArgs {
 function Resolve-Provider {
     param(
         [Parameter(Mandatory)][ValidateSet('FAST', 'BALANCED', 'REASONING', 'CRITICAL')][string]$Profile,
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$Provider,
         [string]$ModelOverride = ''
     )
+    if($Provider -eq 'deepseek'){
+        if($Profile -eq 'CRITICAL'){return [ordered]@{ok=$false;provider='deepseek';reason='CRITICAL work is reserved for Codex Plus Terra'}}
+        $plan=Get-DeepSeekModelPlan -Profile $Profile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='deepseek';reason=$plan.reason}}
+        if(-not $env:DEEPSEEK_API_KEY){return [ordered]@{ok=$false;provider='deepseek';reason='DEEPSEEK_API_KEY is unavailable'}}
+        $budget=Get-DeepSeekBudgetStatus;if(-not $budget.ok){return [ordered]@{ok=$false;provider='deepseek';reason="DeepSeek budget preflight: $($budget.reason)"}}
+        $cap=Get-CliCapabilities -Provider 'codex';if(-not $cap.installed){return [ordered]@{ok=$false;provider='deepseek';reason="Codex CLI '$($cap.bin)' not installed"}}
+        $launch=Get-DeepSeekLaunchConfiguration -Model $(if($ModelOverride){$ModelOverride}else{$plan.model}) -Reasoning $plan.reasoning -MaxOutputTokens $plan.maxOutputTokens
+        return [ordered]@{ok=$true;provider='deepseek';bin=$cap.bin;profile=$Profile;reasoningIntent=$plan.reasoning;model=$(if($ModelOverride){$ModelOverride}else{$plan.model});maxOutputTokens=$plan.maxOutputTokens;maxInvocationsPerTask=$plan.maxInvocationsPerTask;invocationArgs=@('exec')+@($launch.configArgs);environment=$launch.environment;outputJson=$true;freshContextFlag='(codex exec is fresh by default)';sandboxFlag=$cap.sandboxFlag;supportsExplicitReasoning=$true;limitations=@();capabilityVersion=$cap.version;estimatedUsd=[decimal]$((Get-DeepSeekRuntimeConfig).deepseek.profiles.$Profile.maxEstimatedUsd)}
+    }
     $cfg = Get-V2Config
     $cap = Get-CliCapabilities -Provider $Provider
     if (-not $cap.installed) { return [ordered]@{ ok = $false; provider = $Provider; reason = "CLI '$($cap.bin)' not installed" } }
 
     $intent = $cfg.router.profileIntent.$Profile
-    $ra = _ReasoningArgs -Cap $cap -Intent ([string]$intent.reasoning)
+    $codexPlan=$(if($Provider -eq 'codex' -and $Profile -eq 'CRITICAL'){Get-OrcivoCodexModelPlan -Profile CRITICAL}else{$null})
+    if($codexPlan -and -not $codexPlan.ok){return [ordered]@{ok=$false;provider='codex';reason=$codexPlan.reason}}
+    if($codexPlan){$ModelOverride=$codexPlan.model;$ra=[ordered]@{args=@('-c',('model_reasoning_effort="'+$codexPlan.reasoning+'"'));limitations=@()};$intent=[ordered]@{reasoning=$codexPlan.reasoning}}
+    else{$ra = _ReasoningArgs -Cap $cap -Intent ([string]$intent.reasoning)}
 
     $invocationArgs = @()
     if ($cap.headlessFlag) { $invocationArgs += $cap.headlessFlag }
@@ -184,7 +197,7 @@ function Resolve-Provider {
 function Resolve-Route {
     param(
         [Parameter(Mandatory)][hashtable]$Classification,
-        [string[]]$HealthyProviders = @('claude', 'codex'),
+        [string[]]$HealthyProviders = @(Get-OrcivoEnabledProviders),
         [string]$ForceProvider = ''
     )
     $cfg = Get-V2Config
@@ -199,9 +212,10 @@ function Resolve-Route {
     }
 
     $want = [string]$Classification.suggestedProvider
-    $prefOrder = @($cfg.providerFailover.order)
+    $prefOrder = @(Get-OrcivoEnabledProviders)
+    if($profile -eq 'CRITICAL'){$prefOrder=@('codex')}
     if ($ForceProvider) { $prefOrder = @($ForceProvider) }
-    elseif ($want -in @('CLAUDE', 'CODEX')) { $prefOrder = @($want.ToLowerInvariant()) + @($prefOrder | Where-Object { $_ -ne $want.ToLowerInvariant() }) }
+    elseif ($want -in @('CLAUDE', 'CODEX', 'DEEPSEEK')) { $prefOrder = @($want.ToLowerInvariant()) + @($prefOrder | Where-Object { $_ -ne $want.ToLowerInvariant() }) }
 
     $chosen = $null
     foreach ($p in $prefOrder) {
@@ -223,12 +237,12 @@ function Resolve-Route {
 #   CROSS_PROVIDER_REQUIRED + opposite unavailable -> escalate (no same-provider review).
 function Select-Reviewer {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$ImplementerProvider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$ImplementerProvider,
         [string]$ReviewStrength = 'NORMAL',
-        [string[]]$HealthyProviders = @('claude', 'codex')
+        [string[]]$HealthyProviders = @(Get-OrcivoEnabledProviders)
     )
     $cfg = Get-V2Config
-    $opposite = @($cfg.providerFailover.order | Where-Object { $_ -ne $ImplementerProvider })[0]
+    $opposite = $(if($ImplementerProvider -eq 'deepseek'){'codex'}elseif($ImplementerProvider -eq 'codex'){'deepseek'}else{@(Get-OrcivoEnabledProviders|Where-Object{$_ -ne $ImplementerProvider})[0]})
     if ($HealthyProviders -contains $opposite) {
         return [ordered]@{ ok = $true; reviewer = $opposite; crossProvider = $true; reason = "opposite-provider review ($opposite reviews $ImplementerProvider)" }
     }

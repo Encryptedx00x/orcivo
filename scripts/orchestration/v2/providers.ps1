@@ -25,6 +25,7 @@ there is no environment variable for it.
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'ledger.ps1')
 . (Join-Path $PSScriptRoot 'classify.ps1')
+. (Join-Path $PSScriptRoot 'deepseek.ps1')
 
 $script:ProviderHealthFaults = $null   # $null in every real path
 function _phFault { param([string]$Provider) return ($script:ProviderHealthFaults -and $script:ProviderHealthFaults.ContainsKey($Provider)) }
@@ -36,9 +37,14 @@ $script:ProviderWaitDir = Join-Path (Get-V2Dir) 'provider-waits'
 # report an unrecoverable provider condition. The probe is intentionally cheap;
 # the authoritative signal during a run is still the control channel (classify.ps1).
 function Get-ProviderHealth {
-    param([Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$Provider)
+    param([Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$Provider)
     $cfg = Get-V2Config
-    $bin = $cfg.providers.$Provider.bin
+    if($Provider -eq 'deepseek'){
+        $budget=Get-DeepSeekBudgetStatus
+        if(-not $budget.ok){return [ordered]@{provider='deepseek';healthy=$false;reason=$budget.reason;class='PROVIDER_UNAVAILABLE';probedAt=(Get-Date).ToUniversalTime().ToString('o')}}
+        if(-not $env:DEEPSEEK_API_KEY){return [ordered]@{provider='deepseek';healthy=$false;reason='DEEPSEEK_API_KEY is unavailable';class='PROVIDER_AUTH';probedAt=(Get-Date).ToUniversalTime().ToString('o')}}
+        $bin='codex'
+    }else{$bin = $cfg.providers.$Provider.bin}
 
     if ($script:ProviderHealthFaults -ne $null) {
         # deterministic harness mode: health is exactly what the harness declares
@@ -65,7 +71,7 @@ function Get-ProviderHealth {
 
 function Get-HealthyProviders {
     $out = @()
-    foreach ($p in @((Get-V2Config).providerFailover.order)) {
+    foreach ($p in @(Get-OrcivoEnabledProviders)) {
         if ((Get-ProviderHealth -Provider $p).healthy) { $out += $p }
     }
     return @($out)
@@ -76,7 +82,7 @@ function Get-HealthyProviders {
 #   @{ action = 'FAILOVER'|'WAITING_PROVIDER'|'NO_FAILOVER'; nextProvider; reason }
 function Get-FailoverDecision {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex')][string]$CurrentProvider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$CurrentProvider,
         [Parameter(Mandatory)][string]$Class,
         [int]$FailoversSoFar = 0
     )
@@ -84,7 +90,7 @@ function Get-FailoverDecision {
     if (-not (Test-IsProviderClass $Class)) {
         return [ordered]@{ action = 'NO_FAILOVER'; nextProvider = $null; reason = "class '$Class' is not a provider class - a task failure never fails over" }
     }
-    $order = @($cfg.providerFailover.order)
+    $order = @(Get-OrcivoEnabledProviders)
     $others = @($order | Where-Object { $_ -ne $CurrentProvider })
     $max = [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage
 
@@ -134,6 +140,14 @@ function Enter-WaitingProvider {
         [Parameter(Mandatory)][hashtable]$Context
     )
     $now = (Get-Date).ToUniversalTime()
+    $prior = Get-ProviderWait $TaskVersionId
+    $sameLineage = [bool]($prior -and [string]$prior.runId -eq $RunId -and [string]$prior.workspace -eq [string]$Context.workspace)
+    # A CLI resolving on PATH is only a cheap probe, not proof that its account
+    # can execute a turn.  If such a probe resumes and the real invocation fails
+    # again, retain the lineage's accumulated backoff instead of recreating a
+    # fresh 30-second wait record.
+    $pollCount = $(if ($sameLineage) { [int]$prior.pollCount + 1 } else { 0 })
+    $backoff = _NextBackoffSec $pollCount
     $st = Get-LedgerState $TaskVersionId
     if ($st.state -eq 'DISCOVERED') { Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'ready' -ToState 'READY' | Out-Null; $st = Get-LedgerState $TaskVersionId }
     if ($st.state -in @('RUNNING', 'DISPATCHED', 'READY')) {
@@ -154,10 +168,11 @@ function Enter-WaitingProvider {
         reviewState     = "$($Context.reviewState)"
         checkpoint      = ([ordered]@{} + $(if ($Context.checkpoint) { $Context.checkpoint } else { @{} }))
         lastErrorClass  = "$($Context.lastErrorClass)"
-        enteredAt       = $now.ToString('o')
-        pollCount       = 0
-        nextRetryAt     = $now.AddSeconds((_NextBackoffSec 0)).ToString('o')
-        nextBackoffSec  = (_NextBackoffSec 0)
+        enteredAt       = $(if ($sameLineage -and $prior.enteredAt) { [string]$prior.enteredAt } else { $now.ToString('o') })
+        pollCount       = $pollCount
+        nextRetryAt     = $now.AddSeconds($backoff).ToString('o')
+        nextBackoffSec  = $backoff
+        unavailableProviders = @($Context.unavailableProviders)
         resolvedAt      = $null
     }
     Write-V2JsonCanonical (Get-ProviderWaitPath $TaskVersionId) $rec

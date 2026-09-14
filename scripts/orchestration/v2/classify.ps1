@@ -25,13 +25,33 @@ function ConvertFrom-ClaudeResult {
     param($ResultObj)   # already parsed
     if (-not $ResultObj) { return $null }
     $isErr = ($ResultObj.is_error -eq $true) -or ("$($ResultObj.subtype)" -match 'error')
+    $apiStatus=0
+    if($ResultObj.api_error_status){$apiStatus=[int]$ResultObj.api_error_status}
+    elseif($ResultObj.error -and $ResultObj.error.status){$apiStatus=[int]$ResultObj.error.status}
+    $httpStatus=$(if($ResultObj.status){[int]$ResultObj.status}else{$apiStatus})
+    $errorMessage=$(if($ResultObj.error -is [string]){[string]$ResultObj.error}elseif($ResultObj.error -and $ResultObj.error.message){[string]$ResultObj.error.message}else{''})
+    $message=Protect-SecretsStreaming ("$errorMessage$($ResultObj.result)")
     return [ordered]@{
         channel   = 'claude'
         isError   = [bool]$isErr
         errorType = "$($ResultObj.error_type)$($ResultObj.subtype)"
-        httpStatus = $(if ($ResultObj.status) { [int]$ResultObj.status } else { 0 })
-        message   = "$($ResultObj.error)$($ResultObj.result)"
+        httpStatus = $httpStatus
+        apiErrorStatus = $apiStatus
+        subtype = [string]$ResultObj.subtype
+        terminalReason = [string]$ResultObj.terminal_reason
+        permissionDenialCount = $(if($null -eq $ResultObj.permission_denials){0}else{@($ResultObj.permission_denials).Count})
+        message   = $message
     }
+}
+
+function Test-ClaudeSubscriptionAccessDisabled {
+    param($Control)
+    if(-not $Control -or [string]$Control.channel -ne 'claude' -or -not [bool]$Control.isError){return $false}
+    if([int]$Control.httpStatus -ne 403 -and [int]$Control.apiErrorStatus -ne 403){return $false}
+    if([int]$Control.permissionDenialCount -gt 0){return $false}
+    if([string]$Control.terminalReason -notmatch '(?i)^api[_ -]?error$'){return $false}
+    $text=[string]$Control.message
+    return [bool]($text -match '(?i)(?:claude(?: code)?\s+)?subscription access.{0,64}(?:disabled|unavailable)|(?:disabled|unavailable).{0,64}(?:claude(?: code)?\s+)?subscription access')
 }
 
 # Normalize a codex `exec --json` event stream (array of parsed events).
@@ -40,7 +60,7 @@ function ConvertFrom-CodexEvents {
     if (-not $Events) { return $null }
     $err = @($Events | Where-Object { "$($_.type)" -match 'error' -or $_.error }) | Select-Object -Last 1
     if (-not $err) {
-        $done = @($Events | Where-Object { "$($_.type)" -match 'task_complete|turn_complete|result' }) | Select-Object -Last 1
+        $done = @($Events | Where-Object { "$($_.type)" -match 'task[._]complete|turn[._]completed|result' }) | Select-Object -Last 1
         if ($done) { return [ordered]@{ channel = 'codex'; isError = $false; errorType = ''; httpStatus = 0; message = 'complete' } }
         return $null
     }
@@ -56,7 +76,7 @@ function ConvertFrom-CodexEvents {
 # The classifier. $Control is the normalized control-channel shape (or $null).
 function Get-FailureClassV2 {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
         [int]$ExitCode = 0,
         $Control = $null,
         [string]$AppStdout = ''          # UNTRUSTED - used ONLY for the explicit HUMAN_GATE sentinel
@@ -65,11 +85,11 @@ function Get-FailureClassV2 {
     if ($AppStdout -match '(?im)^\s*HUMAN_GATE\s*:') { return 'HUMAN_GATE' }
     if ($AppStdout -match '(?im)^\s*POLICY_BLOCK\s*:') { return 'POLICY_BLOCK' }
 
-    if ($ExitCode -eq 124) { return 'TIMEOUT' }
+    if ($ExitCode -eq 124) { return $(if($Provider -eq 'deepseek'){'PROVIDER_TRANSIENT'}else{'TIMEOUT'}) }
 
     if ($null -eq $Control) {
         # no structured signal -> we cannot attribute this to the provider
-        if ($ExitCode -eq 0) { return 'OK' }
+        if ($ExitCode -eq 0) { return 'INCOMPLETE_PROVIDER_RESULT' }
         return 'UNKNOWN'
     }
 
@@ -81,10 +101,12 @@ function Get-FailureClassV2 {
     $t = ("$($Control.errorType) $($Control.message)").ToLowerInvariant()
     $s = [int]$Control.httpStatus
 
+    if ([int]$Control.permissionDenialCount -gt 0) { return 'TOOL_ERROR' }
+    if ($Provider -eq 'claude' -and (Test-ClaudeSubscriptionAccessDisabled $Control)) { return 'PROVIDER_AUTH' }
     if ($t -match 'auth|unauthorized|invalid[_ ]?api[_ ]?key|login|token[_ ]?expired|401' -or $s -eq 401) { return 'PROVIDER_AUTH' }
-    if ($t -match 'insufficient_quota|credit balance|usage limit|quota' -and $t -notmatch 'test|assert') { return 'PROVIDER_QUOTA' }
+    if ($s -eq 402 -or $t -match 'insufficient_quota|insufficient balance|credit balance|usage limit|quota' -and $t -notmatch 'test|assert') { return 'PROVIDER_QUOTA' }
     if ($t -match 'rate[_ ]?limit|too many requests|429' -or $s -eq 429) { return 'PROVIDER_RATE_LIMIT' }
-    if ($t -match 'overloaded|unavailable|upstream|gateway|stream (disconnected|error)|5\d\d' -or $s -in @(500,502,503,504)) { return 'PROVIDER_TRANSIENT' }
+    if ($t -match 'overloaded|unavailable|upstream|gateway|stream (disconnected|error)|network|connection|dns|socket|timeout|5\d\d' -or $s -in @(500,502,503,504)) { return 'PROVIDER_TRANSIENT' }
     if ($t -match 'tool[_ ]?error|permission denied|sandbox') { return 'TOOL_ERROR' }
 
     # the model/runtime reported an error that is NOT a provider transport issue

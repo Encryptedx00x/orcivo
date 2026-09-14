@@ -17,7 +17,7 @@ function Get-AgentResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\agen
 function Get-ReviewResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json') }
 
 function Get-ProviderLaunchPlan {
-    param([ValidateSet('claude','codex')][string]$Provider, [string[]]$Arguments)
+    param([ValidateSet('claude','codex','deepseek')][string]$Provider, [string[]]$Arguments)
     if ($Provider -eq 'claude') {
         $cmd = Get-Command 'claude' -CommandType Application -ErrorAction Stop | Select-Object -First 1
         return @{ exe=$cmd.Source; arguments=@($Arguments) }
@@ -41,6 +41,7 @@ function ConvertTo-CanonicalFailureClass {
         'PROVIDER_UNAVAILABLE'{ return 'PROVIDER_UNAVAILABLE' }
         'PROVIDER_TRANSIENT'  {
             $t = ("$($Control.errorType) $($Control.message)").ToLowerInvariant()
+            if(-not $Control){return 'TRANSIENT_PROVIDER_NETWORK'}
             if ($t -match 'network|connection|dns|socket|stream|timeout') { return 'TRANSIENT_PROVIDER_NETWORK' }
             return 'PROVIDER_UNAVAILABLE'
         }
@@ -63,6 +64,11 @@ function ConvertFrom-RealClaudeOutput {
     param([string]$Text)
     $obj = $null
     try { $obj = $Text | ConvertFrom-Json } catch { }
+    if(-not $obj){
+        foreach($line in @($Text -split "`r?`n"|Where-Object{-not [string]::IsNullOrWhiteSpace($_)})){
+            try{$candidate=$line|ConvertFrom-Json;if($candidate){$obj=$candidate}}catch{}
+        }
+    }
     if (-not $obj) { return @{ control = $null; structured = $null } }
     $control = ConvertFrom-ClaudeResult $obj
     $structured = $obj.structured_output
@@ -93,7 +99,7 @@ function ConvertFrom-RealCodexOutput {
 
 function Invoke-RealAgent {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
         [Parameter(Mandatory)][ValidateSet('implementer','reviewer','classifier')][string]$Role,
         [Parameter(Mandatory)][string]$TaskVersion,
         [Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile,
@@ -102,11 +108,15 @@ function Invoke-RealAgent {
         [Parameter(Mandatory)][string]$ArtifactDir,
         [int]$TimeoutSec = 900,
         [int]$Attempt = 1,
-        [string]$ContinuationCheckpoint = ''
+        [string]$ContinuationCheckpoint = '',
+        [string]$InvocationId = '',
+        [scriptblock]$BeforeLaunch = $null
     )
     if (-not (Test-Path -LiteralPath $Workspace)) { throw "real-agent: workspace does not exist: $Workspace" }
     New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
-    $stamp = '{0}-{1:000}-{2}' -f $Role, $Attempt, $Provider
+    $invocationId=$(if($InvocationId){$InvocationId}else{New-AttemptId})
+    if($invocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'real-agent: invalid invocation id'}
+    $stamp = '{0}-{1:000}-{2}-{3}' -f $Role, $Attempt, $Provider,$invocationId.Substring(4,8)
     $promptFile = Join-Path $ArtifactDir "$stamp.prompt.txt"
     [System.IO.File]::WriteAllText($promptFile, (Protect-ArtifactText $StructuredPrompt), (New-Utf8NoBom))
     $stdoutLog = Join-Path $ArtifactDir "$stamp.stdout.log"
@@ -114,7 +124,12 @@ function Invoke-RealAgent {
 
     $route = Resolve-Provider -Profile $Profile -Provider $Provider
     if (-not $route.ok) {
-        return [ordered]@{ provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; duration=0; contextRolloverRequired=$false }
+        return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false }
+    }
+    $deepSeekRequestManifest=$null;$deepSeekRequestManifestPath=''
+    if($Provider -eq 'deepseek'){
+        $deepSeekRequestManifest=New-DeepSeekRequestManifest -InvocationId $invocationId -PromptHash (New-FileHash $promptFile) -Model ([string]$route.model) -Reasoning ([string]$route.reasoningIntent) -Profile $Profile
+        $deepSeekRequestManifestPath=Join-Path $ArtifactDir "$stamp.request-manifest.json";Write-V2JsonCanonical $deepSeekRequestManifestPath $deepSeekRequestManifest
     }
     $schemaPath = $(if ($Role -eq 'reviewer') { Get-ReviewResultSchemaPath } else { Get-AgentResultSchemaPath })
     $args = @($route.invocationArgs)
@@ -160,7 +175,25 @@ function Invoke-RealAgent {
         GIT_CONFIG_KEY_1 = 'remote.origin.pushurl'
         GIT_CONFIG_VALUE_1 = 'disabled://dispatcher/no-push'
     }
+    if($Provider -eq 'deepseek'){
+        # Budget preflight occurs immediately before the paid child launch.  The
+        # key remains inherited from the parent and is never copied into config,
+        # artifacts, arguments, state, or this environment map.
+        [void](Assert-DeepSeekInvocationBudget -EstimatedUsd ([decimal]$route.estimatedUsd))
+        foreach($k in @($route.environment.Keys)){$envBlock[$k]=$route.environment[$k]}
+    }
     $launch = Get-ProviderLaunchPlan -Provider $Provider -Arguments $args
+    if($BeforeLaunch){
+        # The callback is the only lifecycle point after the redacted prompt is
+        # immutable and before a provider child can mutate the workspace.
+        & $BeforeLaunch ([ordered]@{invocationId=$invocationId;promptArtifact=[IO.Path]::GetFullPath($promptFile);promptHash=(New-FileHash $promptFile);provider=$Provider;model=[string]$route.model;reasoningEffort=[string]$route.reasoningIntent;profile=$Profile;attempt=$Attempt;requestManifestPath=$deepSeekRequestManifestPath;requestManifestHash=$(if($deepSeekRequestManifest){[string]$deepSeekRequestManifest.manifestHash}else{''})})
+    }
+    if($Provider -eq 'deepseek'){
+        # This is a durable upper bound reservation, not a cost estimate
+        # recorded as spend. It prevents a retry loop from consuming the
+        # monthly balance before the provider returns billable usage.
+        [void](Reserve-DeepSeekInvocationBudget -InvocationId $invocationId -MaxUsd ([decimal]$route.estimatedUsd) -Model ([string]$route.model))
+    }
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
 
@@ -176,17 +209,32 @@ function Invoke-RealAgent {
     if (($structured -and "$($structured.resultClass)" -eq 'CONTEXT_ROLLOVER') -or (Test-IsContextExhaustion $parsed.control)) {
         $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
     }
+    if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
     if ($proc.exitCode -eq 0 -and $structured -and $providerClass -eq 'NONE' -and $Role -ne 'reviewer') {
         $schemaErrors = Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $structured)) (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
         if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
     }
 
+    $usage=$null;$cost=$null;$telemetryConsistent=$true;$returnedModels=@()
+    if($Provider -eq 'deepseek'){
+        $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
+        $returnedModels=Get-DeepSeekReturnedModel -Events @($parsed.events)
+        $resolution=$(if($deepSeekRequestManifest){Resolve-DeepSeekBillableModel -RequestManifest $deepSeekRequestManifest -Events @($parsed.events) -ExitCode $proc.exitCode}else{$null})
+        if($resolution -and $resolution.ok){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -BillableResolution $resolution -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
+        else{$telemetryConsistent=$false;$unknownReason=$(if($resolution){$resolution.reason}elseif(-not $usage){'usage is absent'}else{'request manifest is absent'})}
+        if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
+        $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$route.maxOutputTokens)
+        if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
+        if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
+    }
     return [ordered]@{
-        invocationId=(New-AttemptId)
-        provider=$Provider; model=$route.model; profile=$Profile; attempt=$Attempt
+        invocationId=$invocationId
+        provider=$Provider; model=$route.model; reasoningIntent=$route.reasoningIntent; profile=$Profile; attempt=$Attempt
         exitCode=$proc.exitCode; providerClass=$providerClass; resultClass=$resultClass
-        structuredResult=$structured; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
+        structuredResult=$structured; promptArtifact=$promptFile;promptHash=(New-FileHash $promptFile);stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
+        stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
         duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
         capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
+        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);requestManifestPath=$deepSeekRequestManifestPath;requestManifestHash=$(if($deepSeekRequestManifest){[string]$deepSeekRequestManifest.manifestHash}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
     }
 }
