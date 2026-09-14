@@ -227,6 +227,22 @@ function Get-DeepSeekUsageFromEvents {
     return [ordered]@{inputTokens=$input;outputTokens=$output;cachedTokens=$(if($null -eq $cached){$null}else{$cached})}
 }
 
+# `turn.completed.usage` is the aggregate for an agentic CLI turn.  The
+# configured model_max_output_tokens belongs to an individual Responses call,
+# so it must never be enforced against that aggregate.  Only a completed
+# response envelope can provide a per-call measurement.
+function Test-DeepSeekPerResponseOutputLimit {
+    param([Parameter(Mandatory)][object[]]$Events,[Parameter(Mandatory)][int64]$MaxOutputTokens)
+    foreach($event in @($Events)){
+        if([string]$event.type -ne 'response.completed'){continue}
+        $usage=$event.response.usage
+        if($usage -and $null -ne $usage.output_tokens -and [int64]$usage.output_tokens -gt $MaxOutputTokens){
+            return [ordered]@{observed=$true;exceeded=$true;outputTokens=[int64]$usage.output_tokens}
+        }
+    }
+    return [ordered]@{observed=$false;exceeded=$false;outputTokens=$null}
+}
+
 function Test-DeepSeekFinalStructuredEvent {
     param([object[]]$Events)
     return (@($Events|Where-Object{[string]$_.type -in @('turn.completed','response.completed')}).Count -gt 0)

@@ -37,7 +37,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -468,6 +468,11 @@ switch ($Command) {
         if($TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-e39d82529f7446cc9e0b556a022e103e'){throw 'reconcile-deepseek-run-reservation-ceiling is closed to the authorized DeepSeek reservation'}
         $state=Get-DispatcherState
         Reconcile-DispatcherDeepSeekUnknownReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:044b808b61256f7ddee8695413b2f12ee43aed70f691bc2abb18e71ad3aee200' -ExpectedStdoutHash 'sha256:462a168d91d6b78712f8d8971f469a2295f98513f3e6c669bd1a02a009fc5bf4' | ConvertTo-Json -Depth 12
+    }
+    'reconcile-deepseek-run-cache-aware' {
+        if($TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'reconcile-deepseek-run-cache-aware is closed to attempt 349'}
+        $state=Get-DispatcherState
+        Reconcile-DispatcherDeepSeekCacheAwareReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:dd5c6fc4de437333e9380c5f2146188c8913a57285b682e4e2daa18d4581c385' -ExpectedStdoutHash 'sha256:f2bd5d36ec5dd29f7e6e0716a3b929e93c0e81531be7b2fdb868b61c9915f8d2' -ExpectedAttempt 349 -ExpectedTailSeq 1051 | ConvertTo-Json -Depth 12
     }
     'recover-provider-failure' {
         if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId -or -not $EvidenceHash){throw 'recover-provider-failure requires -TaskId, -TaskVersionId, -RunId, -InvocationId, and -EvidenceHash'}

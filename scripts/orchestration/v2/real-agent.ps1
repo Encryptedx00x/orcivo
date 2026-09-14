@@ -223,7 +223,8 @@ function Invoke-RealAgent {
         if($resolution -and $resolution.ok){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -BillableResolution $resolution -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
         else{$telemetryConsistent=$false;$unknownReason=$(if($resolution){$resolution.reason}elseif(-not $usage){'usage is absent'}else{'request manifest is absent'})}
         if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
-        if($usage -and [int64]$usage.outputTokens -gt [int64]$route.maxOutputTokens){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
+        $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$route.maxOutputTokens)
+        if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
         if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
     }
     return [ordered]@{

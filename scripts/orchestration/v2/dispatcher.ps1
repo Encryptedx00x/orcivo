@@ -1400,6 +1400,40 @@ function Reconcile-DispatcherDeepSeekUnknownReservation {
     return [ordered]@{status='RECONCILED_RESERVATION_CEILING';invocationId=$InvocationId;costUsd=$ReservationCeilingUsd;unobservedUsagePeakUpperBoundUsd=$unobservedUpper;receiptHash=$receipt.receiptHash}
 }
 
+# Narrow reconciliation for one completed agentic run whose terminal usage is
+# aggregate, cache-aware and bound to the immutable request/stdout manifests.
+# It never makes a provider call and charges the higher of the two published
+# time bands so an unprovable timestamp cannot reduce the durable charge.
+function Reconcile-DispatcherDeepSeekCacheAwareReservation {
+    param(
+        [Parameter(Mandatory)][hashtable]$State,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][string]$ExpectedRequestManifestHash,[Parameter(Mandatory)][string]$ExpectedStdoutHash,
+        [Parameter(Mandatory)][int]$ExpectedAttempt,[Parameter(Mandatory)][int]$ExpectedTailSeq,[string]$BudgetPath='',[string]$V2Root=''
+    )
+    $deny={param($reason)throw "DeepSeek cache-aware reconciliation: $reason"}
+    if(Test-DispatcherRecoveryExecutionActive){&$deny 'runner or lease is active'}
+    if([string]$State.status -ne 'WAITING_PROVIDER' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.runId -ne $RunId -or [string]$State.taskVersionId -ne $TaskVersionId){&$deny 'dispatcher state binding mismatch'}
+    if(-not(Get-DispatcherPinnedQuarantinedRetryRoute $State)){&$deny 'required retry route is absent'}
+    $ledger=Get-LedgerState $TaskVersionId;if($ledger.corrupt -or [int]$ledger.seq -ne $ExpectedTailSeq -or [string]$ledger.state -ne 'WAITING_PROVIDER'){&$deny 'ledger tail binding mismatch'}
+    $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId});if($attempt.Count -ne 1 -or [int]$attempt[0].attempt -ne $ExpectedAttempt -or [string]$attempt[0].provider -ne 'deepseek' -or [string]$attempt[0].model -ne 'deepseek-v4-pro' -or [int]$attempt[0].exitCode -ne 0 -or [string]$attempt[0].stdoutHash -ne $ExpectedStdoutHash){&$deny 'provider history binding mismatch'}
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+    if(-not $pre -or -not $post -or [string]$post.preInvocationSnapshotHash -ne [string]$pre.snapshotHash -or [string]$post.stdoutHash -ne $ExpectedStdoutHash){&$deny 'workspace manifest binding mismatch'}
+    $requestPath=Join-Path (Split-Path -Parent ([string]$pre.promptArtifact)) ('implementer-{0:000}-deepseek-{1}.request-manifest.json' -f $ExpectedAttempt,$InvocationId.Substring(4,8));$stdoutPath=[string]$attempt[0].stdoutArtifact
+    if(-not(Test-Path $requestPath) -or -not(Test-Path $stdoutPath) -or (New-FileHash $stdoutPath) -ne $ExpectedStdoutHash){&$deny 'request manifest or stdout hash mismatch'}
+    $request=Read-V2Json $requestPath;$signed=[ordered]@{};foreach($k in $request.Keys){if($k -ne 'manifestHash'){$signed[$k]=$request[$k]}};$requestProof=Test-DeepSeekRequestManifest $request;if([string]$request.manifestHash -ne (New-ContentHash $signed) -or [string]$request.manifestHash -ne $ExpectedRequestManifestHash -or -not $requestProof.ok){&$deny 'request manifest binding mismatch'}
+    . (Join-Path $PSScriptRoot 'real-agent.ps1');$parsed=ConvertFrom-RealCodexOutput ([IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8));$events=@($parsed.events);$terminal=@($events|Where-Object{[string]$_.type -eq 'turn.completed'});if($terminal.Count -ne 1 -or -not(Test-DeepSeekFinalStructuredEvent $events)){&$deny 'terminal event binding mismatch'}
+    $u=$terminal[0].usage;if($null -eq $u.input_tokens -or $null -eq $u.cached_input_tokens -or $null -eq $u.output_tokens){&$deny 'terminal cache-aware usage is incomplete'}
+    $input=[int64]$u.input_tokens;$cached=[int64]$u.cached_input_tokens;$output=[int64]$u.output_tokens;if($cached -gt $input){&$deny 'cached usage exceeds input'};$uncached=$input-$cached
+    $registry=Get-DeepSeekPriceManifest;if(-not $registry.ok){&$deny $registry.reason};$costs=@{};foreach($period in @('OFF_PEAK','PEAK')){$p=$registry.manifest.models.'deepseek-v4-pro'.$period;$costs[$period]=((([decimal]$cached*[decimal]$p.cachedInput)+([decimal]$uncached*[decimal]$p.uncachedInput)+([decimal]$output*[decimal]$p.output))/1000000)};$cost=$(if([decimal]$costs.PEAK -gt [decimal]$costs.OFF_PEAK){[decimal]$costs.PEAK}else{[decimal]$costs.OFF_PEAK})
+    if(-not $BudgetPath){$BudgetPath=Get-DeepSeekBudgetPath};$budget=Read-V2Json $BudgetPath;$record=@($budget.invocations|Where-Object{[string]$_.invocationId -eq $InvocationId});$reservation=@($budget.reservations|Where-Object{[string]$_.invocationId -eq $InvocationId -and [string]$_.status -eq 'ACTIVE'});if($record.Count -ne 1 -or $reservation.Count -ne 1 -or [string]$record[0].telemetryStatus -ne 'UNKNOWN' -or $null -ne $record[0].costUsd){&$deny 'budget reservation binding mismatch'}
+    $budgetStatus=Get-DeepSeekBudgetStatus;if(([decimal]$budget.spentUsd+$cost) -gt [decimal]$budgetStatus.capUsd){&$deny 'cache-aware upper bound exceeds budget'}
+    if(-not $V2Root){$V2Root=Get-V2Dir};$dir=Join-Path $V2Root "runs\\$RunId\\reconciliations";New-Item -ItemType Directory -Force -Path $dir|Out-Null;$path=Join-Path $dir "deepseek-$InvocationId.cache-aware.json";$receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-cache-aware-receipt/1';taskVersionId=$TaskVersionId;runId=$RunId;attempt=$ExpectedAttempt;invocationId=$InvocationId;requestManifestHash=$ExpectedRequestManifestHash;stdoutHash=$ExpectedStdoutHash;preSnapshotHash=$pre.snapshotHash;postSnapshotHash=$post.resultHash;terminalUsage=@{inputTokens=$input;cachedInputTokens=$cached;uncachedInputTokens=$uncached;outputTokens=$output;reasoningOutputTokens=[int64]$u.reasoning_output_tokens;reasoningIncludedInOutputTokens=$true};formula='max(OFF_PEAK,PEAK): cached*cachedInput + uncached*uncachedInput + output*output, per 1M';offPeakUsd=$costs.OFF_PEAK;peakUsd=$costs.PEAK;costUsd=$cost;priceRegistryHash=$registry.manifestHash;receiptHash=''};$signed=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$signed[$k]=$receipt[$k]}};$receipt.receiptHash=New-ContentHash $signed
+    if(Test-Path $path){$old=Read-V2Json $path;if([string]$old.receiptHash -ne $receipt.receiptHash){&$deny 'existing receipt conflicts'};return @{status='ALREADY_RECONCILED';costUsd=$cost;receiptHash=$receipt.receiptHash}}
+    Write-V2JsonCanonical $path $receipt;Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'deepseek-cache-aware-reservation-reconciled' -ToState WAITING_PROVIDER -RunId $RunId -AttemptId $InvocationId -Evidence @{receiptHash=$receipt.receiptHash;requestManifestHash=$ExpectedRequestManifestHash;stdoutHash=$ExpectedStdoutHash;priceRegistryHash=$registry.manifestHash;costUsd=$cost}|Out-Null
+    $record[0].costUsd=$cost;$record[0].telemetryStatus='RECONCILED';$record[0].costAccuracy='CONSERVATIVE_PEAK_CACHE_AWARE';$record[0].cachedTokens=$cached;$record[0].inputTokens=$input;$record[0].outputTokens=$output;$record[0].reconciliationEvidence=@{receiptHash=$receipt.receiptHash;formula=$receipt.formula;offPeakUsd=$costs.OFF_PEAK;peakUsd=$costs.PEAK};$reservation[0].status='RELEASED';$reservation[0].releasedAt=(Get-Date).ToUniversalTime().ToString('o');$budget.spentUsd=([decimal]$budget.spentUsd+$cost);Write-V2JsonCanonical $BudgetPath $budget
+    return @{status='RECONCILED_CACHE_AWARE';costUsd=$cost;receiptHash=$receipt.receiptHash}
+}
+
 function Test-DispatcherStoppedImplementationRecovery {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,

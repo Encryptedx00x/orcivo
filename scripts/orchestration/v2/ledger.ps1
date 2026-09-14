@@ -178,7 +178,7 @@ function Get-LedgerState {
             if ([string]$e.fromState -ne $cur) {
                 return (_quarantine $state "recorded fromState '$($e.fromState)' != derived '$cur' at seq $($e.seq)")
             }
-            $isDeepSeekReservationAudit = ($cur -eq 'WAITING_PROVIDER' -and [string]$e.fromState -eq 'WAITING_PROVIDER' -and [string]$e.toState -eq 'WAITING_PROVIDER' -and [string]$e.event -eq 'deepseek-reservation-ceiling-reconciled')
+            $isDeepSeekReservationAudit = ($cur -eq 'WAITING_PROVIDER' -and [string]$e.fromState -eq 'WAITING_PROVIDER' -and [string]$e.toState -eq 'WAITING_PROVIDER' -and [string]$e.event -in @('deepseek-reservation-ceiling-reconciled','deepseek-cache-aware-reservation-reconciled'))
             if (-not $isDeepSeekReservationAudit -and -not (Test-LedgerTransition $cur $e.toState)) {
                 return (_quarantine $state "illegal recorded transition $cur -> $($e.toState) at seq $($e.seq)")
             }
@@ -251,7 +251,7 @@ function Add-LedgerEvent {
         if ($cur.state -in $script:TerminalStates) {
             throw "v2 ledger: $TaskVersionId is in terminal state $($cur.state); cannot enter '$ToState'."
         }
-        $isDeepSeekReservationAudit = ($cur.state -eq 'WAITING_PROVIDER' -and $ToState -eq 'WAITING_PROVIDER' -and $Event -eq 'deepseek-reservation-ceiling-reconciled')
+        $isDeepSeekReservationAudit = ($cur.state -eq 'WAITING_PROVIDER' -and $ToState -eq 'WAITING_PROVIDER' -and $Event -in @('deepseek-reservation-ceiling-reconciled','deepseek-cache-aware-reservation-reconciled'))
         if (-not $isDeepSeekReservationAudit -and -not (Test-LedgerTransition $cur.state $ToState)) {
             throw "v2 ledger: illegal transition $($cur.state) -> $ToState for $TaskVersionId (event '$Event')"
         }
