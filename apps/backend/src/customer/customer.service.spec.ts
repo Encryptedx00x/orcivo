@@ -1,13 +1,16 @@
 import { NotFoundException } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 
+const mockTx = { customer: { create: jest.fn() }, auditLog: { create: jest.fn() } };
 const mockPrisma = {
   customer: {
     create: jest.fn(),
     findMany: jest.fn(),
     findFirst: jest.fn(),
   },
+  $transaction: jest.fn((fn: (tx: typeof mockTx) => unknown) => fn(mockTx)),
 };
+const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
 
 describe('CustomerService', () => {
   let service: CustomerService;
@@ -16,19 +19,33 @@ describe('CustomerService', () => {
     jest.clearAllMocks();
     const mockLimits = { enforceLimit: jest.fn().mockResolvedValue(undefined) };
     const mockOwnership = { assertActiveMember: jest.fn().mockResolvedValue(undefined) };
-    service = new CustomerService(mockPrisma as never, mockLimits as never, mockOwnership as never);
+    service = new CustomerService(
+      mockPrisma as never,
+      mockLimits as never,
+      mockOwnership as never,
+      mockAudit as never,
+    );
   });
 
   describe('create', () => {
-    it('injeta company_id do tenant — ignora company_id do body', async () => {
+    it('injeta company_id do tenant — ignora company_id do body — e grava auditoria', async () => {
       const dto = { name: 'Cliente A' };
       const created = { id: 'c1', ...dto, company_id: 'tenant-1' };
-      mockPrisma.customer.create.mockResolvedValue(created);
+      mockTx.customer.create.mockResolvedValue(created);
 
-      const result = await service.create(dto as never, 'tenant-1');
+      const result = await service.create(dto as never, 'tenant-1', 'user-1');
       expect(result.company_id).toBe('tenant-1');
-      expect(mockPrisma.customer.create).toHaveBeenCalledWith(
+      expect(mockTx.customer.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ company_id: 'tenant-1' }) }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'customer.created',
+          entityType: 'customer',
+          entityId: 'c1',
+          actorUserId: 'user-1',
+        }),
       );
     });
   });

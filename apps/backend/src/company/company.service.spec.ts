@@ -2,13 +2,14 @@ import { NotFoundException } from '@nestjs/common';
 import { CompanyService } from './company.service';
 
 const mockPrisma = { company: { findUnique: jest.fn() } };
+const mockAudit = { record: jest.fn() };
 
 describe('CompanyService', () => {
   let service: CompanyService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new CompanyService(mockPrisma as never);
+    service = new CompanyService(mockPrisma as never, mockAudit as never);
   });
 
   it('retorna a empresa quando existe', async () => {

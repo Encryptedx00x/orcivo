@@ -30,7 +30,7 @@ export class InviteController {
   @AdminOnly()
   @Delete(':id')
   revoke(@Req() req: TenantRequest, @Param('id') id: string) {
-    return this.inviteService.revoke(req.companyId, id);
+    return this.inviteService.revoke(req.companyId, id, req.user.userId);
   }
 
   @Public()

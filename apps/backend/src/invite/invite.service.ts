@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MailService } from '../mail/mail.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class InviteService {
@@ -11,6 +12,7 @@ export class InviteService {
     private readonly redis: RedisService,
     private readonly mail: MailService,
     private readonly limits: PlanLimitsService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(companyId: string, invitedBy: string, email: string, role: 'ADMIN' | 'TECNICO') {
@@ -28,9 +30,23 @@ export class InviteService {
       throw new BadRequestException('Já existe um convite pendente para este e-mail.');
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const invite = await this.prisma.companyInvite.create({
-      data: { company_id: companyId, email, role, invited_by: invitedBy, expires_at: expiresAt },
-      include: { company: true },
+    const invite = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.companyInvite.create({
+        data: { company_id: companyId, email, role, invited_by: invitedBy, expires_at: expiresAt },
+        include: { company: true },
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: invitedBy,
+        action: 'invite.created',
+        entityType: 'invite',
+        entityId: created.id,
+        from: null,
+        to: 'PENDING',
+        humanText: `Convite para ${email} entrar em "${created.company.trade_name}" como ${role}`,
+      });
+      return created;
     });
 
     const appUrl = process.env['APP_URL'] ?? 'https://app.orcivo.com.br';
@@ -79,15 +95,28 @@ export class InviteService {
       targetUserId = newUser.id;
     }
 
-    await this.prisma.$transaction([
-      this.prisma.companyMember.create({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.companyMember.create({
         data: { company_id: invite.company_id, user_id: targetUserId, role: invite.role },
-      }),
-      this.prisma.companyInvite.update({
+      });
+      await tx.companyInvite.update({
         where: { id: invite.id },
         data: { status: 'ACCEPTED', accepted_at: new Date() },
-      }),
-    ]);
+      });
+      await this.audit.record(tx, {
+        companyId: invite.company_id,
+        actorType: 'USER',
+        actorUserId: targetUserId,
+        action: 'invite.accepted',
+        entityType: 'invite',
+        entityId: invite.id,
+        from: 'PENDING',
+        to: 'ACCEPTED',
+        humanText:
+          `${invite.email} aceitou o convite e entrou em "${invite.company.trade_name}" ` +
+          `como ${invite.role}`,
+      });
+    });
 
     // Bust the auth caches so the new membership/role takes effect on the next
     // request instead of after the 60s TTL (ADR-014).
@@ -104,14 +133,28 @@ export class InviteService {
     });
   }
 
-  async revoke(companyId: string, inviteId: string) {
+  async revoke(companyId: string, inviteId: string, userId: string) {
     const invite = await this.prisma.companyInvite.findFirst({
       where: { id: inviteId, company_id: companyId },
     });
     if (!invite) throw new NotFoundException('Convite não encontrado.');
-    return this.prisma.companyInvite.update({
-      where: { id: inviteId },
-      data: { status: 'REVOKED' },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.companyInvite.update({
+        where: { id: inviteId },
+        data: { status: 'REVOKED' },
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'invite.revoked',
+        entityType: 'invite',
+        entityId: inviteId,
+        from: invite.status,
+        to: 'REVOKED',
+        humanText: `Convite para ${invite.email} revogado`,
+      });
+      return updated;
     });
   }
 }

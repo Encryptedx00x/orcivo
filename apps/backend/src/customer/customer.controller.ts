@@ -6,6 +6,7 @@ import { CustomerService } from './customer.service';
 // Tenant context (companyId/role) is set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
   companyId: string;
+  user: { userId: string };
 }
 
 @Controller('customers')
@@ -26,7 +27,7 @@ export class CustomerController {
     @Req() req: TenantRequest,
     @Body(new ZodValidationPipe(CustomerCreateSchema)) body: unknown,
   ) {
-    return this.customerService.create(body as never, req.companyId);
+    return this.customerService.create(body as never, req.companyId, req.user.userId);
   }
 
   @Get(':id')

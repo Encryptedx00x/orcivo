@@ -8,7 +8,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import Decimal from 'decimal.js';
-import { ApproveQuoteDto, QuoteCreateDto, assertValidTransition } from '@orcivo/shared-types';
+import {
+  ApproveQuoteDto,
+  QuoteCreateDto,
+  QuoteStatus,
+  assertValidTransition,
+} from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +22,10 @@ import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
+import { AuditService } from '../audit/audit.service';
+
+const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
 
 @Injectable()
 export class QuoteService {
@@ -30,6 +39,7 @@ export class QuoteService {
     private readonly pdfService: QuotePdfService,
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
+    private readonly auditService: AuditService,
   ) {}
 
   private computeTotals(
@@ -171,13 +181,16 @@ export class QuoteService {
     );
   }
 
-  async send(id: string, companyId: string) {
+  async send(id: string, companyId: string, userId: string) {
     const quote = await this.findOne(id, companyId);
     try {
       assertValidTransition(quote.status as never, 'SENT');
     } catch {
       throw new BadRequestException(`Transicao invalida: ${quote.status} -> SENT`);
     }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as QuoteStatus;
 
     // Gerar PDF e salvar no MinIO
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
@@ -197,13 +210,26 @@ export class QuoteService {
     );
 
     const token = crypto.randomUUID();
-    const ttl = 7 * 24 * 60 * 60; // 7 dias em segundos = 604800
-    await this.redis.set(`quote:approval:${token}`, id, 'EX', ttl);
+    await this.redis.set(`quote:approval:${token}`, id, 'EX', APPROVAL_TOKEN_TTL_SECONDS);
 
-    const updated = await this.prisma.quote.update({
-      where: { id },
-      data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
-      include: { items: true, customer: true, approval: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const q = await tx.quote.update({
+        where: { id },
+        data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.sent',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'SENT',
+        humanText: `Orçamento #${q.number} (${customerName}) enviado para aprovação`,
+      });
+      return q;
     });
 
     // Agendar job de expiracao se valid_until definido
@@ -231,20 +257,19 @@ export class QuoteService {
       });
       if (updated.count === 0) return null; // ja aprovado ou nao e SENT
 
-      // Registrar AuditLog dentro da mesma transaction (D2-14)
-      await tx.auditLog.create({
-        data: {
-          company_id: quote.company_id,
-          actor_type: 'SYSTEM',
-          action: 'quote.approved',
-          entity_type: 'quote',
-          entity_id: quote.id,
-          metadata: {
-            approval_method: dto.approval_method,
-            ip_address: ipAddress,
-            user_agent: userAgent,
-          },
-        },
+      // Registrar AuditLog dentro da mesma transaction (D2-14 / ADR-015).
+      // actorType CUSTOMER: aprovação feita pelo cliente via link público (sem sessão).
+      await this.auditService.record(tx, {
+        companyId: quote.company_id,
+        actorType: 'CUSTOMER',
+        action: 'quote.approved',
+        entityType: 'quote',
+        entityId: quote.id,
+        from: 'SENT',
+        to: 'APPROVED',
+        humanText:
+          `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente ` +
+          `via ${dto.approval_method} (IP ${ipAddress})`,
       });
 
       return updated;
@@ -315,19 +340,217 @@ export class QuoteService {
     return { status: 'APPROVED' };
   }
 
-  async cancel(id: string, companyId: string, reason?: string) {
+  async cancel(id: string, companyId: string, userId: string, reason?: string) {
     const quote = await this.findOne(id, companyId);
     try {
       assertValidTransition(quote.status as never, 'CANCELLED');
     } catch {
       throw new BadRequestException(`Transição inválida: ${quote.status} → CANCELLED`);
     }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as QuoteStatus;
 
-    return this.prisma.quote.update({
-      where: { id },
-      data: { status: 'CANCELLED', notes: reason },
-      include: { items: true, customer: true, approval: true },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: { status: 'CANCELLED', notes: reason },
+        include: { items: true, customer: true, approval: true },
+      });
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.cancelled',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'CANCELLED',
+        reason: reason ?? null,
+        humanText:
+          `Orçamento #${updated.number} (${customerName}) cancelado` +
+          (reason ? `: ${reason}` : ''),
+      });
+      return updated;
     });
+  }
+
+  /**
+   * Recusa (P-01/ADR-015): SENT → REJECTED. Motivo obrigatório e — como no
+   * cancelamento — nunca sobrescreve `notes`; o motivo vive só na trilha de
+   * auditoria. Exatamente uma linha de auditoria com from/to/reason (AC2).
+   */
+  async reject(id: string, companyId: string, userId: string, reason?: string) {
+    const quote = await this.findOne(id, companyId);
+    try {
+      assertValidTransition(quote.status as never, 'REJECTED');
+    } catch {
+      throw new BadRequestException(`Transição inválida: ${quote.status} → REJECTED`);
+    }
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException('Motivo é obrigatório para recusar um orçamento');
+    }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+    const fromStatus = quote.status as QuoteStatus;
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.quote.updateMany({
+        where: { id, status: fromStatus },
+        data: { status: 'REJECTED' },
+      });
+      if (result.count === 0) {
+        throw new ConflictException(`Transicao invalida: ${fromStatus} -> REJECTED`);
+      }
+      const persisted = await tx.quote.findUnique({
+        where: { id },
+        include: { items: true, customer: true, approval: true },
+      });
+      if (!persisted) {
+        throw new ConflictException('Orcamento nao encontrado apos atualizacao');
+      }
+      const updated = persisted;
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.rejected',
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: 'REJECTED',
+        reason: trimmedReason,
+        humanText: `Orçamento #${updated.number} (${customerName}) recusado: ${trimmedReason}`,
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * Reabrir (reabrir — @AdminOnly): traz um orçamento de um estado terminal de
+   * volta para SENT para uma nova rodada de aprovação. `assertValidTransition`
+   * não cobre saídas de estados terminais de propósito (a máquina de estados
+   * completa é P04); aqui a origem é validada localmente. Uma linha de auditoria
+   * com from/to/reason (AC2). O histórico anterior é preservado.
+   */
+  async reopen(id: string, companyId: string, userId: string, reason?: string) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, {
+      to: 'SENT',
+      allowedFrom: ['REJECTED', 'EXPIRED', 'CANCELLED'],
+      action: 'quote.reopened',
+      verb: 'reabrir',
+      describe: (n, c, r) => `Orçamento #${n} (${c}) reaberto para nova aprovação: ${r}`,
+    });
+  }
+
+  /**
+   * Corrigir (corrigir — @AdminOnly): devolve um orçamento terminal para DRAFT
+   * para ajuste de itens/valores antes de reenviar. Uma linha de auditoria com
+   * from/to/reason (AC2).
+   */
+  async correct(id: string, companyId: string, userId: string, reason?: string) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, {
+      to: 'DRAFT',
+      allowedFrom: ['APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED'],
+      action: 'quote.corrected',
+      verb: 'corrigir',
+      describe: (n, c, r) =>
+        `Orçamento #${n} (${c}) reaberto para correção (voltou para rascunho): ${r}`,
+    });
+  }
+
+  private async reopenOrCorrect(
+    id: string,
+    companyId: string,
+    userId: string,
+    reason: string | undefined,
+    opts: {
+      to: 'SENT' | 'DRAFT';
+      allowedFrom: string[];
+      action: 'quote.reopened' | 'quote.corrected';
+      verb: 'reabrir' | 'corrigir';
+      describe: (num: number, customer: string, reason: string) => string;
+    },
+  ) {
+    const quote = await this.findOne(id, companyId);
+    const fromStatus = quote.status as QuoteStatus;
+    if (!opts.allowedFrom.includes(fromStatus)) {
+      throw new BadRequestException(
+        `Transição inválida: ${fromStatus} → ${opts.to} (${opts.verb})`,
+      );
+    }
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException(`Motivo é obrigatório para ${opts.verb} um orçamento`);
+    }
+    const customerName =
+      (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+
+    const newApprovalToken = opts.to === 'SENT' ? crypto.randomUUID() : undefined;
+    const newValidUntil =
+      opts.to === 'SENT' ? new Date(Date.now() + APPROVAL_TOKEN_TTL_MS) : undefined;
+    const previousApprovalToken =
+      (quote as unknown as { approval_token?: string | null }).approval_token ?? undefined;
+    const data: { status: 'SENT' | 'DRAFT'; approval_token?: string; valid_until?: Date } = {
+      status: opts.to,
+    };
+    if (opts.to === 'SENT' && newApprovalToken && newValidUntil) {
+      data.approval_token = newApprovalToken;
+      data.valid_until = newValidUntil;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.quote.updateMany({
+        where: { id, status: fromStatus },
+        data,
+      });
+      if (result.count === 0) {
+        throw new ConflictException(`Transicao invalida: ${fromStatus} -> ${opts.to}`);
+      }
+      const persisted = await tx.quote.findUnique({
+        where: { id },
+        include: { items: true, customer: true, approval: true },
+      });
+      if (!persisted) {
+        throw new ConflictException('Orcamento nao encontrado apos atualizacao');
+      }
+      const winning = persisted;
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: opts.action,
+        entityType: 'quote',
+        entityId: id,
+        from: fromStatus,
+        to: opts.to,
+        reason: trimmedReason,
+        humanText: opts.describe(winning.number, customerName, trimmedReason),
+      });
+      return winning;
+    });
+
+    if (opts.to === 'SENT' && newApprovalToken) {
+      await this.redis.set(
+        `quote:approval:${newApprovalToken}`,
+        id,
+        'EX',
+        APPROVAL_TOKEN_TTL_SECONDS,
+      );
+      if (previousApprovalToken && previousApprovalToken !== newApprovalToken) {
+        await this.redis.del(`quote:approval:${previousApprovalToken}`);
+      }
+    }
+
+    const signed = await this.withSignedUrls(updated);
+    if (opts.to === 'SENT' && newApprovalToken) {
+      return {
+        ...signed,
+        approvalUrl: `${this.config.get('APP_WEB_URL', 'http://localhost:3000')}/approve/${newApprovalToken}`,
+      };
+    }
+    return signed;
   }
 
   async getByApprovalToken(token: string) {
@@ -340,6 +563,7 @@ export class QuoteService {
       number: true,
       status: true,
       valid_until: true,
+      approval_token: true,
       total: true,
       title: true,
       discount_type: true,
@@ -370,7 +594,12 @@ export class QuoteService {
         });
 
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
-    return quote;
+    if (quote.approval_token !== token) {
+      throw new NotFoundException('Orcamento nao encontrado ou link invalido');
+    }
+    const { approval_token, ...safeQuote } = quote;
+    void approval_token;
+    return safeQuote;
   }
 
   /**
