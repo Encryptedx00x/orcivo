@@ -1104,6 +1104,97 @@ try{
     if($full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)-and (Split-Path -Leaf $full)-like 'orcivo-rd-suite-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
 }
 
+
+Check 'RD-115' {
+    $fixtureV2=Join-Path $Fixture '.orchestration\v2'
+    New-Item -ItemType Directory -Force -Path $fixtureV2|Out-Null
+    Copy-Item -LiteralPath (Join-Path $Repo '.orchestration\v2\config.v2.json') -Destination (Join-Path $fixtureV2 'config.v2.json') -Force
+    $workspace=Join-Path $Root 'fresh-clean-baseline'
+    & git init -b main --quiet $workspace
+
+    New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
+    Write-Utf8 (Join-Path $workspace 'work\base.txt') "base`n"
+    & git -C $workspace add .
+    & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+
+    $base=(& git -C $workspace rev-parse HEAD).Trim()
+    $task=Task 'FRESH-CLEAN-BASELINE'
+    $prompt=Join-Path $Root 'fresh-clean-baseline.prompt.txt'
+    Write-Utf8 $prompt 'fresh clean implementation'
+    $invocation='att-'+[guid]::NewGuid().ToString('N')
+
+    $state=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.dispatch-state/1'
+        runId='run-fresh-clean-baseline'
+        taskId=$task.taskId
+        taskVersionId=('f'*64)
+        task=$task
+        status='RUNNING'
+        stage='IMPLEMENT'
+        reason=''
+        workspace=$workspace
+        branch='main'
+        baseSha=$base
+        provider='glm'
+        profile='FAST'
+        model='zai-coding-plan/glm-5.3'
+        attempt=1
+        cycle=0
+        implementationComplete=$false
+        implementationCommit=''
+        recoveredCandidateCommit=''
+        candidateHead=''
+        candidateTree=''
+        diffHash=''
+        providerHistory=@()
+        workspaceInvocationSnapshots=@()
+        workspaceInvocationResultSnapshots=@()
+    }
+
+    $snapshot=New-DispatcherWorkspaceInvocationSnapshot `
+        -State $state `
+        -Task $task `
+        -InvocationId $invocation `
+        -PromptArtifact $prompt `
+        -PromptHash (New-FileHash $prompt) `
+        -Provider glm `
+        -Model 'zai-coding-plan/glm-5.3' `
+        -ReasoningEffort low `
+        -Attempt 1
+
+    Assert-True ([string]$snapshot.stateBinding.workspaceHead -eq $base) 'fresh clean baseline did not bind workspaceHead to baseSha'
+    Assert-True (@($snapshot.paths).Count -eq 0) 'fresh clean baseline unexpectedly recorded changed paths'
+    Assert-True ([string]$snapshot.partialDiffHash -eq (New-StringHash '')) 'fresh clean baseline diff hash is not canonical empty hash'
+    Assert-True ([string]$snapshot.partialFilesHash -eq (New-StringHash '')) 'fresh clean baseline files hash is not canonical empty hash'
+
+    $blockedState=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $state)
+    $blockedState.workspaceInvocationSnapshots=@()
+    $blockedState.providerHistory=@(
+        [ordered]@{
+            invocationId='att-11111111111111111111111111111111'
+            provider='glm'
+        }
+    )
+
+    $blocked=$false
+    try{
+        New-DispatcherWorkspaceInvocationSnapshot `
+            -State $blockedState `
+            -Task $task `
+            -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) `
+            -PromptArtifact $prompt `
+            -PromptHash (New-FileHash $prompt) `
+            -Provider glm `
+            -Model 'zai-coding-plan/glm-5.3' `
+            -ReasoningEffort low `
+            -Attempt 1 | Out-Null
+    }catch{
+        $blocked=$_.Exception.Message -match 'workspace has no preserved partial changes'
+    }
+
+    Assert-True $blocked 'clean baseline was incorrectly accepted after provider history existed'
+}
+
 $ordered=@($results.ToArray()|Sort-Object { [string]$_['id'] })
 $ordered|ForEach-Object{Write-Host "$($_.id): $($_.status) - $($_.detail)" -ForegroundColor $(if($_.status-eq'PASS'){'Green'}elseif($_.status-eq'SKIP'){'Yellow'}else{'Red'})}
 $failed=@($ordered|Where-Object status -eq 'FAIL')

@@ -1071,22 +1071,97 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT' -or [int]$State.attempt -ne $Attempt){throw 'workspace invocation snapshot: dispatcher is not at the exact pre-launch implementation state'}
     if(@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count){throw 'workspace invocation snapshot: invocation already has a snapshot'}
     $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    $isFreshCleanBaseline=$false
     if(-not $partial.clean){
-        # A quarantined retry deliberately starts from the trusted commit rather
-        # than importing the untrusted partial worktree.  It is therefore the
-        # one case where an empty, verified worktree is a valid launch baseline.
-        # Do not generalize this exception: a normal implementation still needs
-        # the scoped per-file proof above, and a dirty retry still goes through
-        # that same proof (including scope and secret scanning).
-        $quarantine=[hashtable]$State.quarantineReference;$retry=[hashtable]$State.quarantineRetryRoute
-        $isBoundRetry=($retry -and [string]$retry.provider -eq [string]$Provider -and [string]$retry.model -eq [string]$Model -and [string]$retry.profile -eq [string]$State.profile)
-        $isRequiredDeepSeekRetry=([string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH' -and [string]$retry.provider -eq 'deepseek' -and [string]$retry.model -eq 'deepseek-v4-pro' -and [string]$retry.reasoning -eq 'high')
-        $isCleanRetry=($partial.reason -eq 'workspace has no preserved partial changes' -and $quarantine -and $isBoundRetry -and [string]$quarantine.policy -eq 'NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT' -and [bool](-not $quarantine.contentLoaded) -and ([string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY' -or $isRequiredDeepSeekRetry))
-        if(-not $isCleanRetry){throw "workspace invocation snapshot: $($partial.reason)"}
-        $partial=[ordered]@{clean=$true;reason='verified clean quarantined retry baseline';paths=@();fileBindings=@();diffHash=(New-StringHash '');filesHash=(New-StringHash '')}
+        # A brand-new implementation legitimately starts from an unchanged
+        # clone at baseSha. Accept it only when there is no prior provider
+        # execution, candidate, recovery commit, or persisted invocation/result.
+        $providerHistoryCount=@($State.providerHistory|Where-Object{$_}).Count
+        $preSnapshotCount=@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId}).Count
+        $resultSnapshotCount=@($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId}).Count
+        $isFreshCleanBaseline=(
+            $partial.reason -eq 'workspace has no preserved partial changes' -and
+            -not [bool]$State.implementationComplete -and
+            -not [string]$State.implementationCommit -and
+            -not [string]$State.recoveredCandidateCommit -and
+            -not [string]$State.candidateHead -and
+            -not [string]$State.candidateTree -and
+            -not [string]$State.diffHash -and
+            $providerHistoryCount -eq 0 -and
+            $preSnapshotCount -eq 0 -and
+            $resultSnapshotCount -eq 0 -and
+            [string]$State.baseSha -match '^[0-9a-f]{40}$'
+        )
+
+        if($isFreshCleanBaseline){
+            $partial=[ordered]@{
+                clean=$true
+                reason='verified fresh clean implementation baseline'
+                paths=@()
+                fileBindings=@()
+                diffHash=(New-StringHash '')
+                filesHash=(New-StringHash '')
+            }
+        }else{
+            # Preserve the existing narrow quarantined-retry exception.
+            $quarantine=[hashtable]$State.quarantineReference
+            $retry=[hashtable]$State.quarantineRetryRoute
+
+            $isBoundRetry=(
+                $retry -and
+                [string]$retry.provider -eq [string]$Provider -and
+                [string]$retry.model -eq [string]$Model -and
+                [string]$retry.profile -eq [string]$State.profile
+            )
+
+            $isRequiredDeepSeekRetry=(
+                [string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH' -and
+                [string]$retry.provider -eq 'deepseek' -and
+                [string]$retry.model -eq 'deepseek-v4-pro' -and
+                [string]$retry.reasoning -eq 'high'
+            )
+
+            $isCleanRetry=(
+                $partial.reason -eq 'workspace has no preserved partial changes' -and
+                $quarantine -and
+                $isBoundRetry -and
+                [string]$quarantine.policy -eq 'NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT' -and
+                [bool](-not $quarantine.contentLoaded) -and
+                (
+                    [string]$retry.policy -eq 'CLEAN_QUARANTINED_RETRY' -or
+                    $isRequiredDeepSeekRetry
+                )
+            )
+
+            if(-not $isCleanRetry){
+                throw "workspace invocation snapshot: $($partial.reason)"
+            }
+
+            $partial=[ordered]@{
+                clean=$true
+                reason='verified clean quarantined retry baseline'
+                paths=@()
+                fileBindings=@()
+                diffHash=(New-StringHash '')
+                filesHash=(New-StringHash '')
+            }
+        }
     }
-    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
-    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation snapshot: workspace HEAD drift'}
+
+    $expectedHead=[string]$State.recoveredCandidateCommit
+    if(-not $expectedHead){
+        $expectedHead=[string]$State.implementationCommit
+    }
+    if(-not $expectedHead -and $isFreshCleanBaseline){
+        $expectedHead=[string]$State.baseSha
+    }
+
+    if(
+        $expectedHead -notmatch '^[0-9a-f]{40}$' -or
+        (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead
+    ){
+        throw 'workspace invocation snapshot: workspace HEAD drift'
+    }
     $prior=@($State.incompleteProviderResultRecoveryHistory|Where-Object{$_ -and [string]$_.runId -eq [string]$State.runId -and [string]$_.workspace -eq [string]$State.workspace}|Select-Object -Last 1)[0]
     $stateBinding=[ordered]@{runId=[string]$State.runId;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;taskSourceHash=[string]$State.taskSourceHash;status=[string]$State.status;stage=[string]$State.stage;attempt=$Attempt;cycle=[int]$State.cycle;failovers=[int]$State.failovers;provider=[string]$Provider;model=[string]$Model;reasoningEffort=[string]$ReasoningEffort;workspace=[string]$State.workspace;workspaceHead=$expectedHead;unavailableProviders=@($State.unavailableProviders);priorRecoveryEvidenceHash=$(if($prior){[string]$prior.evidenceHash}else{''});priorRecoveryFilesHash=$(if($prior){[string]$prior.partialFilesHash}else{''});priorRecoveryDiffHash=$(if($prior){[string]$prior.partialDiffHash}else{''})}
     $snapshot=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-snapshot/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;promptArtifact=[IO.Path]::GetFullPath($PromptArtifact);promptHash=$PromptHash;provider=$Provider;model=$Model;reasoningEffort=$ReasoningEffort;attempt=$Attempt;stateBinding=$stateBinding;stateHash=(New-StringHash (ConvertTo-CanonicalJson $stateBinding));partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
