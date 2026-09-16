@@ -90,16 +90,14 @@
           "host": "localhost",
           "port": 5544
         },
-        "resumeFromTaskVersionId": "34d7b60898aaffe74d2738a8f706d0bcb4618c8e00206574d8f437dc458036d9",
-        "resumeFromCandidateCommit": "046969b76b5e4d5e046e8e9f62c724daf87a5aa0",
-        "resumeFromReviewAttestationId": "atn-6bbfb7faf8414322a76ae0a286d80e61",
-        "resumeFromReviewInvocationId": "att-c03bff0ec9d5403e833ed181de2af7de",
+        "resumeFromTaskVersionId": "9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798",
+        "resumeFromCandidateCommit": "fb2093860d30fc24836ae20c136ef0d38da830c6",
         "correctiveScope": [
           "atomic quote reject and reopenOrCorrect transitions with audit only for the winning conditional update",
           "expired quote reopening renews valid_until and approval token/link transactionally"
         ],
         "excludedReviewSeverity": ["info"],
-        "recoveryInstruction": "Reuse only exact candidate 046969b76b5e4d5e046e8e9f62c724daf87a5aa0 from exact predecessor 34d7b60898aaffe74d2738a8f706d0bcb4618c8e00206574d8f437dc458036d9 and exact REQUEST_CHANGES attestation atn-6bbfb7faf8414322a76ae0a286d80e61 / invocation att-c03bff0ec9d5403e833ed181de2af7de. Correct only the two declared actionable findings, preserve the original acceptance criteria and existing fixes/tests, re-run verification and secret scans, and obtain a fresh opposite-provider review before integration. Do not reuse the prior version approval."
+        "recoveryInstruction": "Reuse only exact candidate fb2093860d30fc24836ae20c136ef0d38da830c6 from exact predecessor 9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798 without any new implementation. The successor review must run on GLM zai-coding-plan/glm-5.3 at profile REASONING (pinned route); DeepSeek V4 Pro remains the reviewer for future GLM implementations. Re-run deterministic verification and secret scans, then obtain the fresh opposite-provider review before integration. Do not reuse the prior version approval."
       },
       "verificationProfile": "C",
       "phaseGate": "P04",
