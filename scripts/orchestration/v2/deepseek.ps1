@@ -126,8 +126,36 @@ function Get-DeepSeekRuntimeConfig {
 
 function Get-OrcivoEnabledProviders {
     $runtime=Get-DeepSeekRuntimeConfig
-    if($runtime.enabledProviders){return @($runtime.enabledProviders|Where-Object{$_ -in @('deepseek','codex','claude') -and @($runtime.excludedProviders) -notcontains $_}|Select-Object -Unique)}
+    if($runtime.enabledProviders){return @($runtime.enabledProviders|Where-Object{$_ -in @('deepseek','codex','claude','glm') -and @($runtime.excludedProviders) -notcontains $_}|Select-Object -Unique)}
     return @((Get-V2Config).providerFailover.order)
+}
+
+# Deterministic opposite-provider pairing for cross review (owner decision
+# 2026-09-14): deepseek <-> glm, codex -> deepseek, claude -> codex.
+# Preferences are honoured only inside the ENABLED provider set; when no
+# preferred opposite is enabled+candidate, the first remaining candidate is
+# returned (possibly $null) so CROSS_PROVIDER_REQUIRED callers still escalate
+# instead of silently reviewing with the same provider.
+function Get-OrcivoOppositeProvider {
+    param(
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
+        [string[]]$Candidates = @()
+    )
+    $enabled = @(Get-OrcivoEnabledProviders)
+    if (-not $Candidates.Count) { $Candidates = $enabled }
+    $pool = @($Candidates | Where-Object { $_ -ne $Provider -and $enabled -contains $_ })
+    $preference = @{
+        deepseek = @('glm', 'codex', 'claude')
+        glm      = @('deepseek', 'codex', 'claude')
+        codex    = @('deepseek', 'glm', 'claude')
+        claude   = @('codex', 'deepseek', 'glm')
+    }
+    foreach ($p in @($preference[$Provider])) {
+        if ($pool -contains $p) { return $p }
+    }
+    $rest = @($Candidates | Where-Object { $_ -ne $Provider })
+    if ($rest.Count) { return $rest[0] }
+    return $null
 }
 
 function Get-DeepSeekCodexHome {

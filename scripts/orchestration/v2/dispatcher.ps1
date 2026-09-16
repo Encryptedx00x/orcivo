@@ -636,11 +636,153 @@ function Get-DispatcherPinnedQuarantinedRetryRoute {
     return $retry
 }
 
+function Test-DispatcherAuthorizedQuarantinedReviewResume {
+    param(
+        [Parameter(Mandatory)]$State,
+        [string]$ExpectedTaskId='PB1-P02-audit-service',
+        [string]$ExpectedTaskVersionId='9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798',
+        [string]$ExpectedRunId='run-31fa07ca662c48b087d32ad0666e9a22',
+        [string]$ExpectedCandidateHead='fb2093860d30fc24836ae20c136ef0d38da830c6',
+        [string]$ExpectedDiffHash='sha256:2ab242e04bd29eef9d004786f6d08a7b6e161b4f86c9930934f27220eab76cbb'
+    )
+    # This is deliberately a closed, hash-bound exception for the one
+    # replacement review authorization. Test overrides are internal-only and
+    # are never exposed by pilot.ps1.
+    $last=@($State.providerHistory|Where-Object{$_})|Select-Object -Last 1
+    return [bool](
+        [string]$State.status -eq 'WAITING_PROVIDER' -and
+        [string]$State.stage -eq 'REVIEW' -and
+        [string]$State.taskId -eq $ExpectedTaskId -and
+        [string]$State.taskVersionId -eq $ExpectedTaskVersionId -and
+        [string]$State.runId -eq $ExpectedRunId -and
+        [string]$State.candidateHead -eq $ExpectedCandidateHead -and
+        [string]$State.diffHash -eq $ExpectedDiffHash -and
+        [string]$State.provider -eq 'deepseek' -and
+        [string]$State.model -eq 'deepseek-v4-pro' -and
+        [string]$State.profile -eq 'REASONING' -and
+        [string]$State.reviewerProvider -eq 'codex' -and
+        [string]$State.lastErrorClass -eq 'QUOTA_EXHAUSTED' -and
+        $last -and [string]$last.provider -eq 'codex' -and
+        [string]$last.resultClass -eq 'AGENT_FAILURE' -and
+        [string]$last.providerClass -eq 'QUOTA_EXHAUSTED'
+    )
+}
+
+# CLOSED successor exception (owner decision 2026-09-15): the one DeepSeek
+# candidate whose replacement review was authorized, stranded in
+# WAITING_PROVIDER/REVIEW when its frozen contract was invalidated by the
+# intentional GLM provider configuration change.  Only this exact durable
+# shape may hand its already-reviewed-pending candidate to a successor task
+# version bound to the new configuration, without any new implementation.
+# Internal-only; never exposed by pilot.ps1.
+function Test-DispatcherAuthorizedReviewSuccessionState {
+    param(
+        [Parameter(Mandatory)]$State,
+        [string]$ExpectedTaskId='PB1-P02-audit-service',
+        [string]$ExpectedTaskVersionId='9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798',
+        [string]$ExpectedRunId='run-31fa07ca662c48b087d32ad0666e9a22',
+        [string]$ExpectedCandidateHead='fb2093860d30fc24836ae20c136ef0d38da830c6',
+        [string]$ExpectedDiffHash='sha256:2ab242e04bd29eef9d004786f6d08a7b6e161b4f86c9930934f27220eab76cbb'
+    )
+    $last=@($State.providerHistory|Where-Object{$_})|Select-Object -Last 1
+    return [bool](
+        [string]$State.status -eq 'WAITING_PROVIDER' -and
+        [string]$State.stage -eq 'REVIEW' -and
+        [string]$State.taskId -eq $ExpectedTaskId -and
+        [string]$State.taskVersionId -eq $ExpectedTaskVersionId -and
+        [string]$State.runId -eq $ExpectedRunId -and
+        [string]$State.candidateHead -eq $ExpectedCandidateHead -and
+        [string]$State.diffHash -eq $ExpectedDiffHash -and
+        [string]$State.provider -eq 'deepseek' -and
+        [string]$State.model -eq 'deepseek-v4-pro' -and
+        [string]$State.profile -eq 'REASONING' -and
+        [string]$State.reviewerProvider -eq 'codex' -and
+        [string]$State.lastErrorClass -eq 'QUOTA_EXHAUSTED' -and
+        $last -and [string]$last.provider -eq 'codex' -and
+        [string]$last.providerClass -eq 'QUOTA_EXHAUSTED'
+    )
+}
+
+# Full closed eligibility for the authorized review succession: the exact
+# stranded state above PLUS an exact successor binding (different version,
+# different task source, constraints naming the stranded version + candidate),
+# a clean workspace still at the candidate head, tree/diff bindings that still
+# recompute identically, a dead-version contract whose ONLY accepted drift is
+# the intentional config change, no integration/approval attestation on the
+# stranded candidate, and clean candidate/artifact scans.
+function Test-DispatcherAuthorizedReviewSuccessionEligible {
+    param($State,[hashtable]$Task,$Contract,$TaskSource)
+    if(-not $State){return $false}
+    if(-not (Test-DispatcherAuthorizedReviewSuccessionState -State $State)){return $false}
+    if([string]$State.taskVersionId -eq [string]$Contract.taskVersionId){return $false}
+    if([string]$State.taskSourceHash -eq [string]$TaskSource.hash){return $false}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    if([string]$constraints.resumeFromTaskVersionId -ne [string]$State.taskVersionId){return $false}
+    if([string]$constraints.resumeFromCandidateCommit -ne [string]$State.candidateHead){return $false}
+    if(-not $State.workspace -or -not(Test-Path -LiteralPath ([string]$State.workspace))){return $false}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$State.candidateHead){return $false}
+    $clean=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'review-succession-status'
+    if($clean.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$clean.stdout)){return $false}
+    $bindings=Get-AttestationBindings -TaskVersionId ([string]$State.taskVersionId) -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+    if([string]$bindings.treeHash -ne [string]$State.candidateTree -or [string]$bindings.diffHash -ne [string]$State.diffHash){return $false}
+    # The stranded contract is dead ONLY because config.v2.json changed; every
+    # other tamper check must still pass (-AllowConfigDrift is the same
+    # sanctioned escape attestations already use).
+    $old=Get-Contract ([string]$State.taskVersionId) -AllowConfigDrift
+    if([string]$old.taskId -ne [string]$Task.taskId){return $false}
+    if([string]$old.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return $false}
+    $rejected=@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)|Where-Object{[string]$_.runId -eq [string]$State.runId -and [string]$_.bindings.headSHA -eq [string]$State.candidateHead -and [string]$_.kind -in @('integration','approval')})
+    if($rejected.Count){return $false}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref ([string]$State.candidateHead)
+    $runRoot=Join-Path (Get-V2Dir) "runs\$($State.runId)"
+    $artifactScan=Test-TreeSecretsClean -Roots @($runRoot)
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return $false}
+    return $true
+}
+
+# For the authorized review succession the review route is EXPLICITLY fixed:
+# GLM at exactly zai-coding-plan/glm-5.3 on profile REASONING.  This pin is
+# stored on the durable state by the dispatcher itself and enforced at the
+# REVIEW dispatch site; the generic CRITICAL implementation reservation is
+# NOT relaxed anywhere.
+function Assert-DispatcherAuthorizedReviewRoute {
+    param($State,[string]$Reviewer,[string]$Profile,$Route)
+    $pinned=$State.authorizedReviewRoute
+    if(-not $pinned){return}
+    if([string]$pinned.provider -ne $Reviewer -or [string]$pinned.profile -ne $Profile -or -not $Route.ok -or [string]$Route.model -ne [string]$pinned.model){
+        throw "authorized review route binding drift: pinned $($pinned.provider)/$($pinned.model)/$($pinned.profile), dispatch attempted $Reviewer/$($Route.model)/$Profile"
+    }
+}
+
 function Resume-DispatcherProviderWait {
     param($State)
     $pinned=Get-DispatcherPinnedQuarantinedRetryRoute $State
-    if($pinned -and ($State.stage -ne 'IMPLEMENT' -or [string]$State.provider -ne [string]$pinned.provider -or [string]$State.model -ne [string]$pinned.model -or [string]$State.profile -ne [string]$pinned.profile)){
-        throw 'quarantined retry route binding drift'
+    if($pinned){
+        if($State.stage -eq 'IMPLEMENT'){
+            if([string]$State.provider -ne [string]$pinned.provider -or [string]$State.model -ne [string]$pinned.model -or [string]$State.profile -ne [string]$pinned.profile){
+                throw 'quarantined retry route binding drift'
+            }
+        }elseif($State.stage -eq 'REVIEW'){
+            # The quarantined retry route remains the immutable implementer
+            # provenance.  REVIEW deliberately uses the opposite provider, so
+            # the only exception is the exact, already-authorized Codex
+            # replacement review. All other review retries remain blocked.
+            if(-not(Test-DispatcherAuthorizedQuarantinedReviewResume -State $State)){
+                throw 'quarantined retry review route binding drift'
+            }
+            if(-not $State.candidateBase -or -not $State.candidateHead -or -not $State.candidateTree -or -not $State.diffHash -or -not $State.workspace -or -not(Test-Path -LiteralPath ([string]$State.workspace))){
+                throw 'quarantined retry review candidate binding is incomplete'
+            }
+            if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$State.candidateHead){
+                throw 'quarantined retry review candidate HEAD drift'
+            }
+            $bindings=Get-AttestationBindings -TaskVersionId ([string]$State.taskVersionId) -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+            if([string]$bindings.treeHash -ne [string]$State.candidateTree -or [string]$bindings.diffHash -ne [string]$State.diffHash){
+                throw 'quarantined retry review candidate binding drift'
+            }
+        }else{
+            throw 'quarantined retry route cannot resume outside IMPLEMENT or REVIEW'
+        }
     }
     $ready = Test-ProviderResumeReady -TaskVersionId $State.taskVersionId
     if (-not $ready.ready) {
@@ -651,14 +793,17 @@ function Resume-DispatcherProviderWait {
     # A recovered partial implementation remains owned by its implementer.  If
     # that provider is healthy again, prefer it over the global routing order;
     # REVIEW still enforces the opposite-provider rule below.
-    if($pinned){
+    if($pinned -and $State.stage -eq 'IMPLEMENT'){
         if(@($ready.healthy) -notcontains [string]$pinned.provider){Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId;return $false}
         $selected=[string]$pinned.provider
     }elseif ($State.stage -eq 'IMPLEMENT' -and $State.provider -and @($ready.healthy) -contains [string]$State.provider) {
         $selected = [string]$State.provider
     }
     if ($State.stage -eq 'REVIEW') {
-        $requiredReviewer = $(if ($State.provider -in @('claude','deepseek')) { 'codex' } else { 'deepseek' })
+        # Opposite-provider review (owner decision 2026-09-14): deepseek <-> glm,
+        # codex -> deepseek, claude -> codex.  For the current PB1-P02 candidate
+        # (DeepSeek implementer, Codex quota-blocked reviewer) this selects GLM.
+        $requiredReviewer = Get-OrcivoOppositeProvider -Provider ([string]$State.provider)
         if (@($ready.healthy) -notcontains $requiredReviewer) {
             Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId
             return $false
@@ -1268,12 +1413,15 @@ function Quarantine-DispatcherIncompleteProviderResult {
     $proof=Test-DispatcherIncompleteProviderResultAbandonment -State $state -Task $Task -TaskSource $TaskSource -RunId $RunId -InvocationId $InvocationId -EvidenceHash $EvidenceHash -PartialDiffHash $PartialDiffHash -PartialFilesHash $PartialFilesHash -TrustedHead $TrustedHead
     if(-not $proof.eligible){throw "incomplete provider quarantine: $($proof.reason)"}
     # This exceptional lineage is always pinned before a retry workspace is
-    # created. Health only decides RUNNING versus WAITING_PROVIDER; it must
-    # never select a cross-provider fallback.
+    # created. A quarantine is evidence-only: even a healthy route must wait
+    # for its separate structured probe and must never synthesize a dispatch.
     $classification=Get-TaskClassification -Task $Task
     $route=Resolve-Provider -Profile REASONING -Provider deepseek
-    $routeAvailable=[bool]$route.ok
-    if($routeAvailable -and ([string]$route.provider -ne 'deepseek' -or [string]$route.model -ne 'deepseek-v4-pro' -or [string]$route.profile -ne 'REASONING')){throw 'incomplete provider quarantine: required DeepSeek Pro/high route binding mismatch'}
+    # Resolution only proves configuration and budget preflight. A quarantined
+    # retry must also pass the canonical health check before DISPATCHED/RUNNING.
+    $routeHealthy=[bool]$route.ok
+    if($routeHealthy){$routeHealthy=[bool](Get-ProviderHealth -Provider deepseek).healthy}
+    if($routeHealthy -and ([string]$route.provider -ne 'deepseek' -or [string]$route.model -ne 'deepseek-v4-pro' -or [string]$route.profile -ne 'REASONING')){throw 'incomplete provider quarantine: required DeepSeek Pro/high route binding mismatch'}
     $pinnedRoute=[ordered]@{provider='deepseek';model='deepseek-v4-pro';profile='REASONING';reasoning='high';policy='CLEAN_QUARANTINED_RETRY_REQUIRES_FRESH_DEEPSEEK_PRO_HIGH';selectedAt=(Get-Date).ToUniversalTime().ToString('o')}
     $workspaceId=Get-DispatcherIncompleteProviderResultQuarantineWorkspaceId -RunId $RunId -InvocationId $InvocationId
     $cleanWorkspace=[string]$proof.cleanWorkspace
@@ -1294,22 +1442,17 @@ function Quarantine-DispatcherIncompleteProviderResult {
     $ledger=Get-LedgerState $TaskVersionId
     if([string]$ledger.state -eq 'FAILED'){
         Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-abandoned' -ToState READY -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'incomplete provider result abandoned: pre/post workspace provenance is absent; old workspace retained only as evidence'|Out-Null
-        if($routeAvailable){
-            Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-clean-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'dispatch a clean workspace from the trusted head; quarantined content is non-authoritative'|Out-Null
-            Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-clean-running' -ToState RUNNING -RunId $RunId -Evidence $evidence -Note 'same task version and lineage resumed in a clean isolated workspace'|Out-Null
-        }else{
-            Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-required-route-wait' -ToState WAITING_PROVIDER -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'clean quarantined retry requires DeepSeek Pro/high; no invocation created while it is unavailable'|Out-Null
-        }
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'incomplete-provider-result-required-route-wait' -ToState WAITING_PROVIDER -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'clean quarantined retry requires a separate DeepSeek Pro/high structured probe; no invocation created'|Out-Null
     }
-    $record=[ordered]@{abandonedAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;attempt=[int]$proof.base.attempt.attempt;provider=[string]$proof.base.attempt.provider;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;partialFiles=@($proof.base.partial.fileBindings);changedFiles=@($proof.base.partial.paths);trustedHead=$TrustedHead;oldWorkspace=$oldWorkspace;cleanWorkspace=$cleanWorkspace;cleanBranch=[string]$ws.branch;quarantinePolicy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';approvalAuthority=[string]$proof.base.authority.approval;gateHash=[string]$proof.base.authority.gateHash;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);route=$pinnedRoute;routeAvailable=$routeAvailable}
+    $record=[ordered]@{abandonedAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;attempt=[int]$proof.base.attempt.attempt;provider=[string]$proof.base.attempt.provider;evidenceHash=$EvidenceHash;partialDiffHash=$PartialDiffHash;partialFilesHash=$PartialFilesHash;partialFiles=@($proof.base.partial.fileBindings);changedFiles=@($proof.base.partial.paths);trustedHead=$TrustedHead;oldWorkspace=$oldWorkspace;cleanWorkspace=$cleanWorkspace;cleanBranch=[string]$ws.branch;quarantinePolicy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';approvalAuthority=[string]$proof.base.authority.approval;gateHash=[string]$proof.base.authority.gateHash;failovers=[int]$state.failovers;cycle=[int]$state.cycle;unavailableProviders=@($state.unavailableProviders);route=$pinnedRoute;routeHealthy=$routeHealthy}
     if($script:IncompleteProviderResultQuarantineFaultAfterLedger){throw 'injected incomplete provider quarantine crash after ledger transition'}
-    $state.workspace=$cleanWorkspace;$state.branch=[string]$ws.branch;$state.baseSha=$TrustedHead;$state.status=$(if($routeAvailable){'RUNNING'}else{'WAITING_PROVIDER'});$state.stage='IMPLEMENT';$state.reason=$(if($routeAvailable){''}else{'required DeepSeek Pro/high is unavailable; clean quarantined retry preserved'});$state.lastErrorClass=$(if($routeAvailable){'INCOMPLETE_PROVIDER_RESULT'}else{'PROVIDER_UNAVAILABLE'});$state.implementationComplete=$false;$state.provider='deepseek';$state.model='deepseek-v4-pro';$state.profile='REASONING';$state.classification=$classification
+    $state.workspace=$cleanWorkspace;$state.branch=[string]$ws.branch;$state.baseSha=$TrustedHead;$state.status='WAITING_PROVIDER';$state.stage='IMPLEMENT';$state.reason='required DeepSeek Pro/high structured probe is pending; clean quarantined retry preserved';$state.lastErrorClass=$(if($routeHealthy){'QUARANTINED_RETRY_PROBE_REQUIRED'}else{'PROVIDER_UNAVAILABLE'});$state.implementationComplete=$false;$state.provider='deepseek';$state.model='deepseek-v4-pro';$state.profile='REASONING';$state.classification=$classification
     $state.quarantineReference=[ordered]@{oldWorkspace=$oldWorkspace;invocationId=$InvocationId;policy='NON_AUTHORITATIVE_REFERENCE_ONLY_NO_CANDIDATE_IMPORT';contentLoaded=$false}
     $state.quarantineRetryRoute=$pinnedRoute
     $state.incompleteProviderResultAbandonmentHistory=@($state.incompleteProviderResultAbandonmentHistory|Where-Object{$_})+@($record)
-    if(-not $routeAvailable){$state.unavailableProviders=@(@($state.unavailableProviders)+@('deepseek')|Select-Object -Unique);Enter-WaitingProvider -TaskVersionId $TaskVersionId -RunId $RunId -Context @{taskId=$state.taskId;generation='dispatcher';workspace=$cleanWorkspace;candidateCommit='';candidateTree='';attemptHistory=@($state.attempt);providerHistory=@($state.providerHistory);verificationState='';reviewState='';checkpoint=@{nextAction='probe required DeepSeek Pro/high';taskSourceHash=$state.taskSourceHash};lastErrorClass='PROVIDER_UNAVAILABLE';unavailableProviders=@($state.unavailableProviders)}|Out-Null}
+    if(-not $routeHealthy){$state.unavailableProviders=@(@($state.unavailableProviders)+@('deepseek')|Select-Object -Unique)};Enter-WaitingProvider -TaskVersionId $TaskVersionId -RunId $RunId -Context @{taskId=$state.taskId;generation='dispatcher';workspace=$cleanWorkspace;candidateCommit='';candidateTree='';attemptHistory=@($state.attempt);providerHistory=@($state.providerHistory);verificationState='';reviewState='';checkpoint=@{nextAction='probe required DeepSeek Pro/high';taskSourceHash=$state.taskSourceHash};lastErrorClass=$state.lastErrorClass;unavailableProviders=@($state.unavailableProviders)}|Out-Null
     Write-DispatcherState $state|Out-Null
-    return [ordered]@{status=$(if($routeAvailable){'QUARANTINED_AND_REDISPATCHED'}else{'QUARANTINED_WAITING_PROVIDER'});taskVersionId=$TaskVersionId;runId=$RunId;workspace=$cleanWorkspace;oldWorkspace=$oldWorkspace;dispatcherStatus=$state.status;stage=$state.stage;quarantine=$record}
+    return [ordered]@{status='QUARANTINED_WAITING_PROVIDER';taskVersionId=$TaskVersionId;runId=$RunId;workspace=$cleanWorkspace;oldWorkspace=$oldWorkspace;dispatcherStatus=$state.status;stage=$state.stage;quarantine=$record}
 }
 
 # The first quarantined retry implementation accidentally used generic routing.
@@ -1813,14 +1956,16 @@ function Invoke-RealDispatcherTask {
     }
     $contractSupersession=Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
     $pendingSupersession=Test-DispatcherPendingContractSupersessionResume -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
-    if(($contractSupersession -or $pendingSupersession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
-        if($contractSupersession){
+    $reviewSuccession=Test-DispatcherAuthorizedReviewSuccessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
+    if(($contractSupersession -or $pendingSupersession -or $reviewSuccession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
+        if($contractSupersession -or $reviewSuccession){
             $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
-            $resumeCommit=$(if("$($state.status)" -eq 'WAITING_HUMAN' -and "$($state.stage)" -eq 'REVIEW'){[string]$state.candidateHead}else{[string]$state.implementationCommit})
+            $resumeCommit=$(if($reviewSuccession){[string]$state.candidateHead}elseif("$($state.status)" -eq 'WAITING_HUMAN' -and "$($state.stage)" -eq 'REVIEW'){[string]$state.candidateHead}else{[string]$state.implementationCommit})
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note ([string]$Task.ownerGate)|Out-Null
             $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit
             $state.pendingContractSupersession=$true;$state.pendingSupersessionReason=$previousReason
+            if($reviewSuccession){$state.pendingReviewSuccession=$true}
             $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
             if($previousReason -eq 'bounded correction budget exhausted'){
                 $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
@@ -1844,7 +1989,7 @@ function Invoke-RealDispatcherTask {
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
         }
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note 'reuse preserved candidate for bounded policy correction'|Out-Null
+        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note $(if([bool]$state.pendingReviewSuccession){'reuse preserved candidate for the authorized GLM review; no new implementation'}else{'reuse preserved candidate for bounded policy correction'})|Out-Null
         $state.supersededBudget=[ordered]@{
             attempt=[int]$state.attempt;cycle=[int]$state.cycle
             rollovers=[int]$state.rollovers;failovers=[int]$state.failovers
@@ -1852,16 +1997,33 @@ function Invoke-RealDispatcherTask {
         $resumeCommit=[string]$Task.candidateConstraints.resumeFromCandidateCommit
         $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit;$state.implementationCommit=$resumeCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
-        # Attempts/corrections are bounded per immutable task version. Preserve
-        # the superseded counters above, then start this successor at its first
-        # correction cycle instead of inheriting an already exhausted budget.
-        $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason=''
-        $state.attempt=0;$state.cycle=1;$state.rollovers=0;$state.failovers=0
-        if($previousReason -eq 'bounded correction budget exhausted'){
-            $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
-            $state.findings=@($priorReview.payload.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
-        }else{$state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')}
-        $state.requiresCorrection=$true;$state.implementationComplete=$false;$state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
+        if([bool]$state.pendingReviewSuccession){
+            # Authorized review succession: the candidate is complete and only
+            # the review was stranded.  Implementation stays complete so the
+            # deterministic candidate-commit/verification/scan pipeline reuses
+            # the exact preserved commit and NO implementer agent is invoked.
+            # The implementer provenance (deepseek) is preserved so the opposite
+            # provider rule selects GLM for the review; the review route is
+            # pinned and enforced at the REVIEW dispatch site.
+            $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason=''
+            $state.attempt=0;$state.cycle=0;$state.rollovers=0;$state.failovers=0
+            $state.implementationComplete=$true;$state.requiresCorrection=$false
+            $state.findings=@()
+            $state.authorizedReviewRoute=[ordered]@{provider='glm';model=(Get-GlmModelId);profile='REASONING'}
+            $state.pendingContractSupersession=$false;$state.pendingReviewSuccession=$false
+        }else{
+            # Attempts/corrections are bounded per immutable task version. Preserve
+            # the superseded counters above, then start this successor at its first
+            # correction cycle instead of inheriting an already exhausted budget.
+            $state.status='RUNNING';$state.stage='IMPLEMENT';$state.reason=''
+            $state.attempt=0;$state.cycle=1;$state.rollovers=0;$state.failovers=0
+            if($previousReason -eq 'bounded correction budget exhausted'){
+                $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
+                $state.findings=@($priorReview.payload.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+            }else{$state.findings=@("POLICY CORRECTION REQUIRED: $previousReason",'Revert every protected acceptance-test modification; preserve the useful implementation and make only changes allowed by the superseding contract.')}
+            $state.requiresCorrection=$true;$state.implementationComplete=$false
+        }
+        $state.candidateHead='';$state.candidateTree='';$state.diffHash='';$state.verification=$null;$state.reviewVerdict=''
         $state.pendingContractSupersession=$false
         Write-DispatcherState $state|Out-Null
         memoryBootstrap $Task ([string]$state.logicalProjectId)|Out-Null
@@ -1899,11 +2061,42 @@ function Invoke-RealDispatcherTask {
         Write-DispatcherState $hold | Out-Null; return $hold
     }
 
+    $needsFreshDispatch=[bool](
+    -not $state -or
+    $state.taskVersionId -ne $contract.taskVersionId -or
+    "$($state.status)" -in @(
+        'PUBLISHED',
+        'NO_CHANGE_ACCEPTED',
+        'FAILED',
+        'BLOCKED',
+        'WAITING_HUMAN'
+    )
+)
+
+$route=$null
+
+if($needsFreshDispatch){
     $healthy=@(Get-HealthyProviders)
-    $route=Resolve-Route -Classification ([hashtable]$classification) -HealthyProviders $healthy -ForceProvider $ProviderOverride
-    if(-not $route.ok){ throw "dispatcher: $($route.reason)" }
-    $ownerGateResume=[bool]($isLevelC -and $ownerGateStatus.satisfied -and (Test-DispatcherOwnerGateResumeState -State $state -Task $Task -TaskSource $TaskSource))
-    if(-not $state -or $state.taskVersionId -ne $contract.taskVersionId -or "$($state.status)" -in @('PUBLISHED','NO_CHANGE_ACCEPTED','FAILED','BLOCKED','WAITING_HUMAN')){
+    $route=Resolve-Route `
+        -Classification ([hashtable]$classification) `
+        -HealthyProviders $healthy `
+        -ForceProvider $ProviderOverride
+
+    if(-not $route.ok){
+        throw "dispatcher: $($route.reason)"
+    }
+}
+
+$ownerGateResume=[bool](
+    $isLevelC -and
+    $ownerGateStatus.satisfied -and
+    (Test-DispatcherOwnerGateResumeState `
+        -State $state `
+        -Task $Task `
+        -TaskSource $TaskSource)
+)
+
+if($needsFreshDispatch){
         $runId=$(if($ownerGateResume){[string]$state.runId}else{New-RunId}); $base=Get-GitHeadV2 (Get-RepoRoot); $ws=New-DispatcherWorkspace -RunId $runId -BaseSha $base
         $logicalProjectId=Get-DispatcherLogicalProjectId
         $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$Task.taskId;taskVersionId=$contract.taskVersionId;task=$Task;taskSource=$TaskSource.path;taskSourceHash=$TaskSource.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;provider=$route.provider;profile=$route.profile;model=$route.model;classification=$classification;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$false;implementationCommit='';candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId=$logicalProjectId;memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0}
@@ -2014,7 +2207,13 @@ function Invoke-RealDispatcherTask {
         }
 
         if($state.stage -eq 'REVIEW'){
-            $reviewer=$(if($state.provider -in @('claude','deepseek')){'codex'}else{'deepseek'});$state.reviewerProvider=$reviewer
+            # Opposite-provider review (owner decision 2026-09-14):
+            # deepseek <-> glm, codex -> deepseek, claude -> codex.
+            $reviewer=Get-OrcivoOppositeProvider -Provider ([string]$state.provider);$state.reviewerProvider=$reviewer
+            # Closed pin for the authorized review succession: the review must
+            # launch on exactly glm/zai-coding-plan/glm-5.3/REASONING; any other
+            # reviewer, profile, or model fails closed here.
+            Assert-DispatcherAuthorizedReviewRoute -State $state -Reviewer $reviewer -Profile ([string]$state.profile) -Route (Resolve-Provider -Profile ([string]$state.profile) -Provider $reviewer)
             $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff' -ReviewedSourceOutput;Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
             $reviewDir=Join-Path (Get-V2Dir) "runs\$($state.runId)\review-$('{0:000}' -f ([int]$state.cycle))"
             $rp=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $state.taskVersionId -Head $state.candidateHead -TreeHash $state.candidateTree -DiffHash $state.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "PASS profile=$($contract.verificationProfile); secretScan=CLEAN" -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
@@ -2070,7 +2269,11 @@ function Invoke-DispatcherLoop {
             $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and (Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source))
             if($cur -and $task -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
-            if($RunOnce -or "$($r.status)" -in @('WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED')){return $r}
+            if($RunOnce -or "$($r.status)" -in @(
+                'WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED',
+                'INTEGRATION_FAILED','SECRET_LEAK_BLOCKED','PUSH_FAILED','REMOTE_DIVERGED',
+                'AMBIGUOUS_REMOTE','NOT_PUBLISHED_CONFIRMED','QUARANTINED'
+            )){return $r}
             if($r.status -eq 'WAITING_PROVIDER'){Start-Sleep -Seconds ([Math]::Min(30,[int]$cfg.providerFailover.pollBackoffSec[0]));continue}
         }
     }finally{[void](Remove-Lease -Namespace 'scheduler' -Key $cfg.target.branch -LeaseId $lease.leaseId)}

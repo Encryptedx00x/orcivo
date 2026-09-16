@@ -1247,6 +1247,29 @@ diff --git a/example.ts b/example.ts
         Expect (($dirtyPatch.hits -join ' ') -notmatch 'fixture-pass|sk-[a]+|AIza[b]+') 'a patch secret value leaked into scanner diagnostics'
     }
 
+    # Regression: reviewed-source git-diff stdout logs are semantically patches.
+    # Exact filename + real git-diff envelope are BOTH required for the relaxed
+    # source classification. High-confidence credentials must still fail closed.
+    $reviewedLogRoot = Join-Path $root 'reviewed-source-logs'
+    New-Item -ItemType Directory -Force -Path $reviewedLogRoot | Out-Null
+    $reviewLog = Join-Path $reviewedLogRoot 'review-diff-123-abcdef123456.stdout.log'
+    $stoppedLog = Join-Path $reviewedLogRoot 'stopped-recovery-diff-456-fedcba654321.stdout.log'
+
+    Set-Content -LiteralPath $reviewLog -Value $ordinaryPatch -Encoding utf8
+    Set-Content -LiteralPath $stoppedLog -Value $ordinaryPatch -Encoding utf8
+    $reviewedLogsClean = Test-ArtifactsClean -Root $reviewedLogRoot
+    Expect $reviewedLogsClean.clean "ordinary reviewed-source diff logs were flagged: $($reviewedLogsClean.hits -join ';')"
+
+    Set-Content -LiteralPath $reviewLog -Value ($ordinaryPatch + "`n" + $secretCases[0]) -Encoding utf8
+    $reviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
+    Expect (-not $reviewedLogDirty.clean) 'a real credential signature in a reviewed-source diff log was missed'
+
+    Set-Content -LiteralPath $reviewLog -Value $ordinaryPatch -Encoding utf8
+    Set-Content -LiteralPath $stoppedLog -Value ('ORCIVO_SYNTHETIC_SECRET_' + ('e' * 16)) -Encoding utf8
+    $fakeReviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
+    Expect (-not $fakeReviewedLogDirty.clean) 'a non-diff log with reviewed-source filename bypassed strict scanning'
+    Remove-Item -LiteralPath $reviewedLogRoot -Recurse -Force
+
     Set-Content -LiteralPath $patchPath -Value $ordinaryPatch -Encoding utf8
     $logRoot = Join-Path $root 'logs'
     New-Item -ItemType Directory -Force -Path $logRoot | Out-Null

@@ -37,7 +37,7 @@ $script:ProviderWaitDir = Join-Path (Get-V2Dir) 'provider-waits'
 # report an unrecoverable provider condition. The probe is intentionally cheap;
 # the authoritative signal during a run is still the control channel (classify.ps1).
 function Get-ProviderHealth {
-    param([Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$Provider)
+    param([Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$Provider)
     $cfg = Get-V2Config
     if($Provider -eq 'deepseek'){
         $budget=Get-DeepSeekBudgetStatus
@@ -82,7 +82,7 @@ function Get-HealthyProviders {
 #   @{ action = 'FAILOVER'|'WAITING_PROVIDER'|'NO_FAILOVER'; nextProvider; reason }
 function Get-FailoverDecision {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$CurrentProvider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$CurrentProvider,
         [Parameter(Mandatory)][string]$Class,
         [int]$FailoversSoFar = 0
     )
@@ -295,6 +295,39 @@ function Test-ProvidersSelftest {
 
     # backoff grows
     if ((_NextBackoffSec 0) -ge (_NextBackoffSec 3)) { $fail += "backoff not monotonic" }
+
+    # GLM failover pairing (owner decision 2026-09-14).  The runtime
+    # declaration is scoped to this disposable fixture and removed again; all
+    # health outcomes are pinned through the harness fault seam so nothing
+    # depends on the host's installed CLIs or credentials.
+    $runtimePath = $script:DeepSeekRuntimePath
+    $hadRuntime = Test-Path -LiteralPath $runtimePath
+    $savedRuntime = $(if ($hadRuntime) { [System.IO.File]::ReadAllText($runtimePath, [System.Text.Encoding]::UTF8) } else { $null })
+    $script:ProviderHealthFaults = @{}
+    try {
+        $glmRuntime = [ordered]@{
+            schemaVersion='orcivo.orchestration.v2.provider-runtime/1'; enabled=$true
+            enabledProviders=@('glm','deepseek'); excludedProviders=@('claude','codex')
+            deepseek=[ordered]@{baseUrl='https://api.deepseek.com/';wireApi='responses';envKey='DEEPSEEK_API_KEY';codexHomeRoot='orcivo-dispatcher/providers/deepseek-codex'}
+            glm=[ordered]@{model='zai-coding-plan/glm-5.3'}
+        }
+        Write-V2JsonCanonical $runtimePath $glmRuntime
+        if ((Get-OrcivoEnabledProviders) -join ',' -ne 'glm,deepseek') { $fail += "enabled set did not become glm,deepseek" }
+        $d = Get-FailoverDecision -CurrentProvider 'deepseek' -Class 'PROVIDER_QUOTA' -FailoversSoFar 0
+        if ($d.action -ne 'FAILOVER' -or $d.nextProvider -ne 'glm') { $fail += "quota(deepseek) -> $($d.action)/$($d.nextProvider), expected FAILOVER/glm" }
+        $d = Get-FailoverDecision -CurrentProvider 'glm' -Class 'TEMPORARY_AUTH_FAILURE' -FailoversSoFar 0
+        if ($d.action -notin @('FAILOVER', 'WAITING_PROVIDER')) { $fail += "auth(glm) -> $($d.action), expected FAILOVER or WAITING_PROVIDER" }
+        $script:ProviderHealthFaults = @{ glm = 'PROVIDER_QUOTA'; deepseek = 'PROVIDER_QUOTA' }
+        $d = Get-FailoverDecision -CurrentProvider 'glm' -Class 'PROVIDER_QUOTA' -FailoversSoFar 0
+        if ($d.action -ne 'WAITING_PROVIDER') { $fail += "glm+deepseek down -> $($d.action), expected WAITING_PROVIDER" }
+        if ((Get-HealthyProviders).Count -ne 0) { $fail += "glm+deepseek down but Get-HealthyProviders not empty" }
+        $script:ProviderHealthFaults = @{ deepseek = 'PROVIDER_QUOTA' }
+        if ((Get-HealthyProviders) -notcontains 'glm') { $fail += "glm should be healthy while only deepseek is faulted" }
+    } finally {
+        $script:ProviderHealthFaults = $null
+        if ($hadRuntime) { [System.IO.File]::WriteAllText($runtimePath, $savedRuntime, (New-Utf8NoBom)) }
+        elseif (Test-Path -LiteralPath $runtimePath) { Remove-Item -LiteralPath $runtimePath -Force }
+    }
 
     return [ordered]@{ ok = ($fail.Count -eq 0); failures = @($fail) }
 }

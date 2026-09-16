@@ -51,7 +51,7 @@ $script:Transitions = @{
     'PUSH_FAILED'       = @('READY', 'QUARANTINED')
     'REMOTE_DIVERGED'   = @('READY', 'QUARANTINED')
     'INTEGRATION_FAILED'= @('READY', 'QUARANTINED')
-    'SECRET_LEAK_BLOCKED' = @('QUARANTINED')   # a leak needs human review before any retry
+    'SECRET_LEAK_BLOCKED' = @('QUARANTINED')   # fail-closed by default; only evidence-bound owner false-positive reconciliation may enter READY
     'QUARANTINED'   = @()        # terminal
 }
 $script:TerminalStates    = @('PUBLISHED', 'NO_CHANGE_ACCEPTED', 'QUARANTINED')
@@ -179,7 +179,15 @@ function Get-LedgerState {
                 return (_quarantine $state "recorded fromState '$($e.fromState)' != derived '$cur' at seq $($e.seq)")
             }
             $isDeepSeekReservationAudit = ($cur -eq 'WAITING_PROVIDER' -and [string]$e.fromState -eq 'WAITING_PROVIDER' -and [string]$e.toState -eq 'WAITING_PROVIDER' -and [string]$e.event -in @('deepseek-reservation-ceiling-reconciled','deepseek-cache-aware-reservation-reconciled'))
-            if (-not $isDeepSeekReservationAudit -and -not (Test-LedgerTransition $cur $e.toState)) {
+            $isReviewedSecretFalsePositive = (
+                $cur -eq 'SECRET_LEAK_BLOCKED' -and
+                [string]$e.toState -eq 'READY' -and
+                [string]$e.event -eq 'secret-false-positive-reviewed' -and
+                [string]$e.actor -eq 'owner' -and
+                [bool]$e.evidence.falsePositiveProven -and
+                [string]$e.evidence.classification -eq 'reviewed-source-diff-log'
+            )
+            if (-not $isDeepSeekReservationAudit -and -not $isReviewedSecretFalsePositive -and -not (Test-LedgerTransition $cur $e.toState)) {
                 return (_quarantine $state "illegal recorded transition $cur -> $($e.toState) at seq $($e.seq)")
             }
         }
@@ -252,7 +260,15 @@ function Add-LedgerEvent {
             throw "v2 ledger: $TaskVersionId is in terminal state $($cur.state); cannot enter '$ToState'."
         }
         $isDeepSeekReservationAudit = ($cur.state -eq 'WAITING_PROVIDER' -and $ToState -eq 'WAITING_PROVIDER' -and $Event -in @('deepseek-reservation-ceiling-reconciled','deepseek-cache-aware-reservation-reconciled'))
-        if (-not $isDeepSeekReservationAudit -and -not (Test-LedgerTransition $cur.state $ToState)) {
+        $isReviewedSecretFalsePositive = (
+            $cur.state -eq 'SECRET_LEAK_BLOCKED' -and
+            $ToState -eq 'READY' -and
+            $Event -eq 'secret-false-positive-reviewed' -and
+            $Actor -eq 'owner' -and
+            [bool]$Evidence.falsePositiveProven -and
+            [string]$Evidence.classification -eq 'reviewed-source-diff-log'
+        )
+        if (-not $isDeepSeekReservationAudit -and -not $isReviewedSecretFalsePositive -and -not (Test-LedgerTransition $cur.state $ToState)) {
             throw "v2 ledger: illegal transition $($cur.state) -> $ToState for $TaskVersionId (event '$Event')"
         }
 

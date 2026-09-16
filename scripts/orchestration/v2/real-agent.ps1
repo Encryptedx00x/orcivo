@@ -12,15 +12,25 @@ abstract profile to the capabilities of the CLI installed at runtime.
 . (Join-Path $PSScriptRoot 'classify.ps1')
 . (Join-Path $PSScriptRoot 'continuation.ps1')
 . (Join-Path $PSScriptRoot 'review-envelope.ps1')
+. (Join-Path $PSScriptRoot 'glm.ps1')
 
 function Get-AgentResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\agent-result.schema.json') }
 function Get-ReviewResultSchemaPath { return (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json') }
 
 function Get-ProviderLaunchPlan {
-    param([ValidateSet('claude','codex','deepseek')][string]$Provider, [string[]]$Arguments)
+    param([ValidateSet('claude','codex','deepseek','glm')][string]$Provider, [string[]]$Arguments)
     if ($Provider -eq 'claude') {
         $cmd = Get-Command 'claude' -CommandType Application -ErrorAction Stop | Select-Object -First 1
         return @{ exe=$cmd.Source; arguments=@($Arguments) }
+    }
+    if ($Provider -eq 'glm') {
+        # The installed OpenCode CLI is an npm shim whose payload is a NATIVE
+        # binary.  Launch that binary directly so ProcessStartInfo never
+        # executes a .cmd/.ps1 wrapper or a shell.
+        $shim = Get-Command 'opencode.cmd' -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        $exe = Join-Path (Split-Path -Parent $shim.Source) 'node_modules\opencode-ai\bin\opencode.exe'
+        if (-not (Test-Path -LiteralPath $exe)) { throw "real-agent: OpenCode native entrypoint not found beside $($shim.Source)" }
+        return @{ exe=$exe; arguments=@($Arguments) }
     }
     # The installed Codex CLI is an npm shim. Launch node.exe + the discovered
     # package entrypoint directly so ProcessStartInfo never executes a .cmd/.ps1
@@ -99,7 +109,7 @@ function ConvertFrom-RealCodexOutput {
 
 function Invoke-RealAgent {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
         [Parameter(Mandatory)][ValidateSet('implementer','reviewer','classifier')][string]$Role,
         [Parameter(Mandatory)][string]$TaskVersion,
         [Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile,
@@ -140,6 +150,18 @@ function Invoke-RealAgent {
             $args += @('--restricted','--permission-mode','plan','--tools','Read')
         } else {
             $args += @('--permission-mode','bypassPermissions','--tools','default')
+        }
+    } elseif ($Provider -eq 'glm') {
+        # OpenCode `run` reads the prompt from stdin, starts a fresh session
+        # per invocation, and emits the JSONL control channel on stdout.  The
+        # implementer works inside the isolated clone under the trusted-host
+        # policy (AR-02, same explicit LOCAL_TRUSTED_HOST statement as Codex);
+        # reviewers/classifiers get the read-only plan agent over the frozen
+        # review-data directory and no shell-driven permission bypass.
+        if ($Role -eq 'implementer') {
+            $args += @('--dangerously-skip-permissions')
+        } else {
+            $args += @('--agent','plan')
         }
     } else {
         # sandbox/approval/cwd are root options in the installed 0.152 CLI and
@@ -197,7 +219,7 @@ function Invoke-RealAgent {
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
 
-    $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $proc.stdout } else { ConvertFrom-RealCodexOutput $proc.stdout })
+    $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $proc.stdout } elseif ($Provider -eq 'glm') { ConvertFrom-RealGlmOutput $proc.stdout } else { ConvertFrom-RealCodexOutput $proc.stdout })
     $legacy = Get-FailureClassV2 -Provider $Provider -ExitCode $proc.exitCode -Control $parsed.control
     $providerClass = ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
     $structured = $parsed.structured
@@ -210,6 +232,9 @@ function Invoke-RealAgent {
         $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
     }
     if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
+    # Same fail-closed contract as DeepSeek: an exit-zero OpenCode stream
+    # without a terminal step_finish never becomes candidate provenance.
+    if($Provider -eq 'glm' -and -not(Test-GlmFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
     if ($proc.exitCode -eq 0 -and $structured -and $providerClass -eq 'NONE' -and $Role -ne 'reviewer') {
         $schemaErrors = Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $structured)) (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
         if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
@@ -226,6 +251,14 @@ function Invoke-RealAgent {
         $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$route.maxOutputTokens)
         if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
         if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
+    }
+    if($Provider -eq 'glm'){
+        # GLM runs on a subscription coding plan: there is no per-token budget
+        # ledger and no billable-model proof obligation.  step_finish token
+        # telemetry is recorded best-effort; its absence is not an integrity
+        # failure, so telemetryConsistent stays true.
+        $usage=Get-GlmUsageFromEvents -Events @($parsed.events)
+        $cost=$(if($usage){$usage.costUsd}else{$null})
     }
     return [ordered]@{
         invocationId=$invocationId

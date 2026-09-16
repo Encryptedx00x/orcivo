@@ -16,6 +16,7 @@ used and the limitation is recorded in the route (`limitations`).
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'deepseek.ps1')
+. (Join-Path $PSScriptRoot 'glm.ps1')
 
 $script:CapCachePath = Join-Path (Get-V2Dir) 'state\cli-capabilities.json'
 
@@ -145,9 +146,19 @@ function _ReasoningArgs {
 function Resolve-Provider {
     param(
         [Parameter(Mandatory)][ValidateSet('FAST', 'BALANCED', 'REASONING', 'CRITICAL')][string]$Profile,
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$Provider,
         [string]$ModelOverride = ''
     )
+    if($Provider -eq 'glm'){
+        # GLM runs through the OpenCode CLI with a FIXED model contract; the
+        # model id is never a knob and an override is never accepted.
+        if($ModelOverride -and $ModelOverride -ne (Get-GlmModelId)){return [ordered]@{ok=$false;provider='glm';reason="GLM model override '$ModelOverride' violates the fixed model contract"}}
+        $plan=Get-GlmRuntimePlan -Profile $Profile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
+        $cfg=Get-V2Config;$bin=$cfg.providers.glm.bin
+        if(-not(Get-Command $bin -ErrorAction SilentlyContinue)){return [ordered]@{ok=$false;provider='glm';reason="OpenCode CLI '$bin' not installed"}}
+        $intent=[string]$cfg.router.profileIntent.$Profile.reasoning
+        return [ordered]@{ok=$true;provider='glm';bin=$bin;profile=$Profile;reasoningIntent=$intent;model=(Get-GlmModelId);maxInvocationsPerTask=$null;invocationArgs=(Get-GlmInvocationArgs);environment=@{};outputJson=$true;freshContextFlag='(opencode run starts a fresh session per invocation)';sandboxFlag='(--pure external plugins disabled)';supportsExplicitReasoning=$false;limitations=@("glm model is fixed by contract: $(Get-GlmModelId); no variant/reasoning selector is pinned");capabilityVersion='';estimatedUsd=[decimal]0}
+    }
     if($Provider -eq 'deepseek'){
         if($Profile -eq 'CRITICAL'){return [ordered]@{ok=$false;provider='deepseek';reason='CRITICAL work is reserved for Codex Plus Terra'}}
         $plan=Get-DeepSeekModelPlan -Profile $Profile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='deepseek';reason=$plan.reason}}
@@ -237,12 +248,12 @@ function Resolve-Route {
 #   CROSS_PROVIDER_REQUIRED + opposite unavailable -> escalate (no same-provider review).
 function Select-Reviewer {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek')][string]$ImplementerProvider,
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$ImplementerProvider,
         [string]$ReviewStrength = 'NORMAL',
         [string[]]$HealthyProviders = @(Get-OrcivoEnabledProviders)
     )
     $cfg = Get-V2Config
-    $opposite = $(if($ImplementerProvider -eq 'deepseek'){'codex'}elseif($ImplementerProvider -eq 'codex'){'deepseek'}else{@(Get-OrcivoEnabledProviders|Where-Object{$_ -ne $ImplementerProvider})[0]})
+    $opposite = Get-OrcivoOppositeProvider -Provider $ImplementerProvider -Candidates @($HealthyProviders)
     if ($HealthyProviders -contains $opposite) {
         return [ordered]@{ ok = $true; reviewer = $opposite; crossProvider = $true; reason = "opposite-provider review ($opposite reviews $ImplementerProvider)" }
     }
@@ -315,6 +326,40 @@ function Test-RouterSelftest {
     # NORMAL + opposite down -> same-provider fresh review allowed
     $rv = Select-Reviewer -ImplementerProvider 'claude' -ReviewStrength 'NORMAL' -HealthyProviders @('claude')
     if (-not $rv.ok -or $rv.crossProvider) { $fail += "NORMAL + opposite down should allow same-provider fresh review" }
+
+    # GLM pairing (owner decision 2026-09-14): deepseek <-> glm.  A temporary
+    # runtime declaration inside this disposable fixture is the only way to
+    # make the enabled set deterministic here; it is removed again before the
+    # selftest returns.
+    $runtimePath = $script:DeepSeekRuntimePath
+    $hadRuntime = Test-Path -LiteralPath $runtimePath
+    $savedRuntime = $(if ($hadRuntime) { [System.IO.File]::ReadAllText($runtimePath, [System.Text.Encoding]::UTF8) } else { $null })
+    try {
+        $glmRuntime = [ordered]@{
+            schemaVersion='orcivo.orchestration.v2.provider-runtime/1'; enabled=$true
+            enabledProviders=@('glm','deepseek'); excludedProviders=@('claude','codex')
+            deepseek=[ordered]@{baseUrl='https://api.deepseek.com/';wireApi='responses';envKey='DEEPSEEK_API_KEY';codexHomeRoot='orcivo-dispatcher/providers/deepseek-codex'}
+            glm=[ordered]@{model=(Get-GlmModelId)}
+        }
+        Write-V2JsonCanonical $runtimePath $glmRuntime
+        $rv = Select-Reviewer -ImplementerProvider 'glm' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('glm', 'deepseek')
+        if ($rv.reviewer -ne 'deepseek' -or -not $rv.crossProvider) { $fail += "reviewer for glm impl should be deepseek" }
+        $rv = Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('glm', 'deepseek')
+        if ($rv.reviewer -ne 'glm' -or -not $rv.crossProvider) { $fail += "reviewer for deepseek impl should be glm" }
+        $rv = Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('deepseek')
+        if ($rv.ok -or -not $rv.escalate) { $fail += "deepseek impl + glm down should escalate, never same-provider" }
+        if ((Get-GlmModelId) -ne 'zai-coding-plan/glm-5.3') { $fail += "glm model contract drifted" }
+        $plan = Get-GlmRuntimePlan -Profile REASONING
+        if (-not $plan.ok -or $plan.model -ne 'zai-coding-plan/glm-5.3') { $fail += "glm plan did not pin the exact model id: $(if($plan.ok){$plan.model}else{$plan.reason})" }
+        if (@(Get-GlmInvocationArgs) -notcontains 'zai-coding-plan/glm-5.3') { $fail += "glm invocation args do not carry the exact model id" }
+        if ((Get-GlmRuntimePlan -Profile CRITICAL).ok) { $fail += "glm CRITICAL should be reserved for Codex Plus Terra" }
+        $drift = [ordered]@{} + $glmRuntime; $drift.glm = [ordered]@{ model = 'glm-wrong-model' }
+        Write-V2JsonCanonical $runtimePath $drift
+        if ((Get-GlmRuntimePlan -Profile REASONING).ok) { $fail += "glm runtime model drift was accepted" }
+    } finally {
+        if ($hadRuntime) { [System.IO.File]::WriteAllText($runtimePath, $savedRuntime, (New-Utf8NoBom)) }
+        elseif (Test-Path -LiteralPath $runtimePath) { Remove-Item -LiteralPath $runtimePath -Force }
+    }
 
     return [ordered]@{ ok = ($fail.Count -eq 0); failures = @($fail) }
 }

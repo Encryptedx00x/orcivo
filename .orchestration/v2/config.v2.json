@@ -152,7 +152,8 @@
     "primary": "claude",
     "fallback": "codex",
     "claude": { "bin": "claude" },
-    "codex": { "bin": "codex" }
+    "codex": { "bin": "codex" },
+    "glm": { "bin": "opencode" }
   },
   "threatModel": {
     "$comment": "PRAGMATIC V2.1 - OWNER DECISION (2026-09-03). The owner's local Windows host and Windows user account are TRUSTED. The harness defends against what the LLM agents and candidate-controlled code do wrong, NOT against an attacker who already holds the owner's access. This is a knob only in the sense that code reads `id` and `outOfScope`; the authoritative narrative lives in docs/agents/ORCHESTRATION-THREAT-MODEL.md and .planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md.",

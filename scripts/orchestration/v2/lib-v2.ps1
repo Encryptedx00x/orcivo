@@ -636,7 +636,14 @@ function Test-ArtifactsClean {
         $scanTxt = $txt.Replace("`r`n", "`n").Replace("`r", "`n")
         $activeLinePats=$linePats
         $additionalLineScans=@()
-        $isReviewPatch=($f.Name -eq 'diff.patch' -and $f.Directory.Name -match '^review-[0-9]+$')
+        $isCanonicalReviewPatch=($f.Name -eq 'diff.patch' -and $f.Directory.Name -match '^review-[0-9]+$')
+        $isReviewedSourceDiffLog=($f.Name -match '^(review-diff|stopped-recovery-diff)-[0-9]+-[0-9a-f]+\.stdout\.log$')
+        $looksLikeGitDiff=(
+            $scanTxt -match '(?m)^diff --git a/.+ b/.+$' -and
+            $scanTxt -match '(?m)^--- (?:a/|/dev/null)' -and
+            $scanTxt -match '(?m)^\+\+\+ (?:b/|/dev/null)'
+        )
+        $isReviewPatch=($isCanonicalReviewPatch -or ($isReviewedSourceDiffLog -and $looksLikeGitDiff))
         if($isReviewPatch){
             # Scan every patch byte for JSON credentials and high-confidence
             # signatures. Then classify diff body lines by their source path so

@@ -76,7 +76,7 @@ function ConvertFrom-CodexEvents {
 # The classifier. $Control is the normalized control-channel shape (or $null).
 function Get-FailureClassV2 {
     param(
-        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
         [int]$ExitCode = 0,
         $Control = $null,
         [string]$AppStdout = ''          # UNTRUSTED - used ONLY for the explicit HUMAN_GATE sentinel
@@ -85,7 +85,9 @@ function Get-FailureClassV2 {
     if ($AppStdout -match '(?im)^\s*HUMAN_GATE\s*:') { return 'HUMAN_GATE' }
     if ($AppStdout -match '(?im)^\s*POLICY_BLOCK\s*:') { return 'POLICY_BLOCK' }
 
-    if ($ExitCode -eq 124) { return $(if($Provider -eq 'deepseek'){'PROVIDER_TRANSIENT'}else{'TIMEOUT'}) }
+    # GLM (like DeepSeek) is an API-backed provider: a wall-clock kill is a
+    # transport condition, not a task timeout.
+    if ($ExitCode -eq 124) { return $(if($Provider -in @('deepseek','glm')){'PROVIDER_TRANSIENT'}else{'TIMEOUT'}) }
 
     if ($null -eq $Control) {
         # no structured signal -> we cannot attribute this to the provider

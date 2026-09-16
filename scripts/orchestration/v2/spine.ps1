@@ -44,7 +44,7 @@ Third-review reproductions now fixed + permanently regression-tested:
         integrator recomputes it from the frozen profile and compares
   H3-02 ONE canonical secret library (redactor == scanner); pre-publication
         recursive scan gate INSIDE Invoke-Integration, before any push;
-        SECRET_LEAK_BLOCKED ledger state (recovers only via QUARANTINE)
+        SECRET_LEAK_BLOCKED ledger state (fail-closed; explicit evidence-bound owner false-positive reconciliation or QUARANTINE)
   H3-03 untrusted spec/acceptance/diff transported OUT OF BAND as sha256-bound
         read-only files; no fixed textual fence to escape
   H3-04 malformed lease -> DURABLE quarantine marker; every acquire refuses until
