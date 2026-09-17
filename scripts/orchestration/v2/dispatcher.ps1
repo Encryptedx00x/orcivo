@@ -1072,6 +1072,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     if(@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count){throw 'workspace invocation snapshot: invocation already has a snapshot'}
     $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
     $isFreshCleanBaseline=$false
+    $isCleanInertRetry=$false
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -1133,28 +1134,26 @@ function New-DispatcherWorkspaceInvocationSnapshot {
                 )
             )
 
-            if(-not $isCleanRetry){
+            if(-not $isCleanRetry -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
+                $isCleanInertRetry=$true
+            }elseif(-not $isCleanRetry){
                 throw "workspace invocation snapshot: $($partial.reason)"
             }
 
-            $partial=[ordered]@{
-                clean=$true
-                reason='verified clean quarantined retry baseline'
-                paths=@()
-                fileBindings=@()
-                diffHash=(New-StringHash '')
-                filesHash=(New-StringHash '')
+            if($isCleanRetry -or $isCleanInertRetry){
+                $partial=[ordered]@{
+                    clean=$true
+                    reason=$(if($isCleanRetry){'verified clean quarantined retry baseline'}else{'verified clean inert-retry baseline'})
+                    paths=@()
+                    fileBindings=@()
+                    diffHash=(New-StringHash '')
+                    filesHash=(New-StringHash '')
+                }
             }
         }
     }
 
-    $expectedHead=[string]$State.recoveredCandidateCommit
-    if(-not $expectedHead){
-        $expectedHead=[string]$State.implementationCommit
-    }
-    if(-not $expectedHead -and $isFreshCleanBaseline){
-        $expectedHead=[string]$State.baseSha
-    }
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry)
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -1169,6 +1168,77 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $State.workspaceInvocationSnapshots=@($State.workspaceInvocationSnapshots|Where-Object{$_})+@($snapshot)
     Write-DispatcherState $State|Out-Null
     return $snapshot
+}
+
+# Canonical expected-HEAD resolution for the PRE-launch snapshot.  A fresh
+# implementation legitimately stands on baseSha; a recovered/previous
+# implementation stands on its recorded commit.  A provably inert retry
+# (every prior invocation provably left the workspace unchanged) also stands
+# on baseSha.  The post-execution snapshot never uses this: it is bound to
+# the exact HEAD frozen by the pre snapshot.
+function Get-DispatcherPreLaunchExpectedHead {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry)
+    $expectedHead=[string]$State.recoveredCandidateCommit
+    if(-not $expectedHead){
+        $expectedHead=[string]$State.implementationCommit
+    }
+    if(-not $expectedHead -and ($IsFreshCleanBaseline -or $IsCleanInertRetry)){
+        $expectedHead=[string]$State.baseSha
+    }
+    return $expectedHead
+}
+
+# A clean-workspace launch over prior provider history is legitimate only
+# when every prior implementer-family invocation is PROVABLY inert with
+# respect to the workspace: either the durable result snapshot recorded a
+# clean workspace at the exact HEAD the new interval will bind to, or the
+# entry is a dispatcher-side synthetic incomplete result (no result
+# snapshot, exit -1, INCOMPLETE_PROVIDER_RESULT) which by construction
+# asserts that no terminal provider output ever existed.  Anything else -
+# a vanished partial change, a prior implementation, a candidate - must
+# fail closed in the caller.
+function Test-DispatcherCleanInertRetryBaseline {
+    param([Parameter(Mandatory)]$State)
+    if([bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return $false}
+    foreach($field in @('implementationCommit','recoveredCandidateCommit','candidateHead','candidateTree','diffHash')){
+        if([string]$State.$field){return $false}
+    }
+    if([string]$State.baseSha -notmatch '^[0-9a-f]{40}$'){return $false}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$State.baseSha){return $false}
+    foreach($snapshot in @($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId})){
+        if([string]$snapshot.stateBinding.workspaceHead -ne [string]$State.baseSha){return $false}
+    }
+    $implementerEntries=@($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})
+    if(-not $implementerEntries.Count){return $false}
+    $emptyDiffHash=New-StringHash ''
+    foreach($entry in $implementerEntries){
+        $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+        if($post){
+            if([string]$post.workspaceHead -ne [string]$State.baseSha -or @($post.paths).Count -ne 0 -or [string]$post.partialDiffHash -ne $emptyDiffHash){return $false}
+        }else{
+            if([int]$entry.exitCode -ne -1 -or [string]$entry.providerClass -ne 'INCOMPLETE_PROVIDER_RESULT' -or [string]$entry.workspaceResultSnapshotHash){return $false}
+        }
+    }
+    return $true
+}
+
+# Recompute the hash chain of a persisted pre-invocation snapshot.  A snapshot
+# whose stateBinding or signature does not recompute identically is tampered
+# evidence and may never authorize an interval.
+function Test-DispatcherWorkspaceInvocationSnapshotIntegrity {
+    param([Parameter(Mandatory)]$Snapshot)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    try{
+        if(-not $Snapshot -or [string]$Snapshot.invocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'snapshot identity is absent or invalid'}
+        if(-not $Snapshot.stateBinding){return &$deny 'snapshot state binding is absent'}
+        $stateHash=New-StringHash (ConvertTo-CanonicalJson $Snapshot.stateBinding)
+        $signed=[ordered]@{schemaVersion=[string]$Snapshot.schemaVersion;invocationId=[string]$Snapshot.invocationId;promptHash=[string]$Snapshot.promptHash;provider=[string]$Snapshot.provider;model=[string]$Snapshot.model;reasoningEffort=[string]$Snapshot.reasoningEffort;attempt=[int]$Snapshot.attempt;stateHash=$stateHash;partialDiffHash=[string]$Snapshot.partialDiffHash;partialFilesHash=[string]$Snapshot.partialFilesHash;paths=@(@($Snapshot.paths)|ForEach-Object{[string]$_});fileBindings=@(@($Snapshot.fileBindings)|ForEach-Object{[string]$_})}
+        $snapshotHash=New-StringHash (ConvertTo-CanonicalJson $signed)
+        if([string]$Snapshot.stateHash -ne $stateHash){return &$deny 'state binding hash does not recompute'}
+        if([string]$Snapshot.snapshotHash -ne $snapshotHash){return &$deny 'snapshot hash does not recompute'}
+        if([string]$Snapshot.stateBinding.workspaceHead -notmatch '^[0-9a-f]{40}$'){return &$deny 'state binding workspace HEAD is not a valid commit'}
+        return [ordered]@{ok=$true;reason='snapshot hash chain verified';stateHash=$stateHash;snapshotHash=$snapshotHash}
+    }catch{return &$deny "snapshot integrity check failed: $($_.Exception.Message)"}
 }
 
 function Get-DispatcherWorkspaceInvocationSnapshot {
@@ -1186,11 +1256,17 @@ function New-DispatcherWorkspaceInvocationResultSnapshot {
     $invocationId=[string]$AgentResult.invocationId;$pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $invocationId
     if(-not $pre){throw 'workspace invocation result snapshot: pre-invocation snapshot is absent'}
     if(@($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $invocationId}).Count){throw 'workspace invocation result snapshot: invocation already has a result snapshot'}
-    if([int]$AgentResult.attempt -ne [int]$State.attempt -or [string]$AgentResult.provider -ne [string]$pre.provider -or [string]$AgentResult.promptHash -ne [string]$pre.promptHash){throw 'workspace invocation result snapshot: agent result is not bound to launch snapshot'}
+    $preIntegrity=Test-DispatcherWorkspaceInvocationSnapshotIntegrity -Snapshot $pre
+    if(-not $preIntegrity.ok){throw "workspace invocation result snapshot: pre-invocation snapshot integrity failed ($($preIntegrity.reason))"}
+    if([int]$AgentResult.attempt -ne [int]$State.attempt -or [string]$AgentResult.provider -ne [string]$pre.provider -or [string]$AgentResult.promptHash -ne [string]$pre.promptHash -or [string]$AgentResult.model -ne [string]$pre.model -or [string]$AgentResult.reasoningIntent -ne [string]$pre.reasoningEffort){throw 'workspace invocation result snapshot: agent result is not bound to launch snapshot'}
+    # The authoritative HEAD for the interval opened by the pre-invocation
+    # snapshot is pre.stateBinding.workspaceHead - never a mutable State field.
+    # The provider is forbidden from committing, so any HEAD change inside the
+    # provider interval stays fail-closed.
+    $expectedHead=[string]$pre.stateBinding.workspaceHead
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
     $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
     if(-not $partial.clean){throw "workspace invocation result snapshot: $($partial.reason)"}
-    $expectedHead=[string]$State.recoveredCandidateCommit;if(-not $expectedHead){$expectedHead=[string]$State.implementationCommit}
-    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
     $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
     $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
     $State.workspaceInvocationResultSnapshots=@($State.workspaceInvocationResultSnapshots|Where-Object{$_})+@($result)
@@ -1203,6 +1279,171 @@ function Get-DispatcherWorkspaceInvocationResultSnapshot {
     $matches=@($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId})
     if($matches.Count -ne 1){return $null}
     return $matches[0]
+}
+
+function Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity {
+    param([Parameter(Mandatory)]$Result,[Parameter(Mandatory)][string]$ExpectedPreSnapshotHash)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    try{
+        if(-not $Result -or [string]$Result.invocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'result snapshot identity is absent or invalid'}
+        if([string]$Result.preInvocationSnapshotHash -ne $ExpectedPreSnapshotHash){return &$deny 'result snapshot is not bound to its pre-invocation snapshot'}
+        $signed=[ordered]@{schemaVersion=[string]$Result.schemaVersion;invocationId=[string]$Result.invocationId;preInvocationSnapshotHash=[string]$Result.preInvocationSnapshotHash;promptHash=[string]$Result.promptHash;stdoutHash=[string]$Result.stdoutHash;provider=[string]$Result.provider;model=[string]$Result.model;reasoningEffort=[string]$Result.reasoningEffort;attempt=[int]$Result.attempt;workspaceHead=[string]$Result.workspaceHead;partialDiffHash=[string]$Result.partialDiffHash;partialFilesHash=[string]$Result.partialFilesHash;paths=@(@($Result.paths)|ForEach-Object{[string]$_});fileBindings=@(@($Result.fileBindings)|ForEach-Object{[string]$_})}
+        $resultHash=New-StringHash (ConvertTo-CanonicalJson $signed)
+        if([string]$Result.resultHash -ne $resultHash){return &$deny 'result snapshot hash does not recompute'}
+        return [ordered]@{ok=$true;reason='result snapshot hash chain verified'}
+    }catch{return &$deny "result snapshot integrity check failed: $($_.Exception.Message)"}
+}
+
+# Idempotent finalization of ONE implementer-family provider invocation.
+# Used by the live dispatch loop AND restart reconciliation, so a completed
+# invocation is never duplicated and conflicting evidence always fails closed.
+function Complete-DispatcherAgentInvocation {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$AgentResult,
+        [Parameter(Mandatory)][ValidateSet('IMPLEMENTER','CORRECTOR')][string]$Role
+    )
+    $invocationId=[string]$AgentResult.invocationId
+    if($invocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'agent invocation finalization: invalid invocation id'}
+    if([string]$AgentResult.resultReceiptPath){
+        if(-not(Test-Path -LiteralPath ([string]$AgentResult.resultReceiptPath))){throw 'agent invocation finalization: durable result receipt is absent'}
+        if([string]$AgentResult.resultReceiptHash){
+            try{$receipt=Read-V2Json ([string]$AgentResult.resultReceiptPath)}catch{throw 'agent invocation finalization: durable result receipt is unreadable'}
+            if([string]$receipt.receiptHash -ne [string]$AgentResult.resultReceiptHash){throw 'agent invocation finalization: durable result receipt hash mismatch'}
+        }
+    }
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $invocationId
+    if(-not $pre){throw 'agent invocation finalization: pre-invocation snapshot is absent'}
+    $preIntegrity=Test-DispatcherWorkspaceInvocationSnapshotIntegrity -Snapshot $pre
+    if(-not $preIntegrity.ok){throw "agent invocation finalization: pre-invocation snapshot integrity failed ($($preIntegrity.reason))"}
+
+    $resultSnapshot=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $invocationId
+    if([bool]$AgentResult.syntheticIncomplete){
+        # A dispatcher-side provably-incomplete inference has no provider
+        # result and no preserved partial work to bind; it is recorded in
+        # provider history only and routed to the normal retry machinery.
+        if($resultSnapshot){throw 'agent invocation finalization: synthetic incomplete result must not carry a result snapshot'}
+    }elseif(-not $resultSnapshot){
+        $resultSnapshot=New-DispatcherWorkspaceInvocationResultSnapshot -State $State -Task $Task -AgentResult $AgentResult
+    }else{
+        $integrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $resultSnapshot -ExpectedPreSnapshotHash ([string]$pre.snapshotHash)
+        if(-not $integrity.ok){throw "agent invocation finalization: existing result snapshot integrity failed ($($integrity.reason))"}
+        if([string]$resultSnapshot.promptHash -ne [string]$AgentResult.promptHash -or [string]$resultSnapshot.stdoutHash -ne [string]$AgentResult.stdoutHash -or [string]$resultSnapshot.provider -ne [string]$AgentResult.provider -or [string]$resultSnapshot.model -ne [string]$AgentResult.model -or [int]$resultSnapshot.attempt -ne [int]$AgentResult.attempt){
+            throw 'agent invocation finalization: existing result snapshot conflicts with the agent result evidence'
+        }
+    }
+    if($script:DispatcherFinalizerFaultAfterResultSnapshot){throw 'injected finalizer crash after result snapshot'}
+
+    $history=@($State.providerHistory|Where-Object{$_})
+    $matches=@($history|Where-Object{[string]$_.invocationId -eq $invocationId})
+    if($matches.Count -eq 0){
+        $State.providerHistory=@($history)+@([ordered]@{invocationId=$invocationId;role=$Role;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;providerClass=[string]$AgentResult.providerClass;resultClass=[string]$AgentResult.resultClass;exitCode=[int]$AgentResult.exitCode;promptArtifact=[string]$AgentResult.promptArtifact;promptHash=[string]$AgentResult.promptHash;workspaceResultSnapshotHash=[string]$resultSnapshot.resultHash;stdoutArtifact=[string]$AgentResult.stdoutArtifact;stdoutHash=[string]$AgentResult.stdoutHash;controlRecordHash=[string]$AgentResult.controlRecordHash;usage=$AgentResult.usage;cachedTokens=$AgentResult.cachedTokens;costUsd=$AgentResult.costUsd;telemetryConsistent=[bool]$AgentResult.telemetryConsistent;resultReceiptHash=[string]$AgentResult.resultReceiptHash})
+    }elseif($matches.Count -eq 1){
+        $entry=$matches[0]
+        if([string]$entry.role -ne $Role -or [string]$entry.provider -ne [string]$AgentResult.provider -or [string]$entry.model -ne [string]$AgentResult.model -or [string]$entry.reasoningEffort -ne [string]$AgentResult.reasoningIntent -or [int]$entry.attempt -ne [int]$AgentResult.attempt -or [string]$entry.providerClass -ne [string]$AgentResult.providerClass -or [string]$entry.resultClass -ne [string]$AgentResult.resultClass -or [int]$entry.exitCode -ne [int]$AgentResult.exitCode -or [string]$entry.promptHash -ne [string]$AgentResult.promptHash -or [string]$entry.stdoutHash -ne [string]$AgentResult.stdoutHash -or [string]$entry.workspaceResultSnapshotHash -ne [string]$resultSnapshot.resultHash){
+            throw 'agent invocation finalization: conflicting duplicate result evidence for the same invocation'
+        }
+    }else{
+        throw 'agent invocation finalization: invocation is duplicated in provider history'
+    }
+
+    $artifactAdds=@([string]$AgentResult.stdoutArtifact,[string]$AgentResult.stderrArtifact)
+    if($AgentResult.structuredResult){$artifactAdds+=@(@($AgentResult.structuredResult.importantArtifacts)|Where-Object{$_})}
+    $State.importantArtifacts=@(@($State.importantArtifacts|Where-Object{$_})+@($artifactAdds|Where-Object{$_})|Select-Object -Unique)
+    if($AgentResult.structuredResult){$State.decisions=@(@($AgentResult.structuredResult.decisions)|Where-Object{$_})}
+    Write-DispatcherState $State|Out-Null
+    if($script:DispatcherFinalizerFaultAfterProviderHistory){throw 'injected finalizer crash after provider history'}
+    memoryCheckpoint $Task ([string]$State.logicalProjectId)|Out-Null
+
+    if([bool]$AgentResult.contextRolloverRequired){return [ordered]@{disposition='CONTEXT_ROLLOVER';resultSnapshot=$resultSnapshot;invocationId=$invocationId}}
+    if(Test-IsCanonicalProviderClass ([string]$AgentResult.providerClass)){return [ordered]@{disposition='PROVIDER_FAILURE';resultSnapshot=$resultSnapshot;invocationId=$invocationId}}
+    if([string]$AgentResult.resultClass -ne 'SUCCESS'){
+        $maxAttempts=[int](Get-V2Config).ledger.maxAttemptsPerVersion
+        if([int]$State.attempt -lt $maxAttempts){return [ordered]@{disposition='RETRY';resultSnapshot=$resultSnapshot;invocationId=$invocationId}}
+        return [ordered]@{disposition='FAILED';resultSnapshot=$resultSnapshot;invocationId=$invocationId}
+    }
+    $State.unavailableProviders=@(@($State.unavailableProviders|Where-Object{$_})|Where-Object{$_ -ne [string]$AgentResult.provider})
+    $State.implementationComplete=$true
+    $State.requiresCorrection=$false
+    $State.implementationInvocationId=$invocationId
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{disposition='SUCCESS';resultSnapshot=$resultSnapshot;invocationId=$invocationId}
+}
+
+# Generic evidence-driven startup reconciliation.  Before the dispatch loop
+# increments attempt or launches any new IMPLEMENT provider invocation, an
+# interrupted durable prefix (RUNNING/IMPLEMENT, pre snapshot, missing post
+# snapshot and/or missing provider history, no successor evidence, workspace
+# still at the frozen HEAD) is finalized from durable evidence: the validated
+# agent-result receipt when present, otherwise strict legacy reconstruction
+# from the immutable provider artifacts.  Human states (WAITING_HUMAN,
+# FAILED_REVIEW_BUDGET, policy/security blocks) are NEVER auto-resumed; a
+# provably incomplete invocation enters the normal retry machinery and
+# ambiguous evidence fails closed.
+function Invoke-DispatcherStartupReconciliation {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract
+    )
+    $noAction={param([string]$Reason)return [ordered]@{status='NO_ACTION';reason=$Reason}}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$noAction 'state is not an interrupted RUNNING/IMPLEMENT prefix'}
+    # Durable completion flag only - the last-history inference in
+    # Test-DispatcherImplementationCompleted must never bypass binding the
+    # completion evidence (receipt, snapshots) this reconciliation produces.
+    if([bool]$State.implementationComplete){return &$noAction 'implementation is already complete'}
+    $preSnapshots=@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId})
+    if(-not $preSnapshots.Count){return &$noAction 'no pre-invocation snapshot exists'}
+    for($i=0;$i -lt ($preSnapshots.Count-1);$i++){
+        $mid=$preSnapshots[$i]
+        $midPost=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$mid.invocationId)
+        $midHistory=@($State.providerHistory|Where-Object{$_ -and [string]$_.invocationId -eq [string]$mid.invocationId})
+        if(-not $midPost -and $midHistory.Count -ne 1){throw 'startup reconciliation: an earlier invocation is unfinalized behind a later one'}
+    }
+    $pre=$preSnapshots[-1]
+    $invocationId=[string]$pre.invocationId
+    $historyMatches=@($State.providerHistory|Where-Object{$_ -and [string]$_.invocationId -eq $invocationId})
+    $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $invocationId
+    if($historyMatches.Count -gt 1){throw 'startup reconciliation: invocation is duplicated in provider history'}
+    if($historyMatches.Count -eq 1){
+        $entry=$historyMatches[0]
+        if($post){
+            if([string]$entry.resultClass -ne 'SUCCESS' -or [string]$entry.role -notin @('IMPLEMENTER','CORRECTOR')){return &$noAction 'failed invocation is already finalized; normal machinery continues'}
+        }else{
+            if([int]$entry.exitCode -eq -1 -and [string]$entry.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and -not [string]$entry.workspaceResultSnapshotHash){return &$noAction 'provably incomplete invocation is already finalized; retry machinery continues'}
+            throw 'startup reconciliation: provider history exists without its result snapshot'
+        }
+    }
+    if([bool]$State.implementationComplete -or [string]$State.candidateHead -or [string]$State.candidateTree -or $State.integration){throw 'startup reconciliation: successor candidate or integration evidence contradicts an unfinalized invocation'}
+    if(@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)).Count){throw 'startup reconciliation: attestations exist for an unfinalized invocation'}
+    if((Get-LedgerState ([string]$State.taskVersionId)).state -ne 'RUNNING'){throw 'startup reconciliation: ledger is not RUNNING for an interrupted provider prefix'}
+    if([string]$State.taskVersionId -ne [string]$Contract.taskVersionId){throw 'startup reconciliation: durable task version does not match the frozen contract'}
+
+    $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource
+    if(-not $authority.ok){throw "startup reconciliation: owner-gate authority failed ($($authority.reason))"}
+    if(-not $authority.satisfied){throw 'startup reconciliation: hash-bound owner approval is not currently satisfied'}
+
+    $integrity=Test-DispatcherWorkspaceInvocationSnapshotIntegrity -Snapshot $pre
+    if(-not $integrity.ok){throw "startup reconciliation: pre-invocation snapshot integrity failed ($($integrity.reason))"}
+    if([string]$pre.stateBinding.runId -ne [string]$State.runId -or [string]$pre.stateBinding.taskId -ne [string]$Task.taskId -or [string]$pre.stateBinding.taskVersionId -ne [string]$State.taskVersionId -or [string]$pre.stateBinding.taskSourceHash -ne [string]$TaskSource.hash){throw 'startup reconciliation: pre-invocation snapshot task/source binding drift'}
+    if([int]$pre.attempt -ne [int]$State.attempt -or [string]$pre.provider -ne [string]$State.provider -or [string]$pre.model -ne [string]$State.model -or [string]$pre.stateBinding.status -ne 'RUNNING' -or [string]$pre.stateBinding.stage -ne 'IMPLEMENT'){throw 'startup reconciliation: pre-invocation snapshot dispatcher binding drift'}
+    if(-not(Test-Path -LiteralPath ([string]$State.workspace))){throw 'startup reconciliation: durable workspace is missing'}
+    $expectedHead=[string]$pre.stateBinding.workspaceHead
+    if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'startup reconciliation: workspace HEAD drift (provider may have committed)'}
+
+    $role=$(if([int]$State.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
+    $logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$($State.runId)\logs"))
+    $recovery=Recover-RealAgentResultFromArtifacts -Provider ([string]$State.provider) -Role $role -InvocationId $invocationId -Attempt ([int]$State.attempt) -Profile ([string]$State.profile) -Model ([string]$pre.model) -ReasoningEffort ([string]$pre.reasoningEffort) -LogsDir $logs -PromptArtifact ([string]$pre.promptArtifact) -PromptHash ([string]$pre.promptHash) -ContinuationCheckpoint ([string]$State.continuationCheckpoint)
+    if([string]$recovery.outcome -eq 'UNRECOVERABLE_OR_AMBIGUOUS'){throw "startup reconciliation: evidence is unrecoverable or ambiguous ($($recovery.reason))"}
+
+    $finalized=Complete-DispatcherAgentInvocation -State $State -Task $Task -AgentResult $recovery.agentResult -Role $role
+
+    $record=[ordered]@{reconciledAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;outcome=[string]$recovery.outcome;source=[string]$recovery.source;receiptHash=[string]$recovery.receiptHash;providerClass=[string]$recovery.agentResult.providerClass;resultClass=[string]$recovery.agentResult.resultClass;stdoutHash=[string]$recovery.agentResult.stdoutHash;workspaceHead=$expectedHead}
+    $State.startupReconciliationHistory=@(@($State.startupReconciliationHistory|Where-Object{$_})|Where-Object{[string]$_.invocationId -ne $invocationId})+@($record)
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{status='RECOVERED';outcome=[string]$recovery.outcome;invocationId=$invocationId;disposition=[string]$finalized.disposition;recovery=$record}
 }
 
 function Test-DispatcherRecoveryExecutionActive {
@@ -2202,6 +2443,19 @@ if($needsFreshDispatch){
     while($true){
         if(Test-Path (Join-Path (Get-V2Dir) $pcfg.stopFile)){ $state.status='STOPPED';$state.reason='explicit stop requested';Write-DispatcherState $state|Out-Null;return $state }
         if($state.stage -eq 'IMPLEMENT'){
+            if(-not [bool]$state.implementationComplete -and -not [bool]$state.requiresCorrection -and -not [string]$state.candidateHead -and -not [string]$state.implementationCommit){
+                # Generic evidence-driven reconciliation of an interrupted
+                # invocation prefix runs BEFORE attempt is incremented or a
+                # new provider invocation is launched, so a completed
+                # invocation is never duplicated merely because the
+                # dispatcher died after the provider exited.  The gate keys
+                # on the DURABLE completion flags only: the last-history
+                # inference in Test-DispatcherImplementationCompleted must
+                # never bypass evidence validation, and a prefix that has
+                # already produced candidate evidence is not interrupted.
+                $reconciled=Invoke-DispatcherStartupReconciliation -State $state -Task $Task -TaskSource $TaskSource -Contract $contract
+                if("$($reconciled.status)" -eq 'RECOVERED' -and (Set-DispatcherStoppedAfterAgentIfRequested $state)){return $state}
+            }
             if(-not (Test-DispatcherImplementationCompleted $state)){
                 if($state.provider -eq 'deepseek'){
                     $plan=Get-DeepSeekModelPlan -Profile $state.profile;$used=@($state.providerHistory|Where-Object{[string]$_.provider -eq 'deepseek' -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')}).Count
@@ -2219,17 +2473,13 @@ if($needsFreshDispatch){
                 $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
                 $preLaunch={param($launch) New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $Task -InvocationId ([string]$launch.invocationId) -PromptArtifact ([string]$launch.promptArtifact) -PromptHash ([string]$launch.promptHash) -Provider ([string]$launch.provider) -Model ([string]$launch.model) -ReasoningEffort ([string]$launch.reasoningEffort) -Attempt ([int]$launch.attempt)|Out-Null}
                 $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint) -BeforeLaunch $preLaunch
-                $resultSnapshot=New-DispatcherWorkspaceInvocationResultSnapshot -State $state -Task $Task -AgentResult $ar
-                $state.providerHistory+=,@{invocationId=$ar.invocationId;role=$role;provider=$ar.provider;model=$ar.model;reasoningEffort=$ar.reasoningIntent;attempt=$ar.attempt;providerClass=$ar.providerClass;resultClass=$ar.resultClass;exitCode=$ar.exitCode;promptArtifact=$ar.promptArtifact;promptHash=$ar.promptHash;workspaceResultSnapshotHash=$resultSnapshot.resultHash;stdoutArtifact=$ar.stdoutArtifact;stdoutHash=$ar.stdoutHash;controlRecordHash=$ar.controlRecordHash;usage=$ar.usage;cachedTokens=$ar.cachedTokens;costUsd=$ar.costUsd;telemetryConsistent=$ar.telemetryConsistent}
-                $state.importantArtifacts=@($state.importantArtifacts)+@($ar.stdoutArtifact,$ar.stderrArtifact)
-                if($ar.structuredResult){$state.decisions=@($ar.structuredResult.decisions);$state.importantArtifacts+=@($ar.structuredResult.importantArtifacts)}
-                Write-DispatcherState $state|Out-Null; memoryCheckpoint $Task ([string]$state.logicalProjectId)|Out-Null
+                $finalized=Complete-DispatcherAgentInvocation -State $state -Task $Task -AgentResult $ar -Role $role
                 if(Set-DispatcherStoppedAfterAgentIfRequested $state){return $state}
-                if($ar.contextRolloverRequired){
+                if("$($finalized.disposition)" -eq 'CONTEXT_ROLLOVER'){
                     if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                     $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
                 }
-                if(Test-IsCanonicalProviderClass $ar.providerClass){
+                if("$($finalized.disposition)" -eq 'PROVIDER_FAILURE'){
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
                     if(Get-DispatcherPinnedQuarantinedRetryRoute $state){return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)}
                     $other=@((Get-OrcivoEnabledProviders)|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
@@ -2241,15 +2491,15 @@ if($needsFreshDispatch){
                     }
                     return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)
                 }
-                if($ar.resultClass -ne 'SUCCESS'){
-                    if([int]$state.attempt -lt $maxAttempts){$state.findings=@("implementer result $($ar.resultClass): $($ar.structuredResult.summary)");Write-DispatcherState $state|Out-Null;continue}
+                if("$($finalized.disposition)" -eq 'RETRY'){
+                    $state.findings=@("implementer result $($ar.resultClass): $($ar.structuredResult.summary)");Write-DispatcherState $state|Out-Null;continue
+                }
+                if("$($finalized.disposition)" -eq 'FAILED'){
                     Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $ar.resultClass|Out-Null
                     $failureSummary=[string]$ar.structuredResult.summary
                     if(-not $failureSummary){$failureSummary="provider invocation $($ar.invocationId) ended as $($ar.providerClass)/$($ar.resultClass)"}
                     $state.status=$ar.resultClass;$state.reason=$failureSummary;Write-DispatcherState $state|Out-Null;return $state
                 }
-                $state.unavailableProviders=@($state.unavailableProviders|Where-Object{$_ -ne $state.provider})
-                $state.implementationComplete=$true;$state.requiresCorrection=$false;$state.implementationInvocationId=$ar.invocationId;Write-DispatcherState $state|Out-Null
             }
             $candidate=Complete-DispatcherCandidateCommit -State $state
             if(-not $candidate.ok){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'execute-failed' -ToState 'FAILED' -RunId $state.runId -Note $candidate.reason|Out-Null;$state.status=$(if($candidate.exitCode -ne 0){'RESUMABLE'}else{'AGENT_FAILURE'});$state.reason=$candidate.reason;Write-DispatcherState $state|Out-Null;return $state}

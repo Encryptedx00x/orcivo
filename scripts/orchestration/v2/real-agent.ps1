@@ -107,6 +107,274 @@ function ConvertFrom-RealCodexOutput {
     return @{ control = $control; structured = $(if ($structured) { _ToHashtable $structured } else { $null }); events = @($events) }
 }
 
+# Durable per-invocation result receipt.  Written canonically immediately
+# after the provider process output is parsed and classified, BEFORE control
+# returns to the dispatcher, so a crash between provider exit and dispatcher
+# result handling can still reconstruct the exact AgentResult from disk.
+function Get-RealAgentResultReceiptPath {
+    param([Parameter(Mandatory)][string]$ArtifactDir,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$Role,[Parameter(Mandatory)][string]$Provider,[Parameter(Mandatory)][int]$Attempt)
+    $stamp = '{0}-{1:000}-{2}-{3}' -f $Role, $Attempt, $Provider, $InvocationId.Substring(4,8)
+    return (Join-Path $ArtifactDir "$stamp.agent-result.json")
+}
+
+function Write-RealAgentResultReceipt {
+    param([Parameter(Mandatory)]$AgentResult)
+    $path = [string]$AgentResult.resultReceiptPath
+    if (-not $path) { throw 'agent result receipt: receipt path is absent' }
+    $receipt = [ordered]@{
+        schemaVersion='orcivo.orchestration.v2.agent-result-receipt/1'
+        invocationId=[string]$AgentResult.invocationId
+        provider=[string]$AgentResult.provider
+        model=[string]$AgentResult.model
+        profile=[string]$AgentResult.profile
+        reasoningIntent=[string]$AgentResult.reasoningIntent
+        attempt=[int]$AgentResult.attempt
+        exitCode=[int]$AgentResult.exitCode
+        providerClass=[string]$AgentResult.providerClass
+        resultClass=[string]$AgentResult.resultClass
+        structuredResult=$AgentResult.structuredResult
+        promptArtifact=[string]$AgentResult.promptArtifact
+        promptHash=[string]$AgentResult.promptHash
+        stdoutArtifact=[string]$AgentResult.stdoutArtifact
+        stdoutHash=[string]$AgentResult.stdoutHash
+        stderrArtifact=[string]$AgentResult.stderrArtifact
+        stderrHash=[string]$AgentResult.stderrHash
+        controlRecordHash=[string]$AgentResult.controlRecordHash
+        duration=[double]$AgentResult.duration
+        contextRolloverRequired=[bool]$AgentResult.contextRolloverRequired
+        capabilityVersion=[string]$AgentResult.capabilityVersion
+        continuationCheckpoint=[string]$AgentResult.continuationCheckpoint
+        usage=$AgentResult.usage
+        cachedTokens=$AgentResult.cachedTokens
+        returnedModels=@(@($AgentResult.returnedModels)|Where-Object{$_})
+        requestManifestPath=[string]$AgentResult.requestManifestPath
+        requestManifestHash=[string]$AgentResult.requestManifestHash
+        costUsd=$AgentResult.costUsd
+        telemetryConsistent=[bool]$AgentResult.telemetryConsistent
+        createdAt=(Get-Date).ToUniversalTime().ToString('o')
+    }
+    $signed=[ordered]@{}; foreach($k in $receipt.Keys){$signed[$k]=$receipt[$k]}
+    $receipt.receiptHash=New-ContentHash $signed
+    if (Test-Path -LiteralPath $path) {
+        try { $existing = Read-V2Json $path } catch { $existing = $null }
+        if (-not $existing -or [string]$existing.receiptHash -ne [string]$receipt.receiptHash) {
+            throw 'agent result receipt: conflicting duplicate result receipt'
+        }
+        return $existing
+    }
+    Write-V2JsonCanonical $path $receipt
+    return $receipt
+}
+
+# Single classification path shared by live provider execution and restart
+# reconstruction.  Turns a captured provider stdout (plus the launch bindings)
+# into the exact AgentResult shape the dispatcher finalizer consumes, and
+# persists the durable result receipt.
+function ConvertTo-RealAgentInvocationResult {
+    param(
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('implementer','reviewer','classifier')][string]$Role,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][int]$Attempt,
+        [Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile,
+        [Parameter(Mandatory)]$Route,
+        [Parameter(Mandatory)][int]$ExitCode,
+        [Parameter(Mandatory)][double]$DurationSec,
+        [Parameter(Mandatory)][string]$StdoutText,
+        [Parameter(Mandatory)][string]$PromptFile,
+        [Parameter(Mandatory)][string]$StdoutLog,
+        [Parameter(Mandatory)][string]$StderrLog,
+        [string]$ContinuationCheckpoint='',
+        $DeepSeekRequestManifest=$null,
+        [string]$DeepSeekRequestManifestPath='',
+        [switch]$LiveBudgetAccounting
+    )
+    $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $StdoutText } elseif ($Provider -eq 'glm') { ConvertFrom-RealGlmOutput $StdoutText } else { ConvertFrom-RealCodexOutput $StdoutText })
+    $legacy = Get-FailureClassV2 -Provider $Provider -ExitCode $ExitCode -Control $parsed.control
+    $providerClass = ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
+    $structured = $parsed.structured
+    $resultClass = 'AGENT_FAILURE'
+    if ($structured) {
+        if ($Role -eq 'reviewer') { $resultClass = $(if ($structured.verdict) { [string]$structured.verdict } else { 'AGENT_FAILURE' }) }
+        else { $resultClass = [string]$structured.resultClass }
+    } elseif (Test-IsCanonicalProviderClass $providerClass) { $resultClass = 'AGENT_FAILURE' }
+    if (($structured -and "$($structured.resultClass)" -eq 'CONTEXT_ROLLOVER') -or (Test-IsContextExhaustion $parsed.control)) {
+        $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
+    }
+    if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
+    # Same fail-closed contract as DeepSeek: an exit-zero OpenCode stream
+    # without a terminal step_finish never becomes candidate provenance.
+    if($Provider -eq 'glm' -and -not(Test-GlmFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
+    if ($ExitCode -eq 0 -and $structured -and $providerClass -eq 'NONE' -and $Role -ne 'reviewer') {
+        $schemaPath = $(if ($Role -eq 'reviewer') { Get-ReviewResultSchemaPath } else { Get-AgentResultSchemaPath })
+        $schemaErrors = Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $structured)) (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
+        if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
+    }
+
+    $usage=$null;$cost=$null;$telemetryConsistent=$true;$returnedModels=@()
+    if($Provider -eq 'deepseek'){
+        $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
+        $returnedModels=Get-DeepSeekReturnedModel -Events @($parsed.events)
+        if($LiveBudgetAccounting){
+            $resolution=$(if($DeepSeekRequestManifest){Resolve-DeepSeekBillableModel -RequestManifest $DeepSeekRequestManifest -Events @($parsed.events) -ExitCode $ExitCode}else{$null})
+            if($resolution -and $resolution.ok){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $InvocationId -Model $Route.model -ReturnedModels $returnedModels -BillableResolution $resolution -ResultClass $resultClass -ExitCode $ExitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
+            else{$telemetryConsistent=$false;$unknownReason=$(if($resolution){$resolution.reason}elseif(-not $usage){'usage is absent'}else{'request manifest is absent'})}
+            if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $InvocationId -Model $Route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $ExitCode)}catch{}}
+            # The per-response output cap is a property of the live launch
+            # configuration; only the live path can enforce it against the
+            # requested bound.  Recovery records only what the stream proves.
+            $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$Route.maxOutputTokens)
+            if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $InvocationId -Model $Route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $ExitCode)}catch{}}
+            if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
+        }
+    }
+    if($Provider -eq 'glm'){
+        # GLM runs on a subscription coding plan: there is no per-token budget
+        # ledger and no billable-model proof obligation.  step_finish token
+        # telemetry is recorded best-effort; its absence is not an integrity
+        # failure, so telemetryConsistent stays true.
+        $usage=Get-GlmUsageFromEvents -Events @($parsed.events)
+        $cost=$(if($usage){$usage.costUsd}else{$null})
+    }
+    $result=[ordered]@{
+        invocationId=$InvocationId
+        provider=$Provider; model=$Route.model; reasoningIntent=$Route.reasoningIntent; profile=$Profile; attempt=$Attempt
+        exitCode=$ExitCode; providerClass=$providerClass; resultClass=$resultClass
+        structuredResult=$structured; promptArtifact=$PromptFile;promptHash=(New-FileHash $PromptFile);stdoutArtifact=$StdoutLog; stderrArtifact=$StderrLog
+        stdoutHash=(New-FileHash $StdoutLog);stderrHash=(New-FileHash $StderrLog);controlRecordHash=(New-StringHash ([string]$StdoutText))
+        duration=$DurationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
+        capabilityVersion=$Route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
+        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);requestManifestPath=$DeepSeekRequestManifestPath;requestManifestHash=$(if($DeepSeekRequestManifest){[string]$DeepSeekRequestManifest.manifestHash}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
+    }
+    $result.resultReceiptPath=Get-RealAgentResultReceiptPath -ArtifactDir (Split-Path -Parent $StdoutLog) -InvocationId $InvocationId -Role $Role -Provider $Provider -Attempt $Attempt
+    $receipt=Write-RealAgentResultReceipt -AgentResult $result
+    $result.resultReceiptHash=[string]$receipt.receiptHash
+    return $result
+}
+
+# Reconstruct one implementer-family AgentResult from durable evidence.
+# Preferred authority is the validated agent-result receipt; the strict legacy
+# fallback reconstructs only from the immutable prompt/stdout/stderr artifacts
+# when the provider stream itself proves a terminal (or provably incomplete)
+# result.  Nothing here ever infers SUCCESS from non-terminal evidence.
+function Recover-RealAgentResultFromArtifacts {
+    param(
+        [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('IMPLEMENTER','CORRECTOR')][string]$Role,
+        [Parameter(Mandatory)][string]$InvocationId,
+        [Parameter(Mandatory)][int]$Attempt,
+        [Parameter(Mandatory)][string]$Profile,
+        [Parameter(Mandatory)][string]$Model,
+        [Parameter(Mandatory)][string]$ReasoningEffort,
+        [Parameter(Mandatory)][string]$LogsDir,
+        [Parameter(Mandatory)][string]$PromptArtifact,
+        [Parameter(Mandatory)][string]$PromptHash,
+        [string]$ContinuationCheckpoint=''
+    )
+    $fail={param([string]$Reason)return [ordered]@{outcome='UNRECOVERABLE_OR_AMBIGUOUS';reason=$Reason;source='';agentResult=$null;receiptPath='';receiptHash=''}}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$fail 'invalid invocation id'}
+    $logs=[IO.Path]::GetFullPath($LogsDir)
+    $roleParam=$Role.ToLowerInvariant()
+    $suffix=$InvocationId.Substring(4,8)
+    $stamp='{0}-{1:000}-{2}-{3}' -f $roleParam,$Attempt,$Provider,$suffix
+    $promptPath=[IO.Path]::GetFullPath((Join-Path $logs "$stamp.prompt.txt"))
+    $stdoutPath=[IO.Path]::GetFullPath((Join-Path $logs "$stamp.stdout.log"))
+    $stderrPath=[IO.Path]::GetFullPath((Join-Path $logs "$stamp.stderr.log"))
+    $receiptPath=Get-RealAgentResultReceiptPath -ArtifactDir $logs -InvocationId $InvocationId -Role $roleParam -Provider $Provider -Attempt $Attempt
+    $boundPrompt=[IO.Path]::GetFullPath($PromptArtifact)
+    foreach($p in @($promptPath,$stdoutPath,$stderrPath)){
+        if(-not $p.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)){return &$fail "artifact path escapes the run log directory: $p"}
+    }
+    if($boundPrompt -ne $promptPath){return &$fail 'pre-invocation prompt artifact path does not match the deterministic invocation artifact'}
+    if(-not (Test-Path -LiteralPath $promptPath)){return &$fail 'prompt artifact is absent'}
+    if((New-FileHash $promptPath) -ne $PromptHash){return &$fail 'prompt artifact hash does not match the pre-invocation snapshot binding'}
+
+    # Preferred authority: the validated durable receipt.
+    if (Test-Path -LiteralPath $receiptPath) {
+        try { $receipt = Read-V2Json $receiptPath } catch { return &$fail 'agent result receipt is unreadable' }
+        $signed=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$signed[$k]=$receipt[$k]}}
+        if([string]$receipt.schemaVersion -ne 'orcivo.orchestration.v2.agent-result-receipt/1'){return &$fail 'agent result receipt schema mismatch'}
+        if([string]$receipt.receiptHash -ne (New-ContentHash $signed)){return &$fail 'agent result receipt hash mismatch (tampered receipt)'}
+        if([string]$receipt.invocationId -ne $InvocationId -or [string]$receipt.provider -ne $Provider -or [string]$receipt.model -ne $Model -or [int]$receipt.attempt -ne $Attempt){return &$fail 'agent result receipt binding mismatch'}
+        if([string]$receipt.promptHash -ne $PromptHash){return &$fail 'agent result receipt prompt binding mismatch'}
+        if([IO.Path]::GetFullPath([string]$receipt.promptArtifact) -ne $promptPath -or [IO.Path]::GetFullPath([string]$receipt.stdoutArtifact) -ne $stdoutPath -or [IO.Path]::GetFullPath([string]$receipt.stderrArtifact) -ne $stderrPath){return &$fail 'agent result receipt artifact path mismatch'}
+        if(-not (Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne [string]$receipt.stdoutHash){return &$fail 'stdout artifact does not match the receipt hash'}
+        if(-not (Test-Path -LiteralPath $stderrPath) -or (New-FileHash $stderrPath) -ne [string]$receipt.stderrHash){return &$fail 'stderr artifact does not match the receipt hash'}
+        $agentResult=[ordered]@{
+            invocationId=[string]$receipt.invocationId
+            provider=[string]$receipt.provider; model=[string]$receipt.model; reasoningIntent=[string]$receipt.reasoningIntent; profile=[string]$receipt.profile; attempt=[int]$receipt.attempt
+            exitCode=[int]$receipt.exitCode; providerClass=[string]$receipt.providerClass; resultClass=[string]$receipt.resultClass
+            structuredResult=$receipt.structuredResult; promptArtifact=[string]$receipt.promptArtifact; promptHash=[string]$receipt.promptHash; stdoutArtifact=[string]$receipt.stdoutArtifact; stderrArtifact=[string]$receipt.stderrArtifact
+            stdoutHash=[string]$receipt.stdoutHash; stderrHash=[string]$receipt.stderrHash; controlRecordHash=[string]$receipt.controlRecordHash
+            duration=[double]$receipt.duration; contextRolloverRequired=[bool]$receipt.contextRolloverRequired
+            capabilityVersion=[string]$receipt.capabilityVersion; continuationCheckpoint=[string]$receipt.continuationCheckpoint
+            usage=$receipt.usage; cachedTokens=$receipt.cachedTokens; returnedModels=@(@($receipt.returnedModels)|Where-Object{$_}); requestManifestPath=[string]$receipt.requestManifestPath; requestManifestHash=[string]$receipt.requestManifestHash; costUsd=$receipt.costUsd; telemetryConsistent=[bool]$receipt.telemetryConsistent
+            resultReceiptPath=$receiptPath; resultReceiptHash=[string]$receipt.receiptHash
+        }
+        # The `source` field attributes the recovery AUTHORITY: a receipt that
+        # existed before the restart.  A receipt written during legacy
+        # reconstruction below never rewrites this attribution.
+        return [ordered]@{outcome='RECOVERED_TERMINAL_RESULT';reason='validated agent-result receipt';source='AGENT_RESULT_RECEIPT';agentResult=$agentResult;receiptPath=$receiptPath;receiptHash=[string]$receipt.receiptHash}
+    }
+
+    # Legacy fallback: no receipt exists.  Reconstruct only when the immutable
+    # provider stream itself proves a terminal result.
+    if (-not (Test-Path -LiteralPath $stdoutPath)) {
+        # The provider either never launched or left no capture; either way no
+        # terminal result can be proven.  Route into the normal retry
+        # machinery without ever inferring SUCCESS.
+        return [ordered]@{outcome='PROVABLY_INCOMPLETE';reason='stdout artifact is absent';source='LEGACY_ARTIFACT_STRICT';agentResult=(New-RealAgentSyntheticIncompleteResult -Provider $Provider -Model $Model -Profile $Profile -ReasoningEffort $ReasoningEffort -InvocationId $InvocationId -Attempt $Attempt -Role $Role -PromptArtifact $promptPath -PromptHash $PromptHash -StdoutArtifact $stdoutPath -StderrArtifact $stderrPath -ContinuationCheckpoint $ContinuationCheckpoint);receiptPath='';receiptHash=''}
+    }
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)
+    $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $raw } elseif ($Provider -eq 'glm') { ConvertFrom-RealGlmOutput $raw } else { ConvertFrom-RealCodexOutput $raw })
+    $control=$parsed.control
+    $terminalProof=$false
+    if ($Provider -eq 'glm') { $terminalProof=Test-GlmFinalStructuredEvent -Events @($parsed.events) }
+    elseif ($Provider -eq 'deepseek') { $terminalProof=Test-DeepSeekFinalStructuredEvent -Events @($parsed.events) }
+    elseif ($Provider -eq 'codex') { $terminalProof=($null -ne $control) }
+    else { $terminalProof=($null -ne $control) }
+    if ($control -and [bool]$control.isError) {
+        # The control channel itself proves an errored terminal result; the
+        # unknown process exit code is resolved to a nonzero sentinel, which
+        # the shared classifier attributes only from this control channel.
+        $result=ConvertTo-RealAgentInvocationResult -Provider $Provider -Role $roleParam -InvocationId $InvocationId -Attempt $Attempt -Profile $Profile -Route ([ordered]@{model=$Model;reasoningIntent=$ReasoningEffort;capabilityVersion=''}) -ExitCode 1 -DurationSec 0 -StdoutText $raw -PromptFile $promptPath -StdoutLog $stdoutPath -StderrLog $stderrPath -ContinuationCheckpoint $ContinuationCheckpoint
+        # The receipt written here is a side effect of reconstruction, not the
+        # authority the recovery used; the source stays legacy-strict.
+        return [ordered]@{outcome='RECOVERED_TERMINAL_RESULT';reason='legacy artifacts prove an errored terminal control channel';source='LEGACY_ARTIFACT_STRICT';agentResult=$result;receiptPath=$result.resultReceiptPath;receiptHash=$result.resultReceiptHash}
+    }
+    if (-not $terminalProof) {
+        return [ordered]@{outcome='PROVABLY_INCOMPLETE';reason='provider stream lacks a terminal event';source='LEGACY_ARTIFACT_STRICT';agentResult=(New-RealAgentSyntheticIncompleteResult -Provider $Provider -Model $Model -Profile $Profile -ReasoningEffort $ReasoningEffort -InvocationId $InvocationId -Attempt $Attempt -Role $Role -PromptArtifact $promptPath -PromptHash $PromptHash -StdoutArtifact $stdoutPath -StderrArtifact $stderrPath -ContinuationCheckpoint $ContinuationCheckpoint);receiptPath='';receiptHash=''}
+    }
+    # Terminal non-error control channel: the CLI finished writing its result
+    # normally, which is the only exit-zero proof the control contract has.
+    $result=ConvertTo-RealAgentInvocationResult -Provider $Provider -Role $roleParam -InvocationId $InvocationId -Attempt $Attempt -Profile $Profile -Route ([ordered]@{model=$Model;reasoningIntent=$ReasoningEffort;capabilityVersion=''}) -ExitCode 0 -DurationSec 0 -StdoutText $raw -PromptFile $promptPath -StdoutLog $stdoutPath -StderrLog $stderrPath -ContinuationCheckpoint $ContinuationCheckpoint
+    if($result.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT'){
+        return [ordered]@{outcome='PROVABLY_INCOMPLETE';reason='provider stream is not a provably terminal result';source='LEGACY_ARTIFACT_STRICT';agentResult=(New-RealAgentSyntheticIncompleteResult -Provider $Provider -Model $Model -Profile $Profile -ReasoningEffort $ReasoningEffort -InvocationId $InvocationId -Attempt $Attempt -Role $Role -PromptArtifact $promptPath -PromptHash $PromptHash -StdoutArtifact $stdoutPath -StderrArtifact $stderrPath -ContinuationCheckpoint $ContinuationCheckpoint);receiptPath='';receiptHash=''}
+    }
+    # Same side-effect rule as the errored-control branch above: a receipt
+    # written by reconstruction does not change the legacy-strict source.
+    return [ordered]@{outcome='RECOVERED_TERMINAL_RESULT';reason='legacy artifacts prove a terminal provider result';source='LEGACY_ARTIFACT_STRICT';agentResult=$result;receiptPath=$result.resultReceiptPath;receiptHash=$result.resultReceiptHash}
+}
+
+# Deterministic dispatcher-side representation of a provably incomplete
+# invocation.  It carries no provider authority and never claims SUCCESS; the
+# finalizer routes it through the ordinary retry/failover machinery.
+function New-RealAgentSyntheticIncompleteResult {
+    param([string]$Provider,[string]$Model,[string]$Profile,[string]$ReasoningEffort,[string]$InvocationId,[int]$Attempt,[string]$Role,[string]$PromptArtifact,[string]$PromptHash,[string]$StdoutArtifact,[string]$StderrArtifact,[string]$ContinuationCheckpoint)
+    return [ordered]@{
+        invocationId=$InvocationId
+        provider=$Provider; model=$Model; reasoningIntent=$ReasoningEffort; profile=$Profile; attempt=$Attempt
+        exitCode=-1; providerClass='INCOMPLETE_PROVIDER_RESULT'; resultClass='AGENT_FAILURE'
+        structuredResult=$null; promptArtifact=$PromptArtifact; promptHash=$PromptHash; stdoutArtifact=$StdoutArtifact; stderrArtifact=$StderrArtifact
+        stdoutHash=$(if(Test-Path -LiteralPath $StdoutArtifact){New-FileHash $StdoutArtifact}else{'sha256:absent'}); stderrHash=$(if(Test-Path -LiteralPath $StderrArtifact){New-FileHash $StderrArtifact}else{'sha256:absent'}); controlRecordHash=$(if(Test-Path -LiteralPath $StdoutArtifact){New-StringHash ([string][IO.File]::ReadAllText($StdoutArtifact))}else{'sha256:absent'})
+        duration=0; contextRolloverRequired=$false
+        capabilityVersion=''; continuationCheckpoint=$ContinuationCheckpoint
+        usage=$null; cachedTokens=$null; returnedModels=@(); requestManifestPath=''; requestManifestHash=$null; costUsd=$null; telemetryConsistent=$true
+        syntheticIncomplete=$true
+        resultReceiptPath=''; resultReceiptHash=''
+    }
+}
+
 function Invoke-RealAgent {
     param(
         [Parameter(Mandatory)][ValidateSet('claude','codex','deepseek','glm')][string]$Provider,
@@ -134,7 +402,10 @@ function Invoke-RealAgent {
 
     $route = Resolve-Provider -Profile $Profile -Provider $Provider
     if (-not $route.ok) {
-        return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false }
+        # Route resolution failed before any provider child existed, so there
+        # is no provider output to receipt; the dispatcher-side failure class
+        # is fully determined by the route result.
+        return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';stderrHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false;resultReceiptPath='';resultReceiptHash='' }
     }
     $deepSeekRequestManifest=$null;$deepSeekRequestManifestPath=''
     if($Provider -eq 'deepseek'){
@@ -219,55 +490,7 @@ function Invoke-RealAgent {
     $proc = Invoke-NativeCaptured -Exe $launch.exe -Arguments $launch.arguments -WorkingDirectory $Workspace -StdinFile $promptFile `
         -StdoutLog $stdoutLog -StderrLog $stderrLog -TimeoutSec $TimeoutSec -EnvironmentOverrides $envBlock
 
-    $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $proc.stdout } elseif ($Provider -eq 'glm') { ConvertFrom-RealGlmOutput $proc.stdout } else { ConvertFrom-RealCodexOutput $proc.stdout })
-    $legacy = Get-FailureClassV2 -Provider $Provider -ExitCode $proc.exitCode -Control $parsed.control
-    $providerClass = ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
-    $structured = $parsed.structured
-    $resultClass = 'AGENT_FAILURE'
-    if ($structured) {
-        if ($Role -eq 'reviewer') { $resultClass = $(if ($structured.verdict) { [string]$structured.verdict } else { 'AGENT_FAILURE' }) }
-        else { $resultClass = [string]$structured.resultClass }
-    } elseif (Test-IsCanonicalProviderClass $providerClass) { $resultClass = 'AGENT_FAILURE' }
-    if (($structured -and "$($structured.resultClass)" -eq 'CONTEXT_ROLLOVER') -or (Test-IsContextExhaustion $parsed.control)) {
-        $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
-    }
-    if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
-    # Same fail-closed contract as DeepSeek: an exit-zero OpenCode stream
-    # without a terminal step_finish never becomes candidate provenance.
-    if($Provider -eq 'glm' -and -not(Test-GlmFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
-    if ($proc.exitCode -eq 0 -and $structured -and $providerClass -eq 'NONE' -and $Role -ne 'reviewer') {
-        $schemaErrors = Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $structured)) (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
-        if ($schemaErrors.Count -gt 0) { $structured = $null; $resultClass = 'AGENT_FAILURE' }
-    }
-
-    $usage=$null;$cost=$null;$telemetryConsistent=$true;$returnedModels=@()
-    if($Provider -eq 'deepseek'){
-        $usage=Get-DeepSeekUsageFromEvents -Events @($parsed.events)
-        $returnedModels=Get-DeepSeekReturnedModel -Events @($parsed.events)
-        $resolution=$(if($deepSeekRequestManifest){Resolve-DeepSeekBillableModel -RequestManifest $deepSeekRequestManifest -Events @($parsed.events) -ExitCode $proc.exitCode}else{$null})
-        if($resolution -and $resolution.ok){try{$cost=Register-DeepSeekUsage -Usage $usage -InvocationId $invocationId -Model $route.model -ReturnedModels $returnedModels -BillableResolution $resolution -ResultClass $resultClass -ExitCode $proc.exitCode}catch{$telemetryConsistent=$false;$unknownReason=$_.Exception.Message}}
-        else{$telemetryConsistent=$false;$unknownReason=$(if($resolution){$resolution.reason}elseif(-not $usage){'usage is absent'}else{'request manifest is absent'})}
-        if(-not $telemetryConsistent){try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason $unknownReason -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
-        $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$route.maxOutputTokens)
-        if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $invocationId -Model $route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $proc.exitCode)}catch{}}
-        if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
-    }
-    if($Provider -eq 'glm'){
-        # GLM runs on a subscription coding plan: there is no per-token budget
-        # ledger and no billable-model proof obligation.  step_finish token
-        # telemetry is recorded best-effort; its absence is not an integrity
-        # failure, so telemetryConsistent stays true.
-        $usage=Get-GlmUsageFromEvents -Events @($parsed.events)
-        $cost=$(if($usage){$usage.costUsd}else{$null})
-    }
-    return [ordered]@{
-        invocationId=$invocationId
-        provider=$Provider; model=$route.model; reasoningIntent=$route.reasoningIntent; profile=$Profile; attempt=$Attempt
-        exitCode=$proc.exitCode; providerClass=$providerClass; resultClass=$resultClass
-        structuredResult=$structured; promptArtifact=$promptFile;promptHash=(New-FileHash $promptFile);stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog
-        stdoutHash=(New-FileHash $stdoutLog);controlRecordHash=(New-StringHash ([string]$proc.stdout))
-        duration=$proc.durationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
-        capabilityVersion=$route.capabilityVersion; continuationCheckpoint=$ContinuationCheckpoint
-        usage=$usage;cachedTokens=$(if($usage){$usage.cachedTokens}else{$null});returnedModels=@($returnedModels);requestManifestPath=$deepSeekRequestManifestPath;requestManifestHash=$(if($deepSeekRequestManifest){[string]$deepSeekRequestManifest.manifestHash}else{$null});costUsd=$cost;telemetryConsistent=$telemetryConsistent
-    }
+    return (ConvertTo-RealAgentInvocationResult -Provider $Provider -Role $Role -InvocationId $invocationId -Attempt $Attempt -Profile $Profile -Route $route `
+        -ExitCode ([int]$proc.exitCode) -DurationSec ([double]$proc.durationSec) -StdoutText ([string]$proc.stdout) -PromptFile $promptFile -StdoutLog $stdoutLog -StderrLog $stderrLog `
+        -ContinuationCheckpoint $ContinuationCheckpoint -DeepSeekRequestManifest $deepSeekRequestManifest -DeepSeekRequestManifestPath $deepSeekRequestManifestPath -LiveBudgetAccounting)
 }

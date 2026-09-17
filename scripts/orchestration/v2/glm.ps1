@@ -97,6 +97,92 @@ function ConvertFrom-GlmEvents {
     }
 }
 
+# Extract fenced code blocks from a final assistant message with a bounded
+# line scanner (no unbounded greedy regex over arbitrary output).  Each block
+# is @{ tag = <info-string or ''>; body = <raw inner text> }.  GLM sometimes
+# glues the payload to the opening fence (```{...} on one line, no newline):
+# an opener remainder that begins with `{` is not a plausible info string,
+# so it is kept as the first body line and the block stays generic.
+function Get-GlmFencedBlocks {
+    param([string]$Text)
+    $blocks = @()
+    $lines = @($Text -split "`r?`n")
+    $open = $false; $tag = ''; $body = New-Object System.Text.StringBuilder
+    foreach ($line in $lines) {
+        if ($line -match '^\s*```') {
+            if (-not $open) {
+                $open = $true
+                $tag = ($line -replace '^\s*```', '').Trim()
+                $body = New-Object System.Text.StringBuilder
+                if ($tag -and $tag.StartsWith('{')) { [void]$body.AppendLine($tag); $tag = '' }
+                continue
+            }
+            $blocks += [ordered]@{ tag = $tag; body = $body.ToString() }; $open = $false; $tag = ''; continue
+        }
+        if ($open) { [void]$body.AppendLine($line) }
+    }
+    return @($blocks)
+}
+
+# GLM regularly answers with explanatory prose followed by the required
+# structured envelope inside a fenced ```json block.  The whole final message
+# is therefore NOT required to be raw JSON: extract the structured result, in
+# order, from (1) whole-text JSON, (2) the last parseable ```json fenced
+# block, (3) the last parseable generic fenced block - accepted only when it
+# contains the expected structured-result field marker.
+function ConvertFrom-GlmStructuredText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $parsed = $null
+    try { $parsed = ([string]$Text.Trim() | ConvertFrom-Json) } catch { $parsed = $null }
+    if (-not $parsed) {
+        $blocks = @(Get-GlmFencedBlocks -Text $Text)
+        $tagged = @($blocks | Where-Object { "$($_.tag)" -match '^(?i)jsonc?$' })
+        for ($i = $tagged.Count - 1; $i -ge 0; $i--) {
+            try { $parsed = ([string]$tagged[$i].body.Trim() | ConvertFrom-Json) } catch { $parsed = $null }
+            if ($parsed) { break }
+        }
+    }
+    if (-not $parsed) {
+        $generic = @($blocks | Where-Object { -not "$($_.tag)" })
+        for ($i = $generic.Count - 1; $i -ge 0; $i--) {
+            $candidate = $null
+            try { $candidate = ([string]$generic[$i].body.Trim() | ConvertFrom-Json) } catch { $candidate = $null }
+            if ($candidate -and ($candidate.PSObject.Properties.Name -contains 'resultClass' -or $candidate.PSObject.Properties.Name -contains 'verdict')) { $parsed = $candidate; break }
+        }
+    }
+    if (-not $parsed) { return $null }
+    return (ConvertTo-GlmAgentEnvelope $parsed)
+}
+
+# Normalize a parsed GLM structured payload to the frozen agent-result schema.
+# A payload that already carries the envelope identity is returned unchanged;
+# a payload with only the decision fields (resultClass/summary) is completed
+# with inert defaults and non-schema properties are dropped, so the envelope
+# that reaches dispatcher classification is always schema-valid or absent.
+function ConvertTo-GlmAgentEnvelope {
+    param($Parsed)
+    $h = _ToHashtable $Parsed
+    if (-not $h) { return $null }
+    if ("$($h['schemaVersion'])" -eq 'orcivo.orchestration.v2.agent-result/1' -and "$($h['role'])") { return $h }
+    if (-not $h.Contains('resultClass')) { return $null }
+    $class = [string]$h['resultClass']
+    if ($class -notin @('SUCCESS','BLOCK','CONTEXT_ROLLOVER','AGENT_FAILURE','TEST_FAILURE')) { return $null }
+    $summary = [string]$h['summary']
+    if ([string]::IsNullOrWhiteSpace($summary)) { $summary = 'GLM structured result (normalized envelope)' }
+    if ($summary.Length -gt 4000) { $summary = $summary.Substring(0, 4000) }
+    return [ordered]@{
+        schemaVersion = 'orcivo.orchestration.v2.agent-result/1'
+        role          = 'IMPLEMENTER'
+        resultClass   = $class
+        summary       = $summary
+        decisions     = @()
+        tests         = @()
+        nextAction    = 'none'
+        importantArtifacts = @()
+    }
+}
+
 function ConvertFrom-RealGlmOutput {
     param([string]$Text)
     $events = @()
@@ -111,7 +197,7 @@ function ConvertFrom-RealGlmOutput {
     }
     $structured = $null
     if ($texts.Count -gt 0) {
-        try { $structured = ($texts[-1] | ConvertFrom-Json) } catch { }
+        $structured = (ConvertFrom-GlmStructuredText -Text ([string]$texts[-1]))
     }
     return @{ control = $control; structured = $(if ($structured) { _ToHashtable $structured } else { $null }); events = @($events); texts = @($texts) }
 }

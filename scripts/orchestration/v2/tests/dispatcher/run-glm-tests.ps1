@@ -257,6 +257,43 @@ try{
         Assert-True (-not (Test-DispatcherAuthorizedReviewSuccessionState -State $foreign)) 'a foreign WAITING_PROVIDER/REVIEW lineage matched the closed succession'
         Assert-True (-not (Test-DispatcherAuthorizedReviewSuccessionEligible -State $foreign -Task ([ordered]@{taskId='PB1-P09-other';candidateConstraints=@{}}) -Contract ([ordered]@{taskVersionId='7'*64}) -TaskSource ([ordered]@{hash='sha256:x'}))) 'a foreign lineage passed full eligibility'
     }
+    Check 'GL-15' {
+        # Real GLM shape: explanatory prose followed by a fenced ```json block
+        # carrying the structured decision fields.
+        $prose="All checks pass. Implementation complete:`n`n- state machine added`n- service validation`n`n``````json`n{`n  `"resultClass`": `"SUCCESS`",`n  `"taskVersion`": `"a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62`",`n  `"summary`": `"work-order state machine implemented`",`n  `"acceptanceCoverage`": { `"AC1`": `"covered`" },`n  `"filesChanged`": { `"backendAdded`": [`"work-order-state.machine.ts`"] },`n  `"verification`": { `"typecheck`": `"exit 0`" },`n  `"caveats`": []`n}`n``````"
+        $lines=@(
+            '{"type":"step_start","part":{"type":"step-start"}}',
+            ('{"type":"text","part":{"type":"text","text":'+($prose|ConvertTo-Json -Compress)+'}}'),
+            '{"type":"step_finish","part":{"type":"step-finish","reason":"stop","tokens":{"total":163727,"input":327,"output":1271,"reasoning":785,"cache":{"write":0,"read":161344}},"cost":0}}'
+        )
+        $parsed=ConvertFrom-RealGlmOutput (($lines -join "`n")+"`n")
+        Assert-True ($parsed.structured -and $parsed.structured.resultClass -eq 'SUCCESS') 'prose plus fenced structured JSON did not parse as a structured result'
+        $schemaPath=Join-Path (Get-RepoRoot) '.orchestration\v2\schemas\agent-result.schema.json'
+        $schema=Get-Content -Raw -LiteralPath $schemaPath|ConvertFrom-Json
+        $errors=Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $parsed.structured)) $schema
+        Assert-True ($errors.Count -eq 0) "normalized envelope failed the frozen agent-result schema: $($errors -join '; ')"
+        Assert-True ($parsed.structured.summary -eq 'work-order state machine implemented') 'normalized envelope lost the provider summary'
+        Assert-True (Test-GlmFinalStructuredEvent @($parsed.events)) 'terminal step_finish was not recognized beside prose'
+        $multi="First block (ignored).`n`n``````json`n{`"resultClass`": `"TEST_FAILURE`",`"summary`": `"stale earlier block`"}`n```````n`nMore prose.`n`n``````json`n{`"resultClass`": `"SUCCESS`",`"summary`": `"latest block`"}`n``````"
+        $last=ConvertFrom-GlmStructuredText $multi
+        Assert-True ($last -and $last.resultClass -eq 'SUCCESS' -and $last.summary -eq 'latest block') 'the LAST valid fenced json block was not selected'
+        $generic="Prose only.`n`n``````{`"resultClass`": `"SUCCESS`",`"summary`": `"generic fence`"}`n``````"
+        $fromGeneric=ConvertFrom-GlmStructuredText $generic
+        Assert-True ($fromGeneric -and $fromGeneric.resultClass -eq 'SUCCESS') 'a generic fenced block with the expected fields was not accepted'
+        $unmarked="Prose with an unrelated fence.`n`n``````{`"notes`": `"no decision fields`"}`n``````"
+        Assert-True (-not (ConvertFrom-GlmStructuredText $unmarked)) 'a generic fence without expected structured fields was accepted'
+        Assert-True (-not (ConvertFrom-GlmStructuredText "plain prose without any fence")) 'plain prose produced a structured result'
+    }
+    Check 'GL-16' {
+        $whole=ConvertFrom-GlmStructuredText '{"schemaVersion":"orcivo.orchestration.v2.agent-result/1","role":"IMPLEMENTER","resultClass":"BLOCK","summary":"blocked","decisions":[],"tests":[],"nextAction":"none","importantArtifacts":[]}'
+        Assert-True ($whole -and $whole.resultClass -eq 'BLOCK' -and $whole.role -eq 'IMPLEMENTER') 'a full whole-text envelope was altered by normalization'
+        $invalid=ConvertFrom-GlmStructuredText ("``````json`n{`"resultClass`": `"NOT_A_CLASS`"}`n``````")
+        Assert-True (-not $invalid) 'an out-of-enum resultClass was accepted'
+        $truncated="``````json`n{`"resultClass`": `"SUCCESS`""
+        Assert-True (-not (ConvertFrom-GlmStructuredText $truncated)) 'an unterminated/malformed fence produced a structured result'
+        $blocks=@(Get-GlmFencedBlocks -Text ("before`n``````js`ncode()`n```````nmiddle`n``````json`n{}`n```````nafter"))
+        Assert-True ($blocks.Count -eq 2 -and "$($blocks[0].tag)" -eq 'js' -and "$($blocks[1].tag)" -eq 'json') 'bounded fence scanner mis-parsed tags or blocks'
+    }
 }finally{
     $results|ForEach-Object{Write-Output $_}
     $fails=@($results|Where-Object{$_ -match ' FAIL:'});Write-Output ("GLM_TESTS: "+$(if($fails.Count){'FAIL'}else{'PASS'})+" ($($results.Count-$fails.Count)/$($results.Count) PASS)")

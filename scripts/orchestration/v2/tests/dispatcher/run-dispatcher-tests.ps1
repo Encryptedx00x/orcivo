@@ -1,4 +1,4 @@
-<# RD-01..RD-20 dispatcher regression suite. -IncludeReal invokes both paid CLIs. #>
+﻿<# RD-01..RD-20 dispatcher regression suite. -IncludeReal invokes both paid CLIs. #>
 param([switch]$IncludeReal,[string[]]$Only=@())
 $ErrorActionPreference='Stop'
 $V2=[System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -1087,6 +1087,351 @@ try{
             Assert-True (-not $wrongTail.eligible -and -not $wrongReceipt.eligible -and -not $wrongControl.eligible -and -not $wrongPaths.eligible -and -not $badRoute.eligible -and -not $later.eligible -and -not $active.eligible) 'completed implementation recovery accepted a divergent tail, receipt, control record, path set, route, later invocation, or active execution'
             Remove-DispatcherWorkspace -Workspace $f.workspace
         }
+
+        # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-128) ----
+        # The fake agent replaces Invoke-RealAgent only inside the restart
+        # driver's dynamic scope: it performs the exact durable steps of a GLM
+        # implementer (immutable prompt, pre-launch snapshot callback, in-scope
+        # uncommitted change, JSONL control stream) and classifies through the
+        # SAME shared core the live provider path uses.  StopAt/Scenario are
+        # test-only knobs on this harness function; no production code path
+        # reads them.
+        $script:AutopilotAgentScenario='SUCCESS'
+        function Invoke-AutopilotFakeAgent {
+            param($Provider,$Role,$TaskVersion,$Profile,$Workspace,$StructuredPrompt,$ArtifactDir,$TimeoutSec=900,$Attempt=1,$ContinuationCheckpoint='',$InvocationId='',$BeforeLaunch=$null,$StopAt='')
+            New-Item -ItemType Directory -Force -Path $ArtifactDir|Out-Null
+            $invocationId=$(if($InvocationId){$InvocationId}else{New-AttemptId})
+            $stamp='{0}-{1:000}-{2}-{3}' -f $Role,$Attempt,$Provider,$invocationId.Substring(4,8)
+            $promptFile=Join-Path $ArtifactDir "$stamp.prompt.txt"
+            [IO.File]::WriteAllText($promptFile,(Protect-ArtifactText $StructuredPrompt),(New-Utf8NoBom))
+            $stdoutLog=Join-Path $ArtifactDir "$stamp.stdout.log";$stderrLog=Join-Path $ArtifactDir "$stamp.stderr.log"
+            $route=[ordered]@{ok=$true;provider=$Provider;model=$(if($Provider -eq 'glm'){Get-GlmModelId}else{'fake-reviewer-model'});reasoningIntent='low';capabilityVersion='fake-capability';maxOutputTokens=16000}
+            if($BeforeLaunch){& $BeforeLaunch ([ordered]@{invocationId=$invocationId;promptArtifact=[IO.Path]::GetFullPath($promptFile);promptHash=(New-FileHash $promptFile);provider=$Provider;model=[string]$route.model;reasoningEffort=[string]$route.reasoningIntent;profile=$Profile;attempt=$Attempt;requestManifestPath='';requestManifestHash=''})}
+            if($StopAt -eq 'PRE_ONLY'){return [ordered]@{__autopilotStoppedAt='PRE_ONLY'}}
+            $scenario=$script:AutopilotAgentScenario
+            $raw=''
+            if($Role -eq 'implementer'){
+                if($scenario -in @('SUCCESS','PARTIAL_ENVELOPE','COMMIT')){Write-Utf8 (Join-Path $Workspace 'work\impl.ts') "export const implemented = true;`n"}
+                if($scenario -eq 'OUT_OF_SCOPE'){Write-Utf8 (Join-Path $Workspace 'outside.ts') "export const outside = true;`n"}
+                if($scenario -eq 'COMMIT'){Write-Utf8 (Join-Path $Workspace 'work\base.txt') "modified by sneaky provider`n";& git -C $Workspace add -A;& git -C $Workspace -c user.name=fake -c user.email=fake@local commit -m sneaky --quiet}
+                if($scenario -eq 'PARTIAL_ENVELOPE'){
+                    $envelope=[ordered]@{resultClass='SUCCESS';taskVersion=$TaskVersion;taskId='fixture';summary='synthetic partial GLM envelope';acceptanceCoverage=@{};filesChanged=@{};verification=@{};caveats=@()}
+                }else{
+                    $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.agent-result/1';role='IMPLEMENTER';resultClass='SUCCESS';summary='synthetic autopilot provider result';decisions=@('synthetic decision recorded');tests=@([ordered]@{command='fixture suite';status='PASS';evidence='synthetic'});nextAction='none';importantArtifacts=@()}
+                }
+                $prose="All checks pass. Implementation complete (synthetic).`n`n``````json`n$(ConvertTo-Json $envelope -Depth 10)`n``````"
+                $textEvent=[ordered]@{type='text';part=[ordered]@{type='text';text=$prose}}
+                $lines=@((ConvertTo-Json ([ordered]@{type='step_start';part=[ordered]@{type='step-start'}}) -Compress -Depth 6),(ConvertTo-Json $textEvent -Compress -Depth 8))
+                if($scenario -ne 'INCOMPLETE'){$lines+=(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop';tokens=[ordered]@{total=100;input=20;output=10;reasoning=5;cache=[ordered]@{write=0;read=70}};cost=0}}) -Compress -Depth 8)}
+                $raw=($lines -join "`n")+"`n"
+            }else{
+                # Reviewer failure: the JSONL API-backed providers (deepseek,
+                # glm) fail closed on an exit-zero stream without a terminal
+                # event, which would turn this into a review-hold instead of
+                # the provider-wait failover these tests pin.  The terminal
+                # event keeps the failure a canonical PROVIDER_UNAVAILABLE.
+                $lines=@((ConvertTo-Json ([ordered]@{type='error';error=[ordered]@{status=503;message='provider unavailable for fixture review'}}) -Compress -Depth 6))
+                if($Provider -eq 'deepseek'){$lines+=(ConvertTo-Json ([ordered]@{type='turn.completed'}) -Compress -Depth 4)}
+                if($Provider -eq 'glm'){$lines+=(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop'}}) -Compress -Depth 6)}
+                $raw=($lines -join "`n")+"`n"
+            }
+            [IO.File]::WriteAllText($stdoutLog,$raw,(New-Utf8NoBom));[IO.File]::WriteAllText($stderrLog,'',(New-Utf8NoBom))
+            if($StopAt -eq 'PROVIDER_DONE_NO_RECEIPT'){return [ordered]@{__autopilotStoppedAt='PROVIDER_DONE_NO_RECEIPT'}}
+            return (ConvertTo-RealAgentInvocationResult -Provider $Provider -Role $Role -InvocationId $invocationId -Attempt $Attempt -Profile $Profile -Route $route -ExitCode 0 -DurationSec 0.1 -StdoutText $raw -PromptFile $promptFile -StdoutLog $stdoutLog -StderrLog $stderrLog -ContinuationCheckpoint $ContinuationCheckpoint)
+        }
+        $script:AutopilotAgentWrapper={
+            param($Provider,$Role,$TaskVersion,$Profile,$Workspace,$StructuredPrompt,$ArtifactDir,$TimeoutSec=900,$Attempt=1,$ContinuationCheckpoint='',$InvocationId='',$BeforeLaunch=$null)
+            $script:AutopilotAgentCalls+=@([ordered]@{role=[string]$Role;provider=[string]$Provider;attempt=[int]$Attempt})
+            Invoke-AutopilotFakeAgent -Provider $Provider -Role $Role -TaskVersion $TaskVersion -Profile $Profile -Workspace $Workspace -StructuredPrompt $StructuredPrompt -ArtifactDir $ArtifactDir -TimeoutSec $TimeoutSec -Attempt $Attempt -ContinuationCheckpoint $ContinuationCheckpoint -InvocationId $InvocationId -BeforeLaunch $BeforeLaunch
+        }
+        $script:AutopilotAgentCalls=@()
+
+        function New-AutopilotFixture {
+            param([string]$Id)
+            $task=Task ("AP-"+$Id) @() 'C' 'level-c-autopilot'
+            $sourcePath=Join-Path $Fixture ("autopilot-"+$Id+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
+            $contract=New-DispatcherContract -Task $task -TaskSource $source
+            New-OwnerGateApproval -TaskId $task.taskId -TaskVersionId $contract.taskVersionId -GateId $task.ownerGate -ApprovalScope 'fixture-local autopilot reconciliation only' -ApprovedBy owner -ApprovalSource 'dispatcher autopilot regression'|Out-Null
+            $base=(& git -C $Fixture rev-parse HEAD).Trim()
+            $runId='run-ap-'+(New-StringHash ($Id+'|'+[guid]::NewGuid().ToString('N'))).Substring(7,16)
+            $ws=New-DispatcherWorkspace -RunId $runId -WorkspaceId $runId -BaseSha $base -SourceRepo $Fixture
+            $baseCount=(& git -C $ws.workspace rev-list --count HEAD).Trim()
+            Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId -AttemptId (New-AttemptId)|Out-Null
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$ws.workspace;branch=$ws.branch;baseSha=$base;candidateBase=$base;provider='glm';profile='FAST';model=(Get-GlmModelId);classification=$null;attempt=0;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();workspaceInvocationSnapshots=@();implementationComplete=$false;implementationCommit='';recoveredCandidateCommit='';candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId='fixture';memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0;integration=$null}
+            Write-DispatcherState $state|Out-Null
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$ws.workspace;branch=$ws.branch;runId=$runId;base=$base;baseCount=$baseCount}
+        }
+
+        function Invoke-AutopilotDriveToBoundary {
+            param($f,[string]$StopAt,[string]$Scenario='SUCCESS')
+            $state=Get-DispatcherState
+            $state.attempt=[int]$state.attempt+1;Write-DispatcherState $state|Out-Null
+            $state=Get-DispatcherState
+            $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
+            $prompt=New-ImplementerPrompt -Task $f.task -Contract $f.contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $null -MemoryContext ''
+            $preLaunch={param($launch) New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId ([string]$launch.invocationId) -PromptArtifact ([string]$launch.promptArtifact) -PromptHash ([string]$launch.promptHash) -Provider ([string]$launch.provider) -Model ([string]$launch.model) -ReasoningEffort ([string]$launch.reasoningEffort) -Attempt ([int]$launch.attempt)|Out-Null}
+            $script:AutopilotAgentScenario=$Scenario
+            try{
+                return (Invoke-AutopilotFakeAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -Attempt ([int]$state.attempt) -BeforeLaunch $preLaunch -StopAt $StopAt)
+            }finally{$script:AutopilotAgentScenario='SUCCESS'}
+        }
+
+        function Invoke-AutopilotRestart {
+            param($f)
+            Remove-Item -LiteralPath (Join-Path (Get-V2Dir) (Get-V2Config).pilot.stopFile) -Force -ErrorAction SilentlyContinue
+            $script:AutopilotAgentCalls=@()
+            Set-Item -Path function:Invoke-RealAgent -Value $script:AutopilotAgentWrapper
+            try{ return (Invoke-RealDispatcherTask -Task $f.task -TaskSource $f.source) }
+            finally{ ${function:Invoke-RealAgent}=$script:AutopilotRealAgent }
+        }
+        $script:AutopilotRealAgent=${function:Invoke-RealAgent}
+
+        function Assert-AutopilotRecoveredRun {
+            param($f,$r,[string]$ExpectedSource,[int]$ExpectedNewImplementerInvocations,[int]$ExpectedImplementerHistory=1)
+            Assert-True ("$($r.status)" -eq 'WAITING_PROVIDER' -and "$($r.stage)" -eq 'REVIEW') "restart did not progress to the opposite-provider review dispatch: $($r.status)/$($r.stage) reason=$($r.reason)"
+            $state=Get-DispatcherState
+            Assert-True ([string]$state.runId -eq $f.runId -and [string]$state.taskVersionId -eq [string]$f.contract.taskVersionId) 'restart changed runId or taskVersionId'
+            $impl=@($state.providerHistory|Where-Object{$_ -and [string]$_.role -eq 'IMPLEMENTER'})
+            Assert-True ($impl.Count -eq $ExpectedImplementerHistory) "expected $ExpectedImplementerHistory implementer history entries, got $($impl.Count)"
+            $first=$impl[0]
+            Assert-True (@($state.workspaceInvocationResultSnapshots|Where-Object{[string]$_.invocationId -eq [string]$first.invocationId}).Count -le 1) 'duplicate result snapshot for the implementer invocation'
+            Assert-True ([bool]$state.implementationComplete -and [string]$state.implementationInvocationId -eq [string]$impl[-1].invocationId) 'implementation completion did not bind the implementer invocation'
+            $recon=@($state.startupReconciliationHistory|Where-Object{$_})
+            if($ExpectedSource -eq 'NONE'){
+                Assert-True ($recon.Count -eq 0) "an already-finalized lifecycle still wrote reconciliation history (entries=$($recon.Count))"
+            }else{
+                Assert-True ($recon.Count -eq 1 -and [string]$recon[0].source -eq $ExpectedSource) "reconciliation was not recorded exactly once from $ExpectedSource (got $(@($recon)|ForEach-Object{[string]$_.source}) entries=$($recon.Count))"
+            }
+            $commitCount=(& git -C $f.workspace rev-list --count HEAD).Trim()
+            Assert-True ($commitCount -eq ([string]([int]$f.baseCount+1))) "expected exactly one candidate commit over the base, got $commitCount"
+            $newImpl=@($script:AutopilotAgentCalls|Where-Object{[string]$_.role -eq 'implementer'})
+            Assert-True ($newImpl.Count -eq $ExpectedNewImplementerInvocations) "restart launched $($newImpl.Count) new implementer invocations, expected $ExpectedNewImplementerInvocations"
+        }
+
+        Check 'RD-115' {
+            $unit=Join-Path $Root 'rd115-unit'
+            & git init -b main --quiet $unit
+            New-Item -ItemType Directory -Force -Path (Join-Path $unit 'work')|Out-Null
+            Write-Utf8 (Join-Path $unit 'work\base.txt') "base`n"
+            & git -C $unit add .
+            & git -C $unit -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $unit rev-parse HEAD).Trim()
+            $task=Task 'RD115-FRESH-BASELINE'
+            $prompt=Join-Path $Root 'rd115.prompt.txt'
+            Write-Utf8 $prompt 'fresh clean implementation'
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId='run-rd115-unit';taskId=$task.taskId;taskVersionId=('f'*64);task=$task;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$unit;branch='main';baseSha=$base;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=0;implementationComplete=$false;implementationCommit='';recoveredCandidateCommit='';candidateHead='';candidateTree='';diffHash='';providerHistory=@();workspaceInvocationSnapshots=@();workspaceInvocationResultSnapshots=@()}
+            $snapshot=New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 1
+            Assert-True ([string]$snapshot.stateBinding.workspaceHead -eq $base) 'fresh clean baseline did not bind workspaceHead to baseSha'
+            Assert-True (@($snapshot.paths).Count -eq 0) 'fresh clean baseline unexpectedly recorded changed paths'
+            Assert-True ([string]$snapshot.partialDiffHash -eq (New-StringHash '')) 'fresh clean baseline diff hash is not canonical empty hash'
+            Assert-True ([string]$snapshot.partialFilesHash -eq (New-StringHash '')) 'fresh clean baseline files hash is not canonical empty hash'
+            $blockedState=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $state)
+            $blockedState.workspaceInvocationSnapshots=@()
+            $blockedState.providerHistory=@([ordered]@{invocationId='att-11111111111111111111111111111111';provider='glm'})
+            $blocked=$false
+            try{ New-DispatcherWorkspaceInvocationSnapshot -State $blockedState -Task $task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 1|Out-Null }catch{ $blocked=$_.Exception.Message -match 'workspace has no preserved partial changes' }
+            Assert-True $blocked 'clean baseline was incorrectly accepted after provider history existed'
+            Remove-Item -LiteralPath (Join-Path (Get-V2Dir) 'dispatcher\current.json') -Force -ErrorAction SilentlyContinue
+
+            $f=New-AutopilotFixture 'RD115'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $state=Get-DispatcherState
+                Assert-True ("$($finalized.disposition)" -eq 'SUCCESS') "lifecycle finalizer disposition was $($finalized.disposition)"
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $state -InvocationId ([string]$ar.invocationId)
+                Assert-True ($post -and [string]$post.workspaceHead -eq $f.base) 'result snapshot HEAD did not come from the pre-invocation state binding on a fresh baseline'
+                Assert-True (@($state.providerHistory).Count -eq 1 -and [string]$state.providerHistory[0].resultClass -eq 'SUCCESS') 'provider history was not appended exactly once with SUCCESS'
+                Assert-True ([bool]$state.implementationComplete -and [string]$state.implementationInvocationId -eq [string]$ar.invocationId) 'implementation completion did not bind the invocation id'
+                Assert-True ((Test-Path -LiteralPath ([string]$ar.resultReceiptPath)) -and [string]$ar.resultReceiptHash -match '^sha256:[0-9a-f]{64}$') 'durable agent result receipt was not persisted'
+                $again=Complete-DispatcherAgentInvocation -State $state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $state2=Get-DispatcherState
+                Assert-True ("$($again.disposition)" -eq 'SUCCESS' -and @($state2.providerHistory).Count -eq 1 -and @($state2.workspaceInvocationResultSnapshots).Count -eq 1) 're-finalizing the same invocation duplicated durable evidence'
+                $candidate=Complete-DispatcherCandidateCommit -State $state2
+                $commitCount=(& git -C $f.workspace rev-list --count HEAD).Trim()
+                Assert-True ($candidate.ok -and $candidate.created -and $commitCount -eq ([string]([int]$f.baseCount+1))) "candidate commit was not created exactly once (count=$commitCount)"
+                $repeat=Complete-DispatcherCandidateCommit -State $state2
+                $commitCount2=(& git -C $f.workspace rev-list --count HEAD).Trim()
+                Assert-True ($repeat.ok -and -not $repeat.created -and $repeat.reused -and $commitCount2 -eq $commitCount) 'candidate commit was duplicated on re-finalization'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-116' {
+            $f=New-AutopilotFixture 'RD116a'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'PRE_ONLY' 'SUCCESS'|Out-Null
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'LEGACY_ARTIFACT_STRICT' 1 2
+                $state=Get-DispatcherState
+                Assert-True ([string]$state.providerHistory[0].providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and [int]$state.attempt -eq 2) 'provider-never-produced-output boundary did not fall into the retry machinery'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+            $f=New-AutopilotFixture 'RD116b'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'PROVIDER_DONE_NO_RECEIPT' 'PARTIAL_ENVELOPE'|Out-Null
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'LEGACY_ARTIFACT_STRICT' 0 1
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-117' {
+            $f=New-AutopilotFixture 'RD117'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'|Out-Null
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'AGENT_RESULT_RECEIPT' 0 1
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-118' {
+            $f=New-AutopilotFixture 'RD118'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                $script:DispatcherFinalizerFaultAfterResultSnapshot=$true
+                try{ try{ Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'|Out-Null }catch{} }finally{ $script:DispatcherFinalizerFaultAfterResultSnapshot=$null }
+                $mid=Get-DispatcherState
+                Assert-True (@($mid.workspaceInvocationResultSnapshots).Count -eq 1 -and @($mid.providerHistory).Count -eq 0) 'fault seam did not stop between result snapshot and provider history'
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'AGENT_RESULT_RECEIPT' 0 1
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-119' {
+            $f=New-AutopilotFixture 'RD119'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                $script:DispatcherFinalizerFaultAfterProviderHistory=$true
+                try{ try{ Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'|Out-Null }catch{} }finally{ $script:DispatcherFinalizerFaultAfterProviderHistory=$null }
+                $mid=Get-DispatcherState
+                Assert-True (@($mid.providerHistory).Count -eq 1 -and -not [bool]$mid.implementationComplete) 'fault seam did not stop between provider history and implementation completion'
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'AGENT_RESULT_RECEIPT' 0 1
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-120' {
+            $f=New-AutopilotFixture 'RD120'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'|Out-Null
+                $mid=Get-DispatcherState
+                Assert-True ([bool]$mid.implementationComplete -and -not [string]$mid.implementationCommit) 'boundary did not stop after implementation completion and before the candidate commit'
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'NONE' 0 1
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-121' {
+            $f=New-AutopilotFixture 'RD121'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'|Out-Null
+                $state=Get-DispatcherState
+                $candidate=Complete-DispatcherCandidateCommit -State $state
+                Assert-True ($candidate.ok -and $candidate.created) 'pre-restart candidate commit failed'
+                $state.implementationCommit=[string]$candidate.head;Write-DispatcherState $state|Out-Null
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'NONE' 0 1
+                $head=Get-GitHeadV2 $f.workspace
+                Assert-True ($head -eq [string]$candidate.head) 'restart advanced past the preserved candidate commit instead of reusing it'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-122' {
+            $f=New-AutopilotFixture 'RD122'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'COMMIT'|Out-Null
+                $failed=$false
+                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'workspace HEAD drift' }
+                $state=Get-DispatcherState
+                Assert-True ($failed -and @($state.providerHistory).Count -eq 0 -and "$($state.status)" -eq 'RUNNING') 'provider git commit was not rejected fail-closed'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-123' {
+            $f=New-AutopilotFixture 'RD123'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'OUT_OF_SCOPE'|Out-Null
+                $failed=$false
+                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'out-of-scope' }
+                $state=Get-DispatcherState
+                Assert-True ($failed -and @($state.providerHistory).Count -eq 0 -and "$($state.status)" -eq 'RUNNING') 'out-of-scope provider change was not rejected fail-closed'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-124' {
+            $f=New-AutopilotFixture 'RD124'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'|Out-Null
+                $state=Get-DispatcherState
+                $state.workspaceInvocationSnapshots[0].promptHash='sha256:'+('0'*64)
+                Write-DispatcherState $state|Out-Null
+                $failed=$false
+                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'integrity' }
+                Assert-True ($failed) 'tampered pre-invocation snapshot was accepted'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-125' {
+            $f=New-AutopilotFixture 'RD125'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                Add-Content -LiteralPath ([string]$ar.stdoutArtifact) -Value '{"type":"tampered"}' -Encoding utf8
+                $failed=$false
+                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'unrecoverable or ambiguous' }
+                $state=Get-DispatcherState
+                Assert-True ($failed -and @($state.providerHistory).Count -eq 0 -and "$($state.status)" -eq 'RUNNING') 'tampered stdout with an intact receipt was accepted'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-126' {
+            $f=New-AutopilotFixture 'RD126'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'SUCCESS'
+                $conflict=[ordered]@{}+$ar
+                $conflict.exitCode=17
+                $conflict.resultReceiptPath=[string]$ar.resultReceiptPath
+                $writeConflict=$false
+                try{ Write-RealAgentResultReceipt -AgentResult $conflict|Out-Null }catch{ $writeConflict=$_.Exception.Message -match 'conflicting duplicate result receipt' }
+                Assert-True ($writeConflict) 'a conflicting duplicate receipt write was accepted'
+                $receipt=Read-V2Json ([string]$ar.resultReceiptPath)
+                $receipt.attempt=2
+                $signed=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$signed[$k]=$receipt[$k]}}
+                $receipt.receiptHash=New-ContentHash $signed
+                Write-V2JsonCanonical ([string]$ar.resultReceiptPath) $receipt
+                $failed=$false
+                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'receipt binding mismatch' }
+                Assert-True ($failed) 'a re-hashed receipt bound to a different invocation identity was accepted'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-127' {
+            $f=New-AutopilotFixture 'RD127'
+            try{
+                Invoke-AutopilotDriveToBoundary $f 'PROVIDER_DONE_NO_RECEIPT' 'INCOMPLETE'|Out-Null
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'LEGACY_ARTIFACT_STRICT' 1 2
+                $state=Get-DispatcherState
+                Assert-True ([string]$state.providerHistory[0].resultClass -eq 'AGENT_FAILURE' -and [string]$state.providerHistory[0].providerClass -eq 'INCOMPLETE_PROVIDER_RESULT') 'nonterminal provider output was classified as anything but a provably incomplete failure'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-128' {
+            $f=New-AutopilotFixture 'RD128'
+            try{
+                $state=Get-DispatcherState
+                $state.status='WAITING_HUMAN';$state.reason='bounded correction budget exhausted';Write-DispatcherState $state|Out-Null
+                $recon=Invoke-DispatcherStartupReconciliation -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract
+                Assert-True ("$($recon.status)" -eq 'NO_ACTION') 'startup reconciliation auto-resumed a WAITING_HUMAN owner state'
+                $state=Get-DispatcherState
+                $state.status='WAITING_PROVIDER';Write-DispatcherState $state|Out-Null
+                $recon2=Invoke-DispatcherStartupReconciliation -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract
+                Assert-True ("$($recon2.status)" -eq 'NO_ACTION') 'startup reconciliation auto-resumed a WAITING_PROVIDER state outside the dispatch loop'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
@@ -1102,97 +1447,6 @@ try{
 }finally{
     $base=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());$full=[IO.Path]::GetFullPath($Root)
     if($full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)-and (Split-Path -Leaf $full)-like 'orcivo-rd-suite-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
-}
-
-
-Check 'RD-115' {
-    $fixtureV2=Join-Path $Fixture '.orchestration\v2'
-    New-Item -ItemType Directory -Force -Path $fixtureV2|Out-Null
-    Copy-Item -LiteralPath (Join-Path $Repo '.orchestration\v2\config.v2.json') -Destination (Join-Path $fixtureV2 'config.v2.json') -Force
-    $workspace=Join-Path $Root 'fresh-clean-baseline'
-    & git init -b main --quiet $workspace
-
-    New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
-    Write-Utf8 (Join-Path $workspace 'work\base.txt') "base`n"
-    & git -C $workspace add .
-    & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
-
-    $base=(& git -C $workspace rev-parse HEAD).Trim()
-    $task=Task 'FRESH-CLEAN-BASELINE'
-    $prompt=Join-Path $Root 'fresh-clean-baseline.prompt.txt'
-    Write-Utf8 $prompt 'fresh clean implementation'
-    $invocation='att-'+[guid]::NewGuid().ToString('N')
-
-    $state=[ordered]@{
-        schemaVersion='orcivo.orchestration.v2.dispatch-state/1'
-        runId='run-fresh-clean-baseline'
-        taskId=$task.taskId
-        taskVersionId=('f'*64)
-        task=$task
-        status='RUNNING'
-        stage='IMPLEMENT'
-        reason=''
-        workspace=$workspace
-        branch='main'
-        baseSha=$base
-        provider='glm'
-        profile='FAST'
-        model='zai-coding-plan/glm-5.3'
-        attempt=1
-        cycle=0
-        implementationComplete=$false
-        implementationCommit=''
-        recoveredCandidateCommit=''
-        candidateHead=''
-        candidateTree=''
-        diffHash=''
-        providerHistory=@()
-        workspaceInvocationSnapshots=@()
-        workspaceInvocationResultSnapshots=@()
-    }
-
-    $snapshot=New-DispatcherWorkspaceInvocationSnapshot `
-        -State $state `
-        -Task $task `
-        -InvocationId $invocation `
-        -PromptArtifact $prompt `
-        -PromptHash (New-FileHash $prompt) `
-        -Provider glm `
-        -Model 'zai-coding-plan/glm-5.3' `
-        -ReasoningEffort low `
-        -Attempt 1
-
-    Assert-True ([string]$snapshot.stateBinding.workspaceHead -eq $base) 'fresh clean baseline did not bind workspaceHead to baseSha'
-    Assert-True (@($snapshot.paths).Count -eq 0) 'fresh clean baseline unexpectedly recorded changed paths'
-    Assert-True ([string]$snapshot.partialDiffHash -eq (New-StringHash '')) 'fresh clean baseline diff hash is not canonical empty hash'
-    Assert-True ([string]$snapshot.partialFilesHash -eq (New-StringHash '')) 'fresh clean baseline files hash is not canonical empty hash'
-
-    $blockedState=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $state)
-    $blockedState.workspaceInvocationSnapshots=@()
-    $blockedState.providerHistory=@(
-        [ordered]@{
-            invocationId='att-11111111111111111111111111111111'
-            provider='glm'
-        }
-    )
-
-    $blocked=$false
-    try{
-        New-DispatcherWorkspaceInvocationSnapshot `
-            -State $blockedState `
-            -Task $task `
-            -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) `
-            -PromptArtifact $prompt `
-            -PromptHash (New-FileHash $prompt) `
-            -Provider glm `
-            -Model 'zai-coding-plan/glm-5.3' `
-            -ReasoningEffort low `
-            -Attempt 1 | Out-Null
-    }catch{
-        $blocked=$_.Exception.Message -match 'workspace has no preserved partial changes'
-    }
-
-    Assert-True $blocked 'clean baseline was incorrectly accepted after provider history existed'
 }
 
 $ordered=@($results.ToArray()|Sort-Object { [string]$_['id'] })
