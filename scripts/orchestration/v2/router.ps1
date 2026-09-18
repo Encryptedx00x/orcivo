@@ -348,10 +348,10 @@ function Test-RouterSelftest {
         if ($rv.reviewer -ne 'glm' -or -not $rv.crossProvider) { $fail += "reviewer for deepseek impl should be glm" }
         $rv = Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('deepseek')
         if ($rv.ok -or -not $rv.escalate) { $fail += "deepseek impl + glm down should escalate, never same-provider" }
-        if ((Get-GlmModelId) -ne 'zai-coding-plan/glm-5.3') { $fail += "glm model contract drifted" }
+        if ((Get-GlmModelId) -ne 'nvidia/z-ai/glm-5.3') { $fail += "glm model contract drifted" }
         $plan = Get-GlmRuntimePlan -Profile REASONING
-        if (-not $plan.ok -or $plan.model -ne 'zai-coding-plan/glm-5.3') { $fail += "glm plan did not pin the exact model id: $(if($plan.ok){$plan.model}else{$plan.reason})" }
-        if (@(Get-GlmInvocationArgs) -notcontains 'zai-coding-plan/glm-5.3') { $fail += "glm invocation args do not carry the exact model id" }
+        if (-not $plan.ok -or $plan.model -ne 'nvidia/z-ai/glm-5.3') { $fail += "glm plan did not pin the exact model id: $(if($plan.ok){$plan.model}else{$plan.reason})" }
+        if (@(Get-GlmInvocationArgs) -notcontains 'nvidia/z-ai/glm-5.3') { $fail += "glm invocation args do not carry the exact model id" }
         if ((Get-GlmRuntimePlan -Profile CRITICAL).ok) { $fail += "glm CRITICAL should be reserved for Codex Plus Terra" }
         $drift = [ordered]@{} + $glmRuntime; $drift.glm = [ordered]@{ model = 'glm-wrong-model' }
         Write-V2JsonCanonical $runtimePath $drift

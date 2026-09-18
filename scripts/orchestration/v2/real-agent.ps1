@@ -229,10 +229,10 @@ function ConvertTo-RealAgentInvocationResult {
         }
     }
     if($Provider -eq 'glm'){
-        # GLM runs on a subscription coding plan: there is no per-token budget
-        # ledger and no billable-model proof obligation.  step_finish token
-        # telemetry is recorded best-effort; its absence is not an integrity
-        # failure, so telemetryConsistent stays true.
+        # GLM is served through the NVIDIA NIM endpoint behind OpenCode: there
+        # is no per-token budget ledger and no billable-model proof obligation.
+        # step_finish token telemetry is recorded best-effort; its absence is
+        # not an integrity failure, so telemetryConsistent stays true.
         $usage=Get-GlmUsageFromEvents -Events @($parsed.events)
         $cost=$(if($usage){$usage.costUsd}else{$null})
     }

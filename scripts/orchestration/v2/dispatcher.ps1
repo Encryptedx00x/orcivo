@@ -741,7 +741,7 @@ function Test-DispatcherAuthorizedReviewSuccessionEligible {
 }
 
 # For the authorized review succession the review route is EXPLICITLY fixed:
-# GLM at exactly zai-coding-plan/glm-5.3 on profile REASONING.  This pin is
+# GLM at exactly nvidia/z-ai/glm-5.3 on profile REASONING.  This pin is
 # stored on the durable state by the dispatcher itself and enforced at the
 # REVIEW dispatch site; the generic CRITICAL implementation reservation is
 # NOT relaxed anywhere.
@@ -2257,6 +2257,37 @@ function Set-DispatcherReviewOutcome {
     return $State
 }
 
+# Generic invocation-boundary route/model sync.  A provider-route transition
+# (cross-provider failover, provider-wait resume, quarantined retry selection)
+# or a provider/model migration between durable invocations can leave the
+# durable current route (State.provider/State.model) stale while the next
+# invocation resolves a different model.  The invariant is enforced at the
+# single IMPLEMENT launch boundary: BEFORE any new implementer-family
+# invocation launches - and therefore before its pre-invocation snapshot binds
+# a model - the durable current route is synced to the exact route the
+# invocation will resolve.  The sync is persisted before the pre-invocation
+# snapshot exists, so startup reconciliation can always validate the exact
+# model bound to the interrupted invocation and never a stale or unrelated
+# historical one.  Historical provider history entries, receipts, and
+# invocation snapshots are immutable evidence and are never rewritten here;
+# only the CURRENT route projection moves.  The result is FAIL-CLOSED for the
+# caller: ok=false means the route did not resolve and NOTHING was synced -
+# the durable route, attempt counter, and all historical evidence stay exactly
+# as they were, and the launch boundary must refuse to proceed (no attempt
+# increment, no provider launch, no pre-invocation snapshot).
+function Sync-DispatcherInvocationRoute {
+    param([Parameter(Mandatory)]$State)
+    $route=Resolve-Provider -Profile ([string]$State.profile) -Provider ([string]$State.provider)
+    if(-not $route.ok){return [ordered]@{ok=$false;synced=$false;reason=[string]$route.reason}}
+    if([string]$State.provider -eq [string]$route.provider -and [string]$State.model -eq [string]$route.model){
+        return [ordered]@{ok=$true;synced=$false;reason='durable route already matches the resolved invocation route'}
+    }
+    $State.provider=[string]$route.provider
+    $State.model=[string]$route.model
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{ok=$true;synced=$true;reason='durable route synced to the resolved invocation route'}
+}
+
 function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
@@ -2461,6 +2492,21 @@ if($needsFreshDispatch){
                     $plan=Get-DeepSeekModelPlan -Profile $state.profile;$used=@($state.providerHistory|Where-Object{[string]$_.provider -eq 'deepseek' -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')}).Count
                     if(-not $plan.ok -or $used -ge [int]$plan.maxInvocationsPerTask){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'deepseek-invocation-budget-hold' -ToState WAITING_HUMAN -RunId $state.runId -Note 'DeepSeek implementation invocation cap reached or invalid'|Out-Null;$state.status='WAITING_HUMAN';$state.reason='DeepSeek implementation invocation cap reached or invalid';Write-DispatcherState $state|Out-Null;return $state}
                 }
+                # Invocation boundary: a failover, provider-wait resume, or a
+                # provider/model migration between durable invocations may have
+                # left the durable current model stale.  The durable route must
+                # agree with the route this invocation will actually resolve
+                # BEFORE the pre-invocation snapshot binds a model.  The sync
+                # is FAIL-CLOSED: when the route cannot resolve, attempt is
+                # NOT incremented, the provider is NOT launched, and no
+                # pre-invocation snapshot is created - the lineage holds for
+                # the owner instead of continuing on a stale route.
+                $routeSync=Sync-DispatcherInvocationRoute $state
+                if(-not [bool]$routeSync.ok){
+                    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'invocation-route-sync-hold' -ToState WAITING_HUMAN -RunId $state.runId -Note ([string]$routeSync.reason)|Out-Null
+                    $state.status='WAITING_HUMAN';$state.reason="invocation route sync failed: $($routeSync.reason)";Write-DispatcherState $state|Out-Null
+                    return $state
+                }
                 $state.attempt=[int]$state.attempt+1; Write-DispatcherState $state|Out-Null
                 $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
                 $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
@@ -2536,7 +2582,7 @@ if($needsFreshDispatch){
             # deepseek <-> glm, codex -> deepseek, claude -> codex.
             $reviewer=Get-OrcivoOppositeProvider -Provider ([string]$state.provider);$state.reviewerProvider=$reviewer
             # Closed pin for the authorized review succession: the review must
-            # launch on exactly glm/zai-coding-plan/glm-5.3/REASONING; any other
+            # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other
             # reviewer, profile, or model fails closed here.
             Assert-DispatcherAuthorizedReviewRoute -State $state -Reviewer $reviewer -Profile ([string]$state.profile) -Route (Resolve-Provider -Profile ([string]$state.profile) -Provider $reviewer)
             $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff' -ReviewedSourceOutput;Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)

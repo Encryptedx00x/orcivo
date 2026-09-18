@@ -8,7 +8,7 @@ blocked and Claude stays excluded.  The invocation contract is FIXED:
   * provider id      glm
   * executable       OpenCode CLI (config.v2.json providers.glm.bin), launched
                      through its native binary - never a .cmd/.ps1 shim
-  * model            zai-coding-plan/glm-5.3   (constant - never a knob)
+  * model            nvidia/z-ai/glm-5.3   (constant - never a knob)
   * transport        `opencode run --model <id> --format json --pure`,
                      prompt on stdin, fresh session per invocation
   * control channel  the JSONL event stream (step_start / text / step_finish);
@@ -16,21 +16,28 @@ blocked and Claude stays excluded.  The invocation contract is FIXED:
                      INCOMPLETE_PROVIDER_RESULT (fail closed, same contract as
                      DeepSeek)
   * telemetry        step_finish part.tokens {input, output, reasoning,
-                     cache.read} + part.cost are best-effort; GLM runs on a
-                     subscription coding plan, so there is NO per-token budget
-                     ledger and a missing/zero usage block is not an integrity
+                     cache.read} + part.cost are best-effort; GLM is served
+                     through the NVIDIA NIM endpoint configured in the owner's
+                     OpenCode profile, so there is NO per-token budget ledger
+                     and a missing/zero usage block is not an integrity
                      failure
 
+Backend migration (2026-09-17): the governed glm provider moved from the
+retired zai-coding-plan/glm-5.3 route to nvidia/z-ai/glm-5.3 through the same
+OpenCode transport.  Historical providerHistory entries, receipts, and
+invocation snapshots bound to the retired model id remain valid immutable
+evidence and are never rewritten.
+
 This module contains no credential writer: OpenCode inherits its own stored
-authentication from the owner profile; no key is copied into config,
-artifacts, arguments, state, or environment maps.
+authentication (including NVIDIA_API_KEY) from the owner environment; no key
+is copied into config, artifacts, arguments, state, or environment maps.
 #>
 
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'deepseek.ps1')
 
 # FIXED MODEL CONTRACT - the autopilot must call GLM with exactly this id.
-$script:GlmModelId = 'zai-coding-plan/glm-5.3'
+$script:GlmModelId = 'nvidia/z-ai/glm-5.3'
 
 function Get-GlmModelId { return $script:GlmModelId }
 

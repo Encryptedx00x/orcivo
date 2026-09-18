@@ -1088,7 +1088,7 @@ try{
             Remove-DispatcherWorkspace -Workspace $f.workspace
         }
 
-        # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-128) ----
+        # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-130) ----
         # The fake agent replaces Invoke-RealAgent only inside the restart
         # driver's dynamic scope: it performs the exact durable steps of a GLM
         # implementer (immutable prompt, pre-launch snapshot callback, in-scope
@@ -1148,6 +1148,11 @@ try{
 
         function New-AutopilotFixture {
             param([string]$Id)
+            # The launch-boundary route sync resolves the provider runtime,
+            # so every autopilot fixture must be self-sufficient: seed the
+            # fixture runtime from the authority repo when absent.
+            $providerRuntimePath=Join-Path (Get-V2Dir) 'provider-runtime.v1.json'
+            if(-not(Test-Path -LiteralPath $providerRuntimePath)){Copy-Item (Join-Path $Repo '.orchestration\v2\provider-runtime.v1.json') $providerRuntimePath}
             $task=Task ("AP-"+$Id) @() 'C' 'level-c-autopilot'
             $sourcePath=Join-Path $Fixture ("autopilot-"+$Id+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
             $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
@@ -1210,6 +1215,31 @@ try{
             Assert-True ($commitCount -eq ([string]([int]$f.baseCount+1))) "expected exactly one candidate commit over the base, got $commitCount"
             $newImpl=@($script:AutopilotAgentCalls|Where-Object{[string]$_.role -eq 'implementer'})
             Assert-True ($newImpl.Count -eq $ExpectedNewImplementerInvocations) "restart launched $($newImpl.Count) new implementer invocations, expected $ExpectedNewImplementerInvocations"
+        }
+
+        # Durable same-lineage provider/model migration fixture (RD-129): the
+        # lineage starts with a FINALIZED historical invocation attempt bound
+        # to the retired zai-coding-plan/glm-5.3 route - built through the
+        # REAL snapshot/synthetic-result/finalizer machinery so the retired
+        # model id is valid immutable historical evidence - and the durable
+        # current route is left pointing at the retired model exactly as a
+        # pre-migration session would have persisted it.  The historical
+        # attempt is provably incomplete (no terminal provider output, no
+        # workspace change), so the lineage legitimately relaunches.
+        function New-ProviderMigrationLineageFixture {
+            param([string]$Id)
+            $f=New-AutopilotFixture $Id
+            $state=Get-DispatcherState
+            $state.model='zai-coding-plan/glm-5.3';$state.attempt=[int]$state.attempt+1;Write-DispatcherState $state|Out-Null
+            $state=Get-DispatcherState
+            $logs=Join-Path (Get-V2Dir) "runs\$($f.runId)\logs";New-Item -ItemType Directory -Force -Path $logs|Out-Null
+            $hist='att-'+[guid]::NewGuid().ToString('N');$stamp=('implementer-001-glm-{0}' -f $hist.Substring(4,8))
+            $promptPath=Join-Path $logs "$stamp.prompt.txt";$stdoutPath=Join-Path $logs "$stamp.stdout.log";$stderrPath=Join-Path $logs "$stamp.stderr.log"
+            Write-Utf8 $promptPath 'historical pre-migration prompt';Write-Utf8 $stdoutPath '';Write-Utf8 $stderrPath ''
+            New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $f.task -InvocationId $hist -PromptArtifact $promptPath -PromptHash (New-FileHash $promptPath) -Provider 'glm' -Model 'zai-coding-plan/glm-5.3' -ReasoningEffort 'low' -Attempt 1|Out-Null
+            $histAr=New-RealAgentSyntheticIncompleteResult -Provider 'glm' -Model 'zai-coding-plan/glm-5.3' -Profile 'FAST' -ReasoningEffort 'low' -InvocationId $hist -Attempt 1 -Role 'IMPLEMENTER' -PromptArtifact $promptPath -PromptHash (New-FileHash $promptPath) -StdoutArtifact $stdoutPath -StderrArtifact $stderrPath -ContinuationCheckpoint ''
+            $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $histAr -Role 'IMPLEMENTER'
+            return @{f=$f;hist=$hist;disposition=[string]$finalized.disposition}
         }
 
         Check 'RD-115' {
@@ -1430,6 +1460,86 @@ try{
                 $state.status='WAITING_PROVIDER';Write-DispatcherState $state|Out-Null
                 $recon2=Invoke-DispatcherStartupReconciliation -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract
                 Assert-True ("$($recon2.status)" -eq 'NO_ACTION') 'startup reconciliation auto-resumed a WAITING_PROVIDER state outside the dispatch loop'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-129' {
+            # Provider/model migration lineage (zai-coding-plan/glm-5.3 ->
+            # nvidia/z-ai/glm-5.3).  The historical attempt is immutable
+            # evidence bound to the retired model; the REAL launch boundary
+            # must sync the durable current route to the resolved NVIDIA
+            # route BEFORE the new invocation's pre-invocation snapshot,
+            # receipt, and provider history bind a model; and restart
+            # reconciliation must recover the interrupted NVIDIA invocation
+            # from its own NVIDIA-bound evidence without ever rewriting or
+            # being confused by the earlier Z.ai history.
+            $m=New-ProviderMigrationLineageFixture 'RD129'
+            $f=$m.f
+            try{
+                Assert-True ($m.disposition -eq 'RETRY') "the historical migration attempt did not finalize as a bounded retry: $($m.disposition)"
+                $before=Get-DispatcherState
+                Assert-True ([string]$before.model -eq 'zai-coding-plan/glm-5.3' -and [int]$before.attempt -eq 1 -and [string]$before.providerHistory[-1].model -eq 'zai-coding-plan/glm-5.3') 'migration fixture precondition: the durable route and history must still point at the retired model'
+                $histEntryBefore=ConvertTo-CanonicalJson (@($before.providerHistory|Where-Object{[string]$_.invocationId -eq $m.hist})[0])
+                $histSnapshotBefore=ConvertTo-CanonicalJson (Get-DispatcherWorkspaceInvocationSnapshot -State $before -InvocationId $m.hist)
+                # Crash the first restart exactly between the new invocation's
+                # result snapshot and its provider history entry: the durable
+                # prefix proves the boundary synced the route before launch.
+                $script:DispatcherFinalizerFaultAfterResultSnapshot=$true
+                try{ try{ Invoke-AutopilotRestart $f|Out-Null }catch{} }finally{ $script:DispatcherFinalizerFaultAfterResultSnapshot=$null }
+                $crashed=Get-DispatcherState
+                Assert-True ([string]$crashed.model -eq 'nvidia/z-ai/glm-5.3' -and [int]$crashed.attempt -eq 2) 'the launch boundary did not sync the durable current route to the resolved NVIDIA route before the new invocation'
+                $att2=[string]$crashed.workspaceInvocationSnapshots[-1].invocationId
+                Assert-True ($att2 -ne $m.hist) 'the migrated invocation was not a new lineage invocation'
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'AGENT_RESULT_RECEIPT' 0 2
+                $state=Get-DispatcherState
+                Assert-True ([string]$state.model -eq 'nvidia/z-ai/glm-5.3' -and [string]$state.provider -eq 'glm' -and [string]$state.profile -eq 'FAST') 'the durable current route does not match the resolved NVIDIA invocation route'
+                $entry=@($state.providerHistory|Where-Object{[string]$_.invocationId -eq $att2})[0]
+                Assert-True ($entry -and [string]$entry.model -eq 'nvidia/z-ai/glm-5.3' -and [int]$entry.attempt -eq 2 -and [string]$entry.resultClass -eq 'SUCCESS') 'the later same-lineage invocation did not bind the NVIDIA model in provider history'
+                $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $state -InvocationId $att2
+                Assert-True ($pre -and [string]$pre.model -eq 'nvidia/z-ai/glm-5.3' -and [string]$pre.stateBinding.model -eq 'nvidia/z-ai/glm-5.3' -and [int]$pre.attempt -eq 2) 'the pre-invocation snapshot did not bind the NVIDIA model'
+                $receipt=Read-V2Json (Get-RealAgentResultReceiptPath -ArtifactDir (Split-Path -Parent $entry.stdoutArtifact) -InvocationId $att2 -Role 'implementer' -Provider 'glm' -Attempt 2)
+                Assert-True ([string]$receipt.model -eq 'nvidia/z-ai/glm-5.3') 'the new invocation receipt did not bind the NVIDIA model'
+                $recon=@($state.startupReconciliationHistory|Where-Object{$_})[0]
+                Assert-True ($recon -and [string]$recon.invocationId -eq $att2 -and [string]$recon.source -eq 'AGENT_RESULT_RECEIPT') 'restart reconciliation did not recover the interrupted invocation from its own NVIDIA-bound receipt'
+                Assert-True ((ConvertTo-CanonicalJson (@($state.providerHistory|Where-Object{[string]$_.invocationId -eq $m.hist})[0])) -eq $histEntryBefore -and (ConvertTo-CanonicalJson (Get-DispatcherWorkspaceInvocationSnapshot -State $state -InvocationId $m.hist)) -eq $histSnapshotBefore -and [string](@($state.providerHistory|Where-Object{[string]$_.invocationId -eq $m.hist})[0]).model -eq 'zai-coding-plan/glm-5.3') 'historical Z.ai evidence was rewritten by the migrated invocation or its restart reconciliation'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-130' {
+            # Invocation-boundary route sync is FAIL-CLOSED: a stale durable
+            # route is synced ONLY when the route resolves; when it does not,
+            # nothing is mutated and the launch boundary holds BEFORE the
+            # attempt increment, the pre-invocation snapshot, or the provider
+            # launch, recording the hold in the durable ledger.
+            $f=New-AutopilotFixture 'RD130'
+            try{
+                $state=Get-DispatcherState
+                $state.model='zai-coding-plan/glm-5.3';Write-DispatcherState $state|Out-Null
+                $sync=Sync-DispatcherInvocationRoute (Get-DispatcherState)
+                Assert-True ([bool]$sync.ok -and [bool]$sync.synced) "stale route sync failed: $($sync.reason)"
+                $synced=Get-DispatcherState
+                Assert-True ([string]$synced.model -eq 'nvidia/z-ai/glm-5.3' -and [int]$synced.attempt -eq 0 -and @($synced.providerHistory).Count -eq 0 -and @($synced.workspaceInvocationSnapshots).Count -eq 0) 'route sync mutated the attempt counter, historical evidence, or pre-invocation snapshots'
+                $oldCfg=$script:V2Config
+                try{
+                    $localV2=Join-Path $Root 'rd130-v2';New-Item -ItemType Directory -Force -Path $localV2|Out-Null
+                    $failCfg=Get-Content -Raw -LiteralPath (Join-Path $Repo '.orchestration\v2\config.v2.json')|ConvertFrom-Json
+                    $failCfg.providers.glm.bin='opencode-cli-missing-rd130'
+                    $failPath=Join-Path $localV2 'config.missing-glm.v2.json';Write-Utf8 $failPath ($failCfg|ConvertTo-Json -Depth 20)
+                    $script:V2Config=$failPath
+                    $stale=Get-DispatcherState;$stale.model='zai-coding-plan/glm-5.3';Write-DispatcherState $stale|Out-Null
+                    $refused=Sync-DispatcherInvocationRoute (Get-DispatcherState)
+                    Assert-True (-not [bool]$refused.ok -and -not [bool]$refused.synced -and "$($refused.reason)" -match 'not installed') 'an unresolvable invocation route was reported as synced'
+                    $refusedState=Get-DispatcherState
+                    Assert-True ([string]$refusedState.model -eq 'zai-coding-plan/glm-5.3' -and [int]$refusedState.attempt -eq 0 -and @($refusedState.workspaceInvocationSnapshots).Count -eq 0) 'a refused sync mutated the durable route, attempt counter, or created a pre-invocation snapshot'
+                    $r=Invoke-AutopilotRestart $f
+                    $held=Get-DispatcherState
+                    $tail=@(Read-JsonLines (Get-LedgerPath $f.contract.taskVersionId))[-1]
+                    Assert-True ("$($r.status)" -eq 'WAITING_HUMAN' -and "$($r.reason)" -match 'invocation route sync failed' -and "$($r.reason)" -match 'not installed') "the launch boundary did not fail closed on an unresolvable route: $($r.status) / $($r.reason)"
+                    Assert-True ("$($held.status)" -eq 'WAITING_HUMAN' -and [int]$held.attempt -eq 0 -and [string]$held.model -eq 'zai-coding-plan/glm-5.3' -and @($held.workspaceInvocationSnapshots).Count -eq 0) 'the failed launch incremented attempt, persisted a stale pre-invocation snapshot, or silently continued on the stale route'
+                    Assert-True (@($script:AutopilotAgentCalls).Count -eq 0) 'the dispatcher launched a provider invocation despite the route sync failure'
+                    Assert-True ([string]$tail.event -eq 'invocation-route-sync-hold' -and [string]$tail.toState -eq 'WAITING_HUMAN') 'the invocation route sync hold was not recorded in the durable ledger'
+                }finally{$script:V2Config=$oldCfg}
             } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
         }
     } finally {Pop-Location}

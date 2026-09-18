@@ -309,7 +309,7 @@ function Test-ProvidersSelftest {
             schemaVersion='orcivo.orchestration.v2.provider-runtime/1'; enabled=$true
             enabledProviders=@('glm','deepseek'); excludedProviders=@('claude','codex')
             deepseek=[ordered]@{baseUrl='https://api.deepseek.com/';wireApi='responses';envKey='DEEPSEEK_API_KEY';codexHomeRoot='orcivo-dispatcher/providers/deepseek-codex'}
-            glm=[ordered]@{model='zai-coding-plan/glm-5.3'}
+            glm=[ordered]@{model='nvidia/z-ai/glm-5.3'}
         }
         Write-V2JsonCanonical $runtimePath $glmRuntime
         if ((Get-OrcivoEnabledProviders) -join ',' -ne 'glm,deepseek') { $fail += "enabled set did not become glm,deepseek" }
