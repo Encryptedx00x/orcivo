@@ -230,6 +230,15 @@ function New-FileHash {
     return ('sha256:' + (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant())
 }
 
+function New-TextCapabilityHash {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'sha256:absent' }
+    $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+    $text = [System.IO.File]::ReadAllText($Path, $strictUtf8)
+    $canonical = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+    return (New-StringHash $canonical)
+}
+
 # ----------------------------------------------------------------------------
 # canonical Windows-aware relative path matching  (H-06, M-01)
 # ----------------------------------------------------------------------------

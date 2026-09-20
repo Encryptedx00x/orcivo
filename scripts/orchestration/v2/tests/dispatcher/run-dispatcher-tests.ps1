@@ -1326,7 +1326,7 @@ try{
 
         Check 'RD-140' {
             $f=New-ReviewInfrastructureFixture 'RD140' $true;$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract
-            Assert-True ($proof.eligible -and [string]$proof.proof.origin -eq 'STRUCTURED_TECHNICAL_BLOCK') "structured infrastructure BLOCK was not recoverable: $($proof.reason)"
+            Assert-True ($proof.eligible -and [string]$proof.proof.origin -eq 'STRUCTURED_TECHNICAL_BLOCK' -and [string]$proof.proof.failedReaderHash -eq 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026' -and [string]$proof.proof.recoveryReaderHash -eq 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026') "structured infrastructure BLOCK was not recoverable with canonical reader bindings: $($proof.reason)"
         }
 
         Check 'RD-141' {
@@ -1385,6 +1385,59 @@ try{
         Check 'RD-149' {
             $f=New-ReviewInfrastructureFixture 'RD149' $true
             Assert-True ($f.prompt -match 'complete=false is continuation metadata' -and $f.prompt -match 'nextOffset' -and $f.prompt -match 'until complete=true' -and $f.prompt -match 'MUST omit technicalBlock') 'review prompt does not require complete deterministic pagination or preserve semantic BLOCK behavior'
+        }
+
+        Check 'RD-150' {
+            $reader=Join-Path $V2 'review-reader.mjs'
+            $strict=New-Object Text.UTF8Encoding($false,$true)
+            $source=[IO.File]::ReadAllText($reader,$strict).Replace("`r`n","`n").Replace("`r","`n")
+            $lf=Join-Path $Root 'review-reader-lf.mjs';$crlf=Join-Path $Root 'review-reader-crlf.mjs';$cr=Join-Path $Root 'review-reader-cr.mjs';$bom=Join-Path $Root 'review-reader-bom.mjs'
+            [IO.File]::WriteAllText($lf,$source,(New-Object Text.UTF8Encoding($false)))
+            [IO.File]::WriteAllText($crlf,($source.Replace("`n","`r`n")),(New-Object Text.UTF8Encoding($false)))
+            [IO.File]::WriteAllText($cr,($source.Replace("`n","`r")),(New-Object Text.UTF8Encoding($false)))
+            [IO.File]::WriteAllText($bom,$source,(New-Object Text.UTF8Encoding($true)))
+            $lfHash=New-TextCapabilityHash $lf;$crlfHash=New-TextCapabilityHash $crlf;$crHash=New-TextCapabilityHash $cr;$bomHash=New-TextCapabilityHash $bom
+            Assert-True ($lfHash -eq $crlfHash -and $lfHash -eq $crHash -and $lfHash -eq $bomHash -and $lfHash -eq 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026') 'LF, CRLF, lone-CR, and BOM reader source did not share the expected canonical capability hash'
+        }
+
+        Check 'RD-151' {
+            $reader=Join-Path $V2 'review-reader.mjs';$strict=New-Object Text.UTF8Encoding($false,$true)
+            $source=[IO.File]::ReadAllText($reader,$strict).Replace("`r`n","`n").Replace("`r","`n")
+            $changed=Join-Path $Root 'review-reader-changed.mjs';[IO.File]::WriteAllText($changed,($source+"`n// changed`n"),(New-Object Text.UTF8Encoding($false)))
+            $invalid=Join-Path $Root 'review-reader-invalid.mjs';[IO.File]::WriteAllBytes($invalid,[byte[]](0x66,0x6f,0x80,0x6f))
+            $invalidRejected=$false;try{New-TextCapabilityHash $invalid|Out-Null}catch{$invalidRejected=$true}
+            Assert-True ((New-TextCapabilityHash $changed) -ne (New-TextCapabilityHash $reader) -and $invalidRejected) 'text changes were not distinguished or invalid UTF-8 did not fail closed'
+        }
+
+        Check 'RD-152' {
+            $lf=Join-Path $Root 'artifact-lf.patch';$crlf=Join-Path $Root 'artifact-crlf.patch'
+            [IO.File]::WriteAllText($lf,"line one`nline two`n",(New-Object Text.UTF8Encoding($false)))
+            [IO.File]::WriteAllText($crlf,"line one`r`nline two`r`n",(New-Object Text.UTF8Encoding($false)))
+            Assert-True ((New-FileHash $lf) -ne (New-FileHash $crlf)) 'exact frozen artifact hashing stopped being byte-sensitive'
+        }
+
+        Check 'RD-153' {
+            $f=New-ReviewInfrastructureFixture 'RD153' $true
+            Assert-True ([string]$f.record.readerHash -eq 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026') 'CRLF checkout did not bind the canonical review-reader capability hash'
+        }
+
+        Check 'RD-154' {
+            $reader=Join-Path $V2 'review-reader.mjs';$strict=New-Object Text.UTF8Encoding($false,$true)
+            $source=[IO.File]::ReadAllText($reader,$strict).Replace("`r`n","`n").Replace("`r","`n")
+            $crlf=Join-Path $Root 'legacy-reader-crlf.mjs';$lookalike=Join-Path $Root 'legacy-reader-lookalike.mjs'
+            [IO.File]::WriteAllText($crlf,$source.Replace("`n","`r`n"),(New-Object Text.UTF8Encoding($false)))
+            [IO.File]::WriteAllText($lookalike,($source+"`n// lookalike`n"),(New-Object Text.UTF8Encoding($false)))
+            $record=[ordered]@{snapshotHash='sha256:a028b8143eb259057a0b973ad7f753e2796abc4250fc2b2a8c17015fc6bf1e03';readerHash=(New-TextCapabilityHash $crlf)}
+            $tampered=[ordered]@{snapshotHash=$record.snapshotHash;readerHash=(New-TextCapabilityHash $lookalike)}
+            Assert-True ((Test-DispatcherLegacyReviewCapability $record) -and (Test-DispatcherReviewReaderCapabilityHash $record.readerHash) -and -not(Test-DispatcherLegacyReviewCapability $tampered) -and -not(Test-DispatcherReviewReaderCapabilityHash $tampered.readerHash)) 'exact legacy CRLF reader was rejected or tampered lookalike reader was accepted for recovery'
+        }
+
+        Check 'RD-155' {
+            $f=New-ReviewInfrastructureFixture 'RD155' $true;$f.state.candidateTree='0'*40
+            $statePath=Get-DispatcherCurrentPath;$before=New-FileHash $statePath
+            $diagnostic=@(& {Resume-DispatcherReviewInfrastructureBlock -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract|Out-Null} 6>&1) -join "`n"
+            $after=New-FileHash $statePath
+            Assert-True ($diagnostic -match 'review infrastructure recovery not eligible: .+' -and $before -eq $after) 'ineligible review recovery was not diagnosed or mutated durable state'
         }
 
         # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-130) ----

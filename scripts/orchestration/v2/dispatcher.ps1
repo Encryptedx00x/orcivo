@@ -316,7 +316,7 @@ function New-DispatcherReviewArtifactRecord {
         taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId
         candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash
         dataDir=[IO.Path]::GetFullPath($DataDir);snapshotHash=(Get-ReviewDataSnapshot $DataDir);artifacts=$artifacts
-        readerVersion='1.1.0';readerHash=(New-FileHash (Join-Path $PSScriptRoot 'review-reader.mjs'))
+        readerVersion='1.1.0';readerHash=(New-TextCapabilityHash (Join-Path $PSScriptRoot 'review-reader.mjs'))
     }
     $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $record)
     return $record
@@ -356,6 +356,19 @@ function Test-DispatcherReviewInfrastructureResumeState {
         [string]$State.diffHash -eq 'sha256:9c4dd056264be5fed077448ea3f50b58c8f6f1ae63ecf44d951eabb00531dfbf' -and
         [string]$State.reviewInvocationId -eq 'att-54f2af16803543a0b245f79374064c54' -and
         [string]$State.reviewAttestationId -eq 'atn-407022e851c24e2f80ba034d7d29c651'
+    )
+}
+
+function Test-DispatcherReviewReaderCapabilityHash {
+    param([string]$ReaderHash)
+    return [bool]($ReaderHash -eq 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026')
+}
+
+function Test-DispatcherLegacyReviewCapability {
+    param($ArtifactRecord)
+    return [bool](
+        [string]$ArtifactRecord.snapshotHash -eq 'sha256:a028b8143eb259057a0b973ad7f753e2796abc4250fc2b2a8c17015fc6bf1e03' -and
+        (Test-DispatcherReviewReaderCapabilityHash ([string]$ArtifactRecord.readerHash))
     )
 }
 
@@ -403,7 +416,7 @@ function Get-DispatcherReviewInfrastructureRecoveryProof {
             $last=@($State.providerHistory|Where-Object{$_})|Select-Object -Last 1
             if(-not $last -or [string]$last.role -ne 'REVIEWER' -or [string]$last.provider -ne 'deepseek' -or [string]$last.model -ne 'deepseek-v4-flash' -or [string]$last.invocationId -ne 'att-54f2af16803543a0b245f79374064c54' -or [string]$last.resultClass -ne 'BLOCK' -or [string]$last.stdoutHash -ne 'sha256:a0f097ae4611f5839e75435d5ac8ee04628f90796a44d8269f048aca7836e4a9'){return &$deny 'legacy reviewer invocation evidence mismatch'}
             $artifactRecord=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $State
-            if([string]$artifactRecord.snapshotHash -ne 'sha256:a028b8143eb259057a0b973ad7f753e2796abc4250fc2b2a8c17015fc6bf1e03' -or [string]$artifactRecord.readerHash -ne 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026'){return &$deny 'legacy review data or fixed reader capability mismatch'}
+            if(-not(Test-DispatcherLegacyReviewCapability $artifactRecord)){return &$deny 'legacy review data or fixed reader capability mismatch'}
             $patch=@($artifactRecord.artifacts|Where-Object{[string]$_.name -eq 'diff.patch'})
             if($patch.Count -ne 1 -or [int64]$patch[0].totalBytes -ne 93357 -or [string]$patch[0].sha256 -ne 'sha256:6b9fc153ba4a1c06c58ec19d7938f8b7f72f025333b7ef435decee607ba65cee'){return &$deny 'legacy frozen diff artifact mismatch'}
         }
@@ -429,7 +442,9 @@ function Get-DispatcherReviewInfrastructureRecoveryProof {
 
         $later=@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)|Where-Object{[string]$_.runId -eq [string]$State.runId -and [string]$_.bindings.headSHA -eq [string]$State.candidateHead -and [string]$_.kind -in @('approval','integration')})
         if($later.Count){return &$deny 'approval or integration exists after the failed review'}
-        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-infrastructure-recovery/1';origin=$origin;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;reviewInvocationId=[string]$State.reviewInvocationId;reviewAttestationId=[string]$State.reviewAttestationId;reviewAttestationHash=[string]$review.attestationHash;reviewArtifactRecordHash=[string]$artifactRecord.recordHash;failedReaderHash=[string]$artifactRecord.readerHash;recoveryReaderHash=(New-FileHash (Join-Path $PSScriptRoot 'review-reader.mjs'));checkAttestationId=[string]$check.attestationId}
+        $recoveryReaderHash=New-TextCapabilityHash (Join-Path $PSScriptRoot 'review-reader.mjs')
+        if(-not(Test-DispatcherReviewReaderCapabilityHash $recoveryReaderHash)){return &$deny 'current review-reader capability mismatch'}
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-infrastructure-recovery/1';origin=$origin;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;reviewInvocationId=[string]$State.reviewInvocationId;reviewAttestationId=[string]$State.reviewAttestationId;reviewAttestationHash=[string]$review.attestationHash;reviewArtifactRecordHash=[string]$artifactRecord.recordHash;failedReaderHash=[string]$artifactRecord.readerHash;recoveryReaderHash=$recoveryReaderHash;checkAttestationId=[string]$check.attestationId}
         $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
         $ledger=Get-LedgerState ([string]$State.taskVersionId)
         if($ledger.corrupt -or [string]$ledger.state -notin @('WAITING_HUMAN','DISPATCHED','RUNNING')){return &$deny 'ledger is not at the immutable review hold or exact recovery prefix'}
@@ -447,7 +462,7 @@ function Get-DispatcherReviewInfrastructureRecoveryProof {
 function Resume-DispatcherReviewInfrastructureBlock {
     param($State,[hashtable]$Task,$TaskSource,$Contract)
     $result=Get-DispatcherReviewInfrastructureRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract
-    if(-not $result.eligible){return $result}
+    if(-not $result.eligible){Write-Host "review infrastructure recovery not eligible: $($result.reason)" -ForegroundColor Yellow;return $result}
     $proof=$result.proof;$ledger=Get-LedgerState ([string]$State.taskVersionId)
     $evidence=@{classification='REVIEW_INFRASTRUCTURE';failure='ARTIFACT_READ_FAILURE';proofHash=[string]$proof.proofHash;candidateHead=[string]$State.candidateHead;reviewAttestationId=[string]$proof.reviewAttestationId}
     if([string]$ledger.state -eq 'WAITING_HUMAN'){
@@ -458,7 +473,11 @@ function Resume-DispatcherReviewInfrastructureBlock {
         Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'review-infrastructure-retry-running' -ToState RUNNING -RunId $State.runId -Evidence $evidence -Note 'same-candidate review-only recovery'|Out-Null
         $ledger=Get-LedgerState ([string]$State.taskVersionId)
     }
-    if([string]$ledger.state -ne 'RUNNING'){return [ordered]@{eligible=$false;reason="review recovery ledger prefix is incompatible: $($ledger.state)"}}
+    if([string]$ledger.state -ne 'RUNNING'){
+        $result=[ordered]@{eligible=$false;reason="review recovery ledger prefix is incompatible: $($ledger.state)"}
+        Write-Host "review infrastructure recovery not eligible: $($result.reason)" -ForegroundColor Yellow
+        return $result
+    }
     $history=@($State.reviewInfrastructureRecoveryHistory|Where-Object{$_})
     if(-not @($history|Where-Object{[string]$_.proofHash -eq [string]$proof.proofHash}).Count){$history+=,$proof}
     $State.reviewInfrastructureRecoveryHistory=$history
