@@ -12,6 +12,10 @@ function Write-TestJson([string]$Path,$Value){New-Item -ItemType Directory -Forc
 try{
     . (Join-Path $v2 'lib-v2.ps1');. (Join-Path $v2 'classify.ps1');. (Join-Path $v2 'deepseek.ps1');. (Join-Path $v2 'glm.ps1');. (Join-Path $v2 'router.ps1');. (Join-Path $v2 'providers.ps1');. (Join-Path $v2 'ledger.ps1');. (Join-Path $v2 'dispatcher.ps1')
     New-Item -ItemType Directory -Force -Path $root|Out-Null
+    $originalPath=$env:PATH
+    $testBin=Join-Path $root 'test-bin';New-Item -ItemType Directory -Force -Path $testBin|Out-Null
+    [IO.File]::WriteAllText((Join-Path $testBin 'opencode.cmd'),"@exit /b 0`r`n",(New-Object Text.ASCIIEncoding))
+    $env:PATH="$testBin;$originalPath"
     $runtime=Join-Path $root 'provider-runtime.v1.json';$script:DeepSeekRuntimePath=$runtime;$script:DeepSeekBudgetDir=Join-Path $root 'budgets';$registry=Join-Path $root 'deepseek-price-registry.v1.json';Copy-Item (Join-Path $v2 'deepseek-price-registry.v1.json') $registry;$script:DeepSeekPriceRegistryPath=$registry
     $manifest=Read-V2Json $registry
     function New-GlmRuntime([string]$GlmModel='nvidia/z-ai/glm-5.3',[string[]]$Enabled=@('glm','deepseek')){
@@ -352,6 +356,7 @@ try{
         }finally{$script:V2Dir=$oldV2;$script:V2Config=$oldCfg;$script:LedgerDir=$oldLedger;$script:DeepSeekRuntimePath=$oldRuntime;$script:DeepSeekBudgetDir=$oldBudget}
     }
 }finally{
+    if($null -ne $originalPath){$env:PATH=$originalPath}
     $results|ForEach-Object{Write-Output $_}
     $fails=@($results|Where-Object{$_ -match ' FAIL:'});Write-Output ("GLM_TESTS: "+$(if($fails.Count){'FAIL'}else{'PASS'})+" ($($results.Count-$fails.Count)/$($results.Count) PASS)")
     if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}

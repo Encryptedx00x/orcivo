@@ -9,7 +9,17 @@ $results=New-Object System.Collections.Generic.List[object]
 
 function Ok([string]$Id,[string]$Detail){$results.Add([ordered]@{id=$Id;status='PASS';detail=$Detail})}
 function Fail([string]$Id,[string]$Detail){$results.Add([ordered]@{id=$Id;status='FAIL';detail=$Detail})}
-function Check([string]$Id,[scriptblock]$Body){if($Only.Count -and $Id -notin $Only){return};try{& $Body;Ok $Id 'ok'}catch{Fail $Id $_.Exception.Message}}
+function Check([string]$Id,[scriptblock]$Body){
+    if($Only.Count -and $Id -notin $Only){return}
+    $hadRunnerProbe=Test-Path variable:script:DispatcherRecoveryRunnerProbe
+    $priorRunnerProbe=$(if($hadRunnerProbe){$script:DispatcherRecoveryRunnerProbe}else{$null})
+    $script:DispatcherRecoveryRunnerProbe=$false
+    try{& $Body;Ok $Id 'ok'}catch{Fail $Id $_.Exception.Message}
+    finally{
+        if($hadRunnerProbe){$script:DispatcherRecoveryRunnerProbe=$priorRunnerProbe}
+        else{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue}
+    }
+}
 function Assert-True($Value,[string]$Message){if(-not $Value){throw $Message}}
 function Write-Utf8([string]$Path,[string]$Text){$d=Split-Path -Parent $Path;if($d){New-Item -ItemType Directory -Force -Path $d|Out-Null};[IO.File]::WriteAllText($Path,$Text,(New-Object Text.UTF8Encoding($false)))}
 function Task([string]$Id,[string[]]$Deps=@(),[string]$Risk='B',[string]$Gate='none',[string]$Status='SCHEDULED'){
@@ -317,6 +327,13 @@ Write-Utf8 (Join-Path $Fixture 'README.md') "dispatcher unit fixture`n"
 & git init -b main --quiet $Fixture
 & git -C $Fixture add .
 & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m init --quiet
+$OriginalPath=$env:PATH
+$TestBin=Join-Path $Root 'test-bin'
+New-Item -ItemType Directory -Force -Path $TestBin|Out-Null
+# Route-resolution tests mock the provider process itself, but the production
+# launch boundary still requires the configured CLI to be discoverable.
+Write-Utf8 (Join-Path $TestBin 'opencode.cmd') "@exit /b 0`r`n"
+$env:PATH="$TestBin;$OriginalPath"
 
 try{
     Push-Location $Fixture
@@ -1088,6 +1105,182 @@ try{
             Remove-DispatcherWorkspace -Workspace $f.workspace
         }
 
+        # ---- durable policy-correction recovery fixtures (RD-131..RD-137) ----
+        function New-PolicyCorrectionFixture {
+            param([string]$Id,[bool]$PersistRecord=$true,[bool]$MergeBaseline=$true,[bool]$LegacyLedger=$false)
+            $workspace=Join-Path $Root ("policy-correction-"+$Id)
+            & git init -b main --quiet $workspace
+            Write-Utf8 (Join-Path $workspace 'work\base.ts') "export const base = true;`n"
+            Write-Utf8 (Join-Path $workspace 'apps\backend\src\work-order\work-order-actions.isolation.spec.ts') "authoritative acceptance`n"
+            Write-Utf8 (Join-Path $workspace 'apps\backend\src\other\other.isolation.spec.ts') "other authoritative acceptance`n"
+            & git -C $workspace add .
+            & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $workspace rev-parse HEAD).Trim()
+            & git -C $workspace checkout -b correction --quiet
+            Write-Utf8 (Join-Path $workspace 'work\impl.ts') "export const implemented = true;`n"
+            Write-Utf8 (Join-Path $workspace 'apps\backend\src\work-order\work-order-actions.isolation.spec.ts') "unauthorized acceptance change`n"
+            & git -C $workspace add .
+            & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m implementation --quiet
+            $implementation=(& git -C $workspace rev-parse HEAD).Trim()
+            $target=$base
+            if($MergeBaseline){
+                & git -C $workspace checkout main --quiet
+                Write-Utf8 (Join-Path $workspace 'work\target.ts') "export const target = true;`n"
+                & git -C $workspace add .
+                & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m target --quiet
+                $target=(& git -C $workspace rev-parse HEAD).Trim()
+                & git -C $workspace checkout correction --quiet
+                & git -C $workspace merge $target --no-edit --quiet
+            }
+            $baseline=(& git -C $workspace rev-parse HEAD).Trim()
+
+            $task=Task ("POLICY-"+$Id)
+            $sourcePath=Join-Path $Fixture ("policy-correction-"+$Id+".tasks.json")
+            Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
+            $contract=New-DispatcherContract -Task $task -TaskSource $source
+            $runId='run-policy-'+$Id.ToLowerInvariant()
+            if($LegacyLedger){
+                Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId -AttemptId (New-AttemptId)|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'policy-block' -ToState FAILED -RunId $runId -Note 'PROTECTED path modified without a contract grant: apps/backend/src/work-order/work-order-actions.isolation.spec.ts'|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'policy-correction-ready' -ToState READY -RunId $runId|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'policy-correction-dispatch' -ToState DISPATCHED -RunId $runId -AttemptId (New-AttemptId)|Out-Null
+                Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'policy-correction-running' -ToState RUNNING -RunId $runId|Out-Null
+            }
+            $historicalInvocation='att-'+[guid]::NewGuid().ToString('N')
+            $history=@([ordered]@{invocationId=$historicalInvocation;role='IMPLEMENTER';provider='glm';model='zai-coding-plan/glm-5.3';attempt=1;providerClass='SUCCESS';resultClass='SUCCESS';exitCode=0})
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='RUNNING';stage='IMPLEMENT';reason='';workspace=$workspace;branch='correction';baseSha=$base;candidateBase=$target;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=1;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=$history;unavailableProviders=@();workspaceInvocationSnapshots=@();workspaceInvocationResultSnapshots=@();implementationComplete=$false;requiresCorrection=$true;implementationCommit=$implementation;recoveredCandidateCommit='';candidateHead='';candidateTree='';diffHash='';verification=$null;reviewVerdict='';logicalProjectId='fixture';memoryEnabled=$false;memoryAvailable=$false;memoryRetrievedCount=0;memoryInjectedChars=0;memoryFallbackUsed=$false;memoryLatencyMs=0;memoryWriteCount=0;integration=$null}
+            $compliance=[ordered]@{changedFiles=@('apps/backend/src/work-order/work-order-actions.isolation.spec.ts','work/impl.ts');violations=@('PROTECTED path modified without a contract grant: apps/backend/src/work-order/work-order-actions.isolation.spec.ts')}
+            $record=New-DispatcherPolicyCorrectionRecord -State $state -Compliance $compliance -BaselineHead $baseline -TargetHead $target -TargetRef 'main'
+            if($PersistRecord){$state.policyCorrectionRecord=$record}
+            Write-DispatcherState $state|Out-Null
+            $prompt=Join-Path $Root ("policy-correction-"+$Id+".prompt.txt");Write-Utf8 $prompt 'restore only the proven policy violation'
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;implementation=$implementation;target=$target;baseline=$baseline;record=$record;prompt=$prompt;historicalInvocation=$historicalInvocation}
+        }
+
+        function Set-PolicyPreLaunchAttempt {
+            param($State,[int]$Attempt)
+            $State.attempt=$Attempt
+            $State.preLaunchAttempt=[ordered]@{schemaVersion='orcivo.orchestration.v2.pre-launch-attempt/1';recordedAt=(Get-Date).ToUniversalTime().ToString('o');taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;workspace=[string]$State.workspace;attempt=$Attempt}
+            $State.preLaunchAttempt.attemptHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;workspace=[string]$State.workspace;attempt=$Attempt}))
+            Write-DispatcherState $State|Out-Null
+        }
+
+        Check 'RD-131' {
+            $direct=New-PolicyCorrectionFixture 'RD131-direct' $true $false $false
+            $descendant=New-PolicyCorrectionFixture 'RD131-descendant' $true $true $false
+            $directProof=Test-DispatcherCommittedPolicyCorrectionBaseline $direct.state
+            $descendantProof=Test-DispatcherCommittedPolicyCorrectionBaseline $descendant.state
+            Assert-True ($directProof.ok -and [string]$directProof.record.correctionBaselineHead -eq $direct.implementation) 'clean committed correction baseline at the implementation commit was rejected'
+            Assert-True ($descendantProof.ok -and $descendant.baseline -ne $descendant.implementation) 'clean target-merge descendant correction baseline was rejected'
+            $snapshot=New-DispatcherWorkspaceInvocationSnapshot -State $descendant.state -Task $descendant.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $descendant.prompt -PromptHash (New-FileHash $descendant.prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 1
+            Assert-True ([string]$snapshot.stateBinding.workspaceHead -eq $descendant.baseline -and @($snapshot.paths).Count -eq 0) 'clean policy-correction invocation did not bind the exact persisted baseline HEAD'
+        }
+
+        Check 'RD-132' {
+            $f=New-PolicyCorrectionFixture 'RD132' $true $true $false
+            Write-Utf8 (Join-Path $f.workspace 'work\unrelated.ts') "export const unrelated = true;`n"
+            & git -C $f.workspace add .
+            & git -C $f.workspace -c user.name=rd -c user.email=rd@local commit -m unrelated --quiet
+            $proof=Test-DispatcherCommittedPolicyCorrectionBaseline $f.state
+            Assert-True (-not $proof.ok -and [string]$proof.reason -match 'persisted correction baseline') 'an unrelated clean descendant satisfied the correction-baseline predicate'
+        }
+
+        Check 'RD-133' {
+            $f=New-PolicyCorrectionFixture 'RD133' $true $true $false
+            $fields=@('taskVersionId','runId','workspace')
+            foreach($field in $fields){
+                $tampered=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $f.state)
+                $tampered.$field=[string]$tampered.$field+'-tampered'
+                $proof=Test-DispatcherCommittedPolicyCorrectionBaseline $tampered
+                Assert-True (-not $proof.ok -and [string]$proof.reason -match "binding '$field'") "tampered $field binding was accepted"
+            }
+            $recordTampered=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $f.state)
+            $recordTampered.policyCorrectionRecord.targetHead=('0'*40)
+            $proof=Test-DispatcherCommittedPolicyCorrectionBaseline $recordTampered
+            Assert-True (-not $proof.ok -and [string]$proof.reason -match 'hash') 're-hash detection did not reject a modified authoritative target'
+        }
+
+        Check 'RD-134' {
+            $exact=New-PolicyCorrectionFixture 'RD134-exact' $true $true $false
+            & git -C $exact.workspace restore --source $exact.target --worktree -- 'apps/backend/src/work-order/work-order-actions.isolation.spec.ts'
+            $exactProof=Get-DispatcherDirtyWorkspaceProof -Workspace $exact.workspace -Task $exact.task -PolicyCorrectionState $exact.state
+            Assert-True ($exactProof.clean -and @($exactProof.paths) -contains 'apps/backend/src/work-order/work-order-actions.isolation.spec.ts') 'exact authoritative protected-path reversion was rejected'
+
+            $byte=New-PolicyCorrectionFixture 'RD134-byte' $true $true $false
+            & git -C $byte.workspace restore --source $byte.target --worktree -- 'apps/backend/src/work-order/work-order-actions.isolation.spec.ts'
+            Add-Content -LiteralPath (Join-Path $byte.workspace 'apps\backend\src\work-order\work-order-actions.isolation.spec.ts') -Value 'x'
+            $byteProof=Get-DispatcherDirtyWorkspaceProof -Workspace $byte.workspace -Task $byte.task -PolicyCorrectionState $byte.state
+            Assert-True (-not $byteProof.clean) "one-byte protected-path deviation was accepted (reason=$($byteProof.reason))"
+
+            $other=New-PolicyCorrectionFixture 'RD134-other' $true $true $false
+            Write-Utf8 (Join-Path $other.workspace 'apps\backend\src\other\other.isolation.spec.ts') "modified other protected path`n"
+            $otherProof=Get-DispatcherDirtyWorkspaceProof -Workspace $other.workspace -Task $other.task -PolicyCorrectionState $other.state
+            Assert-True (-not $otherProof.clean) "a different protected acceptance path was accepted (reason=$($otherProof.reason))"
+
+            $scope=New-PolicyCorrectionFixture 'RD134-scope' $true $true $false
+            & git -C $scope.workspace restore --source $scope.target --worktree -- 'apps/backend/src/work-order/work-order-actions.isolation.spec.ts'
+            Write-Utf8 (Join-Path $scope.workspace 'outside.ts') "export const outside = true;`n"
+            $scopeProof=Get-DispatcherDirtyWorkspaceProof -Workspace $scope.workspace -Task $scope.task -PolicyCorrectionState $scope.state
+            Assert-True (-not $scopeProof.clean -and [string]$scopeProof.reason -match 'out-of-scope') 'ordinary scope enforcement was weakened by policy correction'
+        }
+
+        Check 'RD-135' {
+            $f=New-PolicyCorrectionFixture 'RD135' $true $true $false
+            Write-Utf8 (Join-Path $f.workspace 'work\unrelated.ts') "export const unrelated = true;`n"
+            & git -C $f.workspace add .
+            & git -C $f.workspace -c user.name=rd -c user.email=rd@local commit -m unrelated --quiet
+            $script:PolicyProviderLaunches=0
+            $beforeLaunch={param($launch) New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ([string]$launch.invocationId) -PromptArtifact $f.prompt -PromptHash (New-FileHash $f.prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 1|Out-Null}
+            $failed=$false
+            try{
+                & $beforeLaunch ([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'))})
+                $script:PolicyProviderLaunches++
+            }catch{$failed=$_.Exception.Message -match 'workspace has no preserved partial changes'}
+            Assert-True ($failed -and $script:PolicyProviderLaunches -eq 0 -and @($f.state.workspaceInvocationSnapshots).Count -eq 0) 'baseline proof failure crossed the provider launch boundary'
+        }
+
+        Check 'RD-136' {
+            $f=New-PolicyCorrectionFixture 'RD136' $true $true $false
+            Set-PolicyPreLaunchAttempt $f.state 2
+            $historyBefore=ConvertTo-CanonicalJson $f.state.providerHistory
+            $snapshotsBefore=ConvertTo-CanonicalJson $f.state.workspaceInvocationSnapshots
+            $first=Update-DispatcherPreLaunchAttempt $f.state
+            $afterFirst=Get-DispatcherState
+            $second=Update-DispatcherPreLaunchAttempt $afterFirst
+            $afterSecond=Get-DispatcherState
+            Assert-True ($first.ok -and [int]$afterFirst.attempt -eq 1 -and -not $afterFirst.preLaunchAttempt) 'a proven BeforeLaunch failure permanently consumed its allocated attempt'
+            Assert-True ($second.ok -and [int]$afterSecond.attempt -eq 1) 'pre-launch attempt recovery was not restart-idempotent'
+            Assert-True ((ConvertTo-CanonicalJson $afterSecond.providerHistory) -eq $historyBefore -and (ConvertTo-CanonicalJson $afterSecond.workspaceInvocationSnapshots) -eq $snapshotsBefore -and [string]$afterSecond.providerHistory[0].model -eq 'zai-coding-plan/glm-5.3') 'pre-launch recovery rewrote historical provider evidence'
+
+            $ambiguous=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $afterSecond)
+            Set-PolicyPreLaunchAttempt $ambiguous 2
+            $ambiguous.workspaceInvocationSnapshots=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));attempt=2})
+            $held=Update-DispatcherPreLaunchAttempt $ambiguous
+            Assert-True (-not $held.ok -and [string]$held.reason -match 'conflicts') 'ambiguous pre-launch and launched evidence was refunded'
+        }
+
+        Check 'RD-137' {
+            $f=New-PolicyCorrectionFixture 'RD137' $false $true $true
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $resolved=Resolve-DispatcherPolicyCorrectionRecord $f.state
+            Assert-True ($resolved.ok -and $resolved.reconstructed -and [string]$resolved.record.origin -eq 'LEGACY_RECONSTRUCTION' -and [string]$resolved.record.correctionBaselineHead -eq $f.baseline -and [string]$resolved.record.targetHead -eq $f.target) 'the exact stranded legacy policy-correction lineage was not reconstructed from bound evidence'
+            $normalized=Update-DispatcherPreLaunchAttempt $f.state
+            Assert-True ($normalized.ok -and [int]$f.state.attempt -eq 1) 'the stranded legacy pre-launch attempt was not normalized'
+            Set-PolicyPreLaunchAttempt $f.state 2
+            $snapshot=New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $f.prompt -PromptHash (New-FileHash $f.prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2
+            $persisted=Get-DispatcherState
+            Assert-True ([string]$snapshot.stateBinding.workspaceHead -eq $f.baseline -and [string]$persisted.policyCorrectionRecord.origin -eq 'LEGACY_RECONSTRUCTION' -and -not $persisted.preLaunchAttempt) 'legacy reconstruction was not pinned durably before the retried launch boundary'
+
+            $ambiguous=New-PolicyCorrectionFixture 'RD137-ambiguous' $false $true $true
+            Enter-DispatcherLedgerPhase -TaskVersionId $ambiguous.contract.taskVersionId -RunId $ambiguous.state.runId -Phase CHECKING
+            $rejected=Resolve-DispatcherPolicyCorrectionRecord $ambiguous.state
+            Assert-True (-not $rejected.ok -and [string]$rejected.reason -match "ledger state 'CHECKING' is not RUNNING") 'legacy reconstruction accepted ledger evidence beyond the exact correction-resume tail'
+        }
+
         # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-130) ----
         # The fake agent replaces Invoke-RealAgent only inside the restart
         # driver's dynamic scope: it performs the exact durable steps of a GLM
@@ -1555,6 +1748,7 @@ try{
         }else{foreach($id in 'RD-03','RD-04','RD-05','RD-19'){Fail $id "real smoke failed: $text"}}
     }else{foreach($id in 'RD-03','RD-04','RD-05','RD-19'){$results.Add([ordered]@{id=$id;status='SKIP';detail='rerun with -IncludeReal'})}}
 }finally{
+    $env:PATH=$OriginalPath
     $base=[IO.Path]::GetFullPath([IO.Path]::GetTempPath());$full=[IO.Path]::GetFullPath($Root)
     if($full.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)-and (Split-Path -Leaf $full)-like 'orcivo-rd-suite-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
 }

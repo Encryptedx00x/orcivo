@@ -1009,8 +1009,292 @@ function Recover-DispatcherUtf8StdinFailure {
     return [ordered]@{status='RECOVERED';taskVersionId=$TaskVersionId;runId=$state.runId;workspace=$state.workspace;provider=$state.provider;failovers=[int]$state.failovers;cycle=[int]$state.cycle;recovery=$recovery}
 }
 
+# ----------------------------------------------------------------------------
+# Durable policy-correction evidence.  When contract compliance blocks a
+# candidate, the dispatcher persists an hash-bound record binding the exact
+# lineage (taskVersionId/runId/workspace/implementationCommit), the exact
+# correction baseline HEAD the workspace froze at, the authoritative target
+# head/base the policy verdict used, and the exact violating paths.  The
+# record is the ONLY authority for (a) accepting a CLEAN corrector launch
+# over the committed correction baseline and (b) allowing a CORRECTOR to
+# touch a violating protected path, and then ONLY to restore it byte-for-byte
+# to the authoritative target version.
+# ----------------------------------------------------------------------------
+
+function _DispatcherPolicyCorrectionRecordCore {
+    param([Parameter(Mandatory)]$Record)
+    return [ordered]@{
+        schemaVersion=[string]$Record.schemaVersion
+        recordedAt=[string]$Record.recordedAt
+        origin=[string]$Record.origin
+        taskVersionId=[string]$Record.taskVersionId
+        runId=[string]$Record.runId
+        taskId=[string]$Record.taskId
+        taskSourceHash=[string]$Record.taskSourceHash
+        workspace=[string]$Record.workspace
+        implementationCommit=[string]$Record.implementationCommit
+        correctionBaselineHead=[string]$Record.correctionBaselineHead
+        targetRef=[string]$Record.targetRef
+        targetHead=[string]$Record.targetHead
+        reason=[string]$Record.reason
+        violatingPaths=@(@($Record.violatingPaths)|Where-Object{$_}|ForEach-Object{[string]$_})
+        violatingProtectedPaths=@(@($Record.violatingProtectedPaths)|Where-Object{$_}|ForEach-Object{[string]$_})
+        cycle=[int]$Record.cycle
+        attempt=[int]$Record.attempt
+    }
+}
+
+function New-DispatcherPolicyCorrectionRecord {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)]$Compliance,
+        [Parameter(Mandatory)][string]$BaselineHead,
+        [Parameter(Mandatory)][string]$TargetHead,
+        [Parameter(Mandatory)][string]$TargetRef
+    )
+    $cfg=Get-V2Config
+    $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+    $task=$null;if($State.task){$task=_ToHashtable $State.task}
+    $declared=@();$grants=@()
+    if($task){$declared=@($task.scope|Where-Object{$_});$grants=@($task.protectedPathGrants|Where-Object{$_})}
+    $unrestricted=($grants -contains 'unrestrictedScope')
+    $noteText=@($Compliance.violations|Where-Object{$_}) -join '; '
+    $paths=@()
+    foreach($f in @($Compliance.changedFiles|Where-Object{$_})){
+        $file=[string]$f
+        $isProtected=Test-RelPathUnder $file $protected
+        if($isProtected){
+            # Every protected modification is a violating path for the
+            # corrector: without an explicit grant it violates outright, and
+            # a grant on a non-elevated contract still violates.
+            $paths+=$file
+            continue
+        }
+        $inScope=($unrestricted -or (Test-RelPathUnder $file $declared))
+        if(-not $inScope){$paths+=$file}
+    }
+    # Cross-check every classified path against the exact recorded violations;
+    # anything the policy verdict did not name is not a violating path.
+    $paths=@($paths|Sort-Object -Unique|Where-Object{$noteText.Contains([string]$_)})
+    $record=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.policy-correction-record/1'
+        recordedAt=(Get-Date).ToUniversalTime().ToString('o')
+        origin='POLICY_BLOCK'
+        taskVersionId=[string]$State.taskVersionId
+        runId=[string]$State.runId
+        taskId=[string]$State.taskId
+        taskSourceHash=[string]$State.taskSourceHash
+        workspace=[string]$State.workspace
+        implementationCommit=[string]$State.implementationCommit
+        correctionBaselineHead=$BaselineHead
+        targetRef=$TargetRef
+        targetHead=$TargetHead
+        reason=$noteText
+        violatingPaths=@($paths)
+        violatingProtectedPaths=@($paths|Where-Object{Test-RelPathUnder $_ $protected})
+        cycle=[int]$State.cycle
+        attempt=[int]$State.attempt
+    }
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson (_DispatcherPolicyCorrectionRecordCore $record))
+    return $record
+}
+
+function Test-DispatcherPolicyCorrectionRecord {
+    param([Parameter(Mandatory)]$Record,[Parameter(Mandatory)]$State)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    try{
+        if(-not $Record){return &$deny 'policy-correction record is absent'}
+        if([string]$Record.schemaVersion -ne 'orcivo.orchestration.v2.policy-correction-record/1'){return &$deny 'policy-correction record schema version is invalid'}
+        foreach($field in @('taskVersionId','runId','taskId','taskSourceHash','workspace','implementationCommit')){
+            if([string]$Record.$field -ne [string]$State.$field){return &$deny "policy-correction record binding '$field' does not match the durable state"}
+        }
+        if([string]$Record.taskVersionId -notmatch '^[0-9a-f]{64}$'){return &$deny 'policy-correction record task version is invalid'}
+        if([string]$Record.taskSourceHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'policy-correction record task source hash is invalid'}
+        foreach($field in @('implementationCommit','correctionBaselineHead','targetHead')){
+            if([string]$Record.$field -notmatch '^[0-9a-f]{40}$'){return &$deny "policy-correction record field '$field' is not a valid commit"}
+        }
+        if(-not [string]$Record.targetRef -or -not [string]$Record.reason){return &$deny 'policy-correction record target ref or reason is absent'}
+        $paths=@(@($Record.violatingPaths)|Where-Object{$_})
+        if($paths.Count -lt 1){return &$deny 'policy-correction record has no exact violating paths'}
+        if(@($paths|Sort-Object -Unique).Count -ne $paths.Count){return &$deny 'policy-correction record contains duplicate violating paths'}
+        foreach($p in $paths){
+            if([string]$p -match '(^|/)\.\.(/|$)' -or [System.IO.Path]::IsPathRooted([string]$p)){return &$deny 'policy-correction record contains an unsafe violating path'}
+        }
+        $cfg=Get-V2Config
+        $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+        $expectedProtected=@($paths|Where-Object{Test-RelPathUnder ([string]$_) $protected}|Sort-Object -Unique)
+        $recordedProtected=@(@($Record.violatingProtectedPaths)|Where-Object{$_}|ForEach-Object{[string]$_}|Sort-Object -Unique)
+        if(($expectedProtected -join "`n") -cne ($recordedProtected -join "`n")){return &$deny 'policy-correction record protected-path classification does not recompute'}
+        if([string]$Record.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson (_DispatcherPolicyCorrectionRecordCore $Record)))){return &$deny 'policy-correction record hash does not recompute'}
+        return [ordered]@{ok=$true;reason='policy-correction record verified'}
+    }catch{return &$deny "policy-correction record validation failed: $($_.Exception.Message)"}
+}
+
+# Exact byte/existence equality between a workspace path and its authoritative
+# target version: `git diff --quiet <targetHead> -- <path>` exits 0 only when
+# the effective worktree state (staged or unstaged) is identical to the
+# recorded target commit - one byte of deviation, a wrongful deletion, or a
+# file the target does not contain all exit non-zero.
+function Test-DispatcherPolicyCorrectionReversionMatch {
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)]$Record,[Parameter(Mandatory)][string]$Path)
+    $cfg=Get-V2Config
+    $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+    $allowed=$(if(Test-RelPathUnder $Path $protected){@($Record.violatingProtectedPaths)}else{@($Record.violatingPaths)})
+    if(@($allowed|Where-Object{[string]::Equals([string]$_,$Path,[StringComparison]::Ordinal)}).Count -ne 1){return $false}
+    $targetHead=[string]$Record.targetHead
+    if($targetHead -notmatch '^[0-9a-f]{40}$'){return $false}
+    $match=Invoke-GitV2 -Dir $Workspace -Arguments @('diff','--no-ext-diff','--quiet',$targetHead,'--',$Path) -LogLabel 'policy-correction-reversion-match'
+    return ([int]$match.exitCode -eq 0)
+}
+
+# Reconstruct the durable policy-correction record for an already-stranded
+# legacy lineage (blocked and resumed before the record existed) ONLY from
+# unambiguous current Git/state/ledger evidence; anything weaker fails closed.
+# The provable shape is exact: a clean workspace whose HEAD is the merge
+# commit the deterministic post-candidate target merge produced (first parent
+# = the durable implementation commit, second parent = the authoritative
+# target head the policy verdict used), a ledger whose LAST policy-block for
+# this run is immediately followed by the exact FAILED->READY->DISPATCHED->
+# RUNNING policy-correction chain and nothing that re-blocks it, and a note
+# whose every violation parses to an exact violating path that is really
+# changed between that target head and the baseline HEAD.
+function Get-DispatcherLegacyPolicyCorrectionRecord {
+    param([Parameter(Mandatory)]$State)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;record=$null;reason=$Reason}}
+    $workspace=[string]$State.workspace
+    if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'correction workspace is absent'}
+    $status=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'policy-correction-legacy-status'
+    if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout)){return &$deny 'correction workspace is not clean'}
+    $head=Get-GitHeadV2 $workspace
+    if($head -notmatch '^[0-9a-f]{40}$'){return &$deny 'correction workspace HEAD is invalid'}
+    $commit=[string]$State.implementationCommit
+    $object=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse','--verify',"$commit^{commit}") -LogLabel 'policy-correction-legacy-implementation'
+    if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $commit){return &$deny 'implementation commit is not an object in the workspace'}
+    $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$commit,$head) -LogLabel 'policy-correction-legacy-lineage'
+    if($ancestor.exitCode -ne 0){return &$deny 'implementation commit is not an ancestor of the workspace HEAD'}
+    $parents=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--parents','-n','1',$head) -LogLabel 'policy-correction-legacy-parents'
+    if($parents.exitCode -ne 0){return &$deny 'baseline parents could not be resolved'}
+    $parts=@($parents.stdout.Trim() -split '\s+'|Where-Object{$_})
+    if($parts.Count -ne 3 -or $parts[0] -ne $head -or $parts[1] -ne $commit){return &$deny 'baseline HEAD is not the deterministic implementation/target merge'}
+    $targetHead=$parts[2]
+    if($targetHead -notmatch '^[0-9a-f]{40}$'){return &$deny 'baseline merge target parent is invalid'}
+
+    $ledgerState=Get-LedgerState ([string]$State.taskVersionId)
+    if([string]$ledgerState.state -ne 'RUNNING'){return &$deny "legacy ledger state '$([string]$ledgerState.state)' is not RUNNING"}
+    $events=@(Read-JsonLines (Get-LedgerPath ([string]$State.taskVersionId)))
+    $blockIndex=-1
+    for($i=0;$i -lt $events.Count;$i++){
+        if([string]$events[$i].event -eq 'policy-block' -and [string]$events[$i].runId -eq [string]$State.runId){$blockIndex=$i}
+    }
+    if($blockIndex -lt 0){return &$deny 'ledger has no policy block for this run'}
+    $note=[string]$events[$blockIndex].note
+    if(-not $note){return &$deny 'policy-block note is absent'}
+    $expectedChain=@('policy-correction-ready','policy-correction-dispatch','policy-correction-running')
+    for($o=0;$o -lt 3;$o++){
+        $idx=$blockIndex+1+$o
+        if($idx -ge $events.Count -or [string]$events[$idx].event -ne $expectedChain[$o]){return &$deny 'ledger tail is not the exact policy-correction resume chain'}
+    }
+    if($events.Count -ne ($blockIndex+4)){return &$deny 'ledger contains evidence after the exact policy-correction resume chain'}
+
+    $parsed=@()
+    foreach($v in @($note -split '; '|Where-Object{$_})){
+        $p=$null
+        if($v -match '^PROTECTED path modified without a contract grant: (.+)$'){$p=$Matches[1]}
+        elseif($v -match '^OUT OF SCOPE change: (.+?) \(declared scope: .+\)$'){$p=$Matches[1]}
+        elseif($v -match '^protected path (.+?) granted but task risk'){ $p=$Matches[1]}
+        if(-not $p){return &$deny 'policy-block note contains an unparsable violation'}
+        $p=($p.Replace('\','/')).Trim()
+        if(-not $p -or $p -match '(^|/)\.\.(/|$)' -or [System.IO.Path]::IsPathRooted($p)){return &$deny 'policy-block note contains an unsafe violating path'}
+        $parsed+=$p
+    }
+    $parsed=@($parsed|Sort-Object -Unique)
+    if(-not $parsed.Count){return &$deny 'policy-block note has no violating paths'}
+    $names=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--name-only',"$targetHead..$head") -LogLabel 'policy-correction-legacy-diff-names'
+    if($names.exitCode -ne 0){return &$deny 'blocked candidate diff could not be resolved'}
+    $changed=@($names.stdout -split '\r?\n'|Where-Object{$_})
+    foreach($p in $parsed){
+        if(@($changed|Where-Object{$_ -eq $p}).Count -ne 1){return &$deny "violating path is not present in the blocked candidate diff: $p"}
+    }
+
+    $cfg=Get-V2Config
+    $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+    $record=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.policy-correction-record/1'
+        recordedAt=(Get-Date).ToUniversalTime().ToString('o')
+        origin='LEGACY_RECONSTRUCTION'
+        taskVersionId=[string]$State.taskVersionId
+        runId=[string]$State.runId
+        taskId=[string]$State.taskId
+        taskSourceHash=[string]$State.taskSourceHash
+        workspace=$workspace
+        implementationCommit=$commit
+        correctionBaselineHead=$head
+        targetRef=[string]$cfg.target.branch
+        targetHead=$targetHead
+        reason=$note
+        violatingPaths=@($parsed)
+        violatingProtectedPaths=@($parsed|Where-Object{Test-RelPathUnder $_ $protected})
+        cycle=[int]$State.cycle
+        attempt=[int]$State.attempt
+    }
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson (_DispatcherPolicyCorrectionRecordCore $record))
+    return [ordered]@{ok=$true;record=$record;reason='legacy policy-correction record reconstructed from durable evidence'}
+}
+
+# Resolve the authoritative policy-correction record for the CURRENT state:
+# the persisted record when present (integrity- and binding-verified), else a
+# legacy reconstruction.  Fail closed with a reason otherwise.
+function Resolve-DispatcherPolicyCorrectionRecord {
+    param([Parameter(Mandatory)]$State)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;record=$null;reconstructed=$false;reason=$Reason}}
+    if(-not [bool]$State.requiresCorrection){return &$deny 'lineage is not marked for policy correction'}
+    if([bool]$State.implementationComplete){return &$deny 'policy correction cannot run on a complete implementation'}
+    if([int]$State.cycle -le 0){return &$deny 'policy correction requires an active correction cycle'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'state is not an active RUNNING/IMPLEMENT correction'}
+    if([string]$State.implementationCommit -notmatch '^[0-9a-f]{40}$'){return &$deny 'durable implementation commit is absent or invalid'}
+    if([string]$State.candidateHead){return &$deny 'policy correction cannot run beside a preserved candidate head'}
+    if($State.policyCorrectionRecord){
+        $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
+        if(-not $verified.ok){return &$deny $verified.reason}
+        return [ordered]@{ok=$true;record=$State.policyCorrectionRecord;reconstructed=$false;reason='persisted policy-correction record verified'}
+    }
+    $legacy=Get-DispatcherLegacyPolicyCorrectionRecord -State $State
+    if(-not $legacy.ok){return &$deny $legacy.reason}
+    return [ordered]@{ok=$true;record=$legacy.record;reconstructed=$true;reason='legacy policy-correction record reconstructed from durable evidence'}
+}
+
+# The committed policy-correction baseline predicate for a CLEAN corrector
+# launch: requiresCorrection, implementation not complete, cycle > 0, a valid
+# implementation commit, a hash-bound record bound to the exact task/version/
+# run/workspace lineage, a workspace HEAD equal to the persisted correction
+# baseline HEAD, and the implementation commit an ancestor of that baseline.
+# No arbitrary clean workspace can satisfy it - the baseline HEAD is pinned
+# by the record hash, and the baseline may legitimately sit ABOVE the
+# implementation commit (the deterministic target merge).
+function Test-DispatcherCommittedPolicyCorrectionBaseline {
+    param([Parameter(Mandatory)]$State)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;record=$null;reconstructed=$false;reason=$Reason}}
+    $resolved=Resolve-DispatcherPolicyCorrectionRecord -State $State
+    if(-not $resolved.ok){return &$deny $resolved.reason}
+    $record=$resolved.record
+    $status=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'policy-correction-baseline-status'
+    if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout)){return &$deny 'policy-correction baseline workspace is not clean'}
+    $head=Get-GitHeadV2 ([string]$State.workspace)
+    if($head -ne [string]$record.correctionBaselineHead){return &$deny 'workspace HEAD is not the persisted correction baseline'}
+    foreach($lineage in @(
+        [ordered]@{commit=[string]$State.implementationCommit;label='implementation commit'},
+        [ordered]@{commit=[string]$record.targetHead;label='authoritative target'}
+    )){
+        $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$($lineage.commit)^{commit}") -LogLabel 'policy-correction-baseline-object'
+        if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne [string]$lineage.commit){return &$deny "$($lineage.label) is not a commit in the correction workspace"}
+        $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',[string]$lineage.commit,$head) -LogLabel 'policy-correction-baseline-lineage'
+        if($ancestor.exitCode -ne 0){return &$deny "$($lineage.label) is not an ancestor of the correction baseline"}
+    }
+    return [ordered]@{ok=$true;record=$record;reconstructed=[bool]$resolved.reconstructed;reason='committed policy-correction baseline verified'}
+}
+
 function Get-DispatcherDirtyWorkspaceProof {
-    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task)
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task,$PolicyCorrectionState=$null)
     $deny={param([string]$Reason)return [ordered]@{clean=$false;reason=$Reason}}
     # `--untracked-files=all` is security-critical: the default may collapse a
     # whole untracked directory to one entry, which would otherwise evade both
@@ -1028,7 +1312,18 @@ function Get-DispatcherDirtyWorkspaceProof {
     }
     $declared=@($Task.scope|Where-Object{$_});if(-not $declared.Count){return &$deny 'declared scope is empty'}
     $grants=@($Task.protectedPathGrants|Where-Object{$_});$cfg=Get-V2Config
+    # Strict policy-correction reversion: a PROVEN correction lineage (hash-
+    # bound record bound to this exact state) may modify a violating path
+    # ONLY to restore it byte-for-byte to the authoritative target version.
+    # One byte of deviation, a wrongful deletion, an extra or unrelated
+    # protected path, or any unproven lineage keeps the normal denial.
+    $correction=$null
+    if($PolicyCorrectionState){
+        $resolved=Resolve-DispatcherPolicyCorrectionRecord -State $PolicyCorrectionState
+        if($resolved.ok){$correction=$resolved.record}
+    }
     foreach($path in $paths){
+        if($correction -and (Test-DispatcherPolicyCorrectionReversionMatch -Workspace $Workspace -Record $correction -Path $path)){continue}
         if(-not(Test-RelPathUnder $path $declared)){return &$deny "out-of-scope change: $path"}
         if((Test-RelPathUnder $path @($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)) -and -not(Test-RelPathUnder $path $grants)){return &$deny "ungranted protected change: $path"}
     }
@@ -1070,9 +1365,10 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     if($PromptHash -notmatch '^sha256:[0-9a-f]{64}$' -or -not(Test-Path -LiteralPath $PromptArtifact) -or (New-FileHash $PromptArtifact) -ne $PromptHash){throw 'workspace invocation snapshot: prompt hash mismatch'}
     if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT' -or [int]$State.attempt -ne $Attempt){throw 'workspace invocation snapshot: dispatcher is not at the exact pre-launch implementation state'}
     if(@($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId -eq $InvocationId}).Count){throw 'workspace invocation snapshot: invocation already has a snapshot'}
-    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
     $isFreshCleanBaseline=$false
     $isCleanInertRetry=$false
+    $isPolicyCorrectionBaseline=$false
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -1137,13 +1433,27 @@ function New-DispatcherWorkspaceInvocationSnapshot {
             if(-not $isCleanRetry -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
                 $isCleanInertRetry=$true
             }elseif(-not $isCleanRetry){
-                throw "workspace invocation snapshot: $($partial.reason)"
+                # A CLEAN workspace over an implementation that policy
+                # compliance blocked is legitimate ONLY as the strictly
+                # proven committed policy-correction baseline: the durable
+                # (or unambiguously reconstructed) hash-bound record pins the
+                # exact baseline HEAD, and the workspace must stand on it.
+                # Anything weaker keeps failing closed, so no provider ever
+                # launches over an unproven clean correction workspace.
+                $baseline=Test-DispatcherCommittedPolicyCorrectionBaseline -State $State
+                if(-not $baseline.ok){throw "workspace invocation snapshot: $($partial.reason)"}
+                $isPolicyCorrectionBaseline=$true
+                if($baseline.reconstructed){
+                    # Pin the reconstructed record durably before the
+                    # interval binds, so later tampering is detectable.
+                    $State.policyCorrectionRecord=$baseline.record
+                }
             }
 
-            if($isCleanRetry -or $isCleanInertRetry){
+            if($isCleanRetry -or $isCleanInertRetry -or $isPolicyCorrectionBaseline){
                 $partial=[ordered]@{
                     clean=$true
-                    reason=$(if($isCleanRetry){'verified clean quarantined retry baseline'}else{'verified clean inert-retry baseline'})
+                    reason=$(if($isCleanRetry){'verified clean quarantined retry baseline'}elseif($isCleanInertRetry){'verified clean inert-retry baseline'}else{'verified committed policy-correction baseline'})
                     paths=@()
                     fileBindings=@()
                     diffHash=(New-StringHash '')
@@ -1153,7 +1463,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry)
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline)
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -1165,6 +1475,10 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $stateBinding=[ordered]@{runId=[string]$State.runId;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;taskSourceHash=[string]$State.taskSourceHash;status=[string]$State.status;stage=[string]$State.stage;attempt=$Attempt;cycle=[int]$State.cycle;failovers=[int]$State.failovers;provider=[string]$Provider;model=[string]$Model;reasoningEffort=[string]$ReasoningEffort;workspace=[string]$State.workspace;workspaceHead=$expectedHead;unavailableProviders=@($State.unavailableProviders);priorRecoveryEvidenceHash=$(if($prior){[string]$prior.evidenceHash}else{''});priorRecoveryFilesHash=$(if($prior){[string]$prior.partialFilesHash}else{''});priorRecoveryDiffHash=$(if($prior){[string]$prior.partialDiffHash}else{''})}
     $snapshot=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-snapshot/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;promptArtifact=[IO.Path]::GetFullPath($PromptArtifact);promptHash=$PromptHash;provider=$Provider;model=$Model;reasoningEffort=$ReasoningEffort;attempt=$Attempt;stateBinding=$stateBinding;stateHash=(New-StringHash (ConvertTo-CanonicalJson $stateBinding));partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
     $snapshot.snapshotHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$snapshot.schemaVersion;invocationId=$snapshot.invocationId;promptHash=$snapshot.promptHash;provider=$snapshot.provider;model=$snapshot.model;reasoningEffort=$snapshot.reasoningEffort;attempt=$snapshot.attempt;stateHash=$snapshot.stateHash;partialDiffHash=$snapshot.partialDiffHash;partialFilesHash=$snapshot.partialFilesHash;paths=@($snapshot.paths);fileBindings=@($snapshot.fileBindings)}))
+    # Crossing the BeforeLaunch boundary is the durable point of no return for
+    # an execution attempt: the persisted snapshot binds the attempt, so the
+    # pre-launch attempt record can never refund it afterwards.
+    if($State.Contains('preLaunchAttempt') -and $State.preLaunchAttempt -and [int]$State.preLaunchAttempt.attempt -eq $Attempt){$State.Remove('preLaunchAttempt')}
     $State.workspaceInvocationSnapshots=@($State.workspaceInvocationSnapshots|Where-Object{$_})+@($snapshot)
     Write-DispatcherState $State|Out-Null
     return $snapshot
@@ -1174,10 +1488,18 @@ function New-DispatcherWorkspaceInvocationSnapshot {
 # implementation legitimately stands on baseSha; a recovered/previous
 # implementation stands on its recorded commit.  A provably inert retry
 # (every prior invocation provably left the workspace unchanged) also stands
-# on baseSha.  The post-execution snapshot never uses this: it is bound to
+# on baseSha.  A committed policy-correction baseline stands on the exact
+# persisted correction baseline HEAD - never the bare implementation commit,
+# because the baseline may include the deterministic target merge above it.
+# The post-execution snapshot never uses this: it is bound to
 # the exact HEAD frozen by the pre snapshot.
 function Get-DispatcherPreLaunchExpectedHead {
-    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry)
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false)
+    if($IsPolicyCorrectionBaseline){
+        $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
+        if(-not $verified.ok){return ''}
+        return [string]$State.policyCorrectionRecord.correctionBaselineHead
+    }
     $expectedHead=[string]$State.recoveredCandidateCommit
     if(-not $expectedHead){
         $expectedHead=[string]$State.implementationCommit
@@ -1265,7 +1587,7 @@ function New-DispatcherWorkspaceInvocationResultSnapshot {
     # provider interval stays fail-closed.
     $expectedHead=[string]$pre.stateBinding.workspaceHead
     if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
-    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
     if(-not $partial.clean){throw "workspace invocation result snapshot: $($partial.reason)"}
     $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
     $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
@@ -2257,6 +2579,73 @@ function Set-DispatcherReviewOutcome {
     return $State
 }
 
+# ----------------------------------------------------------------------------
+# Durable pre-launch attempt mechanism.  The launch boundary increments the
+# execution attempt and persists a hash-bound pre-launch record BEFORE the
+# provider child exists; the pre-invocation snapshot (the BeforeLaunch
+# callback) is the durable crossing point that removes the record.  A
+# provider that provably never crossed that boundary - no pre-invocation
+# snapshot, no provider-history entry, no result snapshot binds the attempt -
+# therefore never permanently consumes an execution attempt.  Refunds are
+# computed only from immutable evidence, are idempotent across restarts, and
+# never rewrite historical provider evidence.  Ambiguous state fails closed.
+# ----------------------------------------------------------------------------
+
+function Get-DispatcherBoundLaunchAttempts {
+    param([Parameter(Mandatory)]$State)
+    $bound=@{}
+    foreach($entry in @($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})){
+        if($null -ne $entry.attempt){$bound[[int]$entry.attempt]=$true}
+    }
+    foreach($manifest in @($State.workspaceInvocationSnapshots|Where-Object{$_ -and [string]$_.invocationId})){
+        if($null -ne $manifest.attempt){$bound[[int]$manifest.attempt]=$true}
+    }
+    foreach($manifest in @($State.workspaceInvocationResultSnapshots|Where-Object{$_ -and [string]$_.invocationId})){
+        if($null -ne $manifest.attempt){$bound[[int]$manifest.attempt]=$true}
+    }
+    return $bound
+}
+
+function Update-DispatcherPreLaunchAttempt {
+    param([Parameter(Mandatory)]$State)
+    $bound=Get-DispatcherBoundLaunchAttempts -State $State
+    $attempt=[int]$State.attempt
+    $record=$null
+    $hasRecord=$(if($State -is [System.Collections.IDictionary]){@($State.Keys) -contains 'preLaunchAttempt'}else{@($State.PSObject.Properties.Name) -contains 'preLaunchAttempt'})
+    if($hasRecord -and $State.preLaunchAttempt){$record=_ToHashtable $State.preLaunchAttempt}
+    if($record){
+        if([string]$record.schemaVersion -ne 'orcivo.orchestration.v2.pre-launch-attempt/1'){return [ordered]@{ok=$false;reason='pre-launch attempt record schema version is invalid'}}
+        $core=[ordered]@{taskVersionId=[string]$record.taskVersionId;runId=[string]$record.runId;workspace=[string]$record.workspace;attempt=[int]$record.attempt}
+        if([string]$record.attemptHash -ne (New-StringHash (ConvertTo-CanonicalJson $core))){return [ordered]@{ok=$false;reason='pre-launch attempt record hash does not recompute'}}
+        if([string]$record.taskVersionId -ne [string]$State.taskVersionId -or [string]$record.runId -ne [string]$State.runId -or [string]$record.workspace -ne [string]$State.workspace){return [ordered]@{ok=$false;reason='pre-launch attempt record is not bound to the current lineage'}}
+        if([int]$record.attempt -ne $attempt){return [ordered]@{ok=$false;reason="pre-launch attempt record is ambiguous (recorded attempt $($record.attempt) vs durable attempt $attempt)"}}
+        if(-not $bound.ContainsKey($attempt)){
+            # The provider provably never crossed the BeforeLaunch boundary:
+            # nothing in the immutable evidence binds this attempt, so the
+            # increment is refunded rather than permanently consumed.
+            $State.attempt=$attempt-1
+            if($State -is [System.Collections.IDictionary]){$State.Remove('preLaunchAttempt')}else{$State.PSObject.Properties.Remove('preLaunchAttempt')}
+            Write-DispatcherState $State|Out-Null
+            return [ordered]@{ok=$true;reason="pre-launch attempt $attempt refunded (provider provably never crossed the launch boundary)"}
+        }
+        return [ordered]@{ok=$false;reason='pre-launch attempt record conflicts with durable launch evidence'}
+    }
+    # Legacy lineages predate the durable pre-launch record.  An attempt
+    # above the highest attempt bound by launch evidence was never crossed
+    # by any provider, which is exactly the pre-launch failure shape.
+    $maxBound=0
+    foreach($k in @($bound.Keys)){if([int]$k -gt $maxBound){$maxBound=[int]$k}}
+    if($attempt -gt $maxBound){
+        if($attempt -ne ($maxBound+1)){return [ordered]@{ok=$false;reason="legacy unbound attempt gap is ambiguous (durable attempt $attempt vs highest launch-bound attempt $maxBound)"}}
+        $baseline=Test-DispatcherCommittedPolicyCorrectionBaseline -State $State
+        if(-not $baseline.ok){return [ordered]@{ok=$false;reason="legacy unbound attempt is not a proven policy-correction pre-launch failure: $($baseline.reason)"}}
+        $State.attempt=$attempt-1
+        Write-DispatcherState $State|Out-Null
+        return [ordered]@{ok=$true;reason="legacy policy-correction pre-launch attempt $attempt normalized to the highest launch-bound attempt $maxBound"}
+    }
+    return [ordered]@{ok=$true;reason='attempt counter is bound to durable launch evidence'}
+}
+
 # Generic invocation-boundary route/model sync.  A provider-route transition
 # (cross-provider failover, provider-wait resume, quarantined retry selection)
 # or a provider/model migration between durable invocations can leave the
@@ -2507,7 +2896,21 @@ if($needsFreshDispatch){
                     $state.status='WAITING_HUMAN';$state.reason="invocation route sync failed: $($routeSync.reason)";Write-DispatcherState $state|Out-Null
                     return $state
                 }
-                $state.attempt=[int]$state.attempt+1; Write-DispatcherState $state|Out-Null
+                # Durable pre-launch attempt reconciliation runs BEFORE the
+                # increment: an attempt whose provider provably never crossed
+                # the BeforeLaunch boundary (snapshotless, history-less,
+                # resultless) is refunded instead of being re-incremented on
+                # every restart.  Ambiguous records fail closed and hold.
+                $preLaunchAttempt=Update-DispatcherPreLaunchAttempt -State $state
+                if(-not [bool]$preLaunchAttempt.ok){
+                    Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'pre-launch-attempt-hold' -ToState WAITING_HUMAN -RunId $state.runId -Note ([string]$preLaunchAttempt.reason)|Out-Null
+                    $state.status='WAITING_HUMAN';$state.reason="pre-launch attempt reconciliation failed: $($preLaunchAttempt.reason)";Write-DispatcherState $state|Out-Null
+                    return $state
+                }
+                $state.attempt=[int]$state.attempt+1
+                $state.preLaunchAttempt=[ordered]@{schemaVersion='orcivo.orchestration.v2.pre-launch-attempt/1';recordedAt=(Get-Date).ToUniversalTime().ToString('o');taskVersionId=[string]$state.taskVersionId;runId=[string]$state.runId;workspace=[string]$state.workspace;attempt=[int]$state.attempt}
+                $state.preLaunchAttempt.attemptHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{taskVersionId=[string]$state.taskVersionId;runId=[string]$state.runId;workspace=[string]$state.workspace;attempt=[int]$state.attempt}))
+                Write-DispatcherState $state|Out-Null
                 $role=$(if([int]$state.cycle -gt 0){'CORRECTOR'}else{'IMPLEMENTER'})
                 $continuation=$(if($state.continuationCheckpoint){Get-ContinuationCheckpoint $state.taskVersionId}else{$null})
                 $mem=Get-DispatcherMemoryContext
@@ -2556,7 +2959,14 @@ if($needsFreshDispatch){
             $merge=Invoke-GitV2 -Dir $state.workspace -Arguments @('merge',$candBase,'--no-edit','--quiet') -LogLabel 'candidate-merge-target'
             if($merge.exitCode -ne 0){[void](Invoke-GitV2 -Dir $state.workspace -Arguments @('merge','--abort') -LogLabel 'candidate-merge-abort');$state.status='BLOCKED';$state.reason='candidate conflicts with current target; rebuild required';Write-DispatcherState $state|Out-Null;return $state}
             $candHead=Get-GitHeadV2 $state.workspace; $cc=Test-ContractCompliance -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
-            if(-not $cc.compliant){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-block' -ToState 'FAILED' -RunId $state.runId -Note ($cc.violations -join '; ')|Out-Null;$state.status='BLOCKED';$state.reason=$cc.violations -join '; ';Write-DispatcherState $state|Out-Null;return $state}
+            if(-not $cc.compliant){
+                # Persist the durable policy-correction evidence BEFORE the
+                # block becomes durable, so the bounded policy-correction
+                # resume can prove the exact correction baseline, the exact
+                # violating paths, and the authoritative target head.
+                $state.policyCorrectionRecord=New-DispatcherPolicyCorrectionRecord -State $state -Compliance $cc -BaselineHead $candHead -TargetHead $candBase -TargetRef $target
+                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'policy-block' -ToState 'FAILED' -RunId $state.runId -Note ($cc.violations -join '; ')|Out-Null;$state.status='BLOCKED';$state.reason=$cc.violations -join '; ';Write-DispatcherState $state|Out-Null;return $state
+            }
             Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase CHECKING
             $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $candBase -HeadSha $candHead
