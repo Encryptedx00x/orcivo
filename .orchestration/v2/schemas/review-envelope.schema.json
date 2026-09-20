@@ -74,6 +74,26 @@
       "maxItems": 2000,
       "items": { "type": "string", "maxLength": 512 }
     },
+    "technicalBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "failure",
+        "artifact",
+        "pageOffset",
+        "expectedSha256",
+        "detail"
+      ],
+      "properties": {
+        "classification": { "const": "REVIEW_INFRASTRUCTURE" },
+        "failure": { "type": "string", "enum": ["ARTIFACT_READ_FAILURE"] },
+        "artifact": { "type": "string", "enum": ["acceptance.txt", "spec.txt", "diff.patch"] },
+        "pageOffset": { "type": "integer" },
+        "expectedSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "detail": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
     "reviewerMeta": {
       "type": "object",
       "additionalProperties": false,

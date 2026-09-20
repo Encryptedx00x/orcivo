@@ -168,6 +168,25 @@ function Parse-ReviewEnvelope {
 
     $verdict = [string]$obj.verdict
 
+    $technicalBlock = $obj.technicalBlock
+    if ($technicalBlock) {
+        if ($verdict -ne 'BLOCK') {
+            return (& $HRR 'technicalBlock is valid only with verdict BLOCK' @('technicalBlock/verdict mismatch'))
+        }
+        if ([int64]$technicalBlock.pageOffset -lt 0) {
+            return (& $HRR 'technicalBlock pageOffset is invalid' @('pageOffset must be non-negative'))
+        }
+        if ($Expected.Contains('reviewArtifacts')) {
+            $artifact = @($Expected.reviewArtifacts | Where-Object { [string]$_.name -eq [string]$technicalBlock.artifact })
+            if ($artifact.Count -ne 1 -or [string]$artifact[0].sha256 -ne [string]$technicalBlock.expectedSha256) {
+                return (& $HRR 'technicalBlock artifact binding mismatch' @('artifact name/hash does not match frozen review data'))
+            }
+            if ([int64]$technicalBlock.pageOffset -gt [int64]$artifact[0].totalChars) {
+                return (& $HRR 'technicalBlock pageOffset exceeds the artifact' @('pageOffset is outside frozen review data'))
+            }
+        }
+    }
+
     if ($verdict -eq 'APPROVE') {
         $downgrade = @()
 
@@ -207,7 +226,7 @@ function Parse-ReviewEnvelope {
         }
     }
 
-    return [ordered]@{ verdict = $verdict; reason = 'ok'; problems = @(); envelope = $obj }
+    return [ordered]@{ verdict = $verdict; reason = 'ok'; problems = @(); envelope = $obj; technicalBlock = $technicalBlock }
 }
 
 # ---- prompt builder: untrusted data is transported OUT OF BAND (H3-03) -------
@@ -283,11 +302,21 @@ function Build-ReviewPrompt {
     $L += "  criteria[]    { id, met:bool, evidence:string } - EXACTLY these ids: $((@($CriteriaIds) -join ', '))"
     $L += "  findings[]    { severity: info|low|medium|high|critical, file?, line?, detail }"
     $L += "  filesReviewed[] - every changed file you actually read"
+    $L += "  technicalBlock? { classification: REVIEW_INFRASTRUCTURE, failure: ARTIFACT_READ_FAILURE, artifact, pageOffset, expectedSha256, detail }"
     $L += "  reviewerMeta  { provider, model, effort, toolPolicy, promptTemplateVersion }"
     $L += ""
     $L += "APPROVE only if: every listed criterion met WITH concrete evidence, you read"
     $L += "every changed file, no high/critical finding, and the hashes above match."
-    $L += "If you cannot fully review (truncated diff, binary, unclear), use BLOCK and explain why in a finding."
+    $L += "For every artifact needed for this review, call read_review_artifact repeatedly,"
+    $L += "starting at offset 0 and continuing with each exact nextOffset until complete=true."
+    $L += "A page with complete=false is continuation metadata, not missing evidence. Do not"
+    $L += "review, infer, or issue a verdict until all required pages have been reconstructed"
+    $L += "and the complete-artifact SHA-256 on every page matches the manifest."
+    $L += "Use technicalBlock ONLY when a required page cannot actually be retrieved, its"
+    $L += "complete-artifact hash mismatches, or the tool has another real read failure. Set"
+    $L += "classification=REVIEW_INFRASTRUCTURE and failure=ARTIFACT_READ_FAILURE. Ordinary"
+    $L += "semantic blockers, unclear implementation, binary content, or adverse findings"
+    $L += "MUST omit technicalBlock and use normal BLOCK/REQUEST_CHANGES semantics."
     $L += ""
     $L += "Changed files ($(@($ChangedFiles).Count)): $((@($ChangedFiles) -join ', '))"
     $L += "The complete review evidence for those paths is diff.patch. Do not try to"

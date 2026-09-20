@@ -273,6 +273,203 @@ function Get-ReviewDataSnapshot {
     return (New-StringHash (ConvertTo-CanonicalJson $items))
 }
 
+function Get-DispatcherLedgerEvents {
+    param([Parameter(Mandatory)][string]$TaskVersionId)
+    $validated=Get-LedgerState $TaskVersionId
+    if($validated.corrupt){throw "dispatcher: ledger is corrupt: $($validated.corruption)"}
+    $events=@()
+    foreach($line in [IO.File]::ReadAllLines((Get-LedgerPath $TaskVersionId))){
+        if($line.Trim()){$events+=,(_ToHashtable ($line|ConvertFrom-Json))}
+    }
+    if($events.Count -ne [int]$validated.seq){throw 'dispatcher: validated ledger event count drift'}
+    return @($events)
+}
+
+function Get-UnicodeScalarCount {
+    param([AllowEmptyString()][string]$Text)
+    $count=0
+    for($i=0;$i -lt $Text.Length;$i++){
+        $ch=[int][char]$Text[$i]
+        if($ch -ge 0xD800 -and $ch -le 0xDBFF){
+            if($i+1 -ge $Text.Length){throw 'review artifact contains an unpaired UTF-16 high surrogate'}
+            $low=[int][char]$Text[$i+1]
+            if($low -lt 0xDC00 -or $low -gt 0xDFFF){throw 'review artifact contains an unpaired UTF-16 high surrogate'}
+            $i++
+        }elseif($ch -ge 0xDC00 -and $ch -le 0xDFFF){throw 'review artifact contains an unpaired UTF-16 low surrogate'}
+        $count++
+    }
+    return $count
+}
+
+function New-DispatcherReviewArtifactRecord {
+    param([Parameter(Mandatory)][string]$DataDir,[Parameter(Mandatory)]$State)
+    $allowed=@('acceptance.txt','diff.patch','spec.txt')
+    $files=@(Get-ChildItem -LiteralPath $DataDir -File -Recurse|Sort-Object Name)
+    $names=@($files|ForEach-Object{$_.Name}|Sort-Object)
+    if(($names -join '|') -ne ($allowed -join '|')){throw 'review artifact set is not the exact frozen allowlist'}
+    $artifacts=@($files|ForEach-Object{
+        $text=[IO.File]::ReadAllText($_.FullName,(New-Object Text.UTF8Encoding($false,$true)))
+        [ordered]@{name=$_.Name;totalBytes=[int64]$_.Length;totalChars=(Get-UnicodeScalarCount $text);sha256=(New-FileHash $_.FullName)}
+    })
+    $record=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.review-artifacts/1'
+        taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId
+        candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash
+        dataDir=[IO.Path]::GetFullPath($DataDir);snapshotHash=(Get-ReviewDataSnapshot $DataDir);artifacts=$artifacts
+        readerVersion='1.1.0';readerHash=(New-FileHash (Join-Path $PSScriptRoot 'review-reader.mjs'))
+    }
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $record)
+    return $record
+}
+
+function Test-DispatcherReviewArtifactRecord {
+    param([Parameter(Mandatory)]$Record,[Parameter(Mandatory)]$State)
+    try{
+        if([string]$Record.schemaVersion -ne 'orcivo.orchestration.v2.review-artifacts/1'){return $false}
+        $stored=[ordered]@{}
+        foreach($key in $Record.Keys){if([string]$key -ne 'recordHash'){$stored[[string]$key]=$Record[$key]}}
+        if((New-StringHash (ConvertTo-CanonicalJson $stored)) -ne [string]$Record.recordHash){return $false}
+        foreach($key in @('taskId','taskVersionId','runId','candidateBase','candidateHead','candidateTree','diffHash')){if([string]$Record[$key] -ne [string]$State[$key]){return $false}}
+        if([string]$Record.readerHash -notmatch '^sha256:[0-9a-f]{64}$' -or -not[string]$Record.readerVersion){return $false}
+        $current=New-DispatcherReviewArtifactRecord -DataDir ([string]$Record.dataDir) -State $State
+        return [bool]([string]$current.dataDir -eq [string]$Record.dataDir -and [string]$current.snapshotHash -eq [string]$Record.snapshotHash -and (ConvertTo-CanonicalJson $current.artifacts) -eq (ConvertTo-CanonicalJson $Record.artifacts))
+    }catch{return $false}
+}
+
+function Test-DispatcherReviewInfrastructureResumeState {
+    param($State)
+    if(-not $State -or [string]$State.status -ne 'WAITING_HUMAN' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.reviewVerdict -ne 'BLOCK'){return $false}
+    $technical=$State.reviewTechnicalBlock
+    if($technical){
+        return [bool]([string]$technical.classification -eq 'REVIEW_INFRASTRUCTURE' -and [string]$technical.failure -eq 'ARTIFACT_READ_FAILURE')
+    }
+    # Closed legacy reconstruction for the one review that predates the
+    # structured technicalBlock field.  Full eligibility below additionally
+    # proves attestation, artifact, candidate, check, scan, and ledger binding.
+    return [bool](
+        [string]$State.taskId -eq 'PB1-P01-os-state-machine' -and
+        [string]$State.taskVersionId -eq 'a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62' -and
+        [string]$State.runId -eq 'run-04a4bf671c224608bd871fd46c125281' -and
+        [string]$State.candidateBase -eq 'afb51959dd67a224ef7f5b10d4bb55aaa8b22c6f' -and
+        [string]$State.candidateHead -eq '3eadd04b807669d4f8c7e7755c4ab880b82f1ded' -and
+        [string]$State.candidateTree -eq '8b16429b3005cc61ab42f02f8cd0dbd52949110f' -and
+        [string]$State.diffHash -eq 'sha256:9c4dd056264be5fed077448ea3f50b58c8f6f1ae63ecf44d951eabb00531dfbf' -and
+        [string]$State.reviewInvocationId -eq 'att-54f2af16803543a0b245f79374064c54' -and
+        [string]$State.reviewAttestationId -eq 'atn-407022e851c24e2f80ba034d7d29c651'
+    )
+}
+
+function Get-DispatcherReviewInfrastructureRecoveryProof {
+    param($State,[hashtable]$Task,$TaskSource,$Contract)
+    $deny={param([string]$Reason)[ordered]@{eligible=$false;reason=$Reason}}
+    try{
+        if(-not(Test-DispatcherReviewInfrastructureResumeState $State)){return &$deny 'state is not a classified review-infrastructure block'}
+        if(@($State.reviewInfrastructureRecoveryHistory|Where-Object{$_}).Count -ge 1){return &$deny 'review infrastructure retry budget exhausted'}
+        if(-not $Task -or -not $TaskSource -or -not $Contract){return &$deny 'task authority is incomplete'}
+        if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne [string]$Contract.taskVersionId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task/version/source binding mismatch'}
+        if(-not [bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
+        foreach($sha in @([string]$State.candidateBase,[string]$State.candidateHead,[string]$State.candidateTree)){if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'candidate binding is malformed'}}
+        if([string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'candidate diff binding is malformed'}
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
+        if((Get-GitHeadV2 $workspace) -ne [string]$State.candidateHead){return &$deny 'candidate workspace HEAD drift'}
+        $status=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'review-infrastructure-recovery-status'
+        if($status.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$status.stdout)){return &$deny 'candidate workspace is dirty'}
+        $bindings=Get-AttestationBindings -TaskVersionId ([string]$State.taskVersionId) -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if([string]$bindings.treeHash -ne [string]$State.candidateTree -or [string]$bindings.diffHash -ne [string]$State.diffHash){return &$deny 'candidate tree/diff binding drift'}
+
+        $review=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind review -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+        if(-not $review -or [string]$review.result -ne 'BLOCK' -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.producer.invocationId -ne [string]$State.reviewInvocationId){return &$deny 'latest failed review binding mismatch'}
+        $reviewFresh=Test-AttestationFresh -Attestation $review -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $reviewFresh.fresh){return &$deny 'failed review attestation is stale or tampered'}
+
+        $origin='STRUCTURED_TECHNICAL_BLOCK'
+        $reviewDir=Join-Path (Get-V2Dir) ("runs\{0}\review-{1:000}" -f $State.runId,[int]$State.cycle)
+        $artifactRecord=$null
+        if($State.reviewTechnicalBlock){
+            if(-not $State.reviewArtifactRecord -or -not(Test-DispatcherReviewArtifactRecord -Record $State.reviewArtifactRecord -State $State)){return &$deny 'frozen review-artifact record drift'}
+            $artifactRecord=$State.reviewArtifactRecord
+            if([IO.Path]::GetFullPath([string]$artifactRecord.dataDir) -ne [IO.Path]::GetFullPath($reviewDir)){return &$deny 'review-artifact directory binding mismatch'}
+            $technical=$review.payload.technicalBlock
+            if(-not $technical -or (ConvertTo-CanonicalJson $technical) -ne (ConvertTo-CanonicalJson $State.reviewTechnicalBlock)){return &$deny 'structured technical block is not attested'}
+            if([string]$review.payload.reviewArtifactRecordHash -ne [string]$artifactRecord.recordHash){return &$deny 'structured technical block does not attest the frozen artifact record'}
+            $bound=@($artifactRecord.artifacts|Where-Object{[string]$_.name -eq [string]$technical.artifact})
+            if($bound.Count -ne 1 -or [string]$bound[0].sha256 -ne [string]$technical.expectedSha256){return &$deny 'technical block artifact/hash binding mismatch'}
+        }else{
+            $origin='LEGACY_EXACT_LINEAGE'
+            if([string]$review.attestationHash -ne 'sha256:26ddc627fd50551d324f44b5dc1df67a6d3a7767d3ccf7ccfabaf9adba05d38f'){return &$deny 'legacy review attestation hash mismatch'}
+            $critical=@($review.payload.findings|Where-Object{[string]$_.severity -eq 'critical'})
+            if($critical.Count -ne 1 -or (New-StringHash ([string]$critical[0].detail)) -ne 'sha256:a76e12162da158cce6822af826c325a20c4e517e99509e4d0fef41e283e1249f'){return &$deny 'legacy artifact-read finding mismatch'}
+            $last=@($State.providerHistory|Where-Object{$_})|Select-Object -Last 1
+            if(-not $last -or [string]$last.role -ne 'REVIEWER' -or [string]$last.provider -ne 'deepseek' -or [string]$last.model -ne 'deepseek-v4-flash' -or [string]$last.invocationId -ne 'att-54f2af16803543a0b245f79374064c54' -or [string]$last.resultClass -ne 'BLOCK' -or [string]$last.stdoutHash -ne 'sha256:a0f097ae4611f5839e75435d5ac8ee04628f90796a44d8269f048aca7836e4a9'){return &$deny 'legacy reviewer invocation evidence mismatch'}
+            $artifactRecord=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $State
+            if([string]$artifactRecord.snapshotHash -ne 'sha256:a028b8143eb259057a0b973ad7f753e2796abc4250fc2b2a8c17015fc6bf1e03' -or [string]$artifactRecord.readerHash -ne 'sha256:caef0352478a7e9461852fef7520762c04d853c7b4cc92e78ec945093a5b8026'){return &$deny 'legacy review data or fixed reader capability mismatch'}
+            $patch=@($artifactRecord.artifacts|Where-Object{[string]$_.name -eq 'diff.patch'})
+            if($patch.Count -ne 1 -or [int64]$patch[0].totalBytes -ne 93357 -or [string]$patch[0].sha256 -ne 'sha256:6b9fc153ba4a1c06c58ec19d7938f8b7f72f025333b7ef435decee607ba65cee'){return &$deny 'legacy frozen diff artifact mismatch'}
+        }
+
+        $diffResult=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--no-color',"$($State.candidateBase)..$($State.candidateHead)") -LogLabel 'review-infrastructure-recovery-diff' -ReviewedSourceOutput
+        if($diffResult.exitCode -ne 0){return &$deny 'candidate diff cannot be recomputed'}
+        $expectedPatch=Protect-SecretsStreaming ([string]$diffResult.stdout.TrimEnd("`r","`n")) -SourceText
+        $patchFile=Join-Path $reviewDir 'diff.patch'
+        if((New-StringHash $expectedPatch) -ne (New-FileHash $patchFile)){return &$deny 'frozen diff.patch no longer matches the exact candidate diff'}
+
+        $check=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind check -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+        if(-not $check -or [string]$check.result -ne 'PASS'){return &$deny 'deterministic verification is not PASS'}
+        $checkFresh=Test-AttestationFresh -Attestation $check -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $checkFresh.fresh -or -not[bool]$State.verification.pass){return &$deny 'deterministic verification evidence drift'}
+        $liveVerification=Invoke-VerificationProfile -ProfileId ([string]$Contract.verificationProfile) -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $liveVerification.pass -or [string]$liveVerification.effectiveInvocationHash -ne [string]$check.payload.effectiveInvocationHash){return &$deny 'deterministic verification no longer passes identically'}
+
+        if(-not[bool]$State.secretScan.clean -or -not[bool]$State.secretScan.candidate.clean -or -not[bool]$State.secretScan.artifacts.clean -or [string]$State.secretScan.candidate.baseSha -ne [string]$State.candidateBase -or [string]$State.secretScan.candidate.headSha -ne [string]$State.candidateHead){return &$deny 'persisted secret-scan evidence drift'}
+        $candidateScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef ([string]$State.candidateBase) -Ref ([string]$State.candidateHead)
+        $runRoot=Join-Path (Get-V2Dir) "runs\$($State.runId)"
+        $artifactScan=Test-TreeSecretsClean -Roots @($runRoot)
+        if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or review artifacts no longer scan CLEAN'}
+
+        $later=@(Get-Attestations -TaskVersionId ([string]$State.taskVersionId)|Where-Object{[string]$_.runId -eq [string]$State.runId -and [string]$_.bindings.headSHA -eq [string]$State.candidateHead -and [string]$_.kind -in @('approval','integration')})
+        if($later.Count){return &$deny 'approval or integration exists after the failed review'}
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-infrastructure-recovery/1';origin=$origin;taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;reviewInvocationId=[string]$State.reviewInvocationId;reviewAttestationId=[string]$State.reviewAttestationId;reviewAttestationHash=[string]$review.attestationHash;reviewArtifactRecordHash=[string]$artifactRecord.recordHash;failedReaderHash=[string]$artifactRecord.readerHash;recoveryReaderHash=(New-FileHash (Join-Path $PSScriptRoot 'review-reader.mjs'));checkAttestationId=[string]$check.attestationId}
+        $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
+        $ledger=Get-LedgerState ([string]$State.taskVersionId)
+        if($ledger.corrupt -or [string]$ledger.state -notin @('WAITING_HUMAN','DISPATCHED','RUNNING')){return &$deny 'ledger is not at the immutable review hold or exact recovery prefix'}
+        $tail=@(Get-DispatcherLedgerEvents ([string]$State.taskVersionId))|Select-Object -Last 1
+        if([string]$ledger.state -eq 'WAITING_HUMAN'){
+            if(-not $tail -or [string]$tail.event -ne 'review-hold' -or [string]$tail.runId -ne [string]$State.runId -or [string]$tail.note -ne 'BLOCK'){return &$deny 'ledger tail is not the exact failed review hold'}
+        }else{
+            $expectedEvent=$(if([string]$ledger.state -eq 'DISPATCHED'){'review-infrastructure-retry-dispatch'}else{'review-infrastructure-retry-running'})
+            if(-not $tail -or [string]$tail.event -ne $expectedEvent -or [string]$tail.runId -ne [string]$State.runId -or [string]$tail.evidence.proofHash -ne [string]$proof.proofHash){return &$deny 'ledger recovery prefix is not bound to this proof'}
+        }
+        return [ordered]@{eligible=$true;reason='exact candidate is eligible for review-only recovery';proof=$proof;artifactRecord=$artifactRecord}
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function Resume-DispatcherReviewInfrastructureBlock {
+    param($State,[hashtable]$Task,$TaskSource,$Contract)
+    $result=Get-DispatcherReviewInfrastructureRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract
+    if(-not $result.eligible){return $result}
+    $proof=$result.proof;$ledger=Get-LedgerState ([string]$State.taskVersionId)
+    $evidence=@{classification='REVIEW_INFRASTRUCTURE';failure='ARTIFACT_READ_FAILURE';proofHash=[string]$proof.proofHash;candidateHead=[string]$State.candidateHead;reviewAttestationId=[string]$proof.reviewAttestationId}
+    if([string]$ledger.state -eq 'WAITING_HUMAN'){
+        Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'review-infrastructure-retry-dispatch' -ToState DISPATCHED -RunId $State.runId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'same-candidate review-only recovery'|Out-Null
+        $ledger=Get-LedgerState ([string]$State.taskVersionId)
+    }
+    if([string]$ledger.state -eq 'DISPATCHED'){
+        Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'review-infrastructure-retry-running' -ToState RUNNING -RunId $State.runId -Evidence $evidence -Note 'same-candidate review-only recovery'|Out-Null
+        $ledger=Get-LedgerState ([string]$State.taskVersionId)
+    }
+    if([string]$ledger.state -ne 'RUNNING'){return [ordered]@{eligible=$false;reason="review recovery ledger prefix is incompatible: $($ledger.state)"}}
+    $history=@($State.reviewInfrastructureRecoveryHistory|Where-Object{$_})
+    if(-not @($history|Where-Object{[string]$_.proofHash -eq [string]$proof.proofHash}).Count){$history+=,$proof}
+    $State.reviewInfrastructureRecoveryHistory=$history
+    $State.reviewArtifactRecord=$result.artifactRecord
+    $State.reviewTechnicalBlock=$null
+    $State.reviewVerdict='';$State.reviewInvocationId='';$State.reviewAttestationId='';$State.findings=@()
+    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='';$State.decisionNeeded='';$State.resumes=''
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{eligible=$true;resumed=$true;proof=$proof}
+}
+
 function Get-DispatcherLogicalProjectId {
     if ($env:ORCIVO_MEMORY_PROJECT) { return [string]$env:ORCIVO_MEMORY_PROJECT }
     try { $p = (Get-AuthorityV2Config).memoryAdapter.project } catch { $p = $null }
@@ -537,7 +734,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource)))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherReviewInfrastructureResumeState -State $State)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -2574,6 +2771,7 @@ function Set-DispatcherReviewOutcome {
     $State.reviewVerdict=[string]$ParsedReview.verdict
     $State.reviewInvocationId=$InvocationId
     $State.reviewAttestationId=[string]$Attestation.attestationId
+    $State.reviewTechnicalBlock=$ParsedReview.technicalBlock
     $State.findings=@($ParsedReview.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
     Write-DispatcherState $State|Out-Null
     return $State
@@ -2777,6 +2975,10 @@ function Invoke-RealDispatcherTask {
     }
     if(Test-DispatcherCandidateResumeEligible -State $state -Task $Task -TaskSource $TaskSource){
         if(-not(Resume-DispatcherCandidate -State $state -Task $Task -TaskSource $TaskSource)){throw 'dispatcher: candidate resume eligibility changed before durable transition'}
+    }
+    if(Test-DispatcherReviewInfrastructureResumeState -State $state){
+        $reviewRecovery=Resume-DispatcherReviewInfrastructureBlock -State $state -Task $Task -TaskSource $TaskSource -Contract $contract
+        if(-not $reviewRecovery.eligible){return $state}
     }
     if("$($Task.taskId)" -like 'PB1-*'){
         $auth=Join-Path (Get-V2Dir) ([string]$pcfg.realExecutionAuthFile)
@@ -2998,6 +3200,8 @@ if($needsFreshDispatch){
             $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff' -ReviewedSourceOutput;Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
             $reviewDir=Join-Path (Get-V2Dir) "runs\$($state.runId)\review-$('{0:000}' -f ([int]$state.cycle))"
             $rp=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $state.taskVersionId -Head $state.candidateHead -TreeHash $state.candidateTree -DiffHash $state.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "PASS profile=$($contract.verificationProfile); secretScan=CLEAN" -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
+            $state.reviewArtifactRecord=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $state
+            Write-DispatcherState $state|Out-Null
             $reviewDataBefore=Get-ReviewDataSnapshot $reviewDir
             $rr=Invoke-RealAgent -Provider $reviewer -Role 'reviewer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $reviewDir -StructuredPrompt $rp -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$cfg.budgets.reviewTimeoutSec) -Attempt ([int]$state.cycle+1)
             $reviewDataAfter=Get-ReviewDataSnapshot $reviewDir
@@ -3007,15 +3211,21 @@ if($needsFreshDispatch){
             if(Test-IsCanonicalProviderClass $rr.providerClass){return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)}
             if($rr.structuredResult){foreach($f in @($rr.structuredResult.findings)){if($f -is [System.Collections.IDictionary]){if($null -eq $f.file){$f.Remove('file')};if($null -eq $f.line){$f.Remove('line')}}}}
             $wrapped=$(if($rr.structuredResult){"$($cfg.review.beginMarker)`n$(ConvertTo-CanonicalJson $rr.structuredResult)`n$($cfg.review.endMarker)"}else{''})
-            $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
+            $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);reviewArtifacts=@($state.reviewArtifactRecord.artifacts);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead
-            $reviewAttestation=New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $parsed.verdict -Payload @{problems=@($parsed.problems);reason=$parsed.reason;findings=@($parsed.envelope.findings)} -ProducerMeta @{provider=$reviewer;model=$rr.model;profile=$rr.profile;invocationId=$rr.invocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=$rr.exitCode}
+            $reviewAttestation=New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings $bindings -Result $parsed.verdict -Payload @{problems=@($parsed.problems);reason=$parsed.reason;findings=@($parsed.envelope.findings);technicalBlock=$parsed.technicalBlock;reviewArtifactRecordHash=[string]$state.reviewArtifactRecord.recordHash} -ProducerMeta @{provider=$reviewer;model=$rr.model;profile=$rr.profile;invocationId=$rr.invocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=$rr.exitCode}
             Set-DispatcherReviewOutcome -State $state -ParsedReview $parsed -InvocationId $rr.invocationId -Attestation $reviewAttestation|Out-Null
             if($parsed.verdict -eq 'REQUEST_CHANGES'){
                 if([int]$state.cycle -ge $maxCycles){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-budget-spent' -ToState 'FAILED_REVIEW_BUDGET' -RunId $state.runId|Out-Null;$state.status='WAITING_HUMAN';$state.reason='bounded correction budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                 Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-correction' -ToState 'RUNNING' -RunId $state.runId|Out-Null;$state.cycle=[int]$state.cycle+1;$state.stage='IMPLEMENT';$state.implementationComplete=$false;Write-DispatcherState $state|Out-Null;continue
             }
-            if($parsed.verdict -ne 'APPROVE'){Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note $parsed.verdict|Out-Null;$state.status='WAITING_HUMAN';$state.reason="$($parsed.verdict): $($parsed.reason)";$state.decisionNeeded='resolve reviewer block or Level C escalation';$state.resumes='new approved task version or explicit owner decision';Write-DispatcherState $state|Out-Null;return $state}
+            if($parsed.verdict -ne 'APPROVE'){
+                Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'review-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note $parsed.verdict|Out-Null
+                $state.status='WAITING_HUMAN';$state.reason="$($parsed.verdict): $($parsed.reason)"
+                if($parsed.technicalBlock){$state.decisionNeeded='';$state.resumes='automatic exact-candidate REVIEW retry after infrastructure proof'}
+                else{$state.decisionNeeded='resolve reviewer block or Level C escalation';$state.resumes='new approved task version or explicit owner decision'}
+                Write-DispatcherState $state|Out-Null;return $state
+            }
             Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'approved' -ToState 'APPROVED' -RunId $state.runId|Out-Null;$state.stage='INTEGRATE';Write-DispatcherState $state|Out-Null
         }
 
@@ -3047,7 +3257,7 @@ function Invoke-DispatcherLoop {
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
             $task=$(if($cur){@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0]}else{$null})
-            $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and (Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source))
+            $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and ((Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source) -or (Test-DispatcherReviewInfrastructureResumeState -State $cur)))
             if($cur -and $task -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
             if($RunOnce -or "$($r.status)" -in @(

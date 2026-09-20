@@ -1281,6 +1281,112 @@ try{
             Assert-True (-not $rejected.ok -and [string]$rejected.reason -match "ledger state 'CHECKING' is not RUNNING") 'legacy reconstruction accepted ledger evidence beyond the exact correction-resume tail'
         }
 
+        # ---- bounded review-reader / same-candidate review recovery (RD-138..RD-149) ----
+        function New-ReviewInfrastructureFixture {
+            param([string]$Id,[bool]$Technical=$true)
+            $workspace=Join-Path $Root ("review-infra-"+$Id);& git init -b main --quiet $workspace
+            New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'base';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $workspace rev-parse HEAD).Trim()
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'candidate';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m candidate --quiet
+            $head=(& git -C $workspace rev-parse HEAD).Trim()
+            $task=Task ("REVIEW-"+$Id);$sourcePath=Join-Path $Fixture ("review-infra-"+$Id+".json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0];$contract=New-DispatcherContract -Task $task -TaskSource $source
+            $runId='run-review-'+$Id.ToLowerInvariant();$bindings=Get-AttestationBindings -TaskVersionId $contract.taskVersionId -WorktreeDir $workspace -BaseSha $base -HeadSha $head
+            $diffResult=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--no-color',"$base..$head") -LogLabel ("fixture-review-diff-"+$Id) -ReviewedSourceOutput
+            $diff=$diffResult.stdout.TrimEnd("`r","`n");$reviewDir=Join-Path (Get-V2Dir) "runs\$runId\review-000"
+            $prompt=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $contract.taskVersionId -Head $head -TreeHash $bindings.treeHash -DiffHash $bindings.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles @('work/result.ts') -CheckSummary 'PASS profile=B; secretScan=CLEAN' -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='REVIEW';reason='BLOCK: ok';workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;candidateHead=$head;candidateTree=$bindings.treeHash;diffHash=$bindings.diffHash;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=0;rollovers=0;failovers=0;findings=@('critical: fixture artifact read failed');decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$true;requiresCorrection=$false;implementationCommit=$head;verification=$null;reviewVerdict='BLOCK';logicalProjectId='fixture';integration=$null}
+            $record=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $state;$state.reviewArtifactRecord=$record
+            $patch=@($record.artifacts|Where-Object name -eq 'diff.patch')[0]
+            $technicalBlock=$(if($Technical){[ordered]@{classification='REVIEW_INFRASTRUCTURE';failure='ARTIFACT_READ_FAILURE';artifact='diff.patch';pageOffset=0;expectedSha256=[string]$patch.sha256;detail='fixture page read failed'}}else{$null})
+            $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $workspace -BaseSha $base -HeadSha $head;$state.verification=$vp
+            $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $base -Ref $head;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$runId"));$state.secretScan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$base;headSha=$head;hits=@($treeScan.hits)};artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)};hits=@($treeScan.hits)+@($artifactScan.hits)}
+            Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
+            $check=New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result PASS -Payload @{profileId=$vp.profileId;effectiveInvocationHash=$vp.effectiveInvocationHash;checks=@($vp.checks)} -ProducerMeta @{verifier='v2-deterministic';profileId=$vp.profileId;verificationDefinitionHash=$vp.verificationDefinitionHash}
+            $invocation='att-'+[guid]::NewGuid().ToString('N');$review=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result BLOCK -Payload @{problems=@();reason='ok';findings=@(@{severity='critical';detail='fixture artifact read failed'});technicalBlock=$technicalBlock;reviewArtifactRecordHash=[string]$record.recordHash} -ProducerMeta @{provider='deepseek';model='fixture';profile='FAST';invocationId=$invocation;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0}
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event review-hold -ToState WAITING_HUMAN -RunId $runId -Note BLOCK|Out-Null
+            $state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewTechnicalBlock=$technicalBlock;$state.reviewerProvider='deepseek';$state.providerHistory=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));role='IMPLEMENTER';provider='glm';model=(Get-GlmModelId);resultClass='SUCCESS';providerClass='NONE';exitCode=0},[ordered]@{invocationId=$invocation;role='REVIEWER';provider='deepseek';model='fixture';resultClass='BLOCK';providerClass='NONE';exitCode=0;stdoutHash=('sha256:'+('a'*64))})
+            Write-DispatcherState $state|Out-Null
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;technicalBlock=$technicalBlock;prompt=$prompt}
+        }
+
+        Check 'RD-138' {
+            $f=New-ReviewInfrastructureFixture 'RD138' $true
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'} }
+            $wrapped="<<<ORCIVO_REVIEW_ENVELOPE_V1`n$(ConvertTo-CanonicalJson $envelope)`nORCIVO_REVIEW_ENVELOPE_V1>>>"
+            $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            Assert-True ([string]$parsed.technicalBlock.classification -eq 'REVIEW_INFRASTRUCTURE' -and [string]$parsed.technicalBlock.failure -eq 'ARTIFACT_READ_FAILURE') 'strict structured technical BLOCK was not preserved'
+        }
+
+        Check 'RD-139' {
+            $f=New-ReviewInfrastructureFixture 'RD139' $false
+            Assert-True ([string]$f.state.status -eq 'WAITING_HUMAN' -and -not(Test-DispatcherReviewInfrastructureResumeState $f.state)) 'normal semantic BLOCK became automatically retryable'
+        }
+
+        Check 'RD-140' {
+            $f=New-ReviewInfrastructureFixture 'RD140' $true;$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract
+            Assert-True ($proof.eligible -and [string]$proof.proof.origin -eq 'STRUCTURED_TECHNICAL_BLOCK') "structured infrastructure BLOCK was not recoverable: $($proof.reason)"
+        }
+
+        Check 'RD-141' {
+            $f=New-ReviewInfrastructureFixture 'RD141' $true;Write-Utf8 (Join-Path $f.workspace 'work\dirty.ts') "export const dirty = true;`n";$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract
+            Assert-True (-not $proof.eligible -and [string]$proof.reason -match 'dirty') 'candidate mutation did not prevent review recovery'
+        }
+
+        Check 'RD-142' {
+            $f=New-ReviewInfrastructureFixture 'RD142' $true;$tampered=ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $f.state);$tampered.candidateTree='0'*40;$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $tampered -Task $f.task -TaskSource $f.source -Contract $f.contract
+            Assert-True (-not $proof.eligible -and [string]$proof.reason -match 'binding|record') 'candidate binding tamper did not prevent review recovery'
+        }
+
+        Check 'RD-143' {
+            $f=New-ReviewInfrastructureFixture 'RD143' $true;Add-Content -LiteralPath (Join-Path $f.record.dataDir 'diff.patch') -Value 'tamper';$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract
+            Assert-True (-not $proof.eligible -and [string]$proof.reason -match 'artifact|diff') 'review artifact tamper did not prevent recovery'
+        }
+
+        Check 'RD-144' {
+            $vf=New-ReviewInfrastructureFixture 'RD144-v' $true;$vf.state.verification.pass=$false;$verification=Get-DispatcherReviewInfrastructureRecoveryProof -State $vf.state -Task $vf.task -TaskSource $vf.source -Contract $vf.contract
+            $sf=New-ReviewInfrastructureFixture 'RD144-s' $true;$sf.state.secretScan.clean=$false;$secret=Get-DispatcherReviewInfrastructureRecoveryProof -State $sf.state -Task $sf.task -TaskSource $sf.source -Contract $sf.contract
+            Assert-True (-not $verification.eligible -and -not $secret.eligible) 'verification or secret-scan drift remained recoverable'
+        }
+
+        Check 'RD-145' {
+            $f=New-ReviewInfrastructureFixture 'RD145' $true;$oldHash=[string]$f.review.attestationHash;$oldPath=Join-Path (Join-Path (Get-V2Dir) "attestations\$($f.state.taskVersionId)") ("review-$($f.review.attestationId).json");$oldFileHash=New-FileHash $oldPath;$before=@($f.state.providerHistory).Count;$roles=New-Object System.Collections.Generic.List[string]
+            function Invoke-RealAgent { param($Provider,$Role,$TaskVersion,$Profile,$Workspace,$StructuredPrompt,$ArtifactDir,$TimeoutSec,$Attempt,$ContinuationCheckpoint,$InvocationId,$BeforeLaunch)
+                $roles.Add(([string]$Role).ToUpperInvariant());$inv='att-'+[guid]::NewGuid().ToString('N');$s=Get-DispatcherState;$c=Get-Contract $s.taskVersionId
+                $e=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$s.taskVersionId;reviewedHead=$s.candidateHead;treeHash=$s.candidateTree;diffHash=$s.diffHash;specHash=$c.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='high';detail='semantic fixture blocker'});filesReviewed=@('work/result.ts');reviewerMeta=[ordered]@{provider=$Provider;model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
+                return [ordered]@{invocationId=$inv;provider=$Provider;model='fixture';profile=$Profile;reasoningIntent='low';attempt=$Attempt;exitCode=0;providerClass='NONE';resultClass='BLOCK';structuredResult=$e;stdoutArtifact='';stderrArtifact='';stdoutHash=('sha256:'+('b'*64));controlRecordHash=('sha256:'+('c'*64));usage=$null;cachedTokens=$null;costUsd=$null;telemetryConsistent=$true}
+            }
+            try{$result=Invoke-RealDispatcherTask -Task $f.task -TaskSource $f.source}finally{. (Join-Path $V2 'real-agent.ps1')}
+            $after=Get-DispatcherState;$newEntries=@($after.providerHistory|Select-Object -Skip $before)
+            Assert-True (@($roles).Count -eq 1 -and $roles[0] -eq 'REVIEWER' -and @($newEntries).Count -eq 1 -and [string]$newEntries[0].role -eq 'REVIEWER') 'review recovery invoked an implementer/corrector or did not invoke exactly one reviewer'
+            Assert-True ([string]$result.status -eq 'WAITING_HUMAN' -and [string]$after.candidateHead -eq $f.head -and [string]$after.runId -eq $f.state.runId -and [string]$after.taskVersionId -eq $f.state.taskVersionId) 'review-only retry changed lineage or candidate'
+            Assert-True ((New-FileHash $oldPath) -eq $oldFileHash -and (Read-V2Json $oldPath).attestationHash -eq $oldHash -and @((Get-Attestations -TaskVersionId $f.state.taskVersionId -Kind review)).Count -eq 2) 'failed review history was rewritten instead of retained with a fresh attestation'
+        }
+
+        Check 'RD-146' {
+            $f=New-ReviewInfrastructureFixture 'RD146' $true;$proof=Get-DispatcherReviewInfrastructureRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract;$e=@{classification='REVIEW_INFRASTRUCTURE';failure='ARTIFACT_READ_FAILURE';proofHash=[string]$proof.proof.proofHash;candidateHead=$f.head;reviewAttestationId=$f.review.attestationId}
+            Add-LedgerEvent -TaskVersionId $f.state.taskVersionId -Event 'review-infrastructure-retry-dispatch' -ToState DISPATCHED -RunId $f.state.runId -AttemptId (New-AttemptId) -Evidence $e -Note 'same-candidate review-only recovery'|Out-Null
+            $resumed=Resume-DispatcherReviewInfrastructureBlock -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract;$count=@((Get-LedgerState $f.state.taskVersionId).history|Where-Object event -like 'review-infrastructure-retry-*').Count
+            $again=Resume-DispatcherReviewInfrastructureBlock -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract;$countAgain=@((Get-LedgerState $f.state.taskVersionId).history|Where-Object event -like 'review-infrastructure-retry-*').Count
+            Assert-True ($resumed.resumed -and $count -eq 2 -and $countAgain -eq 2 -and -not $again.resumed) 'review recovery restart was not idempotent'
+        }
+
+        Check 'RD-147' {
+            $exact=[ordered]@{status='WAITING_HUMAN';stage='REVIEW';reviewVerdict='BLOCK';taskId='PB1-P01-os-state-machine';taskVersionId='a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62';runId='run-04a4bf671c224608bd871fd46c125281';candidateBase='afb51959dd67a224ef7f5b10d4bb55aaa8b22c6f';candidateHead='3eadd04b807669d4f8c7e7755c4ab880b82f1ded';candidateTree='8b16429b3005cc61ab42f02f8cd0dbd52949110f';diffHash='sha256:9c4dd056264be5fed077448ea3f50b58c8f6f1ae63ecf44d951eabb00531dfbf';reviewInvocationId='att-54f2af16803543a0b245f79374064c54';reviewAttestationId='atn-407022e851c24e2f80ba034d7d29c651'}
+            Assert-True (Test-DispatcherReviewInfrastructureResumeState $exact) 'exact stranded legacy lineage was not classified for evidence reconstruction'
+        }
+
+        Check 'RD-148' {
+            $lookalike=[ordered]@{status='WAITING_HUMAN';stage='REVIEW';reviewVerdict='BLOCK';taskId='PB1-P01-os-state-machine';taskVersionId='a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62';runId='run-lookalike';candidateBase='afb51959dd67a224ef7f5b10d4bb55aaa8b22c6f';candidateHead='3eadd04b807669d4f8c7e7755c4ab880b82f1ded';candidateTree='8b16429b3005cc61ab42f02f8cd0dbd52949110f';diffHash='sha256:9c4dd056264be5fed077448ea3f50b58c8f6f1ae63ecf44d951eabb00531dfbf';reviewInvocationId='att-54f2af16803543a0b245f79374064c54';reviewAttestationId='atn-407022e851c24e2f80ba034d7d29c651';findings=@('truncated')}
+            Assert-True (-not(Test-DispatcherReviewInfrastructureResumeState $lookalike)) 'lookalike legacy BLOCK was accepted from natural-language similarity'
+        }
+
+        Check 'RD-149' {
+            $f=New-ReviewInfrastructureFixture 'RD149' $true
+            Assert-True ($f.prompt -match 'complete=false is continuation metadata' -and $f.prompt -match 'nextOffset' -and $f.prompt -match 'until complete=true' -and $f.prompt -match 'MUST omit technicalBlock') 'review prompt does not require complete deterministic pagination or preserve semantic BLOCK behavior'
+        }
+
         # ---- self-reconciling autopilot fault-injection harness (RD-115..RD-130) ----
         # The fake agent replaces Invoke-RealAgent only inside the restart
         # driver's dynamic scope: it performs the exact durable steps of a GLM
