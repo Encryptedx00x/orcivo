@@ -131,6 +131,7 @@ function Write-RealAgentResultReceipt {
         attempt=[int]$AgentResult.attempt
         exitCode=[int]$AgentResult.exitCode
         providerClass=[string]$AgentResult.providerClass
+        failureDiagnostic=$AgentResult.failureDiagnostic
         resultClass=[string]$AgentResult.resultClass
         structuredResult=$AgentResult.structuredResult
         promptArtifact=[string]$AgentResult.promptArtifact
@@ -192,6 +193,7 @@ function ConvertTo-RealAgentInvocationResult {
     $parsed = $(if ($Provider -eq 'claude') { ConvertFrom-RealClaudeOutput $StdoutText } elseif ($Provider -eq 'glm') { ConvertFrom-RealGlmOutput $StdoutText } else { ConvertFrom-RealCodexOutput $StdoutText })
     $legacy = Get-FailureClassV2 -Provider $Provider -ExitCode $ExitCode -Control $parsed.control
     $providerClass = ConvertTo-CanonicalFailureClass -LegacyClass $legacy -Control $parsed.control
+    $failureDiagnostic=$(if($Provider -eq 'deepseek'){Get-DeepSeekStructuredOutputFailureDiagnostic -Events @($parsed.events)}else{$null})
     $structured = $parsed.structured
     $resultClass = 'AGENT_FAILURE'
     if ($structured) {
@@ -202,6 +204,7 @@ function ConvertTo-RealAgentInvocationResult {
         $providerClass = 'NONE'; $resultClass = 'CONTEXT_ROLLOVER'
     }
     if($Provider -eq 'deepseek' -and -not(Test-DeepSeekFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
+    if($failureDiagnostic){$providerClass=[string]$failureDiagnostic.classification;$resultClass='AGENT_FAILURE';$structured=$null}
     # Same fail-closed contract as DeepSeek: an exit-zero OpenCode stream
     # without a terminal step_finish never becomes candidate provenance.
     if($Provider -eq 'glm' -and -not(Test-GlmFinalStructuredEvent -Events @($parsed.events))){$providerClass='INCOMPLETE_PROVIDER_RESULT';$resultClass='AGENT_FAILURE';$structured=$null}
@@ -225,7 +228,7 @@ function ConvertTo-RealAgentInvocationResult {
             # requested bound.  Recovery records only what the stream proves.
             $perResponseLimit=Test-DeepSeekPerResponseOutputLimit -Events @($parsed.events) -MaxOutputTokens ([int64]$Route.maxOutputTokens)
             if($perResponseLimit.exceeded){$telemetryConsistent=$false;$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE';try{[void](Register-DeepSeekUnknownUsage -InvocationId $InvocationId -Model $Route.model -Usage $usage -ReturnedModels $returnedModels -Reason 'per-response output token cap exceeded' -ResultClass $resultClass -ExitCode $ExitCode)}catch{}}
-            if(-not $telemetryConsistent){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
+            if(-not $telemetryConsistent -and -not $failureDiagnostic){$providerClass='PROVIDER_UNAVAILABLE';$resultClass='AGENT_FAILURE'}
         }
     }
     if($Provider -eq 'glm'){
@@ -240,6 +243,7 @@ function ConvertTo-RealAgentInvocationResult {
         invocationId=$InvocationId
         provider=$Provider; model=$Route.model; reasoningIntent=$Route.reasoningIntent; profile=$Profile; attempt=$Attempt
         exitCode=$ExitCode; providerClass=$providerClass; resultClass=$resultClass
+        failureDiagnostic=$failureDiagnostic
         structuredResult=$structured; promptArtifact=$PromptFile;promptHash=(New-FileHash $PromptFile);stdoutArtifact=$StdoutLog; stderrArtifact=$StderrLog
         stdoutHash=(New-FileHash $StdoutLog);stderrHash=(New-FileHash $StderrLog);controlRecordHash=(New-StringHash ([string]$StdoutText))
         duration=$DurationSec; contextRolloverRequired=($resultClass -eq 'CONTEXT_ROLLOVER')
@@ -304,6 +308,7 @@ function Recover-RealAgentResultFromArtifacts {
             invocationId=[string]$receipt.invocationId
             provider=[string]$receipt.provider; model=[string]$receipt.model; reasoningIntent=[string]$receipt.reasoningIntent; profile=[string]$receipt.profile; attempt=[int]$receipt.attempt
             exitCode=[int]$receipt.exitCode; providerClass=[string]$receipt.providerClass; resultClass=[string]$receipt.resultClass
+            failureDiagnostic=$receipt.failureDiagnostic
             structuredResult=$receipt.structuredResult; promptArtifact=[string]$receipt.promptArtifact; promptHash=[string]$receipt.promptHash; stdoutArtifact=[string]$receipt.stdoutArtifact; stderrArtifact=[string]$receipt.stderrArtifact
             stdoutHash=[string]$receipt.stdoutHash; stderrHash=[string]$receipt.stderrHash; controlRecordHash=[string]$receipt.controlRecordHash
             duration=[double]$receipt.duration; contextRolloverRequired=[bool]$receipt.contextRolloverRequired

@@ -276,6 +276,20 @@ function Test-DeepSeekFinalStructuredEvent {
     return (@($Events|Where-Object{[string]$_.type -in @('turn.completed','response.completed')}).Count -gt 0)
 }
 
+function Get-DeepSeekStructuredOutputFailureDiagnostic {
+    param([object[]]$Events)
+    $messages=@()
+    foreach($event in @($Events)){
+        if([string]$event.type -eq 'error'){$messages+=,[string]$event.message}
+        if([string]$event.type -eq 'turn.failed'){$messages+=,[string]$event.error.message}
+    }
+    $text=($messages -join "`n")
+    if($text -match '(?i)invalid_request_error' -and $text -match '(?i)required properties must match all properties in the object'){
+        return [ordered]@{classification='AGENT_INFRASTRUCTURE';code='STRICT_STRUCTURED_OUTPUT_SCHEMA_REJECTED';detail='provider rejected the strict structured-output schema before a terminal response'}
+    }
+    return $null
+}
+
 function Register-DeepSeekUsage {
     param([Parameter(Mandatory)]$Usage,[Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$Model,[string[]]$ReturnedModels=@(),[hashtable]$BillableResolution=$null,[Parameter(Mandatory)][string]$ResultClass,[Parameter(Mandatory)][int]$ExitCode,[datetime]$At=(Get-Date).ToUniversalTime())
     if($null -eq $Usage.inputTokens -or $null -eq $Usage.outputTokens){throw 'DeepSeek telemetry: usage is absent'}

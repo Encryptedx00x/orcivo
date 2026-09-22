@@ -31,13 +31,14 @@ Commands:
   approve-gate     durably approve one exact WAITING_HUMAN Level C task version
   selftest         run the synthetic pilot validation suite
   docker-preflight report whether the Docker composition can run right now
+  reconcile-deepseek-unknown-reservation  reconcile one exact failed invocation at its reservation ceiling
   run              dispatch READY tasks until idle / wait / stop / budget failure
   run-once         execute at most one READY task
   start            deprecated alias for run
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -473,6 +474,11 @@ switch ($Command) {
         if($TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'reconcile-deepseek-run-cache-aware is closed to attempt 349'}
         $state=Get-DispatcherState
         Reconcile-DispatcherDeepSeekCacheAwareReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:dd5c6fc4de437333e9380c5f2146188c8913a57285b682e4e2daa18d4581c385' -ExpectedStdoutHash 'sha256:f2bd5d36ec5dd29f7e6e0716a3b929e93c0e81531be7b2fdb868b61c9915f8d2' -ExpectedAttempt 349 -ExpectedTailSeq 1051 | ConvertTo-Json -Depth 12
+    }
+    'reconcile-deepseek-unknown-reservation' {
+        if($TaskVersionId -ne 'a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62' -or $RunId -ne 'run-04a4bf671c224608bd871fd46c125281' -or $InvocationId -ne 'att-70a070f97fa445678a1f56530f344aa7'){throw 'reconcile-deepseek-unknown-reservation is closed to the exact failed PB1 review invocation'}
+        $state=Get-DispatcherState
+        Reconcile-DispatcherDeepSeekUnknownActiveReservation -State $state -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:a27108c1832d932f7092ba8c525e9cee16002a87a0f6c3686090932d9c72c11e' -ExpectedResultReceiptHash 'sha256:bcd196a370772750222177e13524f5a26698649f342f3a6bd91ea7a8223c6e19' -ExpectedStdoutHash 'sha256:78eb3c6bdd57b17a302de70cc62e34c161ab971a24e43bba9d4b596dfd987368' -ExpectedStderrHash 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' -ExpectedTailSeq 15 | ConvertTo-Json -Depth 12
     }
     'recover-completed-implementation' {
         if($TaskId -ne 'PB1-P02-audit-service' -or $TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'recover-completed-implementation is closed to the owner-authorized attempt 349'}

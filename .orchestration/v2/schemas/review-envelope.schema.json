@@ -75,7 +75,7 @@
       "items": { "type": "string", "maxLength": 512 }
     },
     "technicalBlock": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "required": [
         "classification",

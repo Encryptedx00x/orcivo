@@ -1384,7 +1384,41 @@ try{
 
         Check 'RD-149' {
             $f=New-ReviewInfrastructureFixture 'RD149' $true
-            Assert-True ($f.prompt -match 'complete=false is continuation metadata' -and $f.prompt -match 'nextOffset' -and $f.prompt -match 'until complete=true' -and $f.prompt -match 'MUST omit technicalBlock') 'review prompt does not require complete deterministic pagination or preserve semantic BLOCK behavior'
+            Assert-True ($f.prompt -match 'complete=false is continuation metadata' -and $f.prompt -match 'nextOffset' -and $f.prompt -match 'until complete=true' -and $f.prompt -match 'technicalBlock null' -and $f.prompt -notmatch 'technicalBlock\?' -and $f.prompt -notmatch 'omit technicalBlock') 'review prompt does not require complete deterministic pagination and explicit nullable technicalBlock semantics'
+        }
+
+        Check 'RD-156' {
+            $providerSchema=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json')|ConvertFrom-Json
+            $declared=@($providerSchema.properties.PSObject.Properties.Name|Sort-Object);$required=@($providerSchema.required|Sort-Object)
+            Assert-True (($declared -join '|') -eq ($required -join '|')) 'provider-facing strict review schema does not require every declared root property'
+            foreach($name in @('criteria','findings','technicalBlock','reviewerMeta')){
+                $nested=$(if($name -in @('criteria','findings')){$providerSchema.properties.$name.items}else{$providerSchema.properties.$name})
+                Assert-True ($nested.additionalProperties -eq $false -and @($nested.required).Count -eq @($nested.properties.PSObject.Properties.Name).Count) "nested strictness is incomplete for $name"
+            }
+        }
+
+        Check 'RD-157' {
+            $f=New-ReviewInfrastructureFixture 'RD157' $false
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='high';file=$null;line=$null;detail='semantic fixture blocker'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
+            $providerSchema=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json')|ConvertFrom-Json
+            Assert-True (@(Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $envelope)) $providerSchema).Count -eq 0) 'technicalBlock:null failed provider-output schema'
+            $local=_ToHashtable ((ConvertTo-CanonicalJson $envelope)|ConvertFrom-Json);$local.findings[0].Remove('file');$local.findings[0].Remove('line');$wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $local)`n$((Get-V2Config).review.endMarker)";$parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            Assert-True ($parsed.verdict -eq 'BLOCK' -and $null -eq $parsed.technicalBlock -and -not(Test-DispatcherReviewInfrastructureResumeState ([ordered]@{reviewTechnicalBlock=$parsed.technicalBlock;reviewResult='BLOCK'}))) 'semantic BLOCK with null was classified as review infrastructure'
+        }
+
+        Check 'RD-158' {
+            $f=New-ReviewInfrastructureFixture 'RD158' $true
+            $valid=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
+            $wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $valid)`n$((Get-V2Config).review.endMarker)";$parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            $bad=_ToHashtable ((ConvertTo-CanonicalJson $valid)|ConvertFrom-Json);$bad.technicalBlock.Remove('detail');$badWrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $bad)`n$((Get-V2Config).review.endMarker)";$rejected=Parse-ReviewEnvelope -Stdout $badWrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            Assert-True ([string]$parsed.technicalBlock.classification -eq 'REVIEW_INFRASTRUCTURE' -and $rejected.verdict -eq 'HUMAN_REVIEW_REQUIRED') 'valid infrastructure block failed or malformed technicalBlock passed'
+        }
+
+        Check 'RD-159' {
+            $f=New-ReviewInfrastructureFixture 'RD159' $false
+            $historical=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='REQUEST_CHANGES';criteria=@();findings=@([ordered]@{severity='medium';detail='historical semantic finding'});filesReviewed=@('work/result.ts');reviewerMeta=[ordered]@{provider='codex';model='historical';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
+            $wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $historical)`n$((Get-V2Config).review.endMarker)";$parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{processOk=$true}
+            Assert-True ($parsed.verdict -eq 'REQUEST_CHANGES' -and $null -eq $parsed.technicalBlock) 'historical envelope omitting technicalBlock was rejected'
         }
 
         Check 'RD-150' {

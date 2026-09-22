@@ -14,6 +14,7 @@
     "criteria",
     "findings",
     "filesReviewed",
+    "technicalBlock",
     "reviewerMeta"
   ],
   "properties": {
@@ -62,7 +63,7 @@
       "items": { "type": "string", "maxLength": 512 }
     },
     "technicalBlock": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "required": [
         "classification",
