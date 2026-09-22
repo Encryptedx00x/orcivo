@@ -284,7 +284,12 @@ function Get-DeepSeekStructuredOutputFailureDiagnostic {
         if([string]$event.type -eq 'turn.failed'){$messages+=,[string]$event.error.message}
     }
     $text=($messages -join "`n")
-    if($text -match '(?i)invalid_request_error' -and $text -match '(?i)required properties must match all properties in the object'){
+    $isInvalidRequest=($text -match '(?i)invalid_request_error')
+    $isSchemaRejection=(
+        $text -match '(?i)required properties must match all properties in the object' -or
+        $text -match '(?i)invalid\s+json\s+schema\b'
+    )
+    if($isInvalidRequest -and $isSchemaRejection){
         return [ordered]@{classification='AGENT_INFRASTRUCTURE';code='STRICT_STRUCTURED_OUTPUT_SCHEMA_REJECTED';detail='provider rejected the strict structured-output schema before a terminal response'}
     }
     return $null

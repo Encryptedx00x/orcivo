@@ -30,7 +30,6 @@
     },
     "criteria": {
       "type": "array",
-      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -38,60 +37,67 @@
         "properties": {
           "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$" },
           "met": { "type": "boolean" },
-          "evidence": { "type": "string", "maxLength": 4000 }
+          "evidence": { "type": "string" }
         }
       }
     },
     "findings": {
       "type": "array",
-      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["severity", "file", "line", "detail"],
         "properties": {
           "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
-          "file": { "type": ["string", "null"] },
-          "line": { "type": ["integer", "null"] },
-          "detail": { "type": "string", "minLength": 1, "maxLength": 4000 }
+          "file": {
+            "anyOf": [{ "type": "null" }, { "type": "string" }]
+          },
+          "line": {
+            "anyOf": [{ "type": "null" }, { "type": "integer" }]
+          },
+          "detail": { "type": "string" }
         }
       }
     },
     "filesReviewed": {
       "type": "array",
-      "maxItems": 2000,
-      "items": { "type": "string", "maxLength": 512 }
+      "items": { "type": "string" }
     },
     "technicalBlock": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": [
-        "classification",
-        "failure",
-        "artifact",
-        "pageOffset",
-        "expectedSha256",
-        "detail"
-      ],
-      "properties": {
-        "classification": { "type": "string", "const": "REVIEW_INFRASTRUCTURE" },
-        "failure": { "type": "string", "enum": ["ARTIFACT_READ_FAILURE"] },
-        "artifact": { "type": "string", "enum": ["acceptance.txt", "spec.txt", "diff.patch"] },
-        "pageOffset": { "type": "integer", "minimum": 0 },
-        "expectedSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-        "detail": { "type": "string", "minLength": 1, "maxLength": 1000 }
-      }
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "failure",
+            "artifact",
+            "pageOffset",
+            "expectedSha256",
+            "detail"
+          ],
+          "properties": {
+            "classification": { "type": "string", "const": "REVIEW_INFRASTRUCTURE" },
+            "failure": { "type": "string", "enum": ["ARTIFACT_READ_FAILURE"] },
+            "artifact": { "type": "string", "enum": ["acceptance.txt", "spec.txt", "diff.patch"] },
+            "pageOffset": { "type": "integer", "minimum": 0 },
+            "expectedSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "detail": { "type": "string" }
+          }
+        }
+      ]
     },
     "reviewerMeta": {
       "type": "object",
       "additionalProperties": false,
       "required": ["provider", "model", "effort", "toolPolicy", "promptTemplateVersion"],
       "properties": {
-        "provider": { "type": "string", "maxLength": 64 },
-        "model": { "type": "string", "maxLength": 128 },
-        "effort": { "type": "string", "maxLength": 64 },
-        "toolPolicy": { "type": "string", "maxLength": 64 },
-        "promptTemplateVersion": { "type": "string", "maxLength": 64 }
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "effort": { "type": "string" },
+        "toolPolicy": { "type": "string" },
+        "promptTemplateVersion": { "type": "string" }
       }
     }
   }

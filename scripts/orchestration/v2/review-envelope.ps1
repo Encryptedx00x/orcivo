@@ -6,7 +6,7 @@ Second-review remediation:
   * C-02/H-03 - the authoritative JSON Schema
     (.orchestration/v2/schemas/review-envelope.schema.json) is now ENFORCED by a
     real Draft-07-subset validator: type / required / additionalProperties:false
-    (recursive) / enum / const / pattern / minLength / maxLength / minItems /
+    (recursive) / anyOf / enum / const / pattern / minLength / maxLength / minItems /
     maxItems / items / properties. Plus hard size/count limits from config.
   * criteria IDs must be EXACTLY the frozen acceptance-criteria set - not an
     arbitrary nonempty id.
@@ -60,6 +60,17 @@ function _Get   { param($o,$k) if ($o -is [System.Collections.IDictionary]) { re
 function _Validate {
     param($v, $s, [string]$path, $err)
     if ($null -eq $s) { return }
+
+    if ($s.anyOf) {
+        $matches = 0
+        foreach ($branch in @($s.anyOf)) {
+            $branchErrors = New-Object System.Collections.Generic.List[string]
+            _Validate $v $branch $path $branchErrors
+            if ($branchErrors.Count -eq 0) { $matches++ }
+        }
+        if ($matches -eq 0) { $err.Add("$path : does not match anyOf"); return }
+        return
+    }
 
     if ($s.type) {
         $t = _TypeOf $v

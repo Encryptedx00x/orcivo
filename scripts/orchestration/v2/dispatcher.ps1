@@ -2404,7 +2404,7 @@ function Reconcile-DispatcherDeepSeekUnknownReservation {
 # schema request has no usage to price and can only be charged at its ceiling.
 function Test-DispatcherDeepSeekUnknownActiveReservation {
     param(
-        [Parameter(Mandatory)][hashtable]$State,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][hashtable]$State,[Parameter(Mandatory)][string]$TaskId,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
         [Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$ExpectedRequestManifestHash,[Parameter(Mandatory)][string]$ExpectedResultReceiptHash,
         [Parameter(Mandatory)][string]$ExpectedStdoutHash,[Parameter(Mandatory)][string]$ExpectedStderrHash,[Parameter(Mandatory)][int]$ExpectedTailSeq,
         [string]$BudgetPath='',[string]$V2Root=''
@@ -2413,7 +2413,7 @@ function Test-DispatcherDeepSeekUnknownActiveReservation {
     foreach($hash in @($ExpectedRequestManifestHash,$ExpectedResultReceiptHash,$ExpectedStdoutHash,$ExpectedStderrHash)){if($hash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'invalid expected artifact hash'}}
     if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation identity'}
     if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
-    if([string]$State.status -ne 'WAITING_PROVIDER' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.runId -ne $RunId -or [string]$State.taskVersionId -ne $TaskVersionId -or -not [string]$State.candidateHead){return &$deny 'dispatcher review lineage binding mismatch'}
+    if([string]$State.status -ne 'WAITING_PROVIDER' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.taskId -ne $TaskId -or [string]$State.runId -ne $RunId -or [string]$State.taskVersionId -ne $TaskVersionId -or -not [string]$State.candidateHead){return &$deny 'dispatcher review lineage binding mismatch'}
     $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})
     if($attempt.Count -ne 1 -or [string]$attempt[0].role -ne 'REVIEWER' -or [string]$attempt[0].provider -ne 'deepseek' -or [string]$attempt[0].model -notin @('deepseek-v4-flash','deepseek-v4-pro') -or [int]$attempt[0].exitCode -eq 0 -or [string]$attempt[0].resultClass -ne 'AGENT_FAILURE' -or [string]$attempt[0].stdoutHash -ne $ExpectedStdoutHash){return &$deny 'provider history binding mismatch'}
     if(-not $V2Root){$V2Root=Get-V2Dir};$V2Root=[IO.Path]::GetFullPath($V2Root);$logsRoot=[IO.Path]::GetFullPath((Join-Path $V2Root "runs\$RunId\logs"));$logsPrefix=$logsRoot.TrimEnd([char[]]@('\','/'))+[IO.Path]::DirectorySeparatorChar
@@ -2449,7 +2449,7 @@ function Test-DispatcherDeepSeekUnknownActiveReservation {
 
 function Reconcile-DispatcherDeepSeekUnknownActiveReservation {
     param(
-        [Parameter(Mandatory)][hashtable]$State,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][hashtable]$State,[Parameter(Mandatory)][string]$TaskId,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
         [Parameter(Mandatory)][string]$InvocationId,[Parameter(Mandatory)][string]$ExpectedRequestManifestHash,[Parameter(Mandatory)][string]$ExpectedResultReceiptHash,
         [Parameter(Mandatory)][string]$ExpectedStdoutHash,[Parameter(Mandatory)][string]$ExpectedStderrHash,[Parameter(Mandatory)][int]$ExpectedTailSeq,
         [string]$BudgetPath='',[string]$V2Root=''

@@ -22,6 +22,53 @@ function Check([string]$Id,[scriptblock]$Body){
 }
 function Assert-True($Value,[string]$Message){if(-not $Value){throw $Message}}
 function Write-Utf8([string]$Path,[string]$Text){$d=Split-Path -Parent $Path;if($d){New-Item -ItemType Directory -Force -Path $d|Out-Null};[IO.File]::WriteAllText($Path,$Text,(New-Object Text.UTF8Encoding($false)))}
+function Get-SchemaNodePropertyNames($Node){
+    if($Node -is [System.Collections.IDictionary]){return @($Node.Keys)}
+    if($Node -is [System.Management.Automation.PSCustomObject]){return @($Node.PSObject.Properties.Name)}
+    return @()
+}
+function Get-SchemaNodeProperty($Node,[string]$Name){
+    if($Node -is [System.Collections.IDictionary]){return $Node[$Name]}
+    return $Node.$Name
+}
+function Test-DeepSeekStrictSchemaNode($Node,[string]$Path,$Errors){
+    if($null -eq $Node){$Errors.Add("$Path is null");return}
+    $keys=@(Get-SchemaNodePropertyNames $Node)
+    $allowed=@('$schema','$id','type','properties','required','additionalProperties','enum','pattern','minimum','maximum','anyOf','items','const')
+    foreach($key in $keys){if($key -notin $allowed){$Errors.Add("$Path uses unsupported keyword '$key'")}}
+    if($keys -contains 'type'){
+        $type=Get-SchemaNodeProperty $Node 'type'
+        if(-not($type -is [string]) -or $type -notin @('string','number','integer','boolean','null','object','array')){$Errors.Add("$Path has unsupported type encoding")}
+    }
+    if($keys -contains 'anyOf'){
+        $branches=@(Get-SchemaNodeProperty $Node 'anyOf')
+        if($branches.Count -lt 2){$Errors.Add("$Path has malformed anyOf")}
+        $nullBranches=@($branches|Where-Object{(Get-SchemaNodePropertyNames $_) -contains 'type' -and [string](Get-SchemaNodeProperty $_ 'type') -eq 'null'})
+        if($nullBranches.Count){
+            if($branches.Count -ne 2 -or $nullBranches.Count -ne 1){$Errors.Add("$Path has malformed nullable anyOf")}
+            $other=@($branches|Where-Object{[string](Get-SchemaNodeProperty $_ 'type') -ne 'null'})
+            if($other.Count -ne 1 -or -not((Get-SchemaNodeProperty $other[0] 'type') -is [string])){$Errors.Add("$Path has malformed nullable branch")}
+        }
+        for($i=0;$i -lt $branches.Count;$i++){Test-DeepSeekStrictSchemaNode $branches[$i] "$Path.anyOf[$i]" $Errors}
+    }
+    if($keys -contains 'type' -and [string](Get-SchemaNodeProperty $Node 'type') -eq 'object'){
+        if(-not($keys -contains 'properties')){$Errors.Add("$Path object has no properties")}
+        if(-not($keys -contains 'additionalProperties') -or (Get-SchemaNodeProperty $Node 'additionalProperties') -ne $false){$Errors.Add("$Path object is not closed")}
+        $declared=@(Get-SchemaNodePropertyNames (Get-SchemaNodeProperty $Node 'properties')|Sort-Object)
+        $required=@($(if($keys -contains 'required'){@(Get-SchemaNodeProperty $Node 'required')}else{@()})|Sort-Object)
+        if(($declared -join '|') -ne ($required -join '|')){$Errors.Add("$Path required properties do not exactly match declared properties")}
+    }
+    if($keys -contains 'properties'){
+        $properties=Get-SchemaNodeProperty $Node 'properties'
+        foreach($name in @(Get-SchemaNodePropertyNames $properties)){Test-DeepSeekStrictSchemaNode (Get-SchemaNodeProperty $properties $name) "$Path.properties.$name" $Errors}
+    }
+    if($keys -contains 'items'){Test-DeepSeekStrictSchemaNode (Get-SchemaNodeProperty $Node 'items') "$Path.items" $Errors}
+}
+function Get-DeepSeekStrictSchemaCompatibilityErrors($Schema){
+    $errors=New-Object System.Collections.Generic.List[string]
+    Test-DeepSeekStrictSchemaNode $Schema '$' $errors
+    return @($errors.ToArray())
+}
 function Task([string]$Id,[string[]]$Deps=@(),[string]$Risk='B',[string]$Gate='none',[string]$Status='SCHEDULED'){
     return [ordered]@{taskId=$Id;title="task $Id";type='TEST';description="implement $Id";acceptance="AC1: $Id complete";dependencies=@($Deps);scope=@('work/');risk=$Risk;ownerGate=$Gate;blockedByGates=@('G1');candidateConstraints=[ordered]@{};verificationProfile='B';phaseGate='P1';status=$Status}
 }
@@ -1389,12 +1436,10 @@ try{
 
         Check 'RD-156' {
             $providerSchema=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json')|ConvertFrom-Json
-            $declared=@($providerSchema.properties.PSObject.Properties.Name|Sort-Object);$required=@($providerSchema.required|Sort-Object)
-            Assert-True (($declared -join '|') -eq ($required -join '|')) 'provider-facing strict review schema does not require every declared root property'
-            foreach($name in @('criteria','findings','technicalBlock','reviewerMeta')){
-                $nested=$(if($name -in @('criteria','findings')){$providerSchema.properties.$name.items}else{$providerSchema.properties.$name})
-                Assert-True ($nested.additionalProperties -eq $false -and @($nested.required).Count -eq @($nested.properties.PSObject.Properties.Name).Count) "nested strictness is incomplete for $name"
-            }
+            $errors=@(Get-DeepSeekStrictSchemaCompatibilityErrors $providerSchema)
+            Assert-True ($errors.Count -eq 0) "provider-facing review schema is not recursively DeepSeek-compatible: $($errors -join '; ')"
+            Assert-True (@($providerSchema.properties.technicalBlock.anyOf).Count -eq 2 -and @($providerSchema.properties.technicalBlock.anyOf|Where-Object type -eq 'null').Count -eq 1 -and @($providerSchema.properties.technicalBlock.anyOf|Where-Object type -eq 'object').Count -eq 1) 'technicalBlock is not encoded as object/null anyOf'
+            Assert-True (@($providerSchema.properties.findings.items.properties.file.anyOf|Where-Object type -eq 'null').Count -eq 1 -and @($providerSchema.properties.findings.items.properties.line.anyOf|Where-Object type -eq 'null').Count -eq 1) 'nullable finding file/line are not encoded with supported anyOf branches'
         }
 
         Check 'RD-157' {
@@ -1410,8 +1455,10 @@ try{
             $f=New-ReviewInfrastructureFixture 'RD158' $true
             $valid=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
             $wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $valid)`n$((Get-V2Config).review.endMarker)";$parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            $providerValid=_ToHashtable ((ConvertTo-CanonicalJson $valid)|ConvertFrom-Json);$providerValid.findings[0]['file']=$null;$providerValid.findings[0]['line']=$null;$providerSchema=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json')|ConvertFrom-Json
             $bad=_ToHashtable ((ConvertTo-CanonicalJson $valid)|ConvertFrom-Json);$bad.technicalBlock.Remove('detail');$badWrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $bad)`n$((Get-V2Config).review.endMarker)";$rejected=Parse-ReviewEnvelope -Stdout $badWrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
-            Assert-True ([string]$parsed.technicalBlock.classification -eq 'REVIEW_INFRASTRUCTURE' -and $rejected.verdict -eq 'HUMAN_REVIEW_REQUIRED') 'valid infrastructure block failed or malformed technicalBlock passed'
+            $providerErrors=@(Test-JsonSchema $providerValid $providerSchema)
+            Assert-True ($providerErrors.Count -eq 0 -and [string]$parsed.technicalBlock.classification -eq 'REVIEW_INFRASTRUCTURE' -and $rejected.verdict -eq 'HUMAN_REVIEW_REQUIRED') "valid infrastructure block failed provider/local validation or malformed technicalBlock passed local validation: provider=$($providerErrors -join '; ') parsed=$($parsed.verdict)/$($parsed.reason) rejected=$($rejected.verdict)/$($rejected.reason)"
         }
 
         Check 'RD-159' {
@@ -1419,6 +1466,20 @@ try{
             $historical=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='REQUEST_CHANGES';criteria=@();findings=@([ordered]@{severity='medium';detail='historical semantic finding'});filesReviewed=@('work/result.ts');reviewerMeta=[ordered]@{provider='codex';model='historical';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
             $wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $historical)`n$((Get-V2Config).review.endMarker)";$parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{processOk=$true}
             Assert-True ($parsed.verdict -eq 'REQUEST_CHANGES' -and $null -eq $parsed.technicalBlock) 'historical envelope omitting technicalBlock was rejected'
+        }
+
+        Check 'RD-160' {
+            $source=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-agent-result.schema.json')
+            $unsupported=$source|ConvertFrom-Json;$unsupported.properties.schemaVersion|Add-Member -NotePropertyName maxLength -NotePropertyValue 64
+            $missingRequired=$source|ConvertFrom-Json;$missingRequired.properties.reviewerMeta.required=@($missingRequired.properties.reviewerMeta.required|Where-Object{$_ -ne 'model'})
+            $multiType=$source|ConvertFrom-Json;$multiType.properties.findings.items.properties.file.PSObject.Properties.Remove('anyOf');$multiType.properties.findings.items.properties.file|Add-Member -NotePropertyName type -NotePropertyValue @('string','null')
+            $malformedAnyOf=$source|ConvertFrom-Json;$malformedAnyOf.properties.technicalBlock.anyOf=@([pscustomobject]@{type='null'})
+            Assert-True (@(Get-DeepSeekStrictSchemaCompatibilityErrors $unsupported).Count -gt 0 -and @(Get-DeepSeekStrictSchemaCompatibilityErrors $missingRequired).Count -gt 0 -and @(Get-DeepSeekStrictSchemaCompatibilityErrors $multiType).Count -gt 0 -and @(Get-DeepSeekStrictSchemaCompatibilityErrors $malformedAnyOf).Count -gt 0) 'recursive compatibility validator accepted an unsupported keyword, open required set, multi-type nullable encoding, or malformed anyOf'
+        }
+
+        Check 'RD-161' {
+            $local=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-envelope.schema.json')|ConvertFrom-Json;$limits=(Get-V2Config).review.limits
+            Assert-True ($local.properties.criteria.maxItems -eq 200 -and $local.properties.criteria.items.properties.id.minLength -eq 1 -and $local.properties.criteria.items.properties.evidence.maxLength -eq 4000 -and $local.properties.findings.maxItems -eq 200 -and $local.properties.findings.items.properties.detail.minLength -eq 1 -and $local.properties.findings.items.properties.detail.maxLength -eq 4000 -and $local.properties.filesReviewed.maxItems -eq 2000 -and $local.properties.filesReviewed.items.maxLength -eq 512 -and $local.properties.technicalBlock.properties.detail.minLength -eq 1 -and $local.properties.technicalBlock.properties.detail.maxLength -eq 1000 -and $limits.maxFindings -eq 200 -and $limits.maxFindingDetailChars -eq 4000 -and $limits.maxEvidenceChars -eq 4000) 'authoritative local schema/parser bounds were weakened'
         }
 
         Check 'RD-150' {
