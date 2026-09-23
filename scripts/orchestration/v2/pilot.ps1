@@ -32,13 +32,15 @@ Commands:
   selftest         run the synthetic pilot validation suite
   docker-preflight report whether the Docker composition can run right now
   reconcile-deepseek-unknown-reservation  reconcile one exact failed invocation at its reservation ceiling
+  prove-review-schema-hold  read-only eligibility proof for one exact immutable reviewer receipt
+  recover-review-schema-hold  revalidate one exact immutable reviewer receipt under the current schema
   run              dispatch READY tasks until idle / wait / stop / budget failure
   run-once         execute at most one READY task
   start            deprecated alias for run
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'prove-review-schema-hold', 'recover-review-schema-hold', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -479,6 +481,32 @@ switch ($Command) {
         if($TaskId -ne 'PB1-P01-os-state-machine' -or $TaskVersionId -ne 'a8b65877877bcb7bc6c2ac75442219b2543358f8d6060aeb586ee181058b9a62' -or $RunId -ne 'run-04a4bf671c224608bd871fd46c125281' -or $InvocationId -ne 'att-f0a612c69da848d2ae1d84619346cf72'){throw 'reconcile-deepseek-unknown-reservation is closed to the exact failed PB1 review invocation'}
         $state=Get-DispatcherState
         Reconcile-DispatcherDeepSeekUnknownActiveReservation -State $state -TaskId $TaskId -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId -ExpectedRequestManifestHash 'sha256:a94b4223a772f613f6a2565b3713da3f3ee8114819665dd250442bbfe3823c56' -ExpectedResultReceiptHash 'sha256:0e03f9ce3928e656a831dbd3f4c61edec49222eb672df41c257e7cae42e53e73' -ExpectedStdoutHash 'sha256:7d3d2d38aaf7ccfd36b00815883758c9f81898bac6e0515c3b666b8ab1ed6b90' -ExpectedStderrHash 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' -ExpectedTailSeq 21 | ConvertTo-Json -Depth 12
+    }
+    { $_ -in @('prove-review-schema-hold','recover-review-schema-hold') } {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId){throw "$Command requires -TaskId, -TaskVersionId, -RunId, and -InvocationId"}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile;$matches=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId})
+        if($matches.Count -ne 1){throw "${Command}: task '$TaskId' is not uniquely present in the owner-approved task source"}
+        $task=[hashtable]$matches[0];$state=Get-DispatcherState
+        if(-not $state){throw "${Command}: no durable dispatcher state"}
+        $contract=Get-Contract $TaskVersionId
+        $safeDirectoryIndex=[int]$(if($env:GIT_CONFIG_COUNT){$env:GIT_CONFIG_COUNT}else{'0'});$safeDirectoryCountBefore=$env:GIT_CONFIG_COUNT
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",'safe.directory','Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",[IO.Path]::GetFullPath([string]$state.workspace),'Process');$env:GIT_CONFIG_COUNT=[string]($safeDirectoryIndex+1)
+        $restoreSafeDirectory={if($null -eq $safeDirectoryCountBefore){Remove-Item Env:GIT_CONFIG_COUNT -ErrorAction SilentlyContinue}else{$env:GIT_CONFIG_COUNT=$safeDirectoryCountBefore};[Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",$null,'Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",$null,'Process')}
+        if($Command -eq 'prove-review-schema-hold'){
+            if(Test-Path -LiteralPath (Get-LeasePath -Namespace scheduler -Key (Get-V2Config).target.branch)){throw 'prove-review-schema-hold: scheduler lease is active'}
+            $script:DispatcherRecoveryRunnerProbe=$false
+            try{$proof=Get-DispatcherReviewSchemaHoldRecoveryProof -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;&$restoreSafeDirectory}
+            [ordered]@{eligible=[bool]$proof.eligible;reason=[string]$proof.reason;replayVerdict=[string]$proof.replayVerdict;replayReason=[string]$proof.replayReason;problems=@($proof.problems);technicalBlock=$proof.technicalBlock;candidateHead=[string]$proof.candidateHead;invocationId=[string]$proof.invocationId;providerInvocationRequired=[bool]$proof.providerInvocationRequired;proofHash=[string]$proof.proof.proofHash;ledgerProgress=[int]$proof.ledgerProgress;alreadyRecovered=[bool]$proof.alreadyRecovered}|ConvertTo-Json -Depth 8
+            exit $(if($proof.eligible){0}else{1})
+        }
+        $schedulerLease=New-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -RunId $RunId -Scope 'review-schema-hold-recovery'
+        if(-not $schedulerLease.ok){throw 'recover-review-schema-hold: scheduler lease is active'}
+        $script:DispatcherRecoveryRunnerProbe=$false
+        try{$result=Recover-DispatcherReviewSchemaHold -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}
+        finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;[void](Remove-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -LeaseId $schedulerLease.leaseId);&$restoreSafeDirectory}
+        Write-RealDispatcherPilotCheckpoint -State (Get-DispatcherState)|Out-Null
+        $result|ConvertTo-Json -Depth 12
     }
     'recover-completed-implementation' {
         if($TaskId -ne 'PB1-P02-audit-service' -or $TaskVersionId -ne '9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798' -or $RunId -ne 'run-31fa07ca662c48b087d32ad0666e9a22' -or $InvocationId -ne 'att-394e628d81584d06953598bc080bc399'){throw 'recover-completed-implementation is closed to the owner-authorized attempt 349'}

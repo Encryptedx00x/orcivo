@@ -1358,6 +1358,36 @@ try{
             return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;technicalBlock=$technicalBlock;prompt=$prompt}
         }
 
+        function New-ReviewSchemaHoldFixture {
+            param([string]$Id)
+            $workspace=Join-Path $Root ("review-schema-"+$Id);& git init -b main --quiet $workspace
+            New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'base';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet;$base=(& git -C $workspace rev-parse HEAD).Trim()
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'candidate';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m candidate --quiet;$head=(& git -C $workspace rev-parse HEAD).Trim()
+            $task=Task ("SCHEMA-"+$Id);$sourcePath=Join-Path $Fixture ("review-schema-"+$Id+".json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0];$contract=New-DispatcherContract -Task $task -TaskSource $source
+            $runId='run-schema-'+(New-StringHash ($Id+'|run')).Substring(7,16);$bindings=Get-AttestationBindings -TaskVersionId $contract.taskVersionId -WorktreeDir $workspace -BaseSha $base -HeadSha $head
+            $diffResult=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--no-color',"$base..$head") -LogLabel ("fixture-schema-diff-"+$Id) -ReviewedSourceOutput;$diff=$diffResult.stdout.TrimEnd("`r","`n");$reviewDir=Join-Path (Get-V2Dir) "runs\$runId\review-000"
+            $prompt=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $contract.taskVersionId -Head $head -TreeHash $bindings.treeHash -DiffHash $bindings.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles @('work/result.ts') -CheckSummary 'PASS profile=B; secretScan=CLEAN' -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='REVIEW';reason='HUMAN_REVIEW_REQUIRED: schema validation failed';workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;candidateHead=$head;candidateTree=$bindings.treeHash;diffHash=$bindings.diffHash;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$true;requiresCorrection=$false;implementationCommit=$head;verification=$null;reviewVerdict='HUMAN_REVIEW_REQUIRED';logicalProjectId='fixture';integration=$null;reviewSchemaRecoveryHistory=@()}
+            $record=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $state;$state.reviewArtifactRecord=$record
+            $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $workspace -BaseSha $base -HeadSha $head;$state.verification=$vp
+            $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $base -Ref $head;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$runId"));$state.secretScan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$base;headSha=$head;hits=@($treeScan.hits)};artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)};hits=@()}
+            Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
+            $check=New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result PASS -Payload @{profileId=$vp.profileId;effectiveInvocationHash=$vp.effectiveInvocationHash;checks=@($vp.checks)} -ProducerMeta @{verifier='v2-deterministic';profileId=$vp.profileId;verificationDefinitionHash=$vp.verificationDefinitionHash}
+            $invocation='att-'+[guid]::NewGuid().ToString('N');$attempt=2;$suffix=$invocation.Substring(4,8);$logs=Join-Path (Get-V2Dir) "runs\$runId\logs";New-Item -ItemType Directory -Force -Path $logs|Out-Null;$stem="reviewer-002-deepseek-$suffix"
+            $promptPath=Join-Path $logs "$stem.prompt.txt";$stdoutPath=Join-Path $logs "$stem.stdout.log";$stderrPath=Join-Path $logs "$stem.stderr.log";$requestPath=Join-Path $logs "$stem.request-manifest.json";Write-Utf8 $promptPath $prompt;Write-Utf8 $stdoutPath "immutable fixture stdout`n";Write-Utf8 $stderrPath ''
+            $request=[ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-request-manifest/1';createdAt='2026-09-22T00:00:00Z';invocationId=$invocation;provider='deepseek';baseUrl='https://api.deepseek.com/';redirectObserved=$false;requestedBillableSku='deepseek-v4-flash';reasoning='low';profile='FAST';promptHash=(New-FileHash $promptPath);runtimeConfigHash=('sha256:'+('1'*64));isolatedCodexHome='fixture';priceRegistryHash=('sha256:'+('2'*64));resolvedModelVersion='fixture';manifestHash=''};$requestSigned=[ordered]@{};foreach($key in $request.Keys){if($key -ne 'manifestHash'){$requestSigned[$key]=$request[$key]}};$request.manifestHash=New-ContentHash $requestSigned;Write-V2JsonCanonical $requestPath $request
+            $toolPolicy='read-only; review_reader artifacts only (no git, no shell, no candidate workspace)'
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$contract.taskVersionId;reviewedHead=$head;treeHash=$bindings.treeHash;diffHash=$bindings.diffHash;specHash=$contract.specHash;verdict='APPROVE';criteria=@([ordered]@{id='AC1';met=$true;evidence='fixture evidence'});findings=@([ordered]@{severity='info';file=$null;line=$null;detail='fixture review complete'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='deepseek-v4-flash';effort='low';toolPolicy=$toolPolicy;promptTemplateVersion='v2'}}
+            $agent=[ordered]@{invocationId=$invocation;provider='deepseek';model='deepseek-v4-flash';profile='FAST';reasoningIntent='low';attempt=$attempt;exitCode=0;providerClass='NONE';failureDiagnostic=$null;resultClass='APPROVE';structuredResult=$envelope;promptArtifact=[IO.Path]::GetFullPath($promptPath);promptHash=(New-FileHash $promptPath);stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=(New-FileHash $stdoutPath);stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=(New-FileHash $stderrPath);controlRecordHash=(New-StringHash ([IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)));duration=1;contextRolloverRequired=$false;capabilityVersion='fixture';continuationCheckpoint='';usage=@{inputTokens=1;outputTokens=1;cachedTokens=$null};cachedTokens=$null;returnedModels=@();requestManifestPath=[IO.Path]::GetFullPath($requestPath);requestManifestHash=$request.manifestHash;costUsd=$null;telemetryConsistent=$true;resultReceiptPath=(Get-RealAgentResultReceiptPath -ArtifactDir $logs -InvocationId $invocation -Role reviewer -Provider deepseek -Attempt $attempt)}
+            $receipt=Write-RealAgentResultReceipt -AgentResult $agent
+            $review=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result HUMAN_REVIEW_REQUIRED -Payload @{problems=@('$.reviewerMeta.toolPolicy : longer than maxLength 64');reason='schema validation failed';findings=@($null);technicalBlock=$null;reviewArtifactRecordHash=[string]$record.recordHash} -ProducerMeta @{provider='deepseek';model='deepseek-v4-flash';profile='FAST';invocationId=$invocation;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0}
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event review-hold -ToState WAITING_HUMAN -RunId $runId -Note HUMAN_REVIEW_REQUIRED|Out-Null
+            $state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewTechnicalBlock=$null;$state.reviewerProvider='deepseek';$state.providerHistory=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));role='IMPLEMENTER';provider='glm';model=(Get-GlmModelId);resultClass='SUCCESS';providerClass='NONE';exitCode=0},[ordered]@{invocationId=$invocation;role='REVIEWER';provider='deepseek';model='deepseek-v4-flash';reasoningEffort='low';attempt=$attempt;providerClass='NONE';resultClass='APPROVE';exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash});Write-DispatcherState $state|Out-Null
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;invocation=$invocation;receiptPath=$agent.resultReceiptPath;receipt=$receipt;stdoutPath=$stdoutPath;toolPolicy=$toolPolicy}
+        }
+
         Check 'RD-138' {
             $f=New-ReviewInfrastructureFixture 'RD138' $true
             $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'} }
@@ -1480,6 +1510,93 @@ try{
         Check 'RD-161' {
             $local=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-envelope.schema.json')|ConvertFrom-Json;$limits=(Get-V2Config).review.limits
             Assert-True ($local.properties.criteria.maxItems -eq 200 -and $local.properties.criteria.items.properties.id.minLength -eq 1 -and $local.properties.criteria.items.properties.evidence.maxLength -eq 4000 -and $local.properties.findings.maxItems -eq 200 -and $local.properties.findings.items.properties.detail.minLength -eq 1 -and $local.properties.findings.items.properties.detail.maxLength -eq 4000 -and $local.properties.filesReviewed.maxItems -eq 2000 -and $local.properties.filesReviewed.items.maxLength -eq 512 -and $local.properties.technicalBlock.properties.detail.minLength -eq 1 -and $local.properties.technicalBlock.properties.detail.maxLength -eq 1000 -and $limits.maxFindings -eq 200 -and $limits.maxFindingDetailChars -eq 4000 -and $limits.maxEvidenceChars -eq 4000) 'authoritative local schema/parser bounds were weakened'
+        }
+
+        Check 'RD-162' {
+            $f=New-ReviewSchemaHoldFixture 'RD162';$proof=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True ($f.toolPolicy.Length -eq 82 -and $proof.eligible -and $proof.replayVerdict -eq 'APPROVE') 'the exact real 82-character toolPolicy did not pass current authoritative validation'
+        }
+
+        Check 'RD-163' {
+            $f=New-ReviewSchemaHoldFixture 'RD163';$e=ConvertTo-DispatcherNormalizedReviewResult $f.receipt.structuredResult;$e.reviewerMeta.toolPolicy='x'*513;$cfg=Get-V2Config;$wrapped="$($cfg.review.beginMarker)`n$(ConvertTo-CanonicalJson $e)`n$($cfg.review.endMarker)";$p=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{processOk=$true}
+            Assert-True ($p.verdict -eq 'HUMAN_REVIEW_REQUIRED' -and $p.reason -eq 'schema validation failed' -and (@($p.problems)-join ' ') -match 'maxLength 512') 'toolPolicy above the new bounded maximum was accepted'
+        }
+
+        Check 'RD-164' {
+            $f=New-ReviewSchemaHoldFixture 'RD164';$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True ($p.eligible -and $p.replayVerdict -eq 'APPROVE' -and $p.replayReason -eq 'ok' -and @($p.problems).Count -eq 0 -and $null -eq $p.technicalBlock -and -not$p.providerInvocationRequired) "historical immutable receipt did not revalidate exactly: $($p.reason)"
+        }
+
+        Check 'RD-165' {
+            $f=New-ReviewSchemaHoldFixture 'RD165';$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId ('att-'+[guid]::NewGuid().ToString('N'))
+            Assert-True (-not$p.eligible -and $p.reason -match 'invocation') 'wrong reviewer invocation was eligible'
+        }
+
+        Check 'RD-166' {
+            $f=New-ReviewSchemaHoldFixture 'RD166';$results=@();foreach($field in @('candidateHead','candidateTree','diffHash')){$s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s[$field]=$(if($field -eq 'diffHash'){'sha256:'+('0'*64)}else{'0'*40});$results+=Get-DispatcherReviewSchemaHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation}
+            Assert-True (@($results|Where-Object eligible).Count -eq 0) 'candidate head, tree, or diff drift remained eligible'
+        }
+
+        Check 'RD-167' {
+            $f=New-ReviewSchemaHoldFixture 'RD167';$source=@{hash=('sha256:'+('0'*64));path=$f.source.path;tasks=$f.source.tasks};$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not$p.eligible -and $p.reason -match 'contract|source') 'task/spec/acceptance authority drift remained eligible'
+        }
+
+        Check 'RD-168' {
+            $f=New-ReviewSchemaHoldFixture 'RD168';Add-Content -LiteralPath (Join-Path $f.record.dataDir 'diff.patch') -Value 'tamper';$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not$p.eligible -and $p.reason -match 'artifact') 'changed frozen review artifact remained eligible'
+        }
+
+        Check 'RD-169' {
+            $receiptFixture=New-ReviewSchemaHoldFixture 'RD169-r';Add-Content -LiteralPath $receiptFixture.receiptPath -Value 'tamper';$receiptProof=Get-DispatcherReviewSchemaHoldRecoveryProof -State $receiptFixture.state -Task $receiptFixture.task -TaskSource $receiptFixture.source -Contract $receiptFixture.contract -TaskVersionId $receiptFixture.contract.taskVersionId -RunId $receiptFixture.state.runId -InvocationId $receiptFixture.invocation
+            $stdoutFixture=New-ReviewSchemaHoldFixture 'RD169-s';Add-Content -LiteralPath $stdoutFixture.stdoutPath -Value 'tamper';$stdoutProof=Get-DispatcherReviewSchemaHoldRecoveryProof -State $stdoutFixture.state -Task $stdoutFixture.task -TaskSource $stdoutFixture.source -Contract $stdoutFixture.contract -TaskVersionId $stdoutFixture.contract.taskVersionId -RunId $stdoutFixture.state.runId -InvocationId $stdoutFixture.invocation
+            Assert-True (-not$receiptProof.eligible -and -not$stdoutProof.eligible) 'modified receipt or stdout remained eligible'
+        }
+
+        Check 'RD-170' {
+            $f=New-ReviewSchemaHoldFixture 'RD170';Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event unrelated-failure -ToState FAILED -RunId $f.state.runId|Out-Null;$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not$p.eligible -and $p.reason -match 'ledger') 'wrong ledger tail remained eligible'
+        }
+
+        Check 'RD-171' {
+            $f=New-ReviewSchemaHoldFixture 'RD171';$s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s.providerHistory[-1].resultClass='BLOCK';$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not$p.eligible -and $p.reason -match 'APPROVE') 'non-APPROVE reviewer result remained eligible'
+        }
+
+        Check 'RD-172' {
+            $f=New-ReviewSchemaHoldFixture 'RD172';$s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s.reason='Level C: owner decision';$p=Get-DispatcherReviewSchemaHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not$p.eligible -and $p.reason -match 'schema-validation hold') 'unrelated WAITING_HUMAN decision remained eligible'
+        }
+
+        Check 'RD-173' {
+            $f=New-ReviewSchemaHoldFixture 'RD173';$first=Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation;$second=Recover-DispatcherReviewSchemaHold -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True ($first.status -eq 'RECOVERED_TO_INTEGRATE' -and $second.status -eq 'ALREADY_RECOVERED' -and @((Get-LedgerState $f.contract.taskVersionId).history|Where-Object event -like 'review-schema-revalidation-*').Count -eq 5) 'recovery was not idempotent'
+        }
+
+        Check 'RD-174' {
+            $f=New-ReviewSchemaHoldFixture 'RD174';Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null;$events=@(Get-DispatcherLedgerEvents $f.contract.taskVersionId|Select-Object -Last 6);$states=@($events|ForEach-Object toState)
+            Assert-True (($states-join '|') -eq 'WAITING_HUMAN|DISPATCHED|RUNNING|CHECKING|REVIEWING|APPROVED' -and -not(Get-LedgerState $f.contract.taskVersionId).corrupt) 'bounded recovery ledger transition sequence is invalid'
+        }
+
+        Check 'RD-175' {
+            $f=New-ReviewSchemaHoldFixture 'RD175';$oldPath=Join-Path (Join-Path (Get-V2Dir) "attestations\$($f.contract.taskVersionId)") "review-$($f.review.attestationId).json";$before=New-FileHash $oldPath;Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null
+            Assert-True ((New-FileHash $oldPath) -eq $before -and @((Get-Attestations -TaskVersionId $f.contract.taskVersionId -Kind review)).Count -eq 2) 'original HUMAN_REVIEW_REQUIRED evidence was rewritten or lost'
+        }
+
+        Check 'RD-176' {
+            $f=New-ReviewSchemaHoldFixture 'RD176';$before=ConvertTo-CanonicalJson $f.state.providerHistory;Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null;$after=Get-DispatcherState
+            Assert-True ((ConvertTo-CanonicalJson $after.providerHistory) -eq $before) 'schema recovery added or rewrote providerHistory'
+        }
+
+        Check 'RD-177' {
+            $f=New-ReviewSchemaHoldFixture 'RD177';$script:SchemaRecoveryProviderCalls=0;function Invoke-RealAgent{$script:SchemaRecoveryProviderCalls++;throw 'provider invocation forbidden'}
+            try{Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null}finally{. (Join-Path $V2 'real-agent.ps1')}
+            Assert-True ($script:SchemaRecoveryProviderCalls -eq 0) 'schema recovery invoked an external provider'
+        }
+
+        Check 'RD-178' {
+            $f=New-ReviewSchemaHoldFixture 'RD178';$r=Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation;$s=Get-DispatcherState
+            Assert-True ($r.status -eq 'RECOVERED_TO_INTEGRATE' -and $s.stage -eq 'INTEGRATE' -and $s.status -eq 'RUNNING' -and $s.reviewVerdict -eq 'APPROVE' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'APPROVED' -and $s.candidateHead -eq $f.head -and $s.implementationComplete) 'recovered state did not safely reach INTEGRATE/APPROVED'
         }
 
         Check 'RD-150' {

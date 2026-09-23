@@ -336,6 +336,18 @@ function Test-DispatcherReviewArtifactRecord {
     }catch{return $false}
 }
 
+function ConvertTo-DispatcherNormalizedReviewResult {
+    param([Parameter(Mandatory)]$StructuredResult)
+    $normalized=_ToHashtable ((ConvertTo-CanonicalJson $StructuredResult)|ConvertFrom-Json)
+    foreach($finding in @($normalized.findings)){
+        if($finding -is [System.Collections.IDictionary]){
+            if($null -eq $finding.file){$finding.Remove('file')}
+            if($null -eq $finding.line){$finding.Remove('line')}
+        }
+    }
+    return $normalized
+}
+
 function Test-DispatcherReviewInfrastructureResumeState {
     param($State)
     if(-not $State -or [string]$State.status -ne 'WAITING_HUMAN' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.reviewVerdict -ne 'BLOCK'){return $false}
@@ -487,6 +499,145 @@ function Resume-DispatcherReviewInfrastructureBlock {
     $State.status='RUNNING';$State.stage='REVIEW';$State.reason='';$State.decisionNeeded='';$State.resumes=''
     Write-DispatcherState $State|Out-Null
     return [ordered]@{eligible=$true;resumed=$true;proof=$proof}
+}
+
+function Get-DispatcherReviewSchemaRecoveryReceiptPath {
+    param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId)
+    if($RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'review schema recovery: invalid run or invocation id'}
+    return (Join-Path (Get-V2Dir) "runs\$RunId\reconciliations\review-schema-$InvocationId.json")
+}
+
+function Test-DispatcherReviewSchemaRecoveryReceipt {
+    param($Receipt,[string]$ExpectedProofHash='')
+    if(-not $Receipt -or [string]$Receipt.schemaVersion -ne 'orcivo.orchestration.v2.review-schema-revalidation/1'){return $false}
+    $signed=[ordered]@{};foreach($key in $Receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$Receipt[$key]}}
+    if([string]$Receipt.receiptHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$Receipt.receiptHash -ne (New-ContentHash $signed)){return $false}
+    if($ExpectedProofHash -and [string]$Receipt.proofHash -ne $ExpectedProofHash){return $false}
+    return $true
+}
+
+function Get-DispatcherReviewSchemaHoldRecoveryProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
+    try{
+        if($TaskVersionId -notmatch '^[0-9a-f]{64}$' -or $RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'task, run, or invocation identity is malformed'}
+        if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+        if(-not $State -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [string]$State.runId -ne $RunId){return &$deny 'durable task/run/version binding mismatch'}
+        if([string]$Contract.taskVersionId -ne $TaskVersionId -or [string]$Contract.taskId -ne [string]$Task.taskId -or [string]$Contract.bindings.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task contract or source binding drift'}
+        if([string]$Contract.specHash -ne (New-StringHash ([string]$Contract.specText)) -or [string]$Contract.acceptanceHash -ne (New-StringHash ([string]$Contract.acceptanceText))){return &$deny 'task spec or acceptance binding drift'}
+        $criteria=@(Get-AcceptanceCriteriaIds ([string]$Contract.acceptanceText));if((@($Contract.acceptanceCriteriaIds|Sort-Object)-join '|') -ne (@($criteria|Sort-Object)-join '|')){return &$deny 'acceptance criteria binding drift'}
+
+        $history=@($State.reviewSchemaRecoveryHistory|Where-Object{$_})
+        $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reviewVerdict -eq 'APPROVE' -and $history.Count -eq 1)
+        if(-not $alreadyRecovered){
+            if([string]$State.status -ne 'WAITING_HUMAN' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.reason -ne 'HUMAN_REVIEW_REQUIRED: schema validation failed' -or [string]$State.reviewVerdict -ne 'HUMAN_REVIEW_REQUIRED'){return &$deny 'state is not the exact local review schema-validation hold'}
+        }elseif([string]$history[0].priorReason -ne 'HUMAN_REVIEW_REQUIRED: schema validation failed' -or [string]$history[0].invocationId -ne $InvocationId){return &$deny 'recovered state does not preserve the exact prior schema hold'}
+        if(-not[bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
+        foreach($sha in @([string]$State.candidateBase,[string]$State.candidateHead,[string]$State.candidateTree)){if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'candidate binding is malformed'}}
+        if([string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'candidate diff binding is malformed'}
+        $workspace=[string]$State.workspace;if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
+        if((Get-GitHeadV2 $workspace) -ne [string]$State.candidateHead){return &$deny 'candidate workspace HEAD drift'}
+        $workspaceStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'review-schema-recovery-status'
+        if($workspaceStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$workspaceStatus.stdout)){return &$deny 'candidate workspace is dirty'}
+        $bindings=Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if([string]$bindings.treeHash -ne [string]$State.candidateTree -or [string]$bindings.diffHash -ne [string]$State.diffHash -or [string]$bindings.specHash -ne [string]$Contract.specHash -or [string]$bindings.acceptanceHash -ne [string]$Contract.acceptanceHash -or [string]$bindings.contractHash -ne [string]$Contract.contractHash){return &$deny 'candidate tree, diff, or contract binding drift'}
+        $changed=@(Get-GitChangedFiles -Dir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead))
+        if(-not $State.reviewArtifactRecord -or -not(Test-DispatcherReviewArtifactRecord -Record $State.reviewArtifactRecord -State $State)){return &$deny 'frozen review artifact record drift'}
+        $reviewDir=Join-Path (Get-V2Dir) ("runs\{0}\review-{1:000}" -f $RunId,[int]$State.cycle)
+        if([IO.Path]::GetFullPath([string]$State.reviewArtifactRecord.dataDir) -ne [IO.Path]::GetFullPath($reviewDir)){return &$deny 'review artifact directory binding mismatch'}
+
+        $providerHistory=@($State.providerHistory|Where-Object{$_});$matches=@($providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})
+        if($matches.Count -ne 1 -or [string]$providerHistory[-1].invocationId -ne $InvocationId){return &$deny 'exact reviewer invocation does not exist once at the history tail'}
+        $attempt=$matches[0]
+        if([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'deepseek' -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or [string]$attempt.resultClass -ne 'APPROVE' -or -not[bool]$attempt.telemetryConsistent){return &$deny 'reviewer invocation is not a successful DeepSeek APPROVE'}
+        if([string]$attempt.resultReceiptHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'reviewer result receipt hash is absent or malformed'}
+        $logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8);$attemptLabel='{0:000}' -f [int]$attempt.attempt;$stem="reviewer-$attemptLabel-deepseek-$suffix"
+        $receiptPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.agent-result.json"));$promptPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.prompt.txt"));$stdoutPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.stdout.log"));$stderrPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.stderr.log"));$requestPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.request-manifest.json"))
+        foreach($path in @($receiptPath,$promptPath,$stdoutPath,$stderrPath,$requestPath)){if(-not(Test-Path -LiteralPath $path) -or -not $path.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)){return &$deny 'reviewer receipt artifact is absent or escapes the run log directory'}}
+        $receipt=Read-V2Json $receiptPath;$receiptSigned=[ordered]@{};foreach($key in $receipt.Keys){if([string]$key -ne 'receiptHash'){$receiptSigned[[string]$key]=$receipt[$key]}}
+        if([string]$receipt.schemaVersion -ne 'orcivo.orchestration.v2.agent-result-receipt/1' -or [string]$receipt.receiptHash -ne (New-ContentHash $receiptSigned) -or [string]$receipt.receiptHash -ne [string]$attempt.resultReceiptHash){return &$deny 'reviewer result receipt hash is invalid or unbound'}
+        if([string]$receipt.invocationId -ne $InvocationId -or [string]$receipt.provider -ne 'deepseek' -or [string]$receipt.model -ne [string]$attempt.model -or [int]$receipt.attempt -ne [int]$attempt.attempt -or [int]$receipt.exitCode -ne 0 -or [string]$receipt.providerClass -ne 'NONE' -or [string]$receipt.resultClass -ne 'APPROVE' -or -not[bool]$receipt.telemetryConsistent){return &$deny 'reviewer result receipt provenance mismatch'}
+        if([IO.Path]::GetFullPath([string]$receipt.promptArtifact) -ne $promptPath -or [IO.Path]::GetFullPath([string]$receipt.stdoutArtifact) -ne $stdoutPath -or [IO.Path]::GetFullPath([string]$receipt.stderrArtifact) -ne $stderrPath -or [IO.Path]::GetFullPath([string]$receipt.requestManifestPath) -ne $requestPath){return &$deny 'reviewer result receipt artifact path mismatch'}
+        if((New-FileHash $promptPath) -ne [string]$receipt.promptHash -or (New-FileHash $stdoutPath) -ne [string]$receipt.stdoutHash -or (New-FileHash $stderrPath) -ne [string]$receipt.stderrHash -or [string]$receipt.stdoutHash -ne [string]$attempt.stdoutHash -or [string]$receipt.stderrHash -ne [string]$attempt.stderrHash){return &$deny 'prompt, stdout, or stderr artifact hash mismatch'}
+        $stdoutText=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)
+        if((New-StringHash $stdoutText) -ne [string]$receipt.controlRecordHash -or [string]$receipt.controlRecordHash -ne [string]$attempt.controlRecordHash){return &$deny 'stdout control-record hash mismatch'}
+        $request=Read-V2Json $requestPath;$requestSigned=[ordered]@{};foreach($key in $request.Keys){if([string]$key -ne 'manifestHash'){$requestSigned[[string]$key]=$request[$key]}}
+        if([string]$request.schemaVersion -ne 'orcivo.orchestration.v2.deepseek-request-manifest/1' -or [string]$request.manifestHash -ne (New-ContentHash $requestSigned) -or [string]$request.manifestHash -ne [string]$receipt.requestManifestHash -or [string]$request.invocationId -ne $InvocationId -or [string]$request.provider -ne 'deepseek' -or [string]$request.requestedBillableSku -ne [string]$receipt.model -or [string]$request.profile -ne [string]$receipt.profile -or [string]$request.reasoning -ne [string]$receipt.reasoningIntent -or [string]$request.promptHash -ne [string]$receipt.promptHash){return &$deny 'request manifest hash or launch binding mismatch'}
+
+        if($alreadyRecovered){$oldAttestationId=[string]$history[0].priorReviewAttestationId}else{$oldAttestationId=[string]$State.reviewAttestationId};$oldReviews=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind review|Where-Object{[string]$_.attestationId -eq $oldAttestationId})
+        if($oldReviews.Count -ne 1){return &$deny 'historical schema-hold attestation is absent or ambiguous'}
+        $oldReview=$oldReviews[0]
+        if([string]$oldReview.runId -ne $RunId -or [string]$oldReview.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$oldReview.producer.invocationId -ne $InvocationId -or [string]$oldReview.payload.reason -ne 'schema validation failed' -or [string]$oldReview.payload.reviewArtifactRecordHash -ne [string]$State.reviewArtifactRecord.recordHash){return &$deny 'historical review is not the exact local schema-validation attestation'}
+        $oldFresh=Test-AttestationFresh -Attestation $oldReview -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $oldFresh.fresh){return &$deny 'historical schema-hold attestation is stale or tampered'}
+        $check=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind check -RunId $RunId -HeadSha ([string]$State.candidateHead)
+        if(-not $check -or [string]$check.result -ne 'PASS' -or -not[bool]$State.verification.pass){return &$deny 'deterministic check evidence is not PASS'}
+        $checkFresh=Test-AttestationFresh -Attestation $check -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $checkFresh.fresh){return &$deny 'deterministic check attestation is stale or tampered'}
+        $structured=ConvertTo-DispatcherNormalizedReviewResult $receipt.structuredResult;if([string]$structured.verdict -ne 'APPROVE'){return &$deny 'frozen structured reviewer result is not APPROVE'}
+        $reviewConfig=Get-V2Config;$wrapped=([string]$reviewConfig.review.beginMarker)+"`n"+(ConvertTo-CanonicalJson $structured)+"`n"+([string]$reviewConfig.review.endMarker)
+        $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$TaskVersionId;head=$State.candidateHead;treeHash=$State.candidateTree;diffHash=$State.diffHash;specHash=$Contract.specHash;changedFiles=$changed;criteriaIds=@($Contract.acceptanceCriteriaIds);reviewArtifacts=@($State.reviewArtifactRecord.artifacts);processOk=$true}
+        $problemCount=@($parsed.problems).Count
+        if([string]$parsed.verdict -ne 'APPROVE' -or [string]$parsed.reason -ne 'ok' -or $problemCount -ne 0 -or $null -ne $parsed.technicalBlock){return &$deny ('current parser does not produce the exact APPROVE replay ('+[string]$parsed.verdict+': '+[string]$parsed.reason+')')}
+
+        $ledger=Get-LedgerState $TaskVersionId;if($ledger.corrupt){return &$deny 'ledger is corrupt'}
+        $events=@(Get-DispatcherLedgerEvents $TaskVersionId);$holds=@($events|Where-Object{[string]$_.event -eq 'review-hold' -and [string]$_.toState -eq 'WAITING_HUMAN' -and [string]$_.runId -eq $RunId -and [string]$_.note -eq 'HUMAN_REVIEW_REQUIRED'})
+        if($holds.Count -ne 1){return &$deny 'exact corresponding review-hold is absent or ambiguous'}
+        $hold=$holds[0];$after=@($events|Where-Object{[int]$_.seq -gt [int]$hold.seq});$schemaHash=New-FileHash (Join-Path (Get-V2Dir) ([string](Get-V2Config).review.schemaFile))
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-schema-revalidation-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;contractHash=[string]$Contract.contractHash;specHash=[string]$Contract.specHash;acceptanceHash=[string]$Contract.acceptanceHash;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;reviewInvocationId=$InvocationId;resultReceiptHash=[string]$receipt.receiptHash;promptHash=[string]$receipt.promptHash;stdoutHash=[string]$receipt.stdoutHash;stderrHash=[string]$receipt.stderrHash;controlRecordHash=[string]$receipt.controlRecordHash;requestManifestHash=[string]$receipt.requestManifestHash;priorReviewAttestationId=[string]$oldReview.attestationId;priorReviewAttestationHash=[string]$oldReview.attestationHash;checkAttestationId=[string]$check.attestationId;checkAttestationHash=[string]$check.attestationHash;reviewSchemaHash=$schemaHash;providerHistoryHash=(New-StringHash (ConvertTo-CanonicalJson $providerHistory));holdSeq=[int]$hold.seq;holdEventHash=[string]$hold.eventHash;replayVerdict='APPROVE';replayReason='ok'};$proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
+        $expectedPrefix=@(@{event='review-schema-revalidation-dispatch';to='DISPATCHED'},@{event='review-schema-revalidation-running';to='RUNNING'},@{event='review-schema-revalidation-checking';to='CHECKING'},@{event='review-schema-revalidation-reviewing';to='REVIEWING'},@{event='review-schema-revalidation-approved';to='APPROVED'})
+        if($after.Count -gt $expectedPrefix.Count){return &$deny 'ledger contains events beyond the bounded schema-revalidation sequence'}
+        for($i=0;$i -lt $after.Count;$i++){if([string]$after[$i].event -ne [string]$expectedPrefix[$i].event -or [string]$after[$i].toState -ne [string]$expectedPrefix[$i].to -or [string]$after[$i].runId -ne $RunId -or [string]$after[$i].attemptId -ne $InvocationId -or [string]$after[$i].evidence.proofHash -ne [string]$proof.proofHash -or [string]$after[$i].evidence.resultReceiptHash -ne [string]$receipt.receiptHash){return &$deny 'ledger schema-revalidation prefix is invalid or unbound'}}
+        if($after.Count){$expectedState=[string]$expectedPrefix[$after.Count-1].to}else{$expectedState='WAITING_HUMAN'};if([string]$ledger.state -ne $expectedState){return &$deny 'ledger state does not match the bounded schema-revalidation prefix'}
+        if(-not $after.Count -and ([int]$ledger.seq -ne [int]$hold.seq -or [string]$events[-1].eventHash -ne [string]$hold.eventHash)){return &$deny 'ledger tail is not the exact corresponding review-hold'}
+        $receiptOutPath=Get-DispatcherReviewSchemaRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$recoveryReceipt=$null
+        if(Test-Path -LiteralPath $receiptOutPath){$recoveryReceipt=Read-V2Json $receiptOutPath;if(-not(Test-DispatcherReviewSchemaRecoveryReceipt -Receipt $recoveryReceipt -ExpectedProofHash ([string]$proof.proofHash))){return &$deny 'recovery receipt is invalid or conflicts with the proof'}}
+        $recoveryReviews=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind review|Where-Object{[string]$_.producer.revalidationSource -eq 'IMMUTABLE_RESULT_RECEIPT' -and [string]$_.producer.invocationId -eq $InvocationId})
+        if($recoveryReviews.Count -gt 1){return &$deny 'multiple schema-revalidation attestations exist'}
+        if($recoveryReviews.Count -eq 1){
+            if(-not $recoveryReceipt -or [string]$recoveryReviews[0].result -ne 'APPROVE' -or [string]$recoveryReviews[0].payload.recoveryReceiptHash -ne [string]$recoveryReceipt.receiptHash -or [string]$recoveryReviews[0].payload.revalidatedFromAttestationId -ne [string]$oldReview.attestationId){return &$deny 'schema-revalidation attestation is not bound to the recovery receipt and prior hold'}
+            $recoveryFresh=Test-AttestationFresh -Attestation $recoveryReviews[0] -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $recoveryFresh.fresh){return &$deny 'schema-revalidation attestation is stale or tampered'}
+        }
+        if($alreadyRecovered){if($after.Count -ne 5 -or -not $recoveryReceipt -or $recoveryReviews.Count -ne 1 -or [string]$State.reviewAttestationId -ne [string]$recoveryReviews[0].attestationId -or [string]$history[0].proofHash -ne [string]$proof.proofHash -or [string]$history[0].recoveryReceiptHash -ne [string]$recoveryReceipt.receiptHash){return &$deny 'completed schema recovery evidence is incomplete or inconsistent'}}
+        elseif($after.Count -eq 5 -and ($null -eq $recoveryReceipt -or $recoveryReviews.Count -ne 1)){return &$deny 'approved ledger prefix lacks its recovery receipt or attestation'}
+        $recoveryAttestation=$null;if($recoveryReviews.Count){$recoveryAttestation=$recoveryReviews[0]}
+        return [ordered]@{eligible=$true;alreadyRecovered=$alreadyRecovered;reason='exact immutable reviewer result is eligible for deterministic schema revalidation';replayVerdict='APPROVE';replayReason='ok';problems=@();technicalBlock=$null;candidateHead=[string]$State.candidateHead;invocationId=$InvocationId;providerInvocationRequired=$false;proof=$proof;parsed=$parsed;bindings=$bindings;ledgerProgress=$after.Count;recoveryReceipt=$recoveryReceipt;recoveryAttestation=$recoveryAttestation}
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function Recover-DispatcherReviewSchemaHold {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $result=Get-DispatcherReviewSchemaHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+    if(-not $result.eligible){throw "review schema recovery not eligible: $($result.reason)"}
+    if($result.alreadyRecovered){return [ordered]@{status='ALREADY_RECOVERED';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$result.recoveryReceipt.receiptHash;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}}
+    $proof=$result.proof;$receiptPath=Get-DispatcherReviewSchemaRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$receipt=$result.recoveryReceipt
+    if(-not $receipt){
+        $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-schema-revalidation/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;contractHash=[string]$Contract.contractHash;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;priorReviewAttestationId=[string]$proof.priorReviewAttestationId;priorReviewAttestationHash=[string]$proof.priorReviewAttestationHash;resultReceiptHash=[string]$proof.resultReceiptHash;promptHash=[string]$proof.promptHash;stdoutHash=[string]$proof.stdoutHash;stderrHash=[string]$proof.stderrHash;controlRecordHash=[string]$proof.controlRecordHash;requestManifestHash=[string]$proof.requestManifestHash;reviewSchemaHash=[string]$proof.reviewSchemaHash;providerHistoryHash=[string]$proof.providerHistoryHash;proofHash=[string]$proof.proofHash;replayVerdict='APPROVE';replayReason='ok';replayProblems=@();technicalBlock=$null;providerInvocationRequired=$false;receiptHash=''}
+        $signed=[ordered]@{};foreach($key in $receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$receipt[$key]}};$receipt.receiptHash=New-ContentHash $signed
+        Write-V2JsonCanonical $receiptPath $receipt
+    }
+    $evidence=@{proofHash=[string]$proof.proofHash;recoveryReceiptHash=[string]$receipt.receiptHash;resultReceiptHash=[string]$proof.resultReceiptHash;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;priorReviewAttestationId=[string]$proof.priorReviewAttestationId}
+    $steps=@(@{from='WAITING_HUMAN';event='review-schema-revalidation-dispatch';to='DISPATCHED'},@{from='DISPATCHED';event='review-schema-revalidation-running';to='RUNNING'},@{from='RUNNING';event='review-schema-revalidation-checking';to='CHECKING'},@{from='CHECKING';event='review-schema-revalidation-reviewing';to='REVIEWING'},@{from='REVIEWING';event='review-schema-revalidation-approved';to='APPROVED'})
+    foreach($step in $steps){$ledger=Get-LedgerState $TaskVersionId;if([string]$ledger.state -eq [string]$step.from){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event ([string]$step.event) -ToState ([string]$step.to) -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'exact immutable reviewer result revalidated under current deterministic schema'|Out-Null}}
+    if([string](Get-LedgerState $TaskVersionId).state -ne 'APPROVED'){throw 'review schema recovery: bounded ledger sequence did not reach APPROVED'}
+    $recoveryAttestation=$result.recoveryAttestation
+    if(-not $recoveryAttestation){
+        $entry=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})[0]
+        $recoveryAttestation=New-Attestation -Kind review -TaskVersionId $TaskVersionId -RunId $RunId -Bindings ([hashtable]$result.bindings) -Result APPROVE -Payload @{problems=@();reason='ok';findings=@($result.parsed.envelope.findings);technicalBlock=$null;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;revalidatedFromAttestationId=[string]$proof.priorReviewAttestationId;revalidatedFromAttestationHash=[string]$proof.priorReviewAttestationHash;resultReceiptHash=[string]$proof.resultReceiptHash;recoveryReceiptHash=[string]$receipt.receiptHash;proofHash=[string]$proof.proofHash} -ProducerMeta @{provider='deepseek';model=[string]$entry.model;profile='REVALIDATION';invocationId=$InvocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0;providerExecuted=$false;revalidationSource='IMMUTABLE_RESULT_RECEIPT';reviewSchemaHash=[string]$proof.reviewSchemaHash}
+    }
+    $record=[ordered]@{priorReason='HUMAN_REVIEW_REQUIRED: schema validation failed';priorReviewVerdict='HUMAN_REVIEW_REQUIRED';priorReviewAttestationId=[string]$proof.priorReviewAttestationId;priorReviewAttestationHash=[string]$proof.priorReviewAttestationHash;invocationId=$InvocationId;resultReceiptHash=[string]$proof.resultReceiptHash;recoveryReceiptPath=$receiptPath;recoveryReceiptHash=[string]$receipt.receiptHash;proofHash=[string]$proof.proofHash;recoveryAttestationId=[string]$recoveryAttestation.attestationId;recoveryAttestationHash=[string]$recoveryAttestation.attestationHash;replayVerdict='APPROVE';providerInvocationRequired=$false}
+    $State.reviewSchemaRecoveryHistory=@($record);$State.reviewOriginalAttestationId=[string]$proof.priorReviewAttestationId
+    $State.reviewVerdict='APPROVE';$State.reviewInvocationId=$InvocationId;$State.reviewAttestationId=[string]$recoveryAttestation.attestationId;$State.reviewTechnicalBlock=$null
+    $State.findings=@($result.parsed.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+    $State.status='RUNNING';$State.stage='INTEGRATE';$State.reason='review schema hold recovered from exact immutable result receipt';$State.decisionNeeded='';$State.resumes='normal deterministic integration of the already-approved candidate'
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{status='RECOVERED_TO_INTEGRATE';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$receipt.receiptHash;reviewAttestationId=[string]$recoveryAttestation.attestationId;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
 }
 
 function Get-DispatcherLogicalProjectId {
@@ -3300,7 +3451,7 @@ if($needsFreshDispatch){
             $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;model=$rr.model;reasoningEffort=$rr.reasoningIntent;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;failureDiagnostic=$rr.failureDiagnostic;exitCode=$rr.exitCode;stdoutArtifact=$rr.stdoutArtifact;stdoutHash=$rr.stdoutHash;stderrArtifact=$rr.stderrArtifact;stderrHash=$rr.stderrHash;controlRecordHash=$rr.controlRecordHash;usage=$rr.usage;cachedTokens=$rr.cachedTokens;costUsd=$rr.costUsd;telemetryConsistent=$rr.telemetryConsistent;resultReceiptHash=$rr.resultReceiptHash}
             Write-DispatcherState $state|Out-Null
             if(Test-IsCanonicalProviderClass $rr.providerClass){return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)}
-            if($rr.structuredResult){foreach($f in @($rr.structuredResult.findings)){if($f -is [System.Collections.IDictionary]){if($null -eq $f.file){$f.Remove('file')};if($null -eq $f.line){$f.Remove('line')}}}}
+            if($rr.structuredResult){$rr.structuredResult=ConvertTo-DispatcherNormalizedReviewResult $rr.structuredResult}
             $wrapped=$(if($rr.structuredResult){"$($cfg.review.beginMarker)`n$(ConvertTo-CanonicalJson $rr.structuredResult)`n$($cfg.review.endMarker)"}else{''})
             $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);reviewArtifacts=@($state.reviewArtifactRecord.artifacts);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
             $bindings=Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead

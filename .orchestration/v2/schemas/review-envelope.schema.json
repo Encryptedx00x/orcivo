@@ -102,7 +102,7 @@
         "provider": { "type": "string", "maxLength": 64 },
         "model": { "type": "string", "maxLength": 128 },
         "effort": { "type": "string", "maxLength": 32 },
-        "toolPolicy": { "type": "string", "maxLength": 64 },
+        "toolPolicy": { "type": "string", "maxLength": 512 },
         "promptTemplateVersion": { "type": "string", "maxLength": 64 }
       }
     }
