@@ -822,7 +822,7 @@ function Recover-DispatcherDisjointTargetAdvance {
     if($wsHead -eq $oldHead){
         $fetch=Invoke-GitV2 -Dir $workspace -Arguments @('fetch','--no-tags','--quiet',$RepoDir,$currentTarget) -LogLabel 'disjoint-target-advance-fetch-target'
         Assert-GitSucceededV2 $fetch 'disjoint target advance: fetch current target into candidate workspace'|Out-Null
-        $merge=Invoke-GitV2 -Dir $workspace -Arguments @('merge',$currentTarget,'--no-edit','-m',"recover(orchestration): merge disjoint target advance $($currentTarget.Substring(0,10))") -LogLabel 'disjoint-target-advance-merge'
+        $merge=Invoke-GitV2 -Dir $workspace -Arguments @('merge',$currentTarget,'--no-edit','-m',"chore(orchestration): merge disjoint target advance $($currentTarget.Substring(0,10))") -LogLabel 'disjoint-target-advance-merge'
         if($merge.exitCode -ne 0){
             [void](Invoke-GitV2 -Dir $workspace -Arguments @('merge','--abort') -LogLabel 'disjoint-target-advance-merge-abort')
             throw "disjoint target advance recovery: unexpected conflict merging current target into the candidate workspace: $(Get-GitFailureSummaryV2 $merge 'git merge')"
