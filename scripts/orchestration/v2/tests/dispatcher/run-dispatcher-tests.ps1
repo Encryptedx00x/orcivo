@@ -1836,7 +1836,18 @@ try{
             if($StopAt -eq 'PRE_ONLY'){return [ordered]@{__autopilotStoppedAt='PRE_ONLY'}}
             $scenario=$script:AutopilotAgentScenario
             $raw=''
-            if($Role -eq 'implementer'){
+            if($Role -eq 'implementer' -and $scenario -eq 'PROVIDER_ERROR'){
+                # A canonical provider transport failure: the error event alone
+                # would leave no step_finish, which GLM classification treats as
+                # INCOMPLETE_PROVIDER_RESULT regardless of the error - so a
+                # trailing step_finish is required to prove the stream itself
+                # ended (matching the reviewer-role error fixture below).
+                $lines=@((ConvertTo-Json ([ordered]@{type='error';error=[ordered]@{status=503;message='provider unavailable for fixture implementer'}}) -Compress -Depth 6),(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop'}}) -Compress -Depth 6))
+                $raw=($lines -join "`n")+"`n"
+            }elseif($Role -eq 'implementer'){
+                if($scenario -eq 'CORRECT_POLICY_HOLD'){
+                    Get-ChildItem -LiteralPath $Workspace -Recurse -File -Filter '*.isolation.spec.ts'|Remove-Item -Force
+                }
                 if($scenario -in @('SUCCESS','PARTIAL_ENVELOPE','COMMIT')){Write-Utf8 (Join-Path $Workspace 'work\impl.ts') "export const implemented = true;`n"}
                 if($scenario -eq 'OUT_OF_SCOPE'){Write-Utf8 (Join-Path $Workspace 'outside.ts') "export const outside = true;`n"}
                 if($scenario -eq 'COMMIT'){Write-Utf8 (Join-Path $Workspace 'work\base.txt') "modified by sneaky provider`n";& git -C $Workspace add -A;& git -C $Workspace -c user.name=fake -c user.email=fake@local commit -m sneaky --quiet}
@@ -1845,7 +1856,14 @@ try{
                 }else{
                     $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.agent-result/1';role='IMPLEMENTER';resultClass='SUCCESS';summary='synthetic autopilot provider result';decisions=@('synthetic decision recorded');tests=@([ordered]@{command='fixture suite';status='PASS';evidence='synthetic'});nextAction='none';importantArtifacts=@()}
                 }
-                $prose="All checks pass. Implementation complete (synthetic).`n`n``````json`n$(ConvertTo-Json $envelope -Depth 10)`n``````"
+                # UNSTRUCTURED_COMPLETE models the real PB1-P01 incident: every
+                # step_start is paired with a step_finish (the stream is NOT
+                # incomplete), but the final text carries no JSON envelope at
+                # all, so structured parsing legitimately returns null and the
+                # workspace is untouched (providerClass=NONE, resultClass=
+                # AGENT_FAILURE, clean workspace) - distinct from INCOMPLETE
+                # (missing step_finish) below.
+                $prose=$(if($scenario -eq 'UNSTRUCTURED_COMPLETE'){"Let me verify .env.test is gitignored and create it locally for running checks:"}else{"All checks pass. Implementation complete (synthetic).`n`n``````json`n$(ConvertTo-Json $envelope -Depth 10)`n``````"})
                 $textEvent=[ordered]@{type='text';part=[ordered]@{type='text';text=$prose}}
                 $lines=@((ConvertTo-Json ([ordered]@{type='step_start';part=[ordered]@{type='step-start'}}) -Compress -Depth 6),(ConvertTo-Json $textEvent -Compress -Depth 8))
                 if($scenario -ne 'INCOMPLETE'){$lines+=(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop';tokens=[ordered]@{total=100;input=20;output=10;reasoning=5;cache=[ordered]@{write=0;read=70}};cost=0}}) -Compress -Depth 8)}
@@ -2111,10 +2129,11 @@ try{
             $f=New-AutopilotFixture 'RD123'
             try{
                 Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'OUT_OF_SCOPE'|Out-Null
-                $failed=$false
-                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'out-of-scope' }
-                $state=Get-DispatcherState
-                Assert-True ($failed -and @($state.providerHistory).Count -eq 0 -and "$($state.status)" -eq 'RUNNING') 'out-of-scope provider change was not rejected fail-closed'
+                $r=Invoke-AutopilotRestart $f
+                $state=Get-DispatcherState;$ledger=Get-LedgerState ([string]$state.taskVersionId)
+                $posts=@($state.workspaceInvocationResultSnapshots|Where-Object{$_})
+                $budget=[int](Get-V2Config).correctionLoop.maxCycles
+                Assert-True ([string]$r.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and @($state.providerHistory).Count -eq (1+$budget) -and $posts.Count -eq (1+$budget) -and @($posts|Where-Object{[bool]$_.policyCompliant}).Count -eq 0 -and -not [bool]$state.implementationComplete -and -not [string]$state.candidateHead -and @($script:AutopilotAgentCalls).Count -eq $budget) 'out-of-scope provider change was not rejected through a bounded fail-closed policy hold'
             } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
         }
 
@@ -2267,6 +2286,270 @@ try{
                     Assert-True ([string]$tail.event -eq 'invocation-route-sync-hold' -and [string]$tail.toState -eq 'WAITING_HUMAN') 'the invocation route sync hold was not recorded in the durable ledger'
                 }finally{$script:V2Config=$oldCfg}
             } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        # ---- result-snapshot zero-delta regression (RD-197..RD-206) ----
+        # PB1-P01-os-state-machine incident: a completed implementer-family
+        # invocation (provider=glm, exitCode=0, providerClass=NONE,
+        # resultClass=AGENT_FAILURE, structuredResult=null - a real terminal
+        # result, not a synthetic/incomplete one) on a CLEAN workspace could
+        # not be finalized because New-DispatcherWorkspaceInvocationResultSnapshot
+        # routed every workspace through Get-DispatcherDirtyWorkspaceProof,
+        # which intentionally denies a clean workspace (that predicate is a
+        # partial-work RECOVERY proof, not a result observation). Fixed by
+        # Get-DispatcherResultSnapshotWorkspaceObservation.
+        function New-ResultSnapshotUnitFixture([string]$Id){
+            $workspace=Join-Path $Root ("result-unit-"+$Id);& git init -b main --quiet $workspace
+            Write-Utf8 (Join-Path $workspace 'work\base.ts') "export const base = true;`n"
+            & git -C $workspace add .
+            & git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet
+            $base=(& git -C $workspace rev-parse HEAD).Trim()
+            $task=Task ("RESULT-"+$Id)
+            $sourcePath=Join-Path $Fixture ("result-unit-"+$Id+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
+            $contract=New-DispatcherContract -Task $task -TaskSource $source
+            $runId='run-result-unit-'+$Id.ToLowerInvariant()
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$runId;workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;status='RUNNING';stage='IMPLEMENT';reason='';cycle=0;attempt=1;failovers=0;implementationComplete=$false;requiresCorrection=$false;implementationCommit='';recoveredCandidateCommit='';candidateHead='';candidateTree='';diffHash='';provider='glm';model=(Get-GlmModelId);profile='FAST';unavailableProviders=@();providerHistory=@();importantArtifacts=@();findings=@();decisions=@();reviewVerdict='';logicalProjectId='fixture';integration=$null;workspaceInvocationSnapshots=@();workspaceInvocationResultSnapshots=@();incompleteProviderResultRecoveryHistory=@();quarantineReference=$null;quarantineRetryRoute=$null}
+            Write-DispatcherState $state|Out-Null
+            $prompt=Join-Path $Root ("result-unit-"+$Id+".prompt.txt");Write-Utf8 $prompt 'sanitized fixture prompt'
+            $invocation='att-'+[guid]::NewGuid().ToString('N')
+            New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $task -InvocationId $invocation -PromptArtifact $prompt -PromptHash (New-FileHash $prompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 1|Out-Null
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;runId=$runId;invocation=$invocation;prompt=$prompt;base=$base}
+        }
+        function New-ResultSnapshotAgentResult($f){
+            return [ordered]@{invocationId=$f.invocation;provider='glm';model=(Get-GlmModelId);reasoningIntent='low';attempt=1;promptHash=(New-FileHash $f.prompt);stdoutHash=('sha256:'+('a'*64))}
+        }
+
+        Check 'RD-197' {
+            # SUCCESS + dirty workspace: existing behavior unchanged.
+            $s=New-AutopilotFixture 'RD197s'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $s 'RECEIPT_ONLY' 'SUCCESS'
+                $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $s.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State (Get-DispatcherState) -InvocationId ([string]$ar.invocationId)
+                # The new file is untracked, so `git diff HEAD` legitimately
+                # shows no content for it (untracked files are invisible to
+                # plain `git diff`) - partialFilesHash, not partialDiffHash, is
+                # what proves the partial change was recorded.
+                Assert-True ("$($finalized.disposition)" -eq 'SUCCESS' -and @($post.paths) -contains 'work/impl.ts' -and [string]$post.partialFilesHash -ne (New-StringHash '')) 'SUCCESS with a dirty workspace changed its recorded partial-change provenance'
+            } finally { Remove-DispatcherWorkspace -Workspace $s.workspace }
+            # AGENT_FAILURE + dirty workspace: same dirty-proof path, unchanged.
+            $d=New-AutopilotFixture 'RD197d'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $d 'RECEIPT_ONLY' 'UNSTRUCTURED_COMPLETE'
+                Write-Utf8 (Join-Path $d.workspace 'work\stray.ts') "export const stray = true;`n"
+                $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $d.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State (Get-DispatcherState) -InvocationId ([string]$ar.invocationId)
+                Assert-True ("$($finalized.disposition)" -eq 'RETRY' -and @($post.paths) -contains 'work/stray.ts' -and [string]$post.partialFilesHash -ne (New-StringHash '')) 'AGENT_FAILURE with a dirty workspace did not use the existing dirty-proof snapshot path'
+            } finally { Remove-DispatcherWorkspace -Workspace $d.workspace }
+        }
+
+        Check 'RD-198' {
+            # The exact incident shape: real (non-synthetic) terminal
+            # AGENT_FAILURE on a CLEAN workspace must now finalize with a
+            # zero-delta result snapshot instead of throwing.
+            $f=New-AutopilotFixture 'RD198'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'UNSTRUCTURED_COMPLETE'
+                Assert-True ([string]$ar.providerClass -eq 'NONE' -and [string]$ar.resultClass -eq 'AGENT_FAILURE' -and -not $ar.structuredResult) 'fixture drifted from the real PB1-P01 receipt shape (provider=glm exitCode=0 providerClass=NONE resultClass=AGENT_FAILURE structuredResult=null)'
+                $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State (Get-DispatcherState) -InvocationId ([string]$ar.invocationId)
+                $emptyHash=New-StringHash ''
+                Assert-True ("$($finalized.disposition)" -eq 'RETRY' -and $post -and [string]$post.partialDiffHash -eq $emptyHash -and [string]$post.partialFilesHash -eq $emptyHash -and @($post.paths).Count -eq 0 -and @($post.fileBindings).Count -eq 0) 'a clean-workspace AGENT_FAILURE result did not produce a zero-delta result snapshot'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-199' {
+            # A canonical provider failure (PROVIDER_UNAVAILABLE) on a clean
+            # workspace must also finalize via the zero-delta observation.
+            $f=New-AutopilotFixture 'RD199'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'PROVIDER_ERROR'
+                Assert-True ([string]$ar.providerClass -eq 'PROVIDER_UNAVAILABLE' -and [string]$ar.resultClass -eq 'AGENT_FAILURE') 'fixture did not produce a canonical provider failure'
+                $finalized=Complete-DispatcherAgentInvocation -State (Get-DispatcherState) -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State (Get-DispatcherState) -InvocationId ([string]$ar.invocationId)
+                $emptyHash=New-StringHash ''
+                Assert-True ("$($finalized.disposition)" -eq 'PROVIDER_FAILURE' -and $post -and [string]$post.partialDiffHash -eq $emptyHash -and [string]$post.partialFilesHash -eq $emptyHash -and @($post.paths).Count -eq 0) 'a clean-workspace canonical provider failure did not produce a zero-delta result snapshot'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-200' {
+            $f=New-ResultSnapshotUnitFixture 'RD200'
+            Write-Utf8 (Join-Path $f.workspace 'work\extra.ts') "export const extra = true;`n"
+            & git -C $f.workspace add .
+            & git -C $f.workspace -c user.name=rd -c user.email=rd@local commit -m drift --quiet
+            $failed=$false
+            try{ New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)|Out-Null }catch{ $failed=$_.Exception.Message -match 'workspace HEAD drift' }
+            Assert-True ($failed -and @($f.state.workspaceInvocationResultSnapshots).Count -eq 0) 'a result snapshot was created despite workspace HEAD drift since the pre-invocation snapshot'
+        }
+
+        Check 'RD-201' {
+            $f=New-ResultSnapshotUnitFixture 'RD201'
+            Write-Utf8 (Join-Path $f.workspace 'work\untracked.ts') "export const untracked = true;`n"
+            $result=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)
+            Assert-True (@($result.paths) -contains 'work/untracked.ts' -and [string]$result.partialFilesHash -ne (New-StringHash '')) 'an untracked in-scope file was folded into a zero-delta result snapshot instead of the dirty-proof path'
+        }
+
+        Check 'RD-202' {
+            $f=New-ResultSnapshotUnitFixture 'RD202'
+            Write-Utf8 (Join-Path $f.workspace 'outside.ts') "export const outside = true;`n"
+            $result=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)
+            Assert-True (-not [bool]$result.policyCompliant -and @($result.policyViolations) -contains 'out-of-scope change: outside.ts') 'an out-of-scope dirty change at result-snapshot time was accepted as policy-compliant'
+        }
+
+        Check 'RD-203' {
+            # Authoritative acceptance globs are part of the protected set and
+            # must remain enforced on the dirty-proof path.  Result observation
+            # records the violation but never upgrades it to compliant work.
+            $f=New-ResultSnapshotUnitFixture 'RD203'
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $result=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)
+            Assert-True (-not [bool]$result.policyCompliant -and @($result.policyViolations) -contains 'ungranted protected change: work/change.isolation.spec.ts') 'an ungranted protected-path dirty change at result-snapshot time was accepted as policy-compliant'
+        }
+
+        Check 'RD-204' {
+            $f=New-ResultSnapshotUnitFixture 'RD204'
+            Write-Utf8 (Join-Path $f.workspace 'work\secret.ts') ("export const cloudCredential = 'AKIA"+('Z'*16)+"';")
+            $failed=$false
+            try{ New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)|Out-Null }catch{ $failed=$_.Exception.Message -match 'secret scan' }
+            Assert-True ($failed) 'a secret-bearing dirty change at result-snapshot time was accepted'
+        }
+
+        Check 'RD-205' {
+            $f=New-ResultSnapshotUnitFixture 'RD205'
+            $ar=New-ResultSnapshotAgentResult $f
+            $first=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult $ar
+            $emptyHash=New-StringHash ''
+            Assert-True ([string]$first.partialDiffHash -eq $emptyHash -and [string]$first.partialFilesHash -eq $emptyHash -and @($first.paths).Count -eq 0 -and @($first.fileBindings).Count -eq 0) 'zero-delta result snapshot hashes were not deterministic empty hashes with empty paths/fileBindings'
+            $failed=$false
+            try{ New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult $ar|Out-Null }catch{ $failed=$_.Exception.Message -match 'already has a result snapshot' }
+            Assert-True ($failed -and @($f.state.workspaceInvocationResultSnapshots).Count -eq 1) 'a duplicate zero-delta result snapshot was created for the same invocation'
+        }
+
+        Check 'RD-206' {
+            # Startup reconciliation of the exact real incident shape: the
+            # immutable agent-result receipt was already durably persisted, so
+            # restart reconciliation recovers from AGENT_RESULT_RECEIPT and
+            # must be able to close the clean-workspace AGENT_FAILURE
+            # invocation via the fixed zero-delta path instead of throwing.
+            $f=New-AutopilotFixture 'RD206'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'UNSTRUCTURED_COMPLETE'
+                Assert-True ([string]$ar.providerClass -eq 'NONE' -and [string]$ar.resultClass -eq 'AGENT_FAILURE' -and -not $ar.structuredResult -and (Test-Path -LiteralPath ([string]$ar.resultReceiptPath))) 'fixture drifted from the real PB1-P01 receipt shape'
+                $receiptBefore=Read-V2Json ([string]$ar.resultReceiptPath)
+                $r=Invoke-AutopilotRestart $f
+                Assert-AutopilotRecoveredRun $f $r 'AGENT_RESULT_RECEIPT' 1 2
+                $state=Get-DispatcherState
+                $impl=@($state.providerHistory|Where-Object{[string]$_.invocationId -eq [string]$ar.invocationId})
+                Assert-True ($impl.Count -eq 1 -and [string]$impl[0].resultClass -eq 'AGENT_FAILURE' -and [string]$impl[0].providerClass -eq 'NONE') 'the reconciled clean AGENT_FAILURE invocation was not recorded exactly once with its real classification'
+                $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $state -InvocationId ([string]$ar.invocationId)
+                $emptyHash=New-StringHash ''
+                Assert-True ($post -and [string]$post.partialDiffHash -eq $emptyHash -and [string]$post.partialFilesHash -eq $emptyHash -and @($post.paths).Count -eq 0) 'reconciliation of a clean AGENT_FAILURE invocation did not produce a zero-delta result snapshot'
+                $receiptAfter=Read-V2Json ([string]$ar.resultReceiptPath)
+                Assert-True ([string]$receiptAfter.receiptHash -eq [string]$receiptBefore.receiptHash) 'the immutable result receipt was rewritten by reconciliation'
+                $recon=@($state.startupReconciliationHistory|Where-Object{$_})[0]
+                Assert-True ($recon -and [string]$recon.invocationId -eq [string]$ar.invocationId -and [string]$recon.source -eq 'AGENT_RESULT_RECEIPT') 'reconciliation did not record recovering from the durable receipt'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-207' {
+            # A terminal invocation may leave useful in-scope work beside a
+            # forbidden protected acceptance file.  Finalization must preserve
+            # and hash-bind that exact workspace as a policy hold, then route a
+            # bounded CORRECTOR over the unchanged baseline.  It must not throw,
+            # silently accept the protected file, or discard the useful work.
+            $f=New-ResultSnapshotUnitFixture 'RD207'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId $f.invocation
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_RETRY' -and $post -and -not [bool]$post.policyCompliant -and @($post.policyViolations) -contains 'ungranted protected change: work/change.isolation.spec.ts' -and [bool]$f.state.requiresCorrection -and [int]$f.state.cycle -eq 1) 'a protected dirty result was not durably routed to bounded policy correction'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD207-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $invocation2='att-'+[guid]::NewGuid().ToString('N')
+            $pre2=New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId $invocation2 -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2
+            Assert-True (@($pre2.paths) -contains 'work/useful.ts' -and @($pre2.paths) -contains 'work/change.isolation.spec.ts') 'the exact hash-bound policy-hold baseline could not launch its corrector'
+        }
+
+        Check 'RD-208' {
+            $f=New-ResultSnapshotUnitFixture 'RD208'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_RETRY') 'fixture did not enter a policy hold'
+
+            # Drift after the signed hold may never be inherited by a corrector.
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = 'tampered';`n"
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD208-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $failed=$false
+            try{New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null}catch{$failed=$_.Exception.Message -match 'ungranted protected change'}
+            Assert-True ($failed) 'a drifted policy-hold workspace launched a corrector'
+        }
+
+        Check 'RD-209' {
+            $f=New-ResultSnapshotUnitFixture 'RD209'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $first=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$first.disposition -eq 'POLICY_RETRY') 'fixture did not enter a policy hold'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD209-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $invocation2='att-'+[guid]::NewGuid().ToString('N')
+            New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId $invocation2 -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null
+            Remove-Item -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts') -Force
+            $ar2=[ordered]@{invocationId=$invocation2;provider='glm';model=(Get-GlmModelId);reasoningIntent='low';attempt=2;promptHash=(New-FileHash $prompt2);stdoutHash=('sha256:'+('b'*64));providerClass='NONE';resultClass='SUCCESS';exitCode=0}
+            $corrected=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar2 -Role 'CORRECTOR'
+            $post2=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId $invocation2
+            Assert-True ([string]$corrected.disposition -eq 'SUCCESS' -and [bool]$post2.policyCompliant -and [bool]$f.state.implementationComplete -and -not [bool]$f.state.requiresCorrection -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts')) -and -not(Test-Path -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts'))) 'an exact protected-path reversion did not preserve useful work and resume SUCCESS'
+        }
+
+        Check 'RD-210' {
+            # Restart the exact stranded shape end-to-end: immutable terminal
+            # receipt, no provider history/result snapshot yet, useful dirty
+            # work plus one protected acceptance file.  Reconciliation must
+            # create the hold, launch exactly one bounded corrector, preserve
+            # useful work, remove the violation, and reach review.
+            $f=New-AutopilotFixture 'RD210'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'UNSTRUCTURED_COMPLETE'
+                Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+                Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+                $script:AutopilotAgentScenario='CORRECT_POLICY_HOLD'
+                try{$r=Invoke-AutopilotRestart $f}finally{$script:AutopilotAgentScenario='SUCCESS'}
+                $state=Get-DispatcherState
+                $impl=@($state.providerHistory|Where-Object{$_ -and [string]$_.role -eq 'IMPLEMENTER'})
+                $correctors=@($state.providerHistory|Where-Object{$_ -and [string]$_.role -eq 'CORRECTOR'})
+                $posts=@($state.workspaceInvocationResultSnapshots|Where-Object{$_})
+                $commitCount=(& git -C $f.workspace rev-list --count HEAD).Trim()
+                $useful=Invoke-GitV2 -Dir $f.workspace -Arguments @('show','HEAD:work/useful.ts') -LogLabel 'rd210-useful'
+                Assert-True ([string]$r.status -eq 'WAITING_PROVIDER' -and [string]$r.stage -eq 'REVIEW' -and $impl.Count -eq 1 -and $correctors.Count -eq 1 -and $posts.Count -eq 2 -and -not [bool]$posts[0].policyCompliant -and [bool]$posts[1].policyCompliant -and [bool]$state.implementationComplete -and -not [bool]$state.requiresCorrection -and $commitCount -eq ([string]([int]$f.baseCount+1)) -and $useful.exitCode -eq 0 -and -not(Test-Path -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts')) -and @($script:AutopilotAgentCalls|Where-Object{[string]$_.role -eq 'implementer'}).Count -eq 1) 'startup policy-hold reconciliation did not complete through exactly one bounded corrector'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-211' {
+            $f=New-ResultSnapshotUnitFixture 'RD211'
+            Initialize-LedgerTask -TaskVersionId $f.contract.taskVersionId -Identity @{taskId=$f.task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.runId -AttemptId (New-AttemptId)|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event running -ToState RUNNING -RunId $f.runId|Out-Null
+            $f.state.cycle=[int](Get-V2Config).correctionLoop.maxCycles;Write-DispatcherState $f.state|Out-Null
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'CORRECTOR'
+            $ledger=Get-LedgerState ([string]$f.state.taskVersionId)
+            $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId ([string]$ar.invocationId)
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_BLOCK' -and [string]$f.state.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and $post -and -not [bool]$post.policyCompliant -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts'))) 'exhausted policy correction did not fail closed while preserving useful work'
         }
     } finally {Pop-Location}
 

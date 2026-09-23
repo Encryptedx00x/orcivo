@@ -497,7 +497,10 @@ function Get-AllRedactionPatterns { return (Get-SecretPatterns) }
 # signatures and add a quoted semantic assignment pattern for source literals.
 function Get-SourceSecretPatterns {
     $patterns=Get-SecretPatterns
-    $quotedAssignment='(?i)\b[A-Za-z0-9_$]*(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|database[_-]?url|connection[_-]?string|authorization)[A-Za-z0-9_$]*[ \t]*[:=][ \t]*([''"`])[^''"`\r\n]+\2'
+    # A template literal containing ${...} is a runtime-composed value, not a
+    # hardcoded credential. Static single-, double-, and backtick-quoted values
+    # remain covered; high-confidence signatures are still scanned separately.
+    $quotedAssignment='(?i)\b[A-Za-z0-9_$]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|credential|database[_-]?url|connection[_-]?string|authorization)[A-Za-z0-9_$]*[ \t]*[:=][ \t]*(?:(?<quote>[''"])[^''"\r\n]+\k<quote>|`(?![^`\r\n]*\$\{)[^`\r\n]+`)'
     return @($patterns[0],$quotedAssignment)+@($patterns|Select-Object -Skip 7)
 }
 
@@ -864,8 +867,13 @@ function Invoke-NativeCaptured {
         [void]$strictUtf8.GetString($inputBytes)
         $proc.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
         $proc.StandardInput.BaseStream.Flush()
+        # Close the byte stream directly. On Windows PowerShell/.NET Framework,
+        # closing the wrapping StreamWriter after a BaseStream write can flush
+        # encoding state into stdin and corrupt an otherwise exact byte payload.
+        $proc.StandardInput.BaseStream.Close()
+    } else {
+        $proc.StandardInput.Close()
     }
-    $proc.StandardInput.Close()
 
     $errJob = [System.Management.Automation.PowerShell]::Create()
     [void]$errJob.AddScript({

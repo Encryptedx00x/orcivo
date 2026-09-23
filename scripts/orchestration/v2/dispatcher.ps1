@@ -2127,7 +2127,7 @@ function Test-DispatcherCommittedPolicyCorrectionBaseline {
 }
 
 function Get-DispatcherDirtyWorkspaceProof {
-    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task,$PolicyCorrectionState=$null)
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task,$PolicyCorrectionState=$null,[switch]$ObservePolicyViolations)
     $deny={param([string]$Reason)return [ordered]@{clean=$false;reason=$Reason}}
     # `--untracked-files=all` is security-critical: the default may collapse a
     # whole untracked directory to one entry, which would otherwise evade both
@@ -2155,10 +2155,21 @@ function Get-DispatcherDirtyWorkspaceProof {
         $resolved=Resolve-DispatcherPolicyCorrectionRecord -State $PolicyCorrectionState
         if($resolved.ok){$correction=$resolved.record}
     }
+    $policyViolations=@()
     foreach($path in $paths){
         if($correction -and (Test-DispatcherPolicyCorrectionReversionMatch -Workspace $Workspace -Record $correction -Path $path)){continue}
-        if(-not(Test-RelPathUnder $path $declared)){return &$deny "out-of-scope change: $path"}
-        if((Test-RelPathUnder $path @($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)) -and -not(Test-RelPathUnder $path $grants)){return &$deny "ungranted protected change: $path"}
+        if(-not(Test-RelPathUnder $path $declared)){
+            $violation="out-of-scope change: $path"
+            if(-not $ObservePolicyViolations){return &$deny $violation}
+            $policyViolations+=$violation
+            continue
+        }
+        $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+        if((Test-RelPathUnder $path $protected) -and -not(Test-RelPathUnder $path $grants)){
+            $violation="ungranted protected change: $path"
+            if(-not $ObservePolicyViolations){return &$deny $violation}
+            $policyViolations+=$violation
+        }
     }
     $diff=Invoke-GitV2 -Dir $Workspace -Arguments @('diff','--no-ext-diff','--no-color','HEAD','--') -LogLabel 'stopped-recovery-diff' -ReviewedSourceOutput
     if($diff.exitCode -ne 0){return &$deny 'partial diff failed'}
@@ -2175,7 +2186,7 @@ function Get-DispatcherDirtyWorkspaceProof {
         $diffScan=Test-ArtifactsClean -Root $reviewRoot
         if(-not $sourceScan.clean -or -not $diffScan.clean){return &$deny 'partial workspace secret scan is dirty'}
         $fileBindings=@($paths|Sort-Object -Unique|ForEach-Object{$p=$_;$full=Resolve-SafePath $Workspace $p;"$p=$(if(Test-Path -LiteralPath $full -PathType Leaf){New-FileHash $full}else{'deleted'})"})
-        return [ordered]@{clean=$true;reason='authorized partial workspace verified';paths=@($paths|Sort-Object -Unique);fileBindings=@($fileBindings);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
+        return [ordered]@{clean=$true;reason=$(if($policyViolations.Count){'partial workspace observed with policy violations'}else{'authorized partial workspace verified'});policyCompliant=($policyViolations.Count -eq 0);policyViolations=@($policyViolations|Sort-Object -Unique);paths=@($paths|Sort-Object -Unique);fileBindings=@($fileBindings);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
     }finally{
         $temp=[System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath());$full=[System.IO.Path]::GetFullPath($root)
         if($full.StartsWith($temp,[System.StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $full) -like 'orcivo-stopped-recovery-*'){Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue}
@@ -2202,6 +2213,8 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $isFreshCleanBaseline=$false
     $isCleanInertRetry=$false
     $isPolicyCorrectionBaseline=$false
+    $isPolicyHoldRetryBaseline=$false
+    $policyHoldWorkspaceHead=''
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -2263,9 +2276,18 @@ function New-DispatcherWorkspaceInvocationSnapshot {
                 )
             )
 
-            if(-not $isCleanRetry -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
+            if(-not $isCleanRetry){
+                $policyHold=Get-DispatcherPolicyHoldRetryBaseline -State $State -Task $Task
+                if($policyHold.ok){
+                    $isPolicyHoldRetryBaseline=$true
+                    $policyHoldWorkspaceHead=[string]$policyHold.workspaceHead
+                    $partial=$policyHold.observation
+                }
+            }
+
+            if(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
                 $isCleanInertRetry=$true
-            }elseif(-not $isCleanRetry){
+            }elseif(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline){
                 # A CLEAN workspace over an implementation that policy
                 # compliance blocked is legitimate ONLY as the strictly
                 # proven committed policy-correction baseline: the durable
@@ -2296,7 +2318,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline)
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -2327,7 +2349,8 @@ function New-DispatcherWorkspaceInvocationSnapshot {
 # The post-execution snapshot never uses this: it is bound to
 # the exact HEAD frozen by the pre snapshot.
 function Get-DispatcherPreLaunchExpectedHead {
-    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false)
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='')
+    if($IsPolicyHoldRetryBaseline){return $PolicyHoldWorkspaceHead}
     if($IsPolicyCorrectionBaseline){
         $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
         if(-not $verified.ok){return ''}
@@ -2377,6 +2400,36 @@ function Test-DispatcherCleanInertRetryBaseline {
     return $true
 }
 
+# A policy-violating result is evidence, never authority.  A bounded corrector
+# may launch over it only while the current workspace is byte-for-byte/hash-for-
+# hash identical to the signed result snapshot that recorded the violation.
+# Any drift, missing history, compliant snapshot, or changed violation set keeps
+# the launch fail-closed.
+function Get-DispatcherPolicyHoldRetryBaseline {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    if(-not [bool]$State.requiresCorrection -or [bool]$State.implementationComplete -or [int]$State.cycle -le 0){return &$deny 'lineage is not in bounded policy correction'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'policy hold is not RUNNING/IMPLEMENT'}
+    foreach($field in @('implementationCommit','recoveredCandidateCommit','candidateHead','candidateTree','diffHash')){if([string]$State.$field){return &$deny 'policy hold already has candidate evidence'}}
+    $history=@($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})
+    if(-not $history.Count){return &$deny 'policy hold has no provider history'}
+    $entry=$history[-1]
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    if(-not $pre -or -not $post -or [string]$post.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/2' -or [bool]$post.policyCompliant -or -not @($post.policyViolations|Where-Object{$_}).Count){return &$deny 'latest invocation is not a signed policy hold'}
+    $integrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $post -ExpectedPreSnapshotHash ([string]$pre.snapshotHash)
+    if(-not $integrity.ok -or [string]$entry.workspaceResultSnapshotHash -ne [string]$post.resultHash){return &$deny 'policy hold result binding is invalid'}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$post.workspaceHead){return &$deny 'policy hold workspace HEAD drift'}
+    $observation=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -ObservePolicyViolations
+    if(-not $observation.clean -or [bool]$observation.policyCompliant){return &$deny 'policy hold workspace no longer reproduces its violation'}
+    if([string]$observation.diffHash -ne [string]$post.partialDiffHash){return &$deny 'policy hold diff hash drift'}
+    if([string]$observation.filesHash -ne [string]$post.partialFilesHash){return &$deny 'policy hold files hash drift'}
+    if((ConvertTo-CanonicalJson @($observation.paths)) -cne (ConvertTo-CanonicalJson @($post.paths))){return &$deny 'policy hold paths drift'}
+    if((ConvertTo-CanonicalJson @($observation.fileBindings)) -cne (ConvertTo-CanonicalJson @($post.fileBindings))){return &$deny 'policy hold file bindings drift'}
+    if((ConvertTo-CanonicalJson @($observation.policyViolations)) -cne (ConvertTo-CanonicalJson @($post.policyViolations))){return &$deny 'policy hold violations drift'}
+    return [ordered]@{ok=$true;reason='exact signed policy-hold baseline verified';observation=$observation;workspaceHead=[string]$post.workspaceHead}
+}
+
 # Recompute the hash chain of a persisted pre-invocation snapshot.  A snapshot
 # whose stateBinding or signature does not recompute identically is tampered
 # evidence and may never authorize an interval.
@@ -2403,6 +2456,23 @@ function Get-DispatcherWorkspaceInvocationSnapshot {
     return $matches[0]
 }
 
+# A post-invocation result snapshot is not a partial-work recovery proof: a
+# provider invocation legitimately closes AGENT_FAILURE/BLOCK/provider-failure
+# with zero workspace changes. Get-DispatcherDirtyWorkspaceProof intentionally
+# rejects a clean workspace (recovery proofs require actual partial changes),
+# so a clean status here is recorded as its own zero-delta observation instead
+# of being routed through that proof. A dirty workspace still goes through the
+# full dirty-proof scope/protected-path/secret-scan validation, unweakened.
+function Get-DispatcherResultSnapshotWorkspaceObservation {
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task,$PolicyCorrectionState=$null)
+    $status=Invoke-GitV2 -Dir $Workspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'result-snapshot-status'
+    if($status.exitCode -ne 0){return [ordered]@{clean=$false;reason='workspace status failed'}}
+    if([string]::IsNullOrWhiteSpace([string]$status.stdout)){
+        return [ordered]@{clean=$true;reason='workspace clean; zero-delta invocation result';paths=@();fileBindings=@();diffHash=(New-StringHash '');filesHash=(New-StringHash '')}
+    }
+    return Get-DispatcherDirtyWorkspaceProof -Workspace $Workspace -Task $Task -PolicyCorrectionState $PolicyCorrectionState -ObservePolicyViolations
+}
+
 # The result manifest closes the interval opened by the pre-launch manifest.
 # It is persisted immediately after the child exits, before provider history is
 # updated or any recovery command can see the failed invocation.
@@ -2420,10 +2490,11 @@ function New-DispatcherWorkspaceInvocationResultSnapshot {
     # provider interval stays fail-closed.
     $expectedHead=[string]$pre.stateBinding.workspaceHead
     if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
-    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
+    $partial=Get-DispatcherResultSnapshotWorkspaceObservation -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
     if(-not $partial.clean){throw "workspace invocation result snapshot: $($partial.reason)"}
-    $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
-    $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
+    $policyCompliant=$(if($null -eq $partial.policyCompliant){$true}else{[bool]$partial.policyCompliant})
+    $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/2';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings);policyCompliant=$policyCompliant;policyViolations=@($partial.policyViolations|Where-Object{$_}|Sort-Object -Unique)}
+    $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings);policyCompliant=[bool]$result.policyCompliant;policyViolations=@($result.policyViolations)}))
     $State.workspaceInvocationResultSnapshots=@($State.workspaceInvocationResultSnapshots|Where-Object{$_})+@($result)
     Write-DispatcherState $State|Out-Null
     return $result
@@ -2443,6 +2514,12 @@ function Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity {
         if(-not $Result -or [string]$Result.invocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'result snapshot identity is absent or invalid'}
         if([string]$Result.preInvocationSnapshotHash -ne $ExpectedPreSnapshotHash){return &$deny 'result snapshot is not bound to its pre-invocation snapshot'}
         $signed=[ordered]@{schemaVersion=[string]$Result.schemaVersion;invocationId=[string]$Result.invocationId;preInvocationSnapshotHash=[string]$Result.preInvocationSnapshotHash;promptHash=[string]$Result.promptHash;stdoutHash=[string]$Result.stdoutHash;provider=[string]$Result.provider;model=[string]$Result.model;reasoningEffort=[string]$Result.reasoningEffort;attempt=[int]$Result.attempt;workspaceHead=[string]$Result.workspaceHead;partialDiffHash=[string]$Result.partialDiffHash;partialFilesHash=[string]$Result.partialFilesHash;paths=@(@($Result.paths)|ForEach-Object{[string]$_});fileBindings=@(@($Result.fileBindings)|ForEach-Object{[string]$_})}
+        if([string]$Result.schemaVersion -eq 'orcivo.orchestration.v2.workspace-invocation-result/2'){
+            $signed.policyCompliant=[bool]$Result.policyCompliant
+            $signed.policyViolations=@(@($Result.policyViolations)|Where-Object{$_}|ForEach-Object{[string]$_})
+        }elseif([string]$Result.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/1'){
+            return &$deny 'result snapshot schema version is invalid'
+        }
         $resultHash=New-StringHash (ConvertTo-CanonicalJson $signed)
         if([string]$Result.resultHash -ne $resultHash){return &$deny 'result snapshot hash does not recompute'}
         return [ordered]@{ok=$true;reason='result snapshot hash chain verified'}
@@ -2510,6 +2587,24 @@ function Complete-DispatcherAgentInvocation {
     Write-DispatcherState $State|Out-Null
     if($script:DispatcherFinalizerFaultAfterProviderHistory){throw 'injected finalizer crash after provider history'}
     memoryCheckpoint $Task ([string]$State.logicalProjectId)|Out-Null
+
+    if($resultSnapshot -and [string]$resultSnapshot.schemaVersion -eq 'orcivo.orchestration.v2.workspace-invocation-result/2' -and -not [bool]$resultSnapshot.policyCompliant){
+        $violations=@($resultSnapshot.policyViolations|Where-Object{$_}|ForEach-Object{[string]$_}|Sort-Object -Unique)
+        if(-not $violations.Count){throw 'agent invocation finalization: noncompliant result snapshot has no violations'}
+        $maxCycles=[int](Get-V2Config).correctionLoop.maxCycles
+        if([int]$State.cycle -lt $maxCycles){
+            $State.requiresCorrection=$true
+            $State.implementationComplete=$false
+            $State.cycle=[int]$State.cycle+1
+            $State.findings=@($violations|ForEach-Object{"POLICY CORRECTION REQUIRED: $_"})+@('Remove only the recorded policy violation; preserve useful in-scope implementation work. The corrected result must contain no protected-path delta before the lineage may continue.')
+            Write-DispatcherState $State|Out-Null
+            return [ordered]@{disposition='POLICY_RETRY';resultSnapshot=$resultSnapshot;invocationId=$invocationId;violations=$violations}
+        }
+        $reason=$violations -join '; '
+        Add-LedgerEvent -TaskVersionId ([string]$State.taskVersionId) -Event 'policy-block' -ToState 'FAILED' -RunId ([string]$State.runId) -AttemptId $invocationId -Evidence @{resultSnapshotHash=[string]$resultSnapshot.resultHash;receiptHash=[string]$AgentResult.resultReceiptHash} -Note $reason|Out-Null
+        $State.status='BLOCKED';$State.reason=$reason;Write-DispatcherState $State|Out-Null
+        return [ordered]@{disposition='POLICY_BLOCK';resultSnapshot=$resultSnapshot;invocationId=$invocationId;violations=$violations}
+    }
 
     if([bool]$AgentResult.contextRolloverRequired){return [ordered]@{disposition='CONTEXT_ROLLOVER';resultSnapshot=$resultSnapshot;invocationId=$invocationId}}
     if(Test-IsCanonicalProviderClass ([string]$AgentResult.providerClass)){return [ordered]@{disposition='PROVIDER_FAILURE';resultSnapshot=$resultSnapshot;invocationId=$invocationId}}
@@ -2721,8 +2816,8 @@ function Test-DispatcherIncompleteProviderResultWorkspaceMutationRecovery {
     $result=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
     if(-not $result){return &$deny 'post-invocation workspace result snapshot is absent'}
     if([string]$result.resultHash -ne $WorkspaceMutationResultHash -or [string]$attempt.workspaceResultSnapshotHash -ne $WorkspaceMutationResultHash){return &$deny 'workspace mutation result snapshot hash mismatch'}
-    $resultExpected=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=[string]$result.schemaVersion;invocationId=[string]$result.invocationId;preInvocationSnapshotHash=[string]$result.preInvocationSnapshotHash;promptHash=[string]$result.promptHash;stdoutHash=[string]$result.stdoutHash;provider=[string]$result.provider;model=[string]$result.model;reasoningEffort=[string]$result.reasoningEffort;attempt=[int]$result.attempt;workspaceHead=[string]$result.workspaceHead;partialDiffHash=[string]$result.partialDiffHash;partialFilesHash=[string]$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
-    if([string]$result.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/1' -or $resultExpected -ne $WorkspaceMutationResultHash -or [string]$result.preInvocationSnapshotHash -ne [string]$snapshot.snapshotHash -or [string]$result.promptHash -ne [string]$snapshot.promptHash -or [string]$result.stdoutHash -ne $EvidenceHash -or [string]$result.provider -ne [string]$attempt.provider -or [int]$result.attempt -ne [int]$attempt.attempt -or [string]$result.workspaceHead -ne [string]$base.expectedHead){return &$deny 'workspace mutation result snapshot is corrupt or unbound'}
+    $resultIntegrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $result -ExpectedPreSnapshotHash ([string]$snapshot.snapshotHash)
+    if(-not $resultIntegrity.ok -or [string]$result.resultHash -ne $WorkspaceMutationResultHash -or ([string]$result.schemaVersion -eq 'orcivo.orchestration.v2.workspace-invocation-result/2' -and -not [bool]$result.policyCompliant) -or [string]$result.promptHash -ne [string]$snapshot.promptHash -or [string]$result.stdoutHash -ne $EvidenceHash -or [string]$result.provider -ne [string]$attempt.provider -or [int]$result.attempt -ne [int]$attempt.attempt -or [string]$result.workspaceHead -ne [string]$base.expectedHead){return &$deny 'workspace mutation result snapshot is corrupt, policy-blocked, or unbound'}
     if([string]$result.partialDiffHash -ne $PartialDiffHash -or [string]$result.partialFilesHash -ne $PartialFilesHash -or ((@($result.paths)|Sort-Object) -join "`n") -ne ((@($base.partial.paths)|Sort-Object) -join "`n") -or ((@($result.fileBindings)|Sort-Object) -join "`n") -ne ((@($base.partial.fileBindings)|Sort-Object) -join "`n")){return &$deny 'workspace result changed after invocation completion'}
     $binding=[hashtable]$snapshot.stateBinding
     if(-not $binding -or [string]$snapshot.stateHash -ne (New-StringHash (ConvertTo-CanonicalJson $binding))){return &$deny 'workspace mutation pre-invocation state binding is corrupt'}
@@ -3191,8 +3286,8 @@ function Test-DispatcherCompletedImplementationRecovery {
     $preStateHash=New-StringHash (ConvertTo-CanonicalJson $pre.stateBinding)
     if([string]$pre.snapshotHash -ne (New-StringHash (ConvertTo-CanonicalJson $preSigned)) -or [string]$pre.snapshotHash -ne $ExpectedPreManifestHash -or [string]$pre.stateHash -ne $preStateHash){return &$deny 'pre-launch manifest hash mismatch'}
     if([string]$pre.invocationId -ne $InvocationId -or [string]$pre.provider -ne 'deepseek' -or [string]$pre.model -ne 'deepseek-v4-pro' -or [string]$pre.reasoningEffort -ne 'high' -or [int]$pre.attempt -ne $ExpectedAttempt -or [string]$pre.stateBinding.runId -ne $RunId -or [string]$pre.stateBinding.taskId -ne [string]$Task.taskId -or [string]$pre.stateBinding.taskVersionId -ne $TaskVersionId -or [string]$pre.stateBinding.workspace -ne [string]$State.workspace -or [string]$pre.stateBinding.workspaceHead -ne $TrustedHead){return &$deny 'pre-launch manifest identity mismatch'}
-    $postSigned=[ordered]@{schemaVersion=$post.schemaVersion;invocationId=$post.invocationId;preInvocationSnapshotHash=$post.preInvocationSnapshotHash;promptHash=$post.promptHash;stdoutHash=$post.stdoutHash;provider=$post.provider;model=$post.model;reasoningEffort=$post.reasoningEffort;attempt=[int]$post.attempt;workspaceHead=$post.workspaceHead;partialDiffHash=$post.partialDiffHash;partialFilesHash=$post.partialFilesHash;paths=@($post.paths);fileBindings=@($post.fileBindings)}
-    if([string]$post.resultHash -ne (New-StringHash (ConvertTo-CanonicalJson $postSigned)) -or [string]$post.resultHash -ne $ExpectedPostManifestHash -or [string]$post.preInvocationSnapshotHash -ne $ExpectedPreManifestHash -or [string]$post.promptHash -ne [string]$pre.promptHash -or [string]$post.stdoutHash -ne $ExpectedStdoutHash){return &$deny 'post-execution manifest hash mismatch'}
+    $postIntegrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $post -ExpectedPreSnapshotHash $ExpectedPreManifestHash
+    if(-not $postIntegrity.ok -or ([string]$post.schemaVersion -eq 'orcivo.orchestration.v2.workspace-invocation-result/2' -and -not [bool]$post.policyCompliant) -or [string]$post.resultHash -ne $ExpectedPostManifestHash -or [string]$post.promptHash -ne [string]$pre.promptHash -or [string]$post.stdoutHash -ne $ExpectedStdoutHash){return &$deny 'post-execution manifest hash mismatch or policy hold'}
     if([string]$post.invocationId -ne $InvocationId -or [string]$post.provider -ne 'deepseek' -or [string]$post.model -ne 'deepseek-v4-pro' -or [string]$post.reasoningEffort -ne 'high' -or [int]$post.attempt -ne $ExpectedAttempt -or [string]$post.workspaceHead -ne $TrustedHead -or [string]$post.partialDiffHash -ne $ExpectedPartialDiffHash -or [string]$post.partialFilesHash -ne $ExpectedPartialFilesHash){return &$deny 'post-execution manifest identity mismatch'}
 
     if(-not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $TrustedHead -or [string]$State.implementationCommit -ne $TrustedHead -or [string]$State.recoveredCandidateCommit -ne $TrustedHead){return &$deny 'workspace trusted HEAD mismatch'}
@@ -3834,6 +3929,8 @@ if($needsFreshDispatch){
                 $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint) -BeforeLaunch $preLaunch
                 $finalized=Complete-DispatcherAgentInvocation -State $state -Task $Task -AgentResult $ar -Role $role
                 if(Set-DispatcherStoppedAfterAgentIfRequested $state){return $state}
+                if("$($finalized.disposition)" -eq 'POLICY_RETRY'){continue}
+                if("$($finalized.disposition)" -eq 'POLICY_BLOCK'){return $state}
                 if("$($finalized.disposition)" -eq 'CONTEXT_ROLLOVER'){
                     if([int]$state.rollovers -ge [int]$pcfg.contextRolloverBudget){$state.status='WAITING_HUMAN';$state.reason='context rollover budget exhausted';Write-DispatcherState $state|Out-Null;return $state}
                     $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
