@@ -34,13 +34,17 @@ Commands:
   reconcile-deepseek-unknown-reservation  reconcile one exact failed invocation at its reservation ceiling
   prove-review-schema-hold  read-only eligibility proof for one exact immutable reviewer receipt
   recover-review-schema-hold  revalidate one exact immutable reviewer receipt under the current schema
+  prove-disjoint-target-advance    read-only eligibility proof for a pre-publish integration failure
+                                   whose target has since advanced only through disjoint commits
+  recover-disjoint-target-advance  rebase the approved candidate onto the disjoint target advance and
+                                   land it back at REVIEWING for a fresh reviewer invocation
   run              dispatch READY tasks until idle / wait / stop / budget failure
   run-once         execute at most one READY task
   start            deprecated alias for run
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'prove-review-schema-hold', 'recover-review-schema-hold', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'prove-review-schema-hold', 'recover-review-schema-hold', 'prove-disjoint-target-advance', 'recover-disjoint-target-advance', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -504,6 +508,32 @@ switch ($Command) {
         if(-not $schedulerLease.ok){throw 'recover-review-schema-hold: scheduler lease is active'}
         $script:DispatcherRecoveryRunnerProbe=$false
         try{$result=Recover-DispatcherReviewSchemaHold -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}
+        finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;[void](Remove-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -LeaseId $schedulerLease.leaseId);&$restoreSafeDirectory}
+        Write-RealDispatcherPilotCheckpoint -State (Get-DispatcherState)|Out-Null
+        $result|ConvertTo-Json -Depth 12
+    }
+    { $_ -in @('prove-disjoint-target-advance','recover-disjoint-target-advance') } {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId){throw "$Command requires -TaskId, -TaskVersionId, and -RunId"}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile;$matches=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId})
+        if($matches.Count -ne 1){throw "${Command}: task '$TaskId' is not uniquely present in the owner-approved task source"}
+        $task=[hashtable]$matches[0];$state=Get-DispatcherState
+        if(-not $state){throw "${Command}: no durable dispatcher state"}
+        $contract=Get-Contract $TaskVersionId
+        $safeDirectoryIndex=[int]$(if($env:GIT_CONFIG_COUNT){$env:GIT_CONFIG_COUNT}else{'0'});$safeDirectoryCountBefore=$env:GIT_CONFIG_COUNT
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",'safe.directory','Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",[IO.Path]::GetFullPath([string]$state.workspace),'Process');$env:GIT_CONFIG_COUNT=[string]($safeDirectoryIndex+1)
+        $restoreSafeDirectory={if($null -eq $safeDirectoryCountBefore){Remove-Item Env:GIT_CONFIG_COUNT -ErrorAction SilentlyContinue}else{$env:GIT_CONFIG_COUNT=$safeDirectoryCountBefore};[Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",$null,'Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",$null,'Process')}
+        if($Command -eq 'prove-disjoint-target-advance'){
+            $script:DispatcherRecoveryRunnerProbe=$false
+            try{$proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId}finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;&$restoreSafeDirectory}
+            [ordered]@{eligible=[bool]$proof.eligible;reason=[string]$proof.reason;oldBase=[string]$proof.oldBase;oldHead=[string]$proof.oldHead;currentTarget=[string]$proof.currentTarget;targetAdvancePaths=@($proof.targetAdvancePaths);candidateChangedPaths=@($proof.candidateChangedPaths);overlap=@($proof.overlap);candidateHead=[string]$proof.candidateHead;providerInvocationRequired=[bool]$proof.providerInvocationRequired;freshReviewRequired=[bool]$proof.freshReviewRequired;proofHash=[string]$proof.proof.proofHash;alreadyRecovered=[bool]$proof.alreadyRecovered}|ConvertTo-Json -Depth 8
+            exit $(if($proof.eligible){0}else{1})
+        }
+        if(Test-Path -LiteralPath (Get-LeasePath -Namespace scheduler -Key (Get-V2Config).target.branch)){throw 'recover-disjoint-target-advance: scheduler lease is active'}
+        $schedulerLease=New-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -RunId $RunId -Scope 'disjoint-target-advance-recovery'
+        if(-not $schedulerLease.ok){throw 'recover-disjoint-target-advance: scheduler lease is active'}
+        $script:DispatcherRecoveryRunnerProbe=$false
+        try{$result=Recover-DispatcherDisjointTargetAdvance -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId}
         finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;[void](Remove-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -LeaseId $schedulerLease.leaseId);&$restoreSafeDirectory}
         Write-RealDispatcherPilotCheckpoint -State (Get-DispatcherState)|Out-Null
         $result|ConvertTo-Json -Depth 12

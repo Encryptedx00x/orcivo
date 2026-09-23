@@ -640,6 +640,282 @@ function Recover-DispatcherReviewSchemaHold {
     return [ordered]@{status='RECOVERED_TO_INTEGRATE';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$receipt.receiptHash;reviewAttestationId=[string]$recoveryAttestation.attestationId;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
 }
 
+function Get-DispatcherDisjointTargetAdvanceReceiptPath {
+    param([Parameter(Mandatory)][string]$RunId)
+    if($RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){throw 'disjoint target advance recovery: invalid run id'}
+    return (Join-Path (Get-V2Dir) "runs\$RunId\reconciliations\disjoint-target-advance.json")
+}
+
+function Test-DispatcherDisjointTargetAdvanceReceipt {
+    param($Receipt,[string]$ExpectedProofHash='')
+    if(-not $Receipt -or [string]$Receipt.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-target-advance-recovery/1'){return $false}
+    $signed=[ordered]@{};foreach($key in $Receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$Receipt[$key]}}
+    if([string]$Receipt.receiptHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$Receipt.receiptHash -ne (New-ContentHash $signed)){return $false}
+    if($ExpectedProofHash -and [string]$Receipt.proofHash -ne $ExpectedProofHash){return $false}
+    return $true
+}
+
+# Read-only eligibility proof (spec: "recover-disjoint-target-advance"). An
+# approved candidate whose integration failed BEFORE any target mutation
+# (authority tree dirty) can be safely rebased onto a target that has since
+# advanced ONLY through commits disjoint from the candidate's own changed
+# files and from the task's declared scope. Never bypasses review: the
+# landing state always requires a fresh REVIEWER invocation.
+function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [string]$RepoDir=(Get-RepoRoot)
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
+    try{
+        if($TaskVersionId -notmatch '^[0-9a-f]{64}$' -or $RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){return &$deny 'task or run identity is malformed'}
+        if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+        if(-not $State -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [string]$State.runId -ne $RunId){return &$deny 'durable task/run/version binding mismatch'}
+        if([string]$Contract.taskVersionId -ne $TaskVersionId -or [string]$Contract.taskId -ne [string]$Task.taskId -or [string]$Contract.bindings.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task contract or source binding drift'}
+        if([string]$Contract.specHash -ne (New-StringHash ([string]$Contract.specText)) -or [string]$Contract.acceptanceHash -ne (New-StringHash ([string]$Contract.acceptanceText))){return &$deny 'task spec or acceptance binding drift'}
+
+        $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
+        $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and [bool]$State.implementationComplete -and -not [bool]$State.requiresCorrection -and $history.Count -eq 1)
+        if(-not $alreadyRecovered){
+            if([string]$State.status -ne 'INTEGRATION_FAILED' -or [string]$State.stage -ne 'INTEGRATE' -or [string]$State.reason -ne 'authority tree dirty'){return &$deny 'state is not the exact local integration-failed authority-tree-dirty hold'}
+            if(-not [bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
+            if([string]$State.reviewVerdict -ne 'APPROVE'){return &$deny 'candidate was not APPROVE-reviewed'}
+        } elseif ([string]$history[0].oldCandidateBase -notmatch '^[0-9a-f]{40}$' -or [string]$history[0].oldCandidateHead -notmatch '^[0-9a-f]{40}$') {
+            return &$deny 'recovered state does not preserve the prior integration-failed hold'
+        }
+
+        $oldBase=[string]$(if($alreadyRecovered){$history[0].oldCandidateBase}else{$State.candidateBase})
+        $oldHead=[string]$(if($alreadyRecovered){$history[0].oldCandidateHead}else{$State.candidateHead})
+        $oldTree=[string]$(if($alreadyRecovered){$history[0].oldCandidateTree}else{$State.candidateTree})
+        $oldDiffHash=[string]$(if($alreadyRecovered){$history[0].oldDiffHash}else{$State.diffHash})
+        foreach($sha in @($oldBase,$oldHead)){if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'candidate binding is malformed'}}
+        if($oldDiffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'candidate diff binding is malformed'}
+
+        $ir=$(if($alreadyRecovered){$history[0].integrationResult}else{$State.integration})
+        if(-not $ir -or [string]$ir.status -ne 'INTEGRATION_FAILED' -or [string]$ir.reason -ne 'authority tree dirty' -or [bool]$ir.pushed -or [string]$ir.mergeCommit -ne '' -or [string]$ir.targetBefore -ne '' -or [string]$ir.targetAfter -ne ''){return &$deny 'integration result does not prove a pre-publish, no-mutation failure'}
+
+        $ledger=Get-LedgerState $TaskVersionId
+        if($ledger.corrupt){return &$deny 'ledger is corrupt'}
+        $events=@(Get-DispatcherLedgerEvents $TaskVersionId)
+        $starts=@($events|Where-Object{[string]$_.event -eq 'integrate-start' -and [string]$_.toState -eq 'INTEGRATING' -and [string]$_.runId -eq $RunId})
+        $fails=@($events|Where-Object{[string]$_.event -eq 'integrate-failed' -and [string]$_.toState -eq 'INTEGRATION_FAILED' -and [string]$_.runId -eq $RunId -and [string]$_.note -eq 'authority tree dirty'})
+        if($starts.Count -ne 1 -or $fails.Count -ne 1 -or [int]$fails[0].seq -ne ([int]$starts[0].seq+1)){return &$deny 'ledger does not carry exactly one integrate-start/integrate-failed(authority tree dirty) pair for this run'}
+        $failSeq=[int]$fails[0].seq
+
+        $expectedPrefix=@(
+            @{event='disjoint-target-advance-ready';to='READY'}
+            @{event='disjoint-target-advance-dispatch';to='DISPATCHED'}
+            @{event='disjoint-target-advance-running';to='RUNNING'}
+            @{event='disjoint-target-advance-checking';to='CHECKING'}
+            @{event='disjoint-target-advance-reviewing';to='REVIEWING'}
+        )
+        $after=@($events|Where-Object{[int]$_.seq -gt $failSeq})
+        if($after.Count -gt $expectedPrefix.Count){return &$deny 'ledger contains events beyond the bounded disjoint-target-advance sequence'}
+        for($i=0;$i -lt $after.Count;$i++){if([string]$after[$i].event -ne [string]$expectedPrefix[$i].event -or [string]$after[$i].toState -ne [string]$expectedPrefix[$i].to -or [string]$after[$i].runId -ne $RunId){return &$deny 'ledger disjoint-target-advance prefix is invalid or unbound'}}
+        if($alreadyRecovered -and $after.Count -ne 5){return &$deny 'completed recovery must have advanced the ledger through the full bounded prefix'}
+        if(-not $alreadyRecovered -and $after.Count -ne 0){return &$deny 'ledger is mid-recovery for a state not classified as recovered'}
+        $expectedLedgerState=$(if($after.Count){[string]$expectedPrefix[$after.Count-1].to}else{'INTEGRATION_FAILED'})
+        if([string]$ledger.state -ne $expectedLedgerState){return &$deny 'ledger state does not match the bounded disjoint-target-advance prefix'}
+
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
+        $wsHead=Get-GitHeadV2 $workspace
+        $expectedWsHead=$(if($alreadyRecovered){[string]$State.candidateHead}else{$oldHead})
+        if($wsHead -ne $expectedWsHead){return &$deny 'candidate workspace HEAD drift'}
+        $wsStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'disjoint-target-advance-recovery-status'
+        if($wsStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){return &$deny 'candidate workspace is dirty'}
+
+        $oldBindings=Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $workspace -BaseSha $oldBase -HeadSha $oldHead
+        if([string]$oldBindings.treeHash -ne $oldTree -or [string]$oldBindings.diffHash -ne $oldDiffHash){return &$deny 'old candidate tree/diff binding drift'}
+        $candidateChangedPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $oldBase -HeadSha $oldHead|Sort-Object)
+
+        $review=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind review -RunId $RunId -HeadSha $oldHead
+        if(-not $review -or [string]$review.result -ne 'APPROVE'){return &$deny 'latest authoritative review for the old candidate is not APPROVE'}
+        $reviewFresh=Test-AttestationFresh -Attestation $review -WorktreeDir $workspace -BaseSha $oldBase -HeadSha $oldHead
+        if(-not $reviewFresh.fresh){return &$deny 'old review attestation is stale or tampered'}
+        $check=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind check -RunId $RunId -HeadSha $oldHead
+        if(-not $check -or [string]$check.result -ne 'PASS'){return &$deny 'latest authoritative check for the old candidate is not PASS'}
+        $checkFresh=Test-AttestationFresh -Attestation $check -WorktreeDir $workspace -BaseSha $oldBase -HeadSha $oldHead
+        if(-not $checkFresh.fresh){return &$deny 'old check attestation is stale or tampered'}
+        $priorPublish=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind integration|Where-Object{[string]$_.runId -eq $RunId -and [string]$_.bindings.headSHA -eq $oldHead})
+        if($priorPublish.Count){return &$deny 'an integration attestation already exists for the old candidate - recovery is not needed or not safe'}
+
+        if(-not(Test-Path -LiteralPath $RepoDir)){return &$deny 'authority repository is missing'}
+        $target=(Get-V2Config).target.branch
+        $branchResult=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'disjoint-target-advance-branch'
+        if($branchResult.exitCode -ne 0 -or $branchResult.stdout.Trim() -ne $target){return &$deny "authority checkout is not on '$target'"}
+        if(-not(Test-GitCleanV2 $RepoDir)){return &$deny 'authority tree is still dirty'}
+        $fetch=Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'disjoint-target-advance-fetch'
+        if($fetch.exitCode -ne 0){return &$deny 'authority fetch failed'}
+        $localTarget=Get-GitHeadV2 $RepoDir
+        $originResult=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'disjoint-target-advance-origin'
+        if($originResult.exitCode -ne 0){return &$deny "origin/$target not found after fetch"}
+        $originTarget=$originResult.stdout.Trim()
+        if($localTarget -ne $originTarget){return &$deny "local $target != origin/$target"}
+        $currentTarget=$localTarget
+
+        if($currentTarget -eq $oldBase){return &$deny 'current target equals the old candidate base - recovery is unnecessary; retry integration directly'}
+        $ancestry=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$oldBase,$currentTarget) -LogLabel 'disjoint-target-advance-ancestry'
+        if($ancestry.exitCode -ne 0){return &$deny 'current target is not a descendant of the old candidate base'}
+
+        $targetAdvancePaths=@(Get-GitChangedFiles -Dir $RepoDir -BaseSha $oldBase -HeadSha $currentTarget|Sort-Object)
+        $taskScope=@($Task.scope|ForEach-Object{[string]$_}|Where-Object{$_})
+        $overlap=@()
+        foreach($p in $targetAdvancePaths){
+            if($candidateChangedPaths -contains $p){$overlap+=$p;continue}
+            foreach($s in $taskScope){if($p -eq $s -or $p.StartsWith(($s.TrimEnd('/')+'/'))){$overlap+=$p;break}}
+        }
+        $overlap=@($overlap|Select-Object -Unique)
+        if($overlap.Count){return &$deny "target advance overlaps candidate/task scope: $($overlap -join ', ')"}
+
+        $proof=[ordered]@{
+            schemaVersion='orcivo.orchestration.v2.disjoint-target-advance-proof/1'
+            taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId
+            oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=$oldTree;oldDiffHash=$oldDiffHash
+            currentTarget=$currentTarget;targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths
+            reviewAttestationId=[string]$review.attestationId;checkAttestationId=[string]$check.attestationId
+            failSeq=$failSeq
+        }
+        $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
+
+        $receiptPath=Get-DispatcherDisjointTargetAdvanceReceiptPath -RunId $RunId
+        $receipt=$null
+        if(Test-Path -LiteralPath $receiptPath){
+            $receipt=Read-V2Json $receiptPath
+            if(-not(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$proof.proofHash))){return &$deny 'recovery receipt is invalid or conflicts with the proof'}
+        }
+        if($alreadyRecovered -and -not $receipt){return &$deny 'completed recovery is missing its receipt'}
+        if($alreadyRecovered -and ([string]$State.candidateBase -ne $currentTarget -or [string]$State.candidateHead -ne [string]$receipt.newCandidateHead)){return &$deny 'completed recovery evidence does not match the current candidate binding'}
+
+        return [ordered]@{
+            eligible=$true;alreadyRecovered=$alreadyRecovered;reason='disjoint target advance is eligible for evidence-driven recovery'
+            oldBase=$oldBase;oldHead=$oldHead;currentTarget=$currentTarget
+            targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths;overlap=@()
+            providerInvocationRequired=$false;freshReviewRequired=$true
+            candidateHead=[string]$(if($alreadyRecovered){$State.candidateHead}else{$oldHead})
+            proof=$proof;receipt=$receipt;workspace=$workspace;repoDir=$RepoDir
+        }
+    }catch{return &$deny $_.Exception.Message}
+}
+
+# Mutating recovery: rebases the isolated candidate workspace onto the
+# disjoint target advance, re-verifies determinism/secrets, and lands the
+# task back at REVIEWING for a normal fresh reviewer invocation. Never
+# invokes IMPLEMENTER/CORRECTOR/any AI provider itself.
+function Recover-DispatcherDisjointTargetAdvance {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [string]$RepoDir=(Get-RepoRoot)
+    )
+    $result=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -RepoDir $RepoDir
+    if(-not $result.eligible){throw "disjoint target advance recovery not eligible: $($result.reason)"}
+    if($result.alreadyRecovered){
+        return [ordered]@{status='ALREADY_RECOVERED';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateHead=[string]$State.candidateHead;candidateBase=[string]$State.candidateBase;providerInvocationRequired=$false;ledgerState='REVIEWING';stage='REVIEW';nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
+    }
+    $proof=$result.proof;$workspace=$result.workspace;$oldBase=$result.oldBase;$oldHead=$result.oldHead;$currentTarget=$result.currentTarget
+    $receiptPath=Get-DispatcherDisjointTargetAdvanceReceiptPath -RunId $RunId;$receipt=$result.receipt
+    $expectedParents=@($oldHead,$currentTarget)|Sort-Object
+
+    $wsHead=Get-GitHeadV2 $workspace
+    if($wsHead -eq $oldHead){
+        $fetch=Invoke-GitV2 -Dir $workspace -Arguments @('fetch','--no-tags','--quiet',$RepoDir,$currentTarget) -LogLabel 'disjoint-target-advance-fetch-target'
+        Assert-GitSucceededV2 $fetch 'disjoint target advance: fetch current target into candidate workspace'|Out-Null
+        $merge=Invoke-GitV2 -Dir $workspace -Arguments @('merge',$currentTarget,'--no-edit','-m',"recover(orchestration): merge disjoint target advance $($currentTarget.Substring(0,10))") -LogLabel 'disjoint-target-advance-merge'
+        if($merge.exitCode -ne 0){
+            [void](Invoke-GitV2 -Dir $workspace -Arguments @('merge','--abort') -LogLabel 'disjoint-target-advance-merge-abort')
+            throw "disjoint target advance recovery: unexpected conflict merging current target into the candidate workspace: $(Get-GitFailureSummaryV2 $merge 'git merge')"
+        }
+        $newHead=Get-GitHeadV2 $workspace
+    } else {
+        $parentsResult=Invoke-GitV2 -Dir $workspace -Arguments @('log','-1','--pretty=%P',$wsHead) -LogLabel 'disjoint-target-advance-parents'
+        Assert-GitSucceededV2 $parentsResult 'disjoint target advance: inspect candidate workspace HEAD parents'|Out-Null
+        $parents=@($parentsResult.stdout.Trim() -split '\s+'|Where-Object{$_}|Sort-Object)
+        if(($parents -join ' ') -ne ($expectedParents -join ' ')){throw 'disjoint target advance recovery: candidate workspace HEAD is neither the old candidate nor the expected merge of the old candidate and current target - manual investigation required'}
+        $newHead=$wsHead
+    }
+
+    $newChangedPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $currentTarget -HeadSha $newHead|Sort-Object)
+    if(($newChangedPaths -join '|') -ne ((@($proof.candidateChangedPaths)) -join '|')){throw 'disjoint target advance recovery: changed-file set drifted after the merge - fail closed'}
+    foreach($p in $newChangedPaths){
+        $oldBlob=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse',"${oldHead}:$p") -LogLabel 'disjoint-target-advance-old-blob'
+        $newBlob=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse',"${newHead}:$p") -LogLabel 'disjoint-target-advance-new-blob'
+        Assert-GitSucceededV2 $oldBlob "disjoint target advance: resolve old blob for $p"|Out-Null
+        Assert-GitSucceededV2 $newBlob "disjoint target advance: resolve new blob for $p"|Out-Null
+        if($oldBlob.stdout.Trim() -ne $newBlob.stdout.Trim()){throw "disjoint target advance recovery: candidate file '$p' content drifted after the merge - fail closed"}
+    }
+
+    $newTreeHash=Get-GitTreeHash -Dir $workspace -Ref $newHead
+    $newDiffHash=Get-GitDiffHash -Dir $workspace -BaseSha $currentTarget -HeadSha $newHead
+    if($newDiffHash -ne [string]$proof.oldDiffHash){throw "disjoint target advance recovery: diffHash drift after rebase ($newDiffHash != $($proof.oldDiffHash)) - fail closed"}
+
+    $vp=Invoke-VerificationProfile -ProfileId ([string]$Contract.verificationProfile) -WorktreeDir $workspace -BaseSha $currentTarget -HeadSha $newHead
+    if(-not $vp.pass){throw 'disjoint target advance recovery: deterministic verification failed on the rebased candidate'}
+    $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $currentTarget -Ref $newHead
+    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    $scan=[ordered]@{
+        clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean)
+        candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$currentTarget;headSha=$newHead;hits=@($treeScan.hits)}
+        artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)}
+        hits=@($treeScan.hits)+@($artifactScan.hits)
+    }
+    if(-not $scan.clean){throw "disjoint target advance recovery: secret scan found $($scan.hits.Count) hit(s) on the rebased candidate"}
+
+    $newBindings=Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $workspace -BaseSha $currentTarget -HeadSha $newHead
+    if([string]$newBindings.treeHash -ne $newTreeHash -or [string]$newBindings.diffHash -ne $newDiffHash){throw 'disjoint target advance recovery: rebased candidate binding drift'}
+    $existingCheck=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind check|Where-Object{[string]$_.runId -eq $RunId -and [string]$_.bindings.baseSHA -eq $currentTarget -and [string]$_.bindings.headSHA -eq $newHead})
+    $checkAttestation=$(if($existingCheck.Count){$existingCheck[0]}else{
+        New-Attestation -Kind check -TaskVersionId $TaskVersionId -RunId $RunId -Bindings ([hashtable]$newBindings) -Result $(if($vp.pass){'PASS'}else{'FAIL'}) -Payload @{profileId=$vp.profileId;effectiveInvocationHash=$vp.effectiveInvocationHash;checks=@($vp.checks);recoveredFrom='DISJOINT_TARGET_ADVANCE';oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;proofHash=[string]$proof.proofHash} -ProducerMeta @{verifier='v2-deterministic';profileId=$vp.profileId;verificationDefinitionHash=$vp.verificationDefinitionHash}
+    })
+
+    if(-not $receipt){
+        $receipt=[ordered]@{
+            schemaVersion='orcivo.orchestration.v2.disjoint-target-advance-recovery/1'
+            taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId
+            oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=[string]$proof.oldCandidateTree;oldDiffHash=[string]$proof.oldDiffHash
+            currentTarget=$currentTarget;newCandidateHead=$newHead;newCandidateTree=$newTreeHash;newDiffHash=$newDiffHash
+            targetAdvancePaths=@($proof.targetAdvancePaths);candidateChangedPaths=@($proof.candidateChangedPaths)
+            checkAttestationId=[string]$checkAttestation.attestationId;proofHash=[string]$proof.proofHash;receiptHash=''
+        }
+        $signed=[ordered]@{};foreach($key in $receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$receipt[$key]}}
+        $receipt.receiptHash=New-ContentHash $signed
+        Write-V2JsonCanonical $receiptPath $receipt
+    }
+
+    $evidence=@{proofHash=[string]$proof.proofHash;receiptHash=[string]$receipt.receiptHash;oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;newCandidateBase=$currentTarget;newCandidateHead=$newHead}
+    $steps=@(
+        @{from='INTEGRATION_FAILED';event='disjoint-target-advance-ready';to='READY'}
+        @{from='READY';event='disjoint-target-advance-dispatch';to='DISPATCHED'}
+        @{from='DISPATCHED';event='disjoint-target-advance-running';to='RUNNING'}
+        @{from='RUNNING';event='disjoint-target-advance-checking';to='CHECKING'}
+        @{from='CHECKING';event='disjoint-target-advance-reviewing';to='REVIEWING'}
+    )
+    foreach($step in $steps){
+        $ledger=Get-LedgerState $TaskVersionId
+        if([string]$ledger.state -eq [string]$step.from){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event ([string]$step.event) -ToState ([string]$step.to) -RunId $RunId -Evidence $evidence -Note 'disjoint target advance recovered from pre-publish integration failure'|Out-Null}
+    }
+    if([string](Get-LedgerState $TaskVersionId).state -ne 'REVIEWING'){throw 'disjoint target advance recovery: bounded ledger sequence did not reach REVIEWING'}
+
+    $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
+    $record=[ordered]@{oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=[string]$proof.oldCandidateTree;oldDiffHash=[string]$proof.oldDiffHash;integrationResult=$State.integration;newCandidateBase=$currentTarget;newCandidateHead=$newHead;proofHash=[string]$proof.proofHash;receiptHash=[string]$receipt.receiptHash;checkAttestationId=[string]$checkAttestation.attestationId}
+    $State.disjointTargetAdvanceRecoveryHistory=@($history)+,$record
+    $State.candidateBase=$currentTarget;$State.candidateHead=$newHead;$State.candidateTree=$newTreeHash;$State.diffHash=$newDiffHash
+    $State.verification=$vp;$State.secretScan=$scan
+    $State.reviewVerdict='';$State.reviewInvocationId='';$State.reviewAttestationId='';$State.reviewArtifactRecord=$null;$State.reviewTechnicalBlock=$null
+    $State.findings=@()
+    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='disjoint target advance recovered from pre-publish integration failure - fresh review required';$State.decisionNeeded='';$State.resumes='normal reviewer invocation on next pilot run'
+    Write-DispatcherState $State|Out-Null
+
+    return [ordered]@{
+        status='RECOVERED_TO_REVIEW';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId
+        oldCandidateHead=$oldHead;candidateHead=$newHead;candidateBase=$currentTarget
+        providerInvocationRequired=$false;ledgerState='REVIEWING';stage='REVIEW'
+        checkAttestationId=[string]$checkAttestation.attestationId;receiptHash=[string]$receipt.receiptHash
+        nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'
+    }
+}
+
 function Get-DispatcherLogicalProjectId {
     if ($env:ORCIVO_MEMORY_PROJECT) { return [string]$env:ORCIVO_MEMORY_PROJECT }
     try { $p = (Get-AuthorityV2Config).memoryAdapter.project } catch { $p = $null }
