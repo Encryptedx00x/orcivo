@@ -1388,6 +1388,59 @@ try{
             return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;invocation=$invocation;receiptPath=$agent.resultReceiptPath;receipt=$receipt;stdoutPath=$stdoutPath;toolPolicy=$toolPolicy}
         }
 
+        # Distinct immutable hold: the reviewer process exited 0 and produced a
+        # terminal agent_message framed as prose + terminal JSON envelope
+        # (e.g. "All three artifacts are reconstructed: ...\n\n{...}"). The old
+        # ConvertFrom-RealCodexOutput ran ConvertFrom-Json against the WHOLE
+        # message, failed on the prose, and recorded structuredResult=null /
+        # resultClass=AGENT_FAILURE - so Parse-ReviewEnvelope (fed
+        # processOk=false) produced HUMAN_REVIEW_REQUIRED: reviewer process did
+        # not exit 0 / timed out.
+        function New-ReviewTerminalJsonHoldFixture {
+            param([string]$Id,[switch]$DoubleMarker)
+            $workspace=Join-Path $Root ("review-tjson-"+$Id);& git init -b main --quiet $workspace
+            New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'base';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet;$base=(& git -C $workspace rev-parse HEAD).Trim()
+            Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'candidate';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m candidate --quiet;$head=(& git -C $workspace rev-parse HEAD).Trim()
+            $task=Task ("TJSON-"+$Id);$sourcePath=Join-Path $Fixture ("review-tjson-"+$Id+".json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0];$contract=New-DispatcherContract -Task $task -TaskSource $source
+            $runId='run-tjson-'+(New-StringHash ($Id+'|run')).Substring(7,16);$bindings=Get-AttestationBindings -TaskVersionId $contract.taskVersionId -WorktreeDir $workspace -BaseSha $base -HeadSha $head
+            $diffResult=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--no-color',"$base..$head") -LogLabel ("fixture-tjson-diff-"+$Id) -ReviewedSourceOutput;$diff=$diffResult.stdout.TrimEnd("`r","`n");$reviewDir=Join-Path (Get-V2Dir) "runs\$runId\review-000"
+            $prompt=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $contract.taskVersionId -Head $head -TreeHash $bindings.treeHash -DiffHash $bindings.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles @('work/result.ts') -CheckSummary 'PASS profile=B; secretScan=CLEAN' -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
+            $holdReason='HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out'
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='REVIEW';reason=$holdReason;workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;candidateHead=$head;candidateTree=$bindings.treeHash;diffHash=$bindings.diffHash;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$true;requiresCorrection=$false;implementationCommit=$head;verification=$null;reviewVerdict='HUMAN_REVIEW_REQUIRED';logicalProjectId='fixture';integration=$null;reviewTerminalJsonRecoveryHistory=@()}
+            $record=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $state;$state.reviewArtifactRecord=$record
+            $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $workspace -BaseSha $base -HeadSha $head;$state.verification=$vp
+            $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $base -Ref $head;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$runId"));$state.secretScan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$base;headSha=$head;hits=@($treeScan.hits)};artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)};hits=@()}
+            Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null;Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING;Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
+            $check=New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result PASS -Payload @{profileId=$vp.profileId;effectiveInvocationHash=$vp.effectiveInvocationHash;checks=@($vp.checks)} -ProducerMeta @{verifier='v2-deterministic';profileId=$vp.profileId;verificationDefinitionHash=$vp.verificationDefinitionHash}
+            $invocation='att-'+[guid]::NewGuid().ToString('N');$attempt=2;$suffix=$invocation.Substring(4,8);$logs=Join-Path (Get-V2Dir) "runs\$runId\logs";New-Item -ItemType Directory -Force -Path $logs|Out-Null;$stem="reviewer-002-deepseek-$suffix"
+            $promptPath=Join-Path $logs "$stem.prompt.txt";$stdoutPath=Join-Path $logs "$stem.stdout.log";$stderrPath=Join-Path $logs "$stem.stderr.log";$requestPath=Join-Path $logs "$stem.request-manifest.json";Write-Utf8 $promptPath $prompt;Write-Utf8 $stderrPath ''
+            $toolPolicy='read-only; review_reader artifacts only (no git, no shell, no candidate workspace)'
+            # the envelope's own JSON key order matters: the extraction marker
+            # matches only when schemaVersion is literally the first key, so
+            # this MUST be an ordered hashtable rendered with a key-order-
+            # preserving serializer, never ConvertTo-CanonicalJson (alphabetical).
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$contract.taskVersionId;reviewedHead=$head;treeHash=$bindings.treeHash;diffHash=$bindings.diffHash;specHash=$contract.specHash;verdict='APPROVE';criteria=@([ordered]@{id='AC1';met=$true;evidence='fixture evidence'});findings=@([ordered]@{severity='info';file=$null;line=$null;detail='fixture review complete'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='deepseek-v4-flash';effort='low';toolPolicy=$toolPolicy;promptTemplateVersion='v2'}}
+            $envelopeJson=($envelope|ConvertTo-Json -Compress -Depth 20)
+            if(-not $envelopeJson.StartsWith((Get-ReviewEnvelopeTerminalMarker))){throw 'fixture: envelope JSON did not serialize with schemaVersion first'}
+            $agentMessageText=$(if($DoubleMarker){"All three artifacts are reconstructed.`n`n$envelopeJson extra $envelopeJson"}else{"All three artifacts are reconstructed: acceptance.txt, spec.txt, diff.patch, each matching the manifest.`n`n$envelopeJson"})
+            $eventLines=@(
+                (@{type='thread.started';thread_id='th_fixture'}|ConvertTo-Json -Compress -Depth 10),
+                (@{type='turn.started'}|ConvertTo-Json -Compress -Depth 10),
+                (@{type='item.completed';item=@{id='item_1';type='agent_message';text=$agentMessageText}}|ConvertTo-Json -Compress -Depth 20),
+                (@{type='turn.completed';usage=@{input_tokens=1;output_tokens=1}}|ConvertTo-Json -Compress -Depth 10)
+            )
+            Write-Utf8 $stdoutPath (($eventLines -join "`n")+"`n")
+            $request=[ordered]@{schemaVersion='orcivo.orchestration.v2.deepseek-request-manifest/1';createdAt='2026-09-22T00:00:00Z';invocationId=$invocation;provider='deepseek';baseUrl='https://api.deepseek.com/';redirectObserved=$false;requestedBillableSku='deepseek-v4-flash';reasoning='low';profile='FAST';promptHash=(New-FileHash $promptPath);runtimeConfigHash=('sha256:'+('1'*64));isolatedCodexHome='fixture';priceRegistryHash=('sha256:'+('2'*64));resolvedModelVersion='fixture';manifestHash=''};$requestSigned=[ordered]@{};foreach($key in $request.Keys){if($key -ne 'manifestHash'){$requestSigned[$key]=$request[$key]}};$request.manifestHash=New-ContentHash $requestSigned;Write-V2JsonCanonical $requestPath $request
+            $agent=[ordered]@{invocationId=$invocation;provider='deepseek';model='deepseek-v4-flash';profile='FAST';reasoningIntent='low';attempt=$attempt;exitCode=0;providerClass='NONE';failureDiagnostic=$null;resultClass='AGENT_FAILURE';structuredResult=$null;promptArtifact=[IO.Path]::GetFullPath($promptPath);promptHash=(New-FileHash $promptPath);stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=(New-FileHash $stdoutPath);stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=(New-FileHash $stderrPath);controlRecordHash=(New-StringHash ([IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)));duration=1;contextRolloverRequired=$false;capabilityVersion='fixture';continuationCheckpoint='';usage=@{inputTokens=1;outputTokens=1;cachedTokens=$null};cachedTokens=$null;returnedModels=@();requestManifestPath=[IO.Path]::GetFullPath($requestPath);requestManifestHash=$request.manifestHash;costUsd=$null;telemetryConsistent=$true;resultReceiptPath=(Get-RealAgentResultReceiptPath -ArtifactDir $logs -InvocationId $invocation -Role reviewer -Provider deepseek -Attempt $attempt)}
+            $receipt=Write-RealAgentResultReceipt -AgentResult $agent
+            $review=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result HUMAN_REVIEW_REQUIRED -Payload @{problems=@('processOk=false');reason='reviewer process did not exit 0 / timed out';findings=@($null);technicalBlock=$null;reviewArtifactRecordHash=[string]$record.recordHash} -ProducerMeta @{provider='deepseek';model='deepseek-v4-flash';profile='FAST';invocationId=$invocation;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0}
+            Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event review-hold -ToState WAITING_HUMAN -RunId $runId -Note HUMAN_REVIEW_REQUIRED|Out-Null
+            $state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewTechnicalBlock=$null;$state.reviewerProvider='deepseek';$state.providerHistory=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));role='IMPLEMENTER';provider='glm';model=(Get-GlmModelId);resultClass='SUCCESS';providerClass='NONE';exitCode=0},[ordered]@{invocationId=$invocation;role='REVIEWER';provider='deepseek';model='deepseek-v4-flash';reasoningEffort='low';attempt=$attempt;providerClass='NONE';resultClass='AGENT_FAILURE';failureDiagnostic=$null;exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash});Write-DispatcherState $state|Out-Null
+            return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;invocation=$invocation;receiptPath=$agent.resultReceiptPath;receipt=$receipt;stdoutPath=$stdoutPath;envelope=$envelope}
+        }
+
         Check 'RD-138' {
             $f=New-ReviewInfrastructureFixture 'RD138' $true
             $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'} }
@@ -1597,6 +1650,115 @@ try{
         Check 'RD-178' {
             $f=New-ReviewSchemaHoldFixture 'RD178';$r=Recover-DispatcherReviewSchemaHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation;$s=Get-DispatcherState
             Assert-True ($r.status -eq 'RECOVERED_TO_INTEGRATE' -and $s.stage -eq 'INTEGRATE' -and $s.status -eq 'RUNNING' -and $s.reviewVerdict -eq 'APPROVE' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'APPROVED' -and $s.candidateHead -eq $f.head -and $s.implementationComplete) 'recovered state did not safely reach INTEGRATE/APPROVED'
+        }
+
+        # ---- ROOT CAUSE 1 live fix: terminal-suffix extraction -----------------
+        Check 'RD-179' {
+            $body='{"schemaVersion":"orcivo.orchestration.v2.agent-result/1","role":"IMPLEMENTER","resultClass":"SUCCESS","summary":"ok","decisions":[],"tests":[],"nextAction":"none","importantArtifacts":[]}'
+            $co="{`"type`":`"item.completed`",`"item`":{`"type`":`"agent_message`",`"text`":$($body|ConvertTo-Json -Compress)}}"
+            Assert-True ((ConvertFrom-RealCodexOutput $co).structured.resultClass -eq 'SUCCESS') 'ordinary pure-JSON agent_message regressed'
+        }
+        Check 'RD-180' {
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=('a'*64);reviewedHead=('b'*40);treeHash=('c'*40);diffHash=('sha256:'+('d'*64));specHash=('sha256:'+('e'*64));verdict='APPROVE';criteria=@();findings=@();filesReviewed=@();technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='m';effort='low';toolPolicy='t';promptTemplateVersion='v'}}
+            $text="All three artifacts are reconstructed: acceptance.txt, spec.txt, diff.patch, each matching the manifest.`n`n$($envelope|ConvertTo-Json -Compress -Depth 20)"
+            $co="{`"type`":`"item.completed`",`"item`":{`"type`":`"agent_message`",`"text`":$($text|ConvertTo-Json -Compress)}}"
+            $r=(ConvertFrom-RealCodexOutput $co).structured
+            Assert-True ($r -and $r.verdict -eq 'APPROVE' -and $r.schemaVersion -eq 'orcivo.orchestration.v2.review-envelope/1') 'prose-prefixed terminal review envelope was not extracted'
+        }
+        Check 'RD-181' {
+            $marker=Get-ReviewEnvelopeTerminalMarker
+            $text="$marker,`"x`":1} and again $marker,`"x`":2}"
+            Assert-True ($null -eq (ConvertFrom-ReviewEnvelopeTerminalSuffix -Text $text)) 'multiple review-envelope markers were accepted'
+        }
+        Check 'RD-182' {
+            $marker=Get-ReviewEnvelopeTerminalMarker
+            $text="$marker,`"x`":1} trailing prose that should not be here"
+            Assert-True ($null -eq (ConvertFrom-ReviewEnvelopeTerminalSuffix -Text $text)) 'trailing prose after the terminal JSON object was accepted'
+        }
+        Check 'RD-183' {
+            $marker=Get-ReviewEnvelopeTerminalMarker
+            $text="$marker,`"x`":1}`n``````"
+            Assert-True ($null -eq (ConvertFrom-ReviewEnvelopeTerminalSuffix -Text $text)) 'a fenced ``` suffix after the terminal JSON object was accepted'
+        }
+        Check 'RD-184' {
+            $marker=Get-ReviewEnvelopeTerminalMarker
+            $text="prose `n`n$marker,`"x`":1"
+            Assert-True ($null -eq (ConvertFrom-ReviewEnvelopeTerminalSuffix -Text $text)) 'a malformed/truncated terminal JSON suffix was accepted'
+        }
+        Check 'RD-185' {
+            $co='{"type":"item.completed","item":{"type":"agent_message","text":"not json at all"}}'
+            Assert-True ($null -eq (ConvertFrom-RealCodexOutput $co).structured) 'a non-JSON, non-review agent_message produced a spurious structured result'
+        }
+
+        # ---- ROOT CAUSE 2: local schema/provider schema null file/line parity --
+        Check 'RD-186' {
+            $f=New-ReviewInfrastructureFixture 'RD186' $false
+            $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='high';file=$null;line=$null;detail='null file/line, keys present'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'}}
+            $wrapped="$((Get-V2Config).review.beginMarker)`n$(ConvertTo-CanonicalJson $envelope)`n$((Get-V2Config).review.endMarker)"
+            $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{reviewArtifacts=@($f.record.artifacts);processOk=$true}
+            Assert-True ($parsed.verdict -eq 'BLOCK' -and (@($parsed.problems) -join ' ') -notmatch 'expected type') "finding.file/line=null (keys present, not stripped) was rejected by the authoritative local schema: $($parsed.verdict)/$($parsed.reason)/$(@($parsed.problems)-join ';')"
+        }
+        Check 'RD-187' {
+            $local=Get-Content -Raw -LiteralPath (Join-Path (Get-V2Dir) 'schemas\review-envelope.schema.json')|ConvertFrom-Json
+            $badFile=[ordered]@{severity='low';file=123;line=1;detail='wrong type'}
+            $errs=@(Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $badFile)) $local.properties.findings.items)
+            $tooLong=[ordered]@{severity='low';file=('x'*513);line=1;detail='too long'}
+            $errsLong=@(Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $tooLong)) $local.properties.findings.items)
+            $okString=[ordered]@{severity='low';file='a/b.ts';line=1;detail='ok'}
+            $errsOk=@(Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $okString)) $local.properties.findings.items)
+            Assert-True ($errs.Count -gt 0 -and $errsLong.Count -gt 0 -and $errsOk.Count -eq 0) "non-null finding.file type/length bound was weakened: badType=$($errs.Count) tooLong=$($errsLong.Count) ok=$($errsOk.Count)"
+        }
+
+        # ---- terminal-JSON-framing hold recovery (evidence-driven) -------------
+        Check 'RD-188' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD188';$p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True ($p.eligible -and $p.replayVerdict -eq 'APPROVE' -and $p.replayReason -eq 'ok' -and @($p.problems).Count -eq 0 -and $null -eq $p.technicalBlock -and -not $p.providerInvocationRequired -and $p.extractedEnvelopeHash -match '^sha256:') "immutable terminal-JSON-framing hold did not revalidate exactly: $($p.reason)"
+        }
+        Check 'RD-189' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD189';$p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId ('att-'+[guid]::NewGuid().ToString('N'))
+            Assert-True (-not $p.eligible -and $p.reason -match 'invocation') 'wrong reviewer invocation was eligible for terminal-JSON recovery'
+        }
+        Check 'RD-190' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD190';$results=@();foreach($field in @('candidateHead','candidateTree','diffHash')){$s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s[$field]=$(if($field -eq 'diffHash'){'sha256:'+('0'*64)}else{'0'*40});$results+=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation}
+            Assert-True (@($results|Where-Object eligible).Count -eq 0) 'candidate head, tree, or diff drift remained eligible for terminal-JSON recovery'
+        }
+        Check 'RD-191' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD191'
+            $receipt=Read-V2Json $f.receiptPath;$mutated=[ordered]@{};foreach($k in $receipt.Keys){if($k -ne 'receiptHash'){$mutated[$k]=$receipt[$k]}};$mutated['structuredResult']=$f.envelope
+            $signed=[ordered]@{};foreach($k in $mutated.Keys){$signed[$k]=$mutated[$k]};$mutated['receiptHash']=New-ContentHash $signed
+            Write-V2JsonCanonical $f.receiptPath $mutated
+            $s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s.providerHistory[-1].resultReceiptHash=[string]$mutated.receiptHash
+            $p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'structured result') "an immutable receipt already carrying a structured result remained eligible for terminal-JSON-framing recovery: $($p.reason)"
+        }
+        Check 'RD-192' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD192';Add-Content -LiteralPath $f.stdoutPath -Value 'tamper'
+            $p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible) 'a tampered immutable stdout remained eligible for terminal-JSON recovery'
+        }
+        Check 'RD-193' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD193' -DoubleMarker
+            $p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'terminal review-envelope suffix') "an immutable stdout with two review-envelope markers in one agent_message remained eligible: $($p.reason)"
+        }
+        Check 'RD-194' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD194';$s=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$s.providerHistory[-1].providerClass='PROVIDER_UNAVAILABLE'
+            $p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $s -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'exit-zero') 'a non-NONE providerClass reviewer invocation remained eligible for terminal-JSON recovery'
+        }
+        Check 'RD-195' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD195';$script:TerminalJsonRecoveryProviderCalls=0;function Invoke-RealAgent{$script:TerminalJsonRecoveryProviderCalls++;throw 'provider invocation forbidden'}
+            try{Recover-DispatcherReviewTerminalJsonHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null}finally{. (Join-Path $V2 'real-agent.ps1')}
+            Assert-True ($script:TerminalJsonRecoveryProviderCalls -eq 0) 'terminal-JSON recovery invoked an external provider'
+        }
+        Check 'RD-196' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD196';$oldPath=Join-Path (Join-Path (Get-V2Dir) "attestations\$($f.contract.taskVersionId)") "review-$($f.review.attestationId).json";$oldHash=New-FileHash $oldPath;$beforeHistory=ConvertTo-CanonicalJson $f.state.providerHistory
+            $first=Recover-DispatcherReviewTerminalJsonHold -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            $second=Recover-DispatcherReviewTerminalJsonHold -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            $s=Get-DispatcherState
+            Assert-True ($first.status -eq 'RECOVERED_TO_INTEGRATE' -and $second.status -eq 'ALREADY_RECOVERED' -and $s.stage -eq 'INTEGRATE' -and $s.status -eq 'RUNNING' -and $s.reviewVerdict -eq 'APPROVE' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'APPROVED' -and $s.candidateHead -eq $f.head -and $s.implementationComplete) 'recovered state did not idempotently and safely reach INTEGRATE/APPROVED'
+            Assert-True ((New-FileHash $oldPath) -eq $oldHash) 'original HUMAN_REVIEW_REQUIRED evidence was rewritten or lost'
+            Assert-True ((ConvertTo-CanonicalJson $s.providerHistory) -eq $beforeHistory) 'terminal-JSON recovery added or rewrote providerHistory'
         }
 
         Check 'RD-150' {

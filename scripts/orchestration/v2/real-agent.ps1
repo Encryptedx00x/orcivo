@@ -88,6 +88,37 @@ function ConvertFrom-RealClaudeOutput {
     return @{ control = $control; structured = $(if ($structured) { _ToHashtable $structured } else { $null }) }
 }
 
+# Deterministic, fail-closed extraction of a review-envelope JSON object from
+# the TERMINAL SUFFIX of an agent_message that also carries a prose prefix
+# (e.g. "All three artifacts are reconstructed: ...\n\n{...envelope...}").
+# Extraction only - never approval authority; the caller still runs the
+# extracted object through the provider schema and Parse-ReviewEnvelope.
+# Accepted only when ALL hold:
+#   - the exact review-envelope schemaVersion marker occurs exactly once
+#   - Text.Substring(markerIndex).Trim() parses as EXACTLY one JSON object
+#     (no bytes/prose before/after the object survive the trim - a fenced
+#     ``` suffix or trailing prose makes the whole-string parse fail)
+#   - the root is an object whose schemaVersion is exactly review-envelope/1
+function Get-ReviewEnvelopeTerminalMarker { return '{"schemaVersion":"orcivo.orchestration.v2.review-envelope/1"' }
+
+function ConvertFrom-ReviewEnvelopeTerminalSuffix {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    if (-not $Text) { return $null }
+    $marker = Get-ReviewEnvelopeTerminalMarker
+    $count = ([regex]::Matches($Text, [regex]::Escape($marker))).Count
+    if ($count -ne 1) { return $null }
+    $idx = $Text.IndexOf($marker)
+    $suffix = $Text.Substring($idx).Trim()
+    if (-not $suffix) { return $null }
+    $typed = $null
+    try { $typed = ConvertFrom-JsonTyped $suffix } catch { return $null }
+    if ($null -eq $typed -or -not ($typed -is [System.Collections.IDictionary])) { return $null }
+    if ([string]$typed['schemaVersion'] -ne 'orcivo.orchestration.v2.review-envelope/1') { return $null }
+    $obj = $null
+    try { $obj = ($suffix | ConvertFrom-Json) } catch { return $null }
+    return $obj
+}
+
 function ConvertFrom-RealCodexOutput {
     param([string]$Text)
     $events = @()
@@ -102,7 +133,9 @@ function ConvertFrom-RealCodexOutput {
     }
     $structured = $null
     if ($messages.Count -gt 0) {
-        try { $structured = ([string]$messages[-1] | ConvertFrom-Json) } catch { }
+        $lastMessage = [string]$messages[-1]
+        try { $structured = ($lastMessage | ConvertFrom-Json) } catch { }
+        if (-not $structured) { $structured = ConvertFrom-ReviewEnvelopeTerminalSuffix -Text $lastMessage }
     }
     return @{ control = $control; structured = $(if ($structured) { _ToHashtable $structured } else { $null }); events = @($events) }
 }

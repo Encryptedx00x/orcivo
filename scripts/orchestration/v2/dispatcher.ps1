@@ -516,6 +516,21 @@ function Test-DispatcherReviewSchemaRecoveryReceipt {
     return $true
 }
 
+function Get-DispatcherReviewTerminalJsonRecoveryReceiptPath {
+    param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId)
+    if($RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){throw 'review terminal-json recovery: invalid run or invocation id'}
+    return (Join-Path (Get-V2Dir) "runs\$RunId\reconciliations\review-terminal-json-$InvocationId.json")
+}
+
+function Test-DispatcherReviewTerminalJsonRecoveryReceipt {
+    param($Receipt,[string]$ExpectedProofHash='')
+    if(-not $Receipt -or [string]$Receipt.schemaVersion -ne 'orcivo.orchestration.v2.review-terminal-json-revalidation/1'){return $false}
+    $signed=[ordered]@{};foreach($key in $Receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$Receipt[$key]}}
+    if([string]$Receipt.receiptHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$Receipt.receiptHash -ne (New-ContentHash $signed)){return $false}
+    if($ExpectedProofHash -and [string]$Receipt.proofHash -ne $ExpectedProofHash){return $false}
+    return $true
+}
+
 function Get-DispatcherReviewSchemaHoldRecoveryProof {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
@@ -636,6 +651,181 @@ function Recover-DispatcherReviewSchemaHold {
     $State.reviewVerdict='APPROVE';$State.reviewInvocationId=$InvocationId;$State.reviewAttestationId=[string]$recoveryAttestation.attestationId;$State.reviewTechnicalBlock=$null
     $State.findings=@($result.parsed.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
     $State.status='RUNNING';$State.stage='INTEGRATE';$State.reason='review schema hold recovered from exact immutable result receipt';$State.decisionNeeded='';$State.resumes='normal deterministic integration of the already-approved candidate'
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{status='RECOVERED_TO_INTEGRATE';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$receipt.receiptHash;reviewAttestationId=[string]$recoveryAttestation.attestationId;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
+}
+
+# Read-only eligibility proof for a DISTINCT immutable hold: the reviewer
+# process exited 0 and produced a terminal agent_message whose JSON envelope
+# was framed with a prose prefix ("All three artifacts are reconstructed:
+# ...\n\n{...}"). The old ConvertFrom-RealCodexOutput ran ConvertFrom-Json
+# against the WHOLE message, so it failed on the prefix and recorded
+# structuredResult=null / resultClass=AGENT_FAILURE, and Parse-ReviewEnvelope
+# (fed processOk=false because structuredResult was null) produced
+# HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out. That
+# immutable receipt/providerHistory entry is NEVER rewritten - this proof
+# re-derives the exact review-envelope JSON from the immutable terminal
+# provider stdout via the strict ConvertFrom-ReviewEnvelopeTerminalSuffix
+# extraction helper (extraction only, never approval authority) and replays
+# it through the CURRENT provider schema + Parse-ReviewEnvelope.
+function Get-DispatcherReviewTerminalJsonHoldRecoveryProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
+    $holdReason='HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out'
+    try{
+        if($TaskVersionId -notmatch '^[0-9a-f]{64}$' -or $RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$' -or $InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'task, run, or invocation identity is malformed'}
+        if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+        if(-not $State -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [string]$State.runId -ne $RunId){return &$deny 'durable task/run/version binding mismatch'}
+        if([string]$Contract.taskVersionId -ne $TaskVersionId -or [string]$Contract.taskId -ne [string]$Task.taskId -or [string]$Contract.bindings.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task contract or source binding drift'}
+        if([string]$Contract.specHash -ne (New-StringHash ([string]$Contract.specText)) -or [string]$Contract.acceptanceHash -ne (New-StringHash ([string]$Contract.acceptanceText))){return &$deny 'task spec or acceptance binding drift'}
+        $criteria=@(Get-AcceptanceCriteriaIds ([string]$Contract.acceptanceText));if((@($Contract.acceptanceCriteriaIds|Sort-Object)-join '|') -ne (@($criteria|Sort-Object)-join '|')){return &$deny 'acceptance criteria binding drift'}
+
+        $history=@($State.reviewTerminalJsonRecoveryHistory|Where-Object{$_})
+        $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reviewVerdict -eq 'APPROVE' -and $history.Count -eq 1)
+        if(-not $alreadyRecovered){
+            if([string]$State.status -ne 'WAITING_HUMAN' -or [string]$State.stage -ne 'REVIEW' -or [string]$State.reason -ne $holdReason -or [string]$State.reviewVerdict -ne 'HUMAN_REVIEW_REQUIRED'){return &$deny 'state is not the exact local review terminal-JSON-framing hold'}
+        }elseif([string]$history[0].priorReason -ne $holdReason -or [string]$history[0].invocationId -ne $InvocationId){return &$deny 'recovered state does not preserve the exact prior terminal-JSON hold'}
+        if(-not[bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
+        foreach($sha in @([string]$State.candidateBase,[string]$State.candidateHead,[string]$State.candidateTree)){if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'candidate binding is malformed'}}
+        if([string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'candidate diff binding is malformed'}
+        $workspace=[string]$State.workspace;if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
+        if((Get-GitHeadV2 $workspace) -ne [string]$State.candidateHead){return &$deny 'candidate workspace HEAD drift'}
+        $workspaceStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'review-terminal-json-recovery-status'
+        if($workspaceStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$workspaceStatus.stdout)){return &$deny 'candidate workspace is dirty'}
+        $bindings=Get-AttestationBindings -TaskVersionId $TaskVersionId -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if([string]$bindings.treeHash -ne [string]$State.candidateTree -or [string]$bindings.diffHash -ne [string]$State.diffHash -or [string]$bindings.specHash -ne [string]$Contract.specHash -or [string]$bindings.acceptanceHash -ne [string]$Contract.acceptanceHash -or [string]$bindings.contractHash -ne [string]$Contract.contractHash){return &$deny 'candidate tree, diff, or contract binding drift'}
+        $changed=@(Get-GitChangedFiles -Dir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead))
+        if(-not $State.reviewArtifactRecord -or -not(Test-DispatcherReviewArtifactRecord -Record $State.reviewArtifactRecord -State $State)){return &$deny 'frozen review artifact record drift'}
+        $reviewDir=Join-Path (Get-V2Dir) ("runs\{0}\review-{1:000}" -f $RunId,[int]$State.cycle)
+        if([IO.Path]::GetFullPath([string]$State.reviewArtifactRecord.dataDir) -ne [IO.Path]::GetFullPath($reviewDir)){return &$deny 'review artifact directory binding mismatch'}
+
+        $providerHistory=@($State.providerHistory|Where-Object{$_});$matches=@($providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})
+        if($matches.Count -ne 1 -or [string]$providerHistory[-1].invocationId -ne $InvocationId){return &$deny 'exact reviewer invocation does not exist once at the history tail'}
+        $attempt=$matches[0]
+        if([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'deepseek' -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or -not[bool]$attempt.telemetryConsistent -or $null -ne $attempt.failureDiagnostic){return &$deny 'reviewer invocation is not the exact exit-zero framing-only AGENT_FAILURE'}
+        if([string]$attempt.resultReceiptHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'reviewer result receipt hash is absent or malformed'}
+        $logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8);$attemptLabel='{0:000}' -f [int]$attempt.attempt;$stem="reviewer-$attemptLabel-deepseek-$suffix"
+        $receiptPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.agent-result.json"));$promptPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.prompt.txt"));$stdoutPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.stdout.log"));$stderrPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.stderr.log"));$requestPath=[IO.Path]::GetFullPath((Join-Path $logs "$stem.request-manifest.json"))
+        foreach($path in @($receiptPath,$promptPath,$stdoutPath,$stderrPath,$requestPath)){if(-not(Test-Path -LiteralPath $path) -or -not $path.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)){return &$deny 'reviewer receipt artifact is absent or escapes the run log directory'}}
+        $receipt=Read-V2Json $receiptPath;$receiptSigned=[ordered]@{};foreach($key in $receipt.Keys){if([string]$key -ne 'receiptHash'){$receiptSigned[[string]$key]=$receipt[$key]}}
+        if([string]$receipt.schemaVersion -ne 'orcivo.orchestration.v2.agent-result-receipt/1' -or [string]$receipt.receiptHash -ne (New-ContentHash $receiptSigned) -or [string]$receipt.receiptHash -ne [string]$attempt.resultReceiptHash){return &$deny 'reviewer result receipt hash is invalid or unbound'}
+        if([string]$receipt.invocationId -ne $InvocationId -or [string]$receipt.provider -ne 'deepseek' -or [string]$receipt.model -ne [string]$attempt.model -or [int]$receipt.attempt -ne [int]$attempt.attempt -or [int]$receipt.exitCode -ne 0 -or [string]$receipt.providerClass -ne 'NONE' -or [string]$receipt.resultClass -ne 'AGENT_FAILURE' -or -not[bool]$receipt.telemetryConsistent){return &$deny 'reviewer result receipt provenance mismatch'}
+        if($null -ne $receipt.structuredResult){return &$deny 'immutable receipt already carries a structured result - this is not a terminal-JSON-framing hold'}
+        if([IO.Path]::GetFullPath([string]$receipt.promptArtifact) -ne $promptPath -or [IO.Path]::GetFullPath([string]$receipt.stdoutArtifact) -ne $stdoutPath -or [IO.Path]::GetFullPath([string]$receipt.stderrArtifact) -ne $stderrPath -or [IO.Path]::GetFullPath([string]$receipt.requestManifestPath) -ne $requestPath){return &$deny 'reviewer result receipt artifact path mismatch'}
+        if((New-FileHash $promptPath) -ne [string]$receipt.promptHash -or (New-FileHash $stdoutPath) -ne [string]$receipt.stdoutHash -or (New-FileHash $stderrPath) -ne [string]$receipt.stderrHash -or [string]$receipt.stdoutHash -ne [string]$attempt.stdoutHash -or [string]$receipt.stderrHash -ne [string]$attempt.stderrHash){return &$deny 'prompt, stdout, or stderr artifact hash mismatch'}
+        $stdoutText=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)
+        if((New-StringHash $stdoutText) -ne [string]$receipt.controlRecordHash -or [string]$receipt.controlRecordHash -ne [string]$attempt.controlRecordHash){return &$deny 'stdout control-record hash mismatch'}
+        $request=Read-V2Json $requestPath;$requestSigned=[ordered]@{};foreach($key in $request.Keys){if([string]$key -ne 'manifestHash'){$requestSigned[[string]$key]=$request[$key]}}
+        if([string]$request.schemaVersion -ne 'orcivo.orchestration.v2.deepseek-request-manifest/1' -or [string]$request.manifestHash -ne (New-ContentHash $requestSigned) -or [string]$request.manifestHash -ne [string]$receipt.requestManifestHash -or [string]$request.invocationId -ne $InvocationId -or [string]$request.provider -ne 'deepseek' -or [string]$request.requestedBillableSku -ne [string]$receipt.model -or [string]$request.profile -ne [string]$receipt.profile -or [string]$request.reasoning -ne [string]$receipt.reasoningIntent -or [string]$request.promptHash -ne [string]$receipt.promptHash){return &$deny 'request manifest hash or launch binding mismatch'}
+
+        # terminal provider-stream proof (ROOT CAUSE 1): exactly one terminal
+        # completion, and the last completed agent_message carries exactly
+        # one valid terminal review-envelope suffix under the strict
+        # extraction helper. Extraction only - never approval authority; it
+        # still has to pass the provider schema and Parse-ReviewEnvelope below.
+        $rawEvents=@()
+        foreach($line in ($stdoutText -split "`r?`n")){if($line.Trim()){try{$rawEvents+=,($line|ConvertFrom-Json)}catch{return &$deny 'stdout is not a clean JSONL provider stream'}}}
+        if(@($rawEvents|Where-Object{[string]$_.type -eq 'turn.completed'}).Count -ne 1){return &$deny 'provider stream does not contain exactly one terminal completion'}
+        $agentMessages=@($rawEvents|Where-Object{[string]$_.type -eq 'item.completed' -and [string]$_.item.type -eq 'agent_message'}|ForEach-Object{[string]$_.item.text})
+        if($agentMessages.Count -eq 0){return &$deny 'provider stream carries no completed agent_message'}
+        $extracted=ConvertFrom-ReviewEnvelopeTerminalSuffix -Text ([string]$agentMessages[-1])
+        if(-not $extracted){return &$deny 'last agent_message does not carry exactly one valid terminal review-envelope suffix'}
+        $extractedHash=New-StringHash (ConvertTo-CanonicalJson $extracted)
+        $providerSchema=Get-Content -Raw -LiteralPath (Get-ReviewResultSchemaPath)|ConvertFrom-Json
+        $providerSchemaErrors=@(Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $extracted)) $providerSchema)
+        if($providerSchemaErrors.Count -gt 0){return &$deny ('extracted envelope failed the provider-output schema: '+($providerSchemaErrors -join '; '))}
+
+        if($alreadyRecovered){$oldAttestationId=[string]$history[0].priorReviewAttestationId}else{$oldAttestationId=[string]$State.reviewAttestationId};$oldReviews=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind review|Where-Object{[string]$_.attestationId -eq $oldAttestationId})
+        if($oldReviews.Count -ne 1){return &$deny 'historical terminal-JSON-framing attestation is absent or ambiguous'}
+        $oldReview=$oldReviews[0]
+        if([string]$oldReview.runId -ne $RunId -or [string]$oldReview.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$oldReview.producer.invocationId -ne $InvocationId -or [string]$oldReview.payload.reason -ne 'reviewer process did not exit 0 / timed out' -or [string]$oldReview.payload.reviewArtifactRecordHash -ne [string]$State.reviewArtifactRecord.recordHash){return &$deny 'historical review is not the exact local terminal-JSON-framing attestation'}
+        $oldFresh=Test-AttestationFresh -Attestation $oldReview -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $oldFresh.fresh){return &$deny 'historical terminal-JSON hold attestation is stale or tampered'}
+        $check=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind check -RunId $RunId -HeadSha ([string]$State.candidateHead)
+        if(-not $check -or [string]$check.result -ne 'PASS' -or -not[bool]$State.verification.pass){return &$deny 'deterministic check evidence is not PASS'}
+        $checkFresh=Test-AttestationFresh -Attestation $check -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $checkFresh.fresh){return &$deny 'deterministic check attestation is stale or tampered'}
+
+        $reviewConfig=Get-V2Config;$wrapped=([string]$reviewConfig.review.beginMarker)+"`n"+(ConvertTo-CanonicalJson $extracted)+"`n"+([string]$reviewConfig.review.endMarker)
+        $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$TaskVersionId;head=$State.candidateHead;treeHash=$State.candidateTree;diffHash=$State.diffHash;specHash=$Contract.specHash;changedFiles=$changed;criteriaIds=@($Contract.acceptanceCriteriaIds);reviewArtifacts=@($State.reviewArtifactRecord.artifacts);processOk=$true}
+        $problemCount=@($parsed.problems).Count
+        if([string]$parsed.verdict -ne 'APPROVE' -or [string]$parsed.reason -ne 'ok' -or $problemCount -ne 0 -or $null -ne $parsed.technicalBlock){return &$deny ('current parser does not produce the exact APPROVE replay ('+[string]$parsed.verdict+': '+[string]$parsed.reason+')')}
+
+        $ledger=Get-LedgerState $TaskVersionId;if($ledger.corrupt){return &$deny 'ledger is corrupt'}
+        $events=@(Get-DispatcherLedgerEvents $TaskVersionId)
+        # A run's ledger can legitimately carry more than one prior
+        # review-hold/HUMAN_REVIEW_REQUIRED event (e.g. an earlier reviewer
+        # attempt in the same run, itself already recovered through a
+        # different lineage such as disjoint-target-advance). The CURRENT
+        # hold is disambiguated structurally: it is the one candidate whose
+        # own follow-up events (if any) form a valid, possibly-partial
+        # prefix of THIS bounded terminal-JSON-revalidation sequence - a
+        # historical hold followed by a different recovery's events never
+        # qualifies.
+        $expectedPrefix=@(@{event='review-terminal-json-revalidation-dispatch';to='DISPATCHED'},@{event='review-terminal-json-revalidation-running';to='RUNNING'},@{event='review-terminal-json-revalidation-checking';to='CHECKING'},@{event='review-terminal-json-revalidation-reviewing';to='REVIEWING'},@{event='review-terminal-json-revalidation-approved';to='APPROVED'})
+        $holdCandidates=@($events|Where-Object{[string]$_.event -eq 'review-hold' -and [string]$_.toState -eq 'WAITING_HUMAN' -and [string]$_.runId -eq $RunId -and [string]$_.note -eq 'HUMAN_REVIEW_REQUIRED'})
+        if($holdCandidates.Count -eq 0){return &$deny 'no corresponding review-hold exists for this run'}
+        $qualifying=@()
+        foreach($cand in $holdCandidates){
+            $followUp=@($events|Where-Object{[int]$_.seq -gt [int]$cand.seq})
+            if($followUp.Count -gt $expectedPrefix.Count){continue}
+            $shapeOk=$true
+            for($i=0;$i -lt $followUp.Count;$i++){if([string]$followUp[$i].event -ne [string]$expectedPrefix[$i].event -or [string]$followUp[$i].toState -ne [string]$expectedPrefix[$i].to){$shapeOk=$false;break}}
+            if($shapeOk){$qualifying+=,[ordered]@{hold=$cand;after=$followUp}}
+        }
+        if($qualifying.Count -ne 1){return &$deny 'exact corresponding review-hold is absent or ambiguous'}
+        $hold=$qualifying[0].hold;$after=@($qualifying[0].after);$schemaHash=New-FileHash (Join-Path (Get-V2Dir) ([string](Get-V2Config).review.schemaFile))
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-terminal-json-revalidation-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;contractHash=[string]$Contract.contractHash;specHash=[string]$Contract.specHash;acceptanceHash=[string]$Contract.acceptanceHash;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;reviewInvocationId=$InvocationId;resultReceiptHash=[string]$receipt.receiptHash;promptHash=[string]$receipt.promptHash;stdoutHash=[string]$receipt.stdoutHash;stderrHash=[string]$receipt.stderrHash;controlRecordHash=[string]$receipt.controlRecordHash;requestManifestHash=[string]$receipt.requestManifestHash;extractedEnvelopeHash=$extractedHash;priorReviewAttestationId=[string]$oldReview.attestationId;priorReviewAttestationHash=[string]$oldReview.attestationHash;checkAttestationId=[string]$check.attestationId;checkAttestationHash=[string]$check.attestationHash;reviewSchemaHash=$schemaHash;providerHistoryHash=(New-StringHash (ConvertTo-CanonicalJson $providerHistory));holdSeq=[int]$hold.seq;holdEventHash=[string]$hold.eventHash;replayVerdict='APPROVE';replayReason='ok'};$proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
+        if($after.Count -gt $expectedPrefix.Count){return &$deny 'ledger contains events beyond the bounded terminal-JSON-revalidation sequence'}
+        for($i=0;$i -lt $after.Count;$i++){if([string]$after[$i].event -ne [string]$expectedPrefix[$i].event -or [string]$after[$i].toState -ne [string]$expectedPrefix[$i].to -or [string]$after[$i].runId -ne $RunId -or [string]$after[$i].attemptId -ne $InvocationId -or [string]$after[$i].evidence.proofHash -ne [string]$proof.proofHash -or [string]$after[$i].evidence.resultReceiptHash -ne [string]$receipt.receiptHash){return &$deny 'ledger terminal-JSON-revalidation prefix is invalid or unbound'}}
+        if($after.Count){$expectedState=[string]$expectedPrefix[$after.Count-1].to}else{$expectedState='WAITING_HUMAN'};if([string]$ledger.state -ne $expectedState){return &$deny 'ledger state does not match the bounded terminal-JSON-revalidation prefix'}
+        if(-not $after.Count -and ([int]$ledger.seq -ne [int]$hold.seq -or [string]$events[-1].eventHash -ne [string]$hold.eventHash)){return &$deny 'ledger tail is not the exact corresponding review-hold'}
+        $receiptOutPath=Get-DispatcherReviewTerminalJsonRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$recoveryReceipt=$null
+        if(Test-Path -LiteralPath $receiptOutPath){$recoveryReceipt=Read-V2Json $receiptOutPath;if(-not(Test-DispatcherReviewTerminalJsonRecoveryReceipt -Receipt $recoveryReceipt -ExpectedProofHash ([string]$proof.proofHash))){return &$deny 'recovery receipt is invalid or conflicts with the proof'}}
+        $recoveryReviews=@(Get-Attestations -TaskVersionId $TaskVersionId -Kind review|Where-Object{[string]$_.producer.revalidationSource -eq 'IMMUTABLE_TERMINAL_STDOUT' -and [string]$_.producer.invocationId -eq $InvocationId})
+        if($recoveryReviews.Count -gt 1){return &$deny 'multiple terminal-JSON-revalidation attestations exist'}
+        if($recoveryReviews.Count -eq 1){
+            if(-not $recoveryReceipt -or [string]$recoveryReviews[0].result -ne 'APPROVE' -or [string]$recoveryReviews[0].payload.recoveryReceiptHash -ne [string]$recoveryReceipt.receiptHash -or [string]$recoveryReviews[0].payload.revalidatedFromAttestationId -ne [string]$oldReview.attestationId){return &$deny 'terminal-JSON-revalidation attestation is not bound to the recovery receipt and prior hold'}
+            $recoveryFresh=Test-AttestationFresh -Attestation $recoveryReviews[0] -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead);if(-not $recoveryFresh.fresh){return &$deny 'terminal-JSON-revalidation attestation is stale or tampered'}
+        }
+        if($alreadyRecovered){if($after.Count -ne 5 -or -not $recoveryReceipt -or $recoveryReviews.Count -ne 1 -or [string]$State.reviewAttestationId -ne [string]$recoveryReviews[0].attestationId -or [string]$history[0].proofHash -ne [string]$proof.proofHash -or [string]$history[0].recoveryReceiptHash -ne [string]$recoveryReceipt.receiptHash){return &$deny 'completed terminal-JSON recovery evidence is incomplete or inconsistent'}}
+        elseif($after.Count -eq 5 -and ($null -eq $recoveryReceipt -or $recoveryReviews.Count -ne 1)){return &$deny 'approved ledger prefix lacks its recovery receipt or attestation'}
+        $recoveryAttestation=$null;if($recoveryReviews.Count){$recoveryAttestation=$recoveryReviews[0]}
+        return [ordered]@{eligible=$true;alreadyRecovered=$alreadyRecovered;reason='exact immutable reviewer terminal stdout is eligible for deterministic terminal-JSON revalidation';replayVerdict='APPROVE';replayReason='ok';problems=@();technicalBlock=$null;candidateHead=[string]$State.candidateHead;invocationId=$InvocationId;providerInvocationRequired=$false;extractedEnvelopeHash=$extractedHash;proof=$proof;parsed=$parsed;extracted=$extracted;bindings=$bindings;ledgerProgress=$after.Count;recoveryReceipt=$recoveryReceipt;recoveryAttestation=$recoveryAttestation}
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function Recover-DispatcherReviewTerminalJsonHold {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $result=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+    if(-not $result.eligible){throw "review terminal-JSON recovery not eligible: $($result.reason)"}
+    if($result.alreadyRecovered){return [ordered]@{status='ALREADY_RECOVERED';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$result.recoveryReceipt.receiptHash;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}}
+    $proof=$result.proof;$receiptPath=Get-DispatcherReviewTerminalJsonRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$receipt=$result.recoveryReceipt
+    if(-not $receipt){
+        $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-terminal-json-revalidation/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;contractHash=[string]$Contract.contractHash;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;priorReviewAttestationId=[string]$proof.priorReviewAttestationId;priorReviewAttestationHash=[string]$proof.priorReviewAttestationHash;resultReceiptHash=[string]$proof.resultReceiptHash;promptHash=[string]$proof.promptHash;stdoutHash=[string]$proof.stdoutHash;stderrHash=[string]$proof.stderrHash;controlRecordHash=[string]$proof.controlRecordHash;requestManifestHash=[string]$proof.requestManifestHash;extractedEnvelopeHash=[string]$proof.extractedEnvelopeHash;reviewSchemaHash=[string]$proof.reviewSchemaHash;providerHistoryHash=[string]$proof.providerHistoryHash;proofHash=[string]$proof.proofHash;replayVerdict='APPROVE';replayReason='ok';replayProblems=@();technicalBlock=$null;providerInvocationRequired=$false;producedBy='DETERMINISTIC_REVALIDATION_FROM_IMMUTABLE_TERMINAL_STDOUT';receiptHash=''}
+        $signed=[ordered]@{};foreach($key in $receipt.Keys){if([string]$key -ne 'receiptHash'){$signed[[string]$key]=$receipt[$key]}};$receipt.receiptHash=New-ContentHash $signed
+        Write-V2JsonCanonical $receiptPath $receipt
+    }
+    $evidence=@{proofHash=[string]$proof.proofHash;recoveryReceiptHash=[string]$receipt.receiptHash;resultReceiptHash=[string]$proof.resultReceiptHash;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;priorReviewAttestationId=[string]$proof.priorReviewAttestationId}
+    $steps=@(@{from='WAITING_HUMAN';event='review-terminal-json-revalidation-dispatch';to='DISPATCHED'},@{from='DISPATCHED';event='review-terminal-json-revalidation-running';to='RUNNING'},@{from='RUNNING';event='review-terminal-json-revalidation-checking';to='CHECKING'},@{from='CHECKING';event='review-terminal-json-revalidation-reviewing';to='REVIEWING'},@{from='REVIEWING';event='review-terminal-json-revalidation-approved';to='APPROVED'})
+    foreach($step in $steps){$ledger=Get-LedgerState $TaskVersionId;if([string]$ledger.state -eq [string]$step.from){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event ([string]$step.event) -ToState ([string]$step.to) -RunId $RunId -AttemptId $InvocationId -Evidence $evidence -Note 'exact immutable reviewer terminal stdout deterministically re-extracted and revalidated under the current schema'|Out-Null}}
+    if([string](Get-LedgerState $TaskVersionId).state -ne 'APPROVED'){throw 'review terminal-JSON recovery: bounded ledger sequence did not reach APPROVED'}
+    $recoveryAttestation=$result.recoveryAttestation
+    if(-not $recoveryAttestation){
+        $entry=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})[0]
+        $recoveryAttestation=New-Attestation -Kind review -TaskVersionId $TaskVersionId -RunId $RunId -Bindings ([hashtable]$result.bindings) -Result APPROVE -Payload @{problems=@();reason='ok';findings=@($result.parsed.envelope.findings);technicalBlock=$null;reviewArtifactRecordHash=[string]$State.reviewArtifactRecord.recordHash;revalidatedFromAttestationId=[string]$proof.priorReviewAttestationId;revalidatedFromAttestationHash=[string]$proof.priorReviewAttestationHash;resultReceiptHash=[string]$proof.resultReceiptHash;recoveryReceiptHash=[string]$receipt.receiptHash;proofHash=[string]$proof.proofHash;extractedEnvelopeHash=[string]$proof.extractedEnvelopeHash} -ProducerMeta @{provider='deepseek';model=[string]$entry.model;profile='REVALIDATION';invocationId=$InvocationId;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0;providerExecuted=$false;revalidationSource='IMMUTABLE_TERMINAL_STDOUT';reviewSchemaHash=[string]$proof.reviewSchemaHash}
+    }
+    $record=[ordered]@{priorReason='HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out';priorReviewVerdict='HUMAN_REVIEW_REQUIRED';priorReviewAttestationId=[string]$proof.priorReviewAttestationId;priorReviewAttestationHash=[string]$proof.priorReviewAttestationHash;invocationId=$InvocationId;resultReceiptHash=[string]$proof.resultReceiptHash;recoveryReceiptPath=$receiptPath;recoveryReceiptHash=[string]$receipt.receiptHash;proofHash=[string]$proof.proofHash;recoveryAttestationId=[string]$recoveryAttestation.attestationId;recoveryAttestationHash=[string]$recoveryAttestation.attestationHash;replayVerdict='APPROVE';providerInvocationRequired=$false}
+    $State.reviewTerminalJsonRecoveryHistory=@($record);$State.reviewOriginalAttestationId=[string]$proof.priorReviewAttestationId
+    $State.reviewVerdict='APPROVE';$State.reviewInvocationId=$InvocationId;$State.reviewAttestationId=[string]$recoveryAttestation.attestationId;$State.reviewTechnicalBlock=$null
+    $State.findings=@($result.parsed.envelope.findings|Where-Object{$_.severity -ne 'info'}|ForEach-Object{"$($_.severity): $($_.detail)"})
+    $State.status='RUNNING';$State.stage='INTEGRATE';$State.reason='review terminal-JSON framing hold recovered from exact immutable reviewer stdout';$State.decisionNeeded='';$State.resumes='normal deterministic integration of the already-approved candidate'
     Write-DispatcherState $State|Out-Null
     return [ordered]@{status='RECOVERED_TO_INTEGRATE';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$receipt.receiptHash;reviewAttestationId=[string]$recoveryAttestation.attestationId;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
 }
