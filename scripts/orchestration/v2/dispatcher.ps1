@@ -2158,7 +2158,8 @@ function Get-DispatcherDirtyWorkspaceProof {
     foreach($path in $paths){
         if($correction -and (Test-DispatcherPolicyCorrectionReversionMatch -Workspace $Workspace -Record $correction -Path $path)){continue}
         if(-not(Test-RelPathUnder $path $declared)){return &$deny "out-of-scope change: $path"}
-        if((Test-RelPathUnder $path @($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)) -and -not(Test-RelPathUnder $path $grants)){return &$deny "ungranted protected change: $path"}
+        $protected=@($cfg.contract.protectedPaths)+@($cfg.contract.authoritativeAcceptanceGlobs)
+        if((Test-RelPathUnder $path $protected) -and -not(Test-RelPathUnder $path $grants)){return &$deny "ungranted protected change: $path"}
     }
     $diff=Invoke-GitV2 -Dir $Workspace -Arguments @('diff','--no-ext-diff','--no-color','HEAD','--') -LogLabel 'stopped-recovery-diff' -ReviewedSourceOutput
     if($diff.exitCode -ne 0){return &$deny 'partial diff failed'}
@@ -2403,6 +2404,23 @@ function Get-DispatcherWorkspaceInvocationSnapshot {
     return $matches[0]
 }
 
+# A post-invocation result snapshot is not a partial-work recovery proof: a
+# provider invocation legitimately closes AGENT_FAILURE/BLOCK/provider-failure
+# with zero workspace changes. Get-DispatcherDirtyWorkspaceProof intentionally
+# rejects a clean workspace (recovery proofs require actual partial changes),
+# so a clean status here is recorded as its own zero-delta observation instead
+# of being routed through that proof. A dirty workspace still goes through the
+# full dirty-proof scope/protected-path/secret-scan validation, unweakened.
+function Get-DispatcherResultSnapshotWorkspaceObservation {
+    param([Parameter(Mandatory)][string]$Workspace,[Parameter(Mandatory)][hashtable]$Task,$PolicyCorrectionState=$null)
+    $status=Invoke-GitV2 -Dir $Workspace -Arguments @('status','--porcelain=v1','--untracked-files=all') -LogLabel 'result-snapshot-status'
+    if($status.exitCode -ne 0){return [ordered]@{clean=$false;reason='workspace status failed'}}
+    if([string]::IsNullOrWhiteSpace([string]$status.stdout)){
+        return [ordered]@{clean=$true;reason='workspace clean; zero-delta invocation result';paths=@();fileBindings=@();diffHash=(New-StringHash '');filesHash=(New-StringHash '')}
+    }
+    return Get-DispatcherDirtyWorkspaceProof -Workspace $Workspace -Task $Task -PolicyCorrectionState $PolicyCorrectionState
+}
+
 # The result manifest closes the interval opened by the pre-launch manifest.
 # It is persisted immediately after the child exits, before provider history is
 # updated or any recovery command can see the failed invocation.
@@ -2420,7 +2438,7 @@ function New-DispatcherWorkspaceInvocationResultSnapshot {
     # provider interval stays fail-closed.
     $expectedHead=[string]$pre.stateBinding.workspaceHead
     if($expectedHead -notmatch '^[0-9a-f]{40}$' -or (Get-GitHeadV2 ([string]$State.workspace)) -ne $expectedHead){throw 'workspace invocation result snapshot: workspace HEAD drift'}
-    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
+    $partial=Get-DispatcherResultSnapshotWorkspaceObservation -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
     if(-not $partial.clean){throw "workspace invocation result snapshot: $($partial.reason)"}
     $result=[ordered]@{schemaVersion='orcivo.orchestration.v2.workspace-invocation-result/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$invocationId;preInvocationSnapshotHash=[string]$pre.snapshotHash;promptHash=[string]$pre.promptHash;stdoutHash=[string]$AgentResult.stdoutHash;provider=[string]$AgentResult.provider;model=[string]$AgentResult.model;reasoningEffort=[string]$AgentResult.reasoningIntent;attempt=[int]$AgentResult.attempt;workspaceHead=$expectedHead;partialDiffHash=[string]$partial.diffHash;partialFilesHash=[string]$partial.filesHash;paths=@($partial.paths);fileBindings=@($partial.fileBindings)}
     $result.resultHash=New-StringHash (ConvertTo-CanonicalJson ([ordered]@{schemaVersion=$result.schemaVersion;invocationId=$result.invocationId;preInvocationSnapshotHash=$result.preInvocationSnapshotHash;promptHash=$result.promptHash;stdoutHash=$result.stdoutHash;provider=$result.provider;model=$result.model;reasoningEffort=$result.reasoningEffort;attempt=$result.attempt;workspaceHead=$result.workspaceHead;partialDiffHash=$result.partialDiffHash;partialFilesHash=$result.partialFilesHash;paths=@($result.paths);fileBindings=@($result.fileBindings)}))
