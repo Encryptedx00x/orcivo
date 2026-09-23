@@ -1211,6 +1211,31 @@ datasource db {
     OK
 }
 
+'secret-source-interpolation-classification' {
+    $sourceRoot = Join-Path (Get-V2Dir) 'interpolated-source-scan'
+    $sourcePath = Join-Path $sourceRoot 'actions.ts'
+    New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+
+    $interpolated = @'
+const headers = {
+  Authorization: `Bearer ${token}`,
+}
+'@
+    Set-Content -LiteralPath $sourcePath -Value $interpolated -Encoding utf8
+    $interpolatedScan = Test-ArtifactsClean -Root $sourceRoot -SourceTree
+    Expect $interpolatedScan.clean "an interpolated source value was classified as a hardcoded secret: $($interpolatedScan.hits -join ';')"
+
+    $staticLiteral = @'
+const headers = {
+  Authorization: `Bearer fixture-reference`,
+}
+'@
+    Set-Content -LiteralPath $sourcePath -Value $staticLiteral -Encoding utf8
+    $staticScan = Test-ArtifactsClean -Root $sourceRoot -SourceTree
+    Expect (-not $staticScan.clean) 'a static template-literal authorization value bypassed source scanning'
+    OK
+}
+
 'secret-review-patch-classification' {
     $root = Join-Path (Get-V2Dir) 'review-patch-scan'
     $review = Join-Path $root 'review-002'
