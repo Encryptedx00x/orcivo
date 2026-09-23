@@ -864,8 +864,13 @@ function Invoke-NativeCaptured {
         [void]$strictUtf8.GetString($inputBytes)
         $proc.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
         $proc.StandardInput.BaseStream.Flush()
+        # Close the byte stream directly. On Windows PowerShell/.NET Framework,
+        # closing the wrapping StreamWriter after a BaseStream write can flush
+        # encoding state into stdin and corrupt an otherwise exact byte payload.
+        $proc.StandardInput.BaseStream.Close()
+    } else {
+        $proc.StandardInput.Close()
     }
-    $proc.StandardInput.Close()
 
     $errJob = [System.Management.Automation.PowerShell]::Create()
     [void]$errJob.AddScript({
