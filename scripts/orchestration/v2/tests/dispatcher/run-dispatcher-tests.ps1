@@ -1845,6 +1845,9 @@ try{
                 $lines=@((ConvertTo-Json ([ordered]@{type='error';error=[ordered]@{status=503;message='provider unavailable for fixture implementer'}}) -Compress -Depth 6),(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop'}}) -Compress -Depth 6))
                 $raw=($lines -join "`n")+"`n"
             }elseif($Role -eq 'implementer'){
+                if($scenario -eq 'CORRECT_POLICY_HOLD'){
+                    Get-ChildItem -LiteralPath $Workspace -Recurse -File -Filter '*.isolation.spec.ts'|Remove-Item -Force
+                }
                 if($scenario -in @('SUCCESS','PARTIAL_ENVELOPE','COMMIT')){Write-Utf8 (Join-Path $Workspace 'work\impl.ts') "export const implemented = true;`n"}
                 if($scenario -eq 'OUT_OF_SCOPE'){Write-Utf8 (Join-Path $Workspace 'outside.ts') "export const outside = true;`n"}
                 if($scenario -eq 'COMMIT'){Write-Utf8 (Join-Path $Workspace 'work\base.txt') "modified by sneaky provider`n";& git -C $Workspace add -A;& git -C $Workspace -c user.name=fake -c user.email=fake@local commit -m sneaky --quiet}
@@ -2126,10 +2129,11 @@ try{
             $f=New-AutopilotFixture 'RD123'
             try{
                 Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'OUT_OF_SCOPE'|Out-Null
-                $failed=$false
-                try{ Invoke-AutopilotRestart $f|Out-Null }catch{ $failed=$_.Exception.Message -match 'out-of-scope' }
-                $state=Get-DispatcherState
-                Assert-True ($failed -and @($state.providerHistory).Count -eq 0 -and "$($state.status)" -eq 'RUNNING') 'out-of-scope provider change was not rejected fail-closed'
+                $r=Invoke-AutopilotRestart $f
+                $state=Get-DispatcherState;$ledger=Get-LedgerState ([string]$state.taskVersionId)
+                $posts=@($state.workspaceInvocationResultSnapshots|Where-Object{$_})
+                $budget=[int](Get-V2Config).correctionLoop.maxCycles
+                Assert-True ([string]$r.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and @($state.providerHistory).Count -eq (1+$budget) -and $posts.Count -eq (1+$budget) -and @($posts|Where-Object{[bool]$_.policyCompliant}).Count -eq 0 -and -not [bool]$state.implementationComplete -and -not [string]$state.candidateHead -and @($script:AutopilotAgentCalls).Count -eq $budget) 'out-of-scope provider change was not rejected through a bounded fail-closed policy hold'
             } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
         }
 
@@ -2389,19 +2393,18 @@ try{
         Check 'RD-202' {
             $f=New-ResultSnapshotUnitFixture 'RD202'
             Write-Utf8 (Join-Path $f.workspace 'outside.ts') "export const outside = true;`n"
-            $failed=$false
-            try{ New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)|Out-Null }catch{ $failed=$_.Exception.Message -match 'out-of-scope' }
-            Assert-True ($failed) 'an out-of-scope dirty change at result-snapshot time was accepted'
+            $result=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)
+            Assert-True (-not [bool]$result.policyCompliant -and @($result.policyViolations) -contains 'out-of-scope change: outside.ts') 'an out-of-scope dirty change at result-snapshot time was accepted as policy-compliant'
         }
 
         Check 'RD-203' {
             # Authoritative acceptance globs are part of the protected set and
-            # must remain enforced on the dirty-proof path.
+            # must remain enforced on the dirty-proof path.  Result observation
+            # records the violation but never upgrades it to compliant work.
             $f=New-ResultSnapshotUnitFixture 'RD203'
             Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
-            $failed=$false
-            try{ New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)|Out-Null }catch{ $failed=$_.Exception.Message -match 'ungranted protected change' }
-            Assert-True ($failed) 'an ungranted protected-path dirty change at result-snapshot time was accepted'
+            $result=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult (New-ResultSnapshotAgentResult $f)
+            Assert-True (-not [bool]$result.policyCompliant -and @($result.policyViolations) -contains 'ungranted protected change: work/change.isolation.spec.ts') 'an ungranted protected-path dirty change at result-snapshot time was accepted as policy-compliant'
         }
 
         Check 'RD-204' {
@@ -2447,6 +2450,106 @@ try{
                 $recon=@($state.startupReconciliationHistory|Where-Object{$_})[0]
                 Assert-True ($recon -and [string]$recon.invocationId -eq [string]$ar.invocationId -and [string]$recon.source -eq 'AGENT_RESULT_RECEIPT') 'reconciliation did not record recovering from the durable receipt'
             } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-207' {
+            # A terminal invocation may leave useful in-scope work beside a
+            # forbidden protected acceptance file.  Finalization must preserve
+            # and hash-bind that exact workspace as a policy hold, then route a
+            # bounded CORRECTOR over the unchanged baseline.  It must not throw,
+            # silently accept the protected file, or discard the useful work.
+            $f=New-ResultSnapshotUnitFixture 'RD207'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId $f.invocation
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_RETRY' -and $post -and -not [bool]$post.policyCompliant -and @($post.policyViolations) -contains 'ungranted protected change: work/change.isolation.spec.ts' -and [bool]$f.state.requiresCorrection -and [int]$f.state.cycle -eq 1) 'a protected dirty result was not durably routed to bounded policy correction'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD207-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $invocation2='att-'+[guid]::NewGuid().ToString('N')
+            $pre2=New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId $invocation2 -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2
+            Assert-True (@($pre2.paths) -contains 'work/useful.ts' -and @($pre2.paths) -contains 'work/change.isolation.spec.ts') 'the exact hash-bound policy-hold baseline could not launch its corrector'
+        }
+
+        Check 'RD-208' {
+            $f=New-ResultSnapshotUnitFixture 'RD208'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_RETRY') 'fixture did not enter a policy hold'
+
+            # Drift after the signed hold may never be inherited by a corrector.
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = 'tampered';`n"
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD208-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $failed=$false
+            try{New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null}catch{$failed=$_.Exception.Message -match 'ungranted protected change'}
+            Assert-True ($failed) 'a drifted policy-hold workspace launched a corrector'
+        }
+
+        Check 'RD-209' {
+            $f=New-ResultSnapshotUnitFixture 'RD209'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $first=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$first.disposition -eq 'POLICY_RETRY') 'fixture did not enter a policy hold'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD209-corrector.prompt.txt';Write-Utf8 $prompt2 'remove only the recorded policy violation'
+            $invocation2='att-'+[guid]::NewGuid().ToString('N')
+            New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId $invocation2 -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null
+            Remove-Item -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts') -Force
+            $ar2=[ordered]@{invocationId=$invocation2;provider='glm';model=(Get-GlmModelId);reasoningIntent='low';attempt=2;promptHash=(New-FileHash $prompt2);stdoutHash=('sha256:'+('b'*64));providerClass='NONE';resultClass='SUCCESS';exitCode=0}
+            $corrected=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar2 -Role 'CORRECTOR'
+            $post2=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId $invocation2
+            Assert-True ([string]$corrected.disposition -eq 'SUCCESS' -and [bool]$post2.policyCompliant -and [bool]$f.state.implementationComplete -and -not [bool]$f.state.requiresCorrection -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts')) -and -not(Test-Path -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts'))) 'an exact protected-path reversion did not preserve useful work and resume SUCCESS'
+        }
+
+        Check 'RD-210' {
+            # Restart the exact stranded shape end-to-end: immutable terminal
+            # receipt, no provider history/result snapshot yet, useful dirty
+            # work plus one protected acceptance file.  Reconciliation must
+            # create the hold, launch exactly one bounded corrector, preserve
+            # useful work, remove the violation, and reach review.
+            $f=New-AutopilotFixture 'RD210'
+            try{
+                $ar=Invoke-AutopilotDriveToBoundary $f 'RECEIPT_ONLY' 'UNSTRUCTURED_COMPLETE'
+                Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+                Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+                $script:AutopilotAgentScenario='CORRECT_POLICY_HOLD'
+                try{$r=Invoke-AutopilotRestart $f}finally{$script:AutopilotAgentScenario='SUCCESS'}
+                $state=Get-DispatcherState
+                $impl=@($state.providerHistory|Where-Object{$_ -and [string]$_.role -eq 'IMPLEMENTER'})
+                $correctors=@($state.providerHistory|Where-Object{$_ -and [string]$_.role -eq 'CORRECTOR'})
+                $posts=@($state.workspaceInvocationResultSnapshots|Where-Object{$_})
+                $commitCount=(& git -C $f.workspace rev-list --count HEAD).Trim()
+                $useful=Invoke-GitV2 -Dir $f.workspace -Arguments @('show','HEAD:work/useful.ts') -LogLabel 'rd210-useful'
+                Assert-True ([string]$r.status -eq 'WAITING_PROVIDER' -and [string]$r.stage -eq 'REVIEW' -and $impl.Count -eq 1 -and $correctors.Count -eq 1 -and $posts.Count -eq 2 -and -not [bool]$posts[0].policyCompliant -and [bool]$posts[1].policyCompliant -and [bool]$state.implementationComplete -and -not [bool]$state.requiresCorrection -and $commitCount -eq ([string]([int]$f.baseCount+1)) -and $useful.exitCode -eq 0 -and -not(Test-Path -LiteralPath (Join-Path $f.workspace 'work\change.isolation.spec.ts')) -and @($script:AutopilotAgentCalls|Where-Object{[string]$_.role -eq 'implementer'}).Count -eq 1) 'startup policy-hold reconciliation did not complete through exactly one bounded corrector'
+            } finally { Remove-DispatcherWorkspace -Workspace $f.workspace }
+        }
+
+        Check 'RD-211' {
+            $f=New-ResultSnapshotUnitFixture 'RD211'
+            Initialize-LedgerTask -TaskVersionId $f.contract.taskVersionId -Identity @{taskId=$f.task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.runId -AttemptId (New-AttemptId)|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event running -ToState RUNNING -RunId $f.runId|Out-Null
+            $f.state.cycle=[int](Get-V2Config).correctionLoop.maxCycles;Write-DispatcherState $f.state|Out-Null
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            Write-Utf8 (Join-Path $f.workspace 'work\change.isolation.spec.ts') "unauthorized acceptance change`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='AGENT_FAILURE';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'CORRECTOR'
+            $ledger=Get-LedgerState ([string]$f.state.taskVersionId)
+            $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId ([string]$ar.invocationId)
+            Assert-True ([string]$finalized.disposition -eq 'POLICY_BLOCK' -and [string]$f.state.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and $post -and -not [bool]$post.policyCompliant -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts'))) 'exhausted policy correction did not fail closed while preserving useful work'
         }
     } finally {Pop-Location}
 
