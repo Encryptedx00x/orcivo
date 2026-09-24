@@ -31,7 +31,7 @@ export class PlanLimitsService {
     const l = limits ?? {
       customers_max: 5,
       quotes_per_month: 10,
-      work_orders_per_month: 5,
+      work_orders_per_month: 15,
       members_max: 1,
       has_logo: false,
       pdf_watermark: true,
