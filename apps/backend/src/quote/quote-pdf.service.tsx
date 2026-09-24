@@ -360,13 +360,13 @@ function fmtDate(d?: Date | null): string {
 }
 
 /** Quantidade sem zeros à direita: "4.000" → "4", "1.500" → "1,5". */
-function fmtQty(q: string): string {
+function fmtQty(q: DecimalLike): string {
   try {
-    const n = new Decimal(q);
+    const n = new Decimal(q.toString());
     const s = n.toDecimalPlaces(3).toString();
     return s.replace('.', ',');
   } catch {
-    return q;
+    return q.toString();
   }
 }
 
