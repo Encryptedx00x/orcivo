@@ -168,7 +168,11 @@ export class QuoteService {
     return { ...quote, pdf_url, approval };
   }
 
-  /** Gera o PDF do orçamento sob demanda (sem alterar o status). */
+  /**
+   * Gera o PDF do orçamento sob demanda (sem alterar o status e sem substituir
+   * o artefato enviado). PB1-P12/AC3: carimba o estado atual — o estado
+   * verdadeiro no momento desta geração.
+   */
   async generatePdf(id: string, companyId: string): Promise<Buffer> {
     const quote = await this.findOne(id, companyId);
     const company = await this.prisma.company.findUniqueOrThrow({
@@ -177,9 +181,9 @@ export class QuoteService {
     return this.pdfService.generate(
       {
         ...quote,
-        customer_name: (quote as never as { customer: { name: string } }).customer?.name,
-      } as never,
-      company as never,
+        customer_name: quote.customer?.name ?? null,
+      },
+      company,
     );
   }
 
@@ -199,6 +203,20 @@ export class QuoteService {
   }
 
   /**
+   * Mesma porta para a ação `aprovar` no link público, mas com erro de
+   * conflito (409): o visitante não tem sessão para corrigir um BadRequest.
+   * PB1-P12: a especificação retornada também define o estado carimbado no
+   * PDF regenerado pós-aprovação.
+   */
+  private assertApprovalAction(from: QuoteStatus): QuoteActionSpec {
+    try {
+      return assertValidQuoteAction('aprovar', from);
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
+    }
+  }
+
+  /**
    * Motivo obrigatório para recusar/cancelar/reabrir/corrigir (AC1). O motivo
    * vai SÓ para a trilha de auditoria — nunca sobrescreve `notes` (AC3).
    */
@@ -213,18 +231,21 @@ export class QuoteService {
   async send(id: string, companyId: string, userId: string) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
-    this.assertAction('enviar', fromStatus);
+    const spec = this.assertAction('enviar', fromStatus);
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
 
-    // Gerar PDF e salvar no MinIO
+    // Gerar PDF e salvar no MinIO. PB1-P12/AC2: o PDF anexado ao envio carimba
+    // o destino da ação (`enviar` → SENT) — o estado que se torna verdadeiro
+    // neste momento. Um PDF enviado nunca exibe 'Rascunho'.
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
     const pdfBuffer = await this.pdfService.generate(
       {
         ...quote,
-        customer_name: (quote as never as { customer: { name: string } }).customer?.name,
-      } as never,
-      company as never,
+        status: spec.to,
+        customer_name: quote.customer?.name ?? null,
+      },
+      company,
     );
     const pdfObjectName = `${companyId}/quotes/${id}.pdf`;
     const pdfKey = await this.storage.uploadBuffer(
@@ -279,11 +300,7 @@ export class QuoteService {
     // reaberto para edição) recebe um erro claro com a transição inválida —
     // a condição `status: 'SENT'` no updateMany abaixo continua sendo a
     // guarda autoritativa contra corrida concorrente.
-    try {
-      assertValidQuoteAction('aprovar', quote.status as QuoteStatus);
-    } catch (error) {
-      throw new ConflictException((error as Error).message);
-    }
+    const approveSpec = this.assertApprovalAction(quote.status as QuoteStatus);
 
     // Idempotencia via $transaction com count check (Pitfall 2 do RESEARCH.md)
     const result = await this.prisma.$transaction(async (tx) => {
@@ -346,6 +363,9 @@ export class QuoteService {
       : null;
     const quoteForPdf = {
       ...quote,
+      // PB1-P12/AC3: o PDF regenerado carimba o estado no instante desta
+      // geração — o orçamento acabou de ser aprovado (`aprovar` → APPROVED).
+      status: approveSpec.to,
       customer_name: quote.customer.name,
       approval: {
         approval_method: dto.approval_method,
@@ -353,7 +373,7 @@ export class QuoteService {
         signature_image_url: signatureSignedUrl,
       },
     };
-    const pdfBuffer = await this.pdfService.generate(quoteForPdf as never, company as never);
+    const pdfBuffer = await this.pdfService.generate(quoteForPdf, company);
     const pdfObjectName = `${quote.company_id}/quotes/${quote.id}.pdf`;
     const pdfKey = await this.storage.uploadBuffer(
       PDF_BUCKET,
