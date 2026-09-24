@@ -867,11 +867,14 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
 
         $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
         $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and [bool]$State.implementationComplete -and -not [bool]$State.requiresCorrection -and $history.Count -eq 1)
+        $secretScanFalsePositiveHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ')
+        $priorSecretFalsePositive=[bool]($alreadyRecovered -and $history[0].secretFalsePositiveEvidence)
         if(-not $alreadyRecovered){
-            if([string]$State.status -ne 'INTEGRATION_FAILED' -or [string]$State.stage -ne 'INTEGRATE' -or [string]$State.reason -ne 'authority tree dirty'){return &$deny 'state is not the exact local integration-failed authority-tree-dirty hold'}
+            $authorityDirtyHold=([string]$State.status -eq 'INTEGRATION_FAILED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq 'authority tree dirty')
+            if(-not ($authorityDirtyHold -or $secretScanFalsePositiveHold)){return &$deny 'state is not an eligible pre-publish integration hold'}
             if(-not [bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
             if([string]$State.reviewVerdict -ne 'APPROVE'){return &$deny 'candidate was not APPROVE-reviewed'}
-        } elseif ([string]$history[0].oldCandidateBase -notmatch '^[0-9a-f]{40}$' -or [string]$history[0].oldCandidateHead -notmatch '^[0-9a-f]{40}$') {
+        } elseif ([string]$history[0].oldCandidateBase -notmatch '^[0-9a-f]{40}$' -or [string]$history[0].oldCandidateHead -notmatch '^[0-9a-f]{40}$' -or ([string]$history[0].integrationResult.status -eq 'SECRET_LEAK_BLOCKED' -and -not $priorSecretFalsePositive)) {
             return &$deny 'recovered state does not preserve the prior integration-failed hold'
         }
 
@@ -883,18 +886,44 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         if($oldDiffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'candidate diff binding is malformed'}
 
         $ir=$(if($alreadyRecovered){$history[0].integrationResult}else{$State.integration})
-        if(-not $ir -or [string]$ir.status -ne 'INTEGRATION_FAILED' -or [string]$ir.reason -ne 'authority tree dirty' -or [bool]$ir.pushed -or [string]$ir.mergeCommit -ne '' -or [string]$ir.targetBefore -ne '' -or [string]$ir.targetAfter -ne ''){return &$deny 'integration result does not prove a pre-publish, no-mutation failure'}
+        $authorityDirtyResult=([string]$ir.status -eq 'INTEGRATION_FAILED' -and [string]$ir.reason -eq 'authority tree dirty' -and [string]$ir.targetBefore -eq '')
+        $secretScanResult=([string]$ir.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$ir.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ' -and [string]$ir.targetBefore -eq $oldBase)
+        if(-not $ir -or -not ($authorityDirtyResult -or $secretScanResult) -or [bool]$ir.pushed -or [string]$ir.mergeCommit -ne '' -or [string]$ir.targetAfter -ne ''){return &$deny 'integration result does not prove an eligible pre-publish, no-mutation failure'}
+
+        $falsePositiveEvidence=$null
+        if($secretScanResult -or $priorSecretFalsePositive){
+            $reason=[string]$(if($alreadyRecovered){$history[0].integrationResult.reason}else{$ir.reason})
+            $pathMatch=[regex]::Match($reason,'\\native\\(?<name>[^\\\s;]+\.stdout\.log)')
+            if(-not $pathMatch.Success){return &$deny 'secret false-positive hold lacks one native stdout artifact binding'}
+            $artifactPath=Join-Path (Join-Path (Join-Path (Get-V2Dir) 'logs') 'native') $pathMatch.Groups['name'].Value
+            if(-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)){return &$deny 'secret false-positive source-diff artifact is missing'}
+            $artifactText=[IO.File]::ReadAllText($artifactPath,[Text.Encoding]::UTF8)
+            if($artifactText -notmatch '(?m)^diff --git a/.+ b/.+$' -or $artifactText -notmatch '(?m)^--- (?:a/|/dev/null)' -or $artifactText -notmatch '(?m)^\+\+\+ (?:b/|/dev/null)'){return &$deny 'secret false-positive artifact is not a complete git diff'}
+            $artifactHash='sha256:'+((Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant())
+            $scanRoots=@((Join-Path (Get-V2Dir) 'logs'),(Join-Path (Get-V2Dir) 'contracts'),(Join-Path (Get-V2Dir) 'attestations'),(Join-Path (Get-V2Dir) 'runs'))
+            $artifactScan=Test-TreeSecretsClean -Roots $scanRoots
+            $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef $oldBase -Ref $oldHead
+            if(-not $artifactScan.clean -or -not $candidateScan.clean){return &$deny 'current full artifact or candidate secret scan is not clean'}
+            $falsePositiveEvidence=[ordered]@{falsePositiveProven=$true;classification='reviewed-source-diff-log';taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=$oldBase;candidateHead=$oldHead;artifactPath=('logs/native/'+$pathMatch.Groups['name'].Value);artifactHash=$artifactHash;scanClean=$true}
+            if($priorSecretFalsePositive){
+                $recordEvidence=$history[0].secretFalsePositiveEvidence
+                foreach($key in $falsePositiveEvidence.Keys){if([string]$recordEvidence[$key] -ne [string]$falsePositiveEvidence[$key]){return &$deny 'recovered secret false-positive evidence drift'}}
+            }
+        }
 
         $ledger=Get-LedgerState $TaskVersionId
         if($ledger.corrupt){return &$deny 'ledger is corrupt'}
         $events=@(Get-DispatcherLedgerEvents $TaskVersionId)
         $starts=@($events|Where-Object{[string]$_.event -eq 'integrate-start' -and [string]$_.toState -eq 'INTEGRATING' -and [string]$_.runId -eq $RunId})
-        $fails=@($events|Where-Object{[string]$_.event -eq 'integrate-failed' -and [string]$_.toState -eq 'INTEGRATION_FAILED' -and [string]$_.runId -eq $RunId -and [string]$_.note -eq 'authority tree dirty'})
-        if($starts.Count -ne 1 -or $fails.Count -ne 1 -or [int]$fails[0].seq -ne ([int]$starts[0].seq+1)){return &$deny 'ledger does not carry exactly one integrate-start/integrate-failed(authority tree dirty) pair for this run'}
+        $failedState=[string]$ir.status
+        $fails=@($events|Where-Object{[string]$_.event -eq 'integrate-failed' -and [string]$_.toState -eq $failedState -and [string]$_.runId -eq $RunId -and [string]$_.note -eq [string]$ir.reason})
+        if($starts.Count -ne 1 -or $fails.Count -ne 1 -or [int]$fails[0].seq -ne ([int]$starts[0].seq+1)){return &$deny 'ledger does not carry exactly one matching integrate-start/integrate-failed pair for this run'}
         $failSeq=[int]$fails[0].seq
 
-        $expectedPrefix=@(
-            @{event='disjoint-target-advance-ready';to='READY'}
+        $expectedPrefix=@()
+        if($falsePositiveEvidence){$expectedPrefix+=@(@{event='secret-false-positive-reviewed';to='READY'})}
+        else{$expectedPrefix+=@(@{event='disjoint-target-advance-ready';to='READY'})}
+        $expectedPrefix+=@(
             @{event='disjoint-target-advance-dispatch';to='DISPATCHED'}
             @{event='disjoint-target-advance-running';to='RUNNING'}
             @{event='disjoint-target-advance-checking';to='CHECKING'}
@@ -903,9 +932,10 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $after=@($events|Where-Object{[int]$_.seq -gt $failSeq})
         if($after.Count -gt $expectedPrefix.Count){return &$deny 'ledger contains events beyond the bounded disjoint-target-advance sequence'}
         for($i=0;$i -lt $after.Count;$i++){if([string]$after[$i].event -ne [string]$expectedPrefix[$i].event -or [string]$after[$i].toState -ne [string]$expectedPrefix[$i].to -or [string]$after[$i].runId -ne $RunId){return &$deny 'ledger disjoint-target-advance prefix is invalid or unbound'}}
-        if($alreadyRecovered -and $after.Count -ne 5){return &$deny 'completed recovery must have advanced the ledger through the full bounded prefix'}
+        if($falsePositiveEvidence -and $after.Count -gt 0){$event=$after[0];if([string]$event.actor -ne 'owner' -or [bool]$event.evidence.falsePositiveProven -ne $true -or [string]$event.evidence.classification -ne [string]$falsePositiveEvidence.classification){return &$deny 'ledger secret false-positive event lacks the exact owner classification'};foreach($key in $falsePositiveEvidence.Keys){if([string]$event.evidence[$key] -ne [string]$falsePositiveEvidence[$key]){return &$deny 'ledger secret false-positive evidence does not match the current proof'}};if($priorSecretFalsePositive -and [string]$event.evidence.proofHash -ne [string]$history[0].proofHash){return &$deny 'ledger secret false-positive proof hash drift'}}
+        if($alreadyRecovered -and $after.Count -ne $expectedPrefix.Count){return &$deny 'completed recovery must have advanced the ledger through the full bounded prefix'}
         if(-not $alreadyRecovered -and $after.Count -ne 0){return &$deny 'ledger is mid-recovery for a state not classified as recovered'}
-        $expectedLedgerState=$(if($after.Count){[string]$expectedPrefix[$after.Count-1].to}else{'INTEGRATION_FAILED'})
+        $expectedLedgerState=$(if($after.Count){[string]$expectedPrefix[$after.Count-1].to}else{$failedState})
         if([string]$ledger.state -ne $expectedLedgerState){return &$deny 'ledger state does not match the bounded disjoint-target-advance prefix'}
 
         $workspace=[string]$State.workspace
@@ -965,7 +995,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
             oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=$oldTree;oldDiffHash=$oldDiffHash
             currentTarget=$currentTarget;targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths
             reviewAttestationId=[string]$review.attestationId;checkAttestationId=[string]$check.attestationId
-            failSeq=$failSeq
+            failSeq=$failSeq;secretFalsePositiveEvidence=$falsePositiveEvidence
         }
         $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
 
@@ -1043,7 +1073,7 @@ function Recover-DispatcherDisjointTargetAdvance {
     $vp=Invoke-VerificationProfile -ProfileId ([string]$Contract.verificationProfile) -WorktreeDir $workspace -BaseSha $currentTarget -HeadSha $newHead
     if(-not $vp.pass){throw 'disjoint target advance recovery: deterministic verification failed on the rebased candidate'}
     $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $currentTarget -Ref $newHead
-    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) 'logs'),(Join-Path (Get-V2Dir) 'contracts'),(Join-Path (Get-V2Dir) 'attestations'),(Join-Path (Get-V2Dir) 'runs'))
     $scan=[ordered]@{
         clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean)
         candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$currentTarget;headSha=$newHead;hits=@($treeScan.hits)}
@@ -1074,13 +1104,21 @@ function Recover-DispatcherDisjointTargetAdvance {
     }
 
     $evidence=@{proofHash=[string]$proof.proofHash;receiptHash=[string]$receipt.receiptHash;oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;newCandidateBase=$currentTarget;newCandidateHead=$newHead}
+    if($proof.secretFalsePositiveEvidence){
+        $ledger=Get-LedgerState $TaskVersionId
+        if([string]$ledger.state -eq 'SECRET_LEAK_BLOCKED'){
+            $fpEvidence=@{};foreach($key in $proof.secretFalsePositiveEvidence.Keys){$fpEvidence[[string]$key]=$proof.secretFalsePositiveEvidence[$key]};$fpEvidence.proofHash=[string]$proof.proofHash
+            Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'secret-false-positive-reviewed' -ToState 'READY' -RunId $RunId -Actor 'owner' -Evidence $fpEvidence -Note 'delegated owner revalidated a native source-diff scanner false positive; current full scan is clean'|Out-Null
+        }
+        $evidence.secretFalsePositiveEvidence=$proof.secretFalsePositiveEvidence
+    }
     $steps=@(
-        @{from='INTEGRATION_FAILED';event='disjoint-target-advance-ready';to='READY'}
         @{from='READY';event='disjoint-target-advance-dispatch';to='DISPATCHED'}
         @{from='DISPATCHED';event='disjoint-target-advance-running';to='RUNNING'}
         @{from='RUNNING';event='disjoint-target-advance-checking';to='CHECKING'}
         @{from='CHECKING';event='disjoint-target-advance-reviewing';to='REVIEWING'}
     )
+    if(-not $proof.secretFalsePositiveEvidence){$steps=@(@{from='INTEGRATION_FAILED';event='disjoint-target-advance-ready';to='READY'})+$steps}
     foreach($step in $steps){
         $ledger=Get-LedgerState $TaskVersionId
         if([string]$ledger.state -eq [string]$step.from){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event ([string]$step.event) -ToState ([string]$step.to) -RunId $RunId -Evidence $evidence -Note 'disjoint target advance recovered from pre-publish integration failure'|Out-Null}
@@ -1088,13 +1126,13 @@ function Recover-DispatcherDisjointTargetAdvance {
     if([string](Get-LedgerState $TaskVersionId).state -ne 'REVIEWING'){throw 'disjoint target advance recovery: bounded ledger sequence did not reach REVIEWING'}
 
     $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
-    $record=[ordered]@{oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=[string]$proof.oldCandidateTree;oldDiffHash=[string]$proof.oldDiffHash;integrationResult=$State.integration;newCandidateBase=$currentTarget;newCandidateHead=$newHead;proofHash=[string]$proof.proofHash;receiptHash=[string]$receipt.receiptHash;checkAttestationId=[string]$checkAttestation.attestationId}
+    $record=[ordered]@{oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=[string]$proof.oldCandidateTree;oldDiffHash=[string]$proof.oldDiffHash;integrationResult=$State.integration;secretFalsePositiveEvidence=$proof.secretFalsePositiveEvidence;newCandidateBase=$currentTarget;newCandidateHead=$newHead;proofHash=[string]$proof.proofHash;receiptHash=[string]$receipt.receiptHash;checkAttestationId=[string]$checkAttestation.attestationId}
     $State.disjointTargetAdvanceRecoveryHistory=@($history)+,$record
     $State.candidateBase=$currentTarget;$State.candidateHead=$newHead;$State.candidateTree=$newTreeHash;$State.diffHash=$newDiffHash
     $State.verification=$vp;$State.secretScan=$scan
     $State.reviewVerdict='';$State.reviewInvocationId='';$State.reviewAttestationId='';$State.reviewArtifactRecord=$null;$State.reviewTechnicalBlock=$null
     $State.findings=@()
-    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='disjoint target advance recovered from pre-publish integration failure - fresh review required';$State.decisionNeeded='';$State.resumes='normal reviewer invocation on next pilot run'
+    $State.status='RUNNING';$State.stage='REVIEW';$State.reason=$(if($proof.secretFalsePositiveEvidence){'evidence-bound secret false-positive and disjoint target advance recovered - fresh review required'}else{'disjoint target advance recovered from pre-publish integration failure - fresh review required'});$State.decisionNeeded='';$State.resumes='normal reviewer invocation on next pilot run'
     Write-DispatcherState $State|Out-Null
 
     return [ordered]@{

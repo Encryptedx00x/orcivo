@@ -48,7 +48,7 @@ $OriginBare=Join-Path $Root 'origin.git'
 $script:DtaSeq=0
 $script:DtaSalt=[guid]::NewGuid().ToString('N')
 
-function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json') {
+function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold) {
     $script:DtaSeq++
     $task=Task ("DTA-"+$Id) $Scope
     $sourcePath=Join-Path $Root ("dta-"+$Id+"-"+$script:DtaSeq+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
@@ -59,6 +59,13 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     $runId='run-dta-'+(New-StringHash ($script:DtaSalt+'|'+$Id+'|'+$script:DtaSeq+'|run')).Substring(7,16)
     $workspaceId='run-'+(New-StringHash ($script:DtaSalt+'|'+$Id+'|'+$script:DtaSeq+'|workspace')).Substring(7,16)
     $ws=New-DispatcherWorkspace -RunId $runId -WorkspaceId $workspaceId -BaseSha $base -SourceRepo $Fixture
+
+    $failureState='INTEGRATION_FAILED';$failureReason='authority tree dirty'
+    if($SecretFalsePositiveHold){
+        $nativeLog=Join-Path (Join-Path (Join-Path (Get-V2Dir) 'logs') 'native') 'dta-false-positive.stdout.log'
+        Write-Utf8 $nativeLog "diff --git a/actions.ts b/actions.ts`n--- a/actions.ts`n+++ b/actions.ts`n@@ -1 +1,2 @@`n+const headers = { Authorization: ``Bearer `${token}`` }`n"
+        $failureState='SECRET_LEAK_BLOCKED';$failureReason='pre-publication secret scan found 1 hit(s): \native\dta-false-positive.stdout.log :: /(?i)\bauthorization\b[ \t]*[:=][ \t]*\S+/'
+    }
 
     Write-Utf8 (Join-Path $ws.workspace 'apps\backend\src\work-order\feature.txt') "candidate feature $Id $script:DtaSeq`n"
     & git -C $ws.workspace add .
@@ -77,7 +84,7 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
     Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event approved -ToState APPROVED -RunId $runId|Out-Null
     Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-start -ToState INTEGRATING -RunId $runId|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-failed -ToState INTEGRATION_FAILED -RunId $runId -Note 'authority tree dirty'|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-failed -ToState $failureState -RunId $runId -Note $failureReason|Out-Null
 
     $currentTarget=$base
     if(-not $SkipTargetAdvance){
@@ -92,7 +99,7 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
         schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId
         task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$runId
         workspace=$ws.workspace;branch=$ws.branch;baseSha=$base
-        status='INTEGRATION_FAILED';stage='INTEGRATE';reason='authority tree dirty'
+        status=$failureState;stage='INTEGRATE';reason=$failureReason
         cycle=0;attempt=1;implementationComplete=$true;requiresCorrection=$false
         implementationCommit=$oldHead;candidateBase=$base;candidateHead=$oldHead
         candidateTree=$oldBindings.treeHash;diffHash=$oldBindings.diffHash
@@ -101,7 +108,7 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
         provider='claude';profile='REASONING';failovers=0;rollovers=0;unavailableProviders=@()
         providerHistory=@();importantArtifacts=@();findings=@();decisions=@()
         logicalProjectId='fixture'
-        integration=[ordered]@{status='INTEGRATION_FAILED';reason='authority tree dirty';state='';targetBefore='';targetAfter='';mergeCommit='';pushed=$false}
+        integration=[ordered]@{status=$failureState;reason=$failureReason;state='';targetBefore=$(if($SecretFalsePositiveHold){$base}else{''});targetAfter='';mergeCommit='';pushed=$false}
     }
     Write-DispatcherState $state|Out-Null
     return [ordered]@{state=$state;task=$task;source=$source;contract=$contract;workspace=$ws.workspace;branch=$ws.branch;runId=$runId;oldBase=$base;oldHead=$oldHead;currentTarget=$currentTarget;review=$review}
@@ -244,6 +251,20 @@ try{
             New-Attestation -Kind integration -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$oldBindings) -Result PASS -Payload @{mergeCommit='x';remoteSHA='x';pushed=$true}|Out-Null
             $p=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
             Assert-True (-not $p.eligible -and $p.reason -match 'not needed or not safe') "expected prior-publish denial, got eligible=$($p.eligible) reason=$($p.reason)"
+        }
+
+        Check 'DTA-15: reviewed native-diff false positive is revalidated before re-review' {
+            $f=New-DtaFixture 'A15' -SecretFalsePositiveHold
+            $p=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True $p.eligible "expected evidence-bound false-positive recovery, got: $($p.reason)"
+            Assert-True ($p.freshReviewRequired -and -not $p.providerInvocationRequired) 'recovery must require fresh review and must not invoke a provider itself'
+            $r=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and $f.state.stage -eq 'REVIEW') 'recovery did not land the exact candidate at fresh REVIEW'
+            $events=Get-DispatcherLedgerEvents $f.contract.taskVersionId
+            $fp=@($events|Where-Object{$_.event -eq 'secret-false-positive-reviewed'})
+            Assert-True ($fp.Count -eq 1 -and $fp[0].actor -eq 'owner' -and $fp[0].evidence.falsePositiveProven) 'missing exact owner false-positive evidence in the ledger'
+            $again=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True ($again.status -eq 'ALREADY_RECOVERED') 'recovery replay was not idempotent'
         }
     } finally { Pop-Location }
 } finally {
