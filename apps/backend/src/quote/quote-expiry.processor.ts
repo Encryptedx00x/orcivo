@@ -2,10 +2,13 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Job } from 'bullmq';
+import { QUOTE_ACTIONS } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
-const EXPIRABLE_STATUSES = ['DRAFT', 'SENT'] as const;
+// Ação de domínio `expirar` (PB1-P01/ADR-016): a lista de estados elegíveis
+// vem da máquina compartilhada — sem cópia local.
+const EXPIRABLE_STATUSES = QUOTE_ACTIONS.expirar.allowedFrom;
 
 @Processor('quote-expiry')
 @Injectable()
