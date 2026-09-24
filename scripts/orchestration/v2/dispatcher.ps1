@@ -4039,7 +4039,7 @@ if($needsFreshDispatch){
             # Closed pin for the authorized review succession: the review must
             # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other
             # reviewer, profile, or model fails closed here.
-            Assert-DispatcherAuthorizedReviewRoute -State $state -Reviewer $reviewer -Profile ([string]$state.profile) -Route (Resolve-Provider -Profile ([string]$state.profile) -Provider $reviewer)
+            Assert-DispatcherAuthorizedReviewRoute -State $state -Reviewer $reviewer -Profile ([string]$state.profile) -Route (Resolve-Provider -Profile ([string]$state.profile) -Provider $reviewer -ReviewOnly)
             $diffResult=Invoke-GitV2 -Dir $state.workspace -Arguments @('diff','--no-color',"$($state.candidateBase)..$($state.candidateHead)") -LogLabel 'review-diff' -ReviewedSourceOutput;Assert-GitSucceededV2 $diffResult 'dispatcher review diff'|Out-Null;$diff=$diffResult.stdout.TrimEnd("`r","`n");$changed=@(Get-GitChangedFiles -Dir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)
             $reviewDir=Join-Path (Get-V2Dir) "runs\$($state.runId)\review-$('{0:000}' -f ([int]$state.cycle))"
             $rp=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $state.taskVersionId -Head $state.candidateHead -TreeHash $state.candidateTree -DiffHash $state.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles $changed -CheckSummary "PASS profile=$($contract.verificationProfile); secretScan=CLEAN" -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput

@@ -147,7 +147,8 @@ function Resolve-Provider {
     param(
         [Parameter(Mandatory)][ValidateSet('FAST', 'BALANCED', 'REASONING', 'CRITICAL')][string]$Profile,
         [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$Provider,
-        [string]$ModelOverride = ''
+        [string]$ModelOverride = '',
+        [switch]$ReviewOnly
     )
     if($Provider -eq 'glm'){
         # GLM runs through the OpenCode CLI with a FIXED model contract; the
@@ -160,13 +161,16 @@ function Resolve-Provider {
         return [ordered]@{ok=$true;provider='glm';bin=$bin;profile=$Profile;reasoningIntent=$intent;model=(Get-GlmModelId);maxInvocationsPerTask=$null;invocationArgs=(Get-GlmInvocationArgs);environment=@{};outputJson=$true;freshContextFlag='(opencode run starts a fresh session per invocation)';sandboxFlag='(--pure external plugins disabled)';supportsExplicitReasoning=$false;limitations=@("glm model is fixed by contract: $(Get-GlmModelId); no variant/reasoning selector is pinned");capabilityVersion='';estimatedUsd=[decimal]0}
     }
     if($Provider -eq 'deepseek'){
-        if($Profile -eq 'CRITICAL'){return [ordered]@{ok=$false;provider='deepseek';reason='CRITICAL work is reserved for Codex Plus Terra'}}
-        $plan=Get-DeepSeekModelPlan -Profile $Profile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='deepseek';reason=$plan.reason}}
+        if($Profile -eq 'CRITICAL' -and -not $ReviewOnly){return [ordered]@{ok=$false;provider='deepseek';reason='CRITICAL implementation work is reserved for Codex Plus Terra'}}
+        # A cross-provider review of CRITICAL work uses DeepSeek's strongest
+        # supported review profile without making it eligible to implement.
+        $deepSeekProfile=$(if($Profile -eq 'CRITICAL' -and $ReviewOnly){'REASONING'}else{$Profile})
+        $plan=Get-DeepSeekModelPlan -Profile $deepSeekProfile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='deepseek';reason=$plan.reason}}
         if(-not $env:DEEPSEEK_API_KEY){return [ordered]@{ok=$false;provider='deepseek';reason='DEEPSEEK_API_KEY is unavailable'}}
         $budget=Get-DeepSeekBudgetStatus;if(-not $budget.ok){return [ordered]@{ok=$false;provider='deepseek';reason="DeepSeek budget preflight: $($budget.reason)"}}
         $cap=Get-CliCapabilities -Provider 'codex';if(-not $cap.installed){return [ordered]@{ok=$false;provider='deepseek';reason="Codex CLI '$($cap.bin)' not installed"}}
         $launch=Get-DeepSeekLaunchConfiguration -Model $(if($ModelOverride){$ModelOverride}else{$plan.model}) -Reasoning $plan.reasoning -MaxOutputTokens $plan.maxOutputTokens
-        return [ordered]@{ok=$true;provider='deepseek';bin=$cap.bin;profile=$Profile;reasoningIntent=$plan.reasoning;model=$(if($ModelOverride){$ModelOverride}else{$plan.model});maxOutputTokens=$plan.maxOutputTokens;maxInvocationsPerTask=$plan.maxInvocationsPerTask;invocationArgs=@('exec')+@($launch.configArgs);environment=$launch.environment;outputJson=$true;freshContextFlag='(codex exec is fresh by default)';sandboxFlag=$cap.sandboxFlag;supportsExplicitReasoning=$true;limitations=@();capabilityVersion=$cap.version;estimatedUsd=[decimal]$((Get-DeepSeekRuntimeConfig).deepseek.profiles.$Profile.maxEstimatedUsd)}
+        return [ordered]@{ok=$true;provider='deepseek';bin=$cap.bin;profile=$Profile;reasoningIntent=$plan.reasoning;model=$(if($ModelOverride){$ModelOverride}else{$plan.model});maxOutputTokens=$plan.maxOutputTokens;maxInvocationsPerTask=$plan.maxInvocationsPerTask;invocationArgs=@('exec')+@($launch.configArgs);environment=$launch.environment;outputJson=$true;freshContextFlag='(codex exec is fresh by default)';sandboxFlag=$cap.sandboxFlag;supportsExplicitReasoning=$true;limitations=@();capabilityVersion=$cap.version;estimatedUsd=[decimal]((Get-DeepSeekRuntimeConfig).deepseek.profiles.$deepSeekProfile.maxEstimatedUsd)}
     }
     $cfg = Get-V2Config
     $cap = Get-CliCapabilities -Provider $Provider
@@ -204,6 +208,14 @@ function Resolve-Provider {
     }
 }
 
+# CRITICAL implementation prefers Codex and explicitly falls back to Claude;
+# lower-tier API providers remain ineligible when their route rejects CRITICAL.
+function Get-OrcivoCriticalProviderOrder {
+    param([string[]]$EnabledProviders = @(Get-OrcivoEnabledProviders))
+    $preferred=@('codex','claude'|Where-Object{$EnabledProviders -contains $_})
+    return @($preferred)+@($EnabledProviders|Where-Object{$_ -notin @('codex','claude')})
+}
+
 # PUBLIC: pick profile + provider for a classification, honouring provider health.
 function Resolve-Route {
     param(
@@ -224,9 +236,9 @@ function Resolve-Route {
 
     $want = [string]$Classification.suggestedProvider
     $prefOrder = @(Get-OrcivoEnabledProviders)
-    if($profile -eq 'CRITICAL'){$prefOrder=@('codex')}
+    if($profile -eq 'CRITICAL'){$prefOrder=Get-OrcivoCriticalProviderOrder}
     if ($ForceProvider) { $prefOrder = @($ForceProvider) }
-    elseif ($want -in @('CLAUDE', 'CODEX', 'DEEPSEEK')) { $prefOrder = @($want.ToLowerInvariant()) + @($prefOrder | Where-Object { $_ -ne $want.ToLowerInvariant() }) }
+    elseif ($profile -ne 'CRITICAL' -and $want -in @('CLAUDE', 'CODEX', 'DEEPSEEK')) { $prefOrder = @($want.ToLowerInvariant()) + @($prefOrder | Where-Object { $_ -ne $want.ToLowerInvariant() }) }
 
     $chosen = $null
     foreach ($p in $prefOrder) {
