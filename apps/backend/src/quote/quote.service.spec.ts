@@ -202,6 +202,58 @@ describe('QuoteService', () => {
 
       await expect(service.send('q1', 'comp-1', 'user-1')).rejects.toThrow(BadRequestException);
     });
+
+    it('Test PB1-P12/AC2: send() gera o PDF carimbado SENT — PDF enviado nunca exibe Rascunho', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'DRAFT',
+        number: 7,
+        valid_until: null,
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockRedis.set.mockResolvedValue(undefined);
+      mockTx.quote.update.mockResolvedValue({
+        id: 'q1',
+        number: 7,
+        status: 'SENT',
+        approval_token: 'tok',
+        valid_until: null,
+      });
+
+      await service.send('q1', 'comp-1', 'user-1');
+
+      // O carimbo 'SENT' sobrescreve o status DRAFT carregado do banco:
+      // o selo do PDF anexado ao envio é o estado do momento do envio.
+      expect(mockPdfService.generate).toHaveBeenCalledTimes(1);
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'SENT' }),
+        expect.objectContaining({ trade_name: 'Empresa' }),
+      );
+    });
+  });
+
+  describe('generatePdf()', () => {
+    it('Test PB1-P12/AC3: preview sob demanda carimba o estado atual no momento da geração', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'DRAFT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      await service.generatePdf('q1', 'comp-1');
+
+      expect(mockPdfService.generate).toHaveBeenCalledTimes(1);
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'DRAFT' }),
+        expect.objectContaining({ trade_name: 'Empresa' }),
+      );
+    });
   });
 
   describe('cancel()', () => {
@@ -779,6 +831,19 @@ describe('QuoteService', () => {
           entityType: 'quote',
           companyId: 'comp-1',
         }),
+      );
+    });
+
+    it('Test A6 (PB1-P12/AC3): PDF regenerado na aprovação carimba APPROVED — estado no instante da geração', async () => {
+      const dto = { approval_method: 'APPROVE_BUTTON' as const };
+      await service.approve(quoteToken, dto, '127.0.0.1', 'ua');
+
+      // O quote carregado via token vinha SENT (pré-transição); o PDF
+      // regenerado DEPOIS da aprovação deve carimbar APPROVED.
+      expect(mockPdfService.generate).toHaveBeenCalledTimes(1);
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'APPROVED' }),
+        expect.objectContaining({ trade_name: 'Empresa' }),
       );
     });
   });
