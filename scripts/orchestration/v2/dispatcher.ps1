@@ -855,12 +855,12 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
         [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
-        [string]$RepoDir=(Get-RepoRoot)
+        [string]$RepoDir=(Get-RepoRoot),[switch]$PermitActiveRunnerForReadOnlyProof
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
     try{
         if($TaskVersionId -notmatch '^[0-9a-f]{64}$' -or $RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){return &$deny 'task or run identity is malformed'}
-        if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or lease is active'}
+        if(-not $PermitActiveRunnerForReadOnlyProof -and (Test-DispatcherRecoveryExecutionActive)){return &$deny 'runner or lease is active'}
         if(-not $State -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [string]$State.runId -ne $RunId){return &$deny 'durable task/run/version binding mismatch'}
         if([string]$Contract.taskVersionId -ne $TaskVersionId -or [string]$Contract.taskId -ne [string]$Task.taskId -or [string]$Contract.bindings.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task contract or source binding drift'}
         if([string]$Contract.specHash -ne (New-StringHash ([string]$Contract.specText)) -or [string]$Contract.acceptanceHash -ne (New-StringHash ([string]$Contract.acceptanceText))){return &$deny 'task spec or acceptance binding drift'}
@@ -1016,6 +1016,113 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
             candidateHead=[string]$(if($alreadyRecovered){$State.candidateHead}else{$oldHead})
             proof=$proof;receipt=$receipt;workspace=$workspace;repoDir=$RepoDir
         }
+    }catch{return &$deny $_.Exception.Message}
+}
+
+# A task-source file is one authority blob for the whole queue, so an unrelated
+# planning edit can change its hash while an already-approved candidate is held
+# before publication.  Resuming that candidate under the new source is allowed
+# only through an explicit successor contract whose constraints name the exact
+# predecessor version and candidate.  The predecessor task itself must remain
+# canonically equivalent after removing those three recovery-only bindings.
+function Get-DispatcherDisjointSourcePredecessorTask {
+    param([Parameter(Mandatory)][hashtable]$Task)
+    $copy=ConvertTo-PlainTaskHashtable (_ToHashtable ((ConvertTo-CanonicalJson $Task)|ConvertFrom-Json))
+    $constraints=_ToHashtable $copy.candidateConstraints
+    foreach($key in @('resumePolicy','resumeFromTaskVersionId','resumeFromCandidateCommit')){if($constraints.Contains($key)){$constraints.Remove($key)}}
+    $copy.candidateConstraints=$constraints
+    return $copy
+}
+
+function Test-DispatcherDisjointSourceSuccessionRequest {
+    param($State,[hashtable]$Task,$TaskSource)
+    if(-not $State -or -not $Task -or -not $TaskSource){return $false}
+    if([string]$State.status -ne 'INTEGRATION_FAILED' -or [string]$State.stage -ne 'INTEGRATE' -or [string]$State.reason -ne 'authority tree dirty'){return $false}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskSourceHash -eq [string]$TaskSource.hash){return $false}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    return [bool](
+        [string]$constraints.resumePolicy -eq 'DISJOINT_SOURCE_SUCCESSION' -and
+        [string]$constraints.resumeFromTaskVersionId -eq [string]$State.taskVersionId -and
+        [string]$constraints.resumeFromCandidateCommit -eq [string]$State.candidateHead
+    )
+}
+
+function Get-DispatcherDisjointSourceSuccessionProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[string]$RepoDir=(Get-RepoRoot)
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
+    try{
+        if(-not(Test-DispatcherDisjointSourceSuccessionRequest -State $State -Task $Task -TaskSource $TaskSource)){return &$deny 'task source does not carry the exact disjoint-source successor request'}
+        if([string]$Contract.taskVersionId -eq [string]$State.taskVersionId -or [string]$Contract.taskId -ne [string]$State.taskId -or [string]$Contract.bindings.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'successor contract is not bound to the new task source'}
+
+        $predecessorTask=Get-DispatcherDisjointSourcePredecessorTask -Task $Task
+        $stateTask=ConvertTo-PlainTaskHashtable $State.task
+        if((ConvertTo-CanonicalJson $predecessorTask) -ne (ConvertTo-CanonicalJson $stateTask)){return &$deny 'current task semantics drift beyond the explicit recovery bindings'}
+
+        $oldContract=Get-Contract ([string]$State.taskVersionId)
+        $expectedOldSpec=@("TASK $($predecessorTask.taskId)","TITLE $($predecessorTask.title)","TYPE $($predecessorTask.type)","DESCRIPTION",[string]$predecessorTask.description,"CONSTRAINTS",(ConvertTo-CanonicalJson $predecessorTask.candidateConstraints)) -join "`n"
+        if([string]$oldContract.taskId -ne [string]$predecessorTask.taskId -or [string]$oldContract.bindings.taskSourceHash -ne [string]$State.taskSourceHash){return &$deny 'predecessor contract identity or source binding drift'}
+        if([string]$oldContract.specText -ne (Protect-ArtifactText $expectedOldSpec) -or [string]$oldContract.acceptanceText -ne (Protect-ArtifactText ([string]$predecessorTask.acceptance))){return &$deny 'predecessor task spec or acceptance drift'}
+        if((ConvertTo-CanonicalJson @($oldContract.declaredScope)) -ne (ConvertTo-CanonicalJson @($predecessorTask.scope)) -or (ConvertTo-CanonicalJson @($oldContract.protectedPathGrants)) -ne (ConvertTo-CanonicalJson @($predecessorTask.protectedPathGrants))){return &$deny 'predecessor scope or protected grants drift'}
+        if([string]$oldContract.risk -ne [string]$predecessorTask.risk -or [string]$oldContract.gate -ne [string]$predecessorTask.ownerGate -or [string]$oldContract.verificationProfile -ne [string]$predecessorTask.verificationProfile -or [string]$oldContract.bindings.batch -ne [string]$TaskSource.source.batch -or [string]$oldContract.bindings.phaseGate -ne [string]$predecessorTask.phaseGate){return &$deny 'predecessor risk, gate, verification, batch, or phase binding drift'}
+        if((ConvertTo-CanonicalJson @($oldContract.dependencies)) -ne (ConvertTo-CanonicalJson @($Contract.dependencies))){return &$deny 'successor dependency binding drift'}
+        if([string]$oldContract.gate -ne 'none'){
+            $oldGate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$oldContract.gate)
+            if(-not [bool]$oldGate.satisfied -or [string]$oldGate.approval -ne 'APPROVED'){return &$deny 'predecessor owner gate is not durably approved'}
+        }
+
+        $oldSource=[ordered]@{path=[string]$State.taskSource;hash=[string]$State.taskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
+        $oldProof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $State -Task $predecessorTask -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$State.taskVersionId) -RunId ([string]$State.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof
+        if(-not [bool]$oldProof.eligible){return &$deny "predecessor disjoint-target proof failed: $($oldProof.reason)"}
+        return [ordered]@{eligible=$true;reason='exact source-bound successor may reuse the preserved candidate';providerInvocationRequired=$false;freshReviewRequired=$true;predecessorTask=$predecessorTask;predecessorContract=$oldContract;disjointProof=$oldProof;proofHash=[string]$oldProof.proof.proofHash}
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function New-DispatcherDisjointSourceSuccessionRecord {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)]$Contract,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)]$Proof)
+    if(-not [bool]$Proof.eligible){throw 'disjoint source succession record requires an eligible proof'}
+    $record=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.disjoint-source-succession/1'
+        predecessorTaskVersionId=[string]$State.taskVersionId;predecessorTaskSourceHash=[string]$State.taskSourceHash;predecessorTaskSourcePath=[string]$State.taskSource
+        successorTaskVersionId=[string]$Contract.taskVersionId;successorTaskSourceHash=[string]$TaskSource.hash
+        runId=[string]$State.runId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash
+        predecessorTask=$Proof.predecessorTask;integrationResult=$State.integration;disjointProofHash=[string]$Proof.proofHash;currentTarget=[string]$Proof.disjointProof.currentTarget
+        recordHash=''
+    }
+    $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $signed)
+    return $record
+}
+
+function Get-DispatcherPendingDisjointSourceSuccessionProof {
+    param($State,[hashtable]$Task,$Contract,$TaskSource,[string]$RepoDir=(Get-RepoRoot))
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    try{
+        if(-not [bool]$State.pendingDisjointSourceSuccession){return &$deny 'disjoint source succession is not pending'}
+        $record=_ToHashtable $State.disjointSourceSuccession
+        if([string]$record.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-source-succession/1'){return &$deny 'disjoint source succession record schema is invalid'}
+        $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
+        if([string]$record.recordHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$record.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $signed))){return &$deny 'disjoint source succession record hash is invalid'}
+        if([string]$State.taskVersionId -ne [string]$record.successorTaskVersionId -or [string]$Contract.taskVersionId -ne [string]$record.successorTaskVersionId -or [string]$TaskSource.hash -ne [string]$record.successorTaskSourceHash -or [string]$State.runId -ne [string]$record.runId){return &$deny 'pending successor version, source, or run binding drift'}
+        $constraints=_ToHashtable $Task.candidateConstraints
+        if([string]$constraints.resumePolicy -ne 'DISJOINT_SOURCE_SUCCESSION' -or [string]$constraints.resumeFromTaskVersionId -ne [string]$record.predecessorTaskVersionId -or [string]$constraints.resumeFromCandidateCommit -ne [string]$record.candidateHead){return &$deny 'pending successor recovery constraints drift'}
+
+        $oldState=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
+        $oldState.taskVersionId=[string]$record.predecessorTaskVersionId;$oldState.taskSourceHash=[string]$record.predecessorTaskSourceHash;$oldState.taskSource=[string]$record.predecessorTaskSourcePath;$oldState.task=$record.predecessorTask
+        $oldState.status='INTEGRATION_FAILED';$oldState.stage='INTEGRATE';$oldState.reason='authority tree dirty';$oldState.implementationComplete=$true;$oldState.requiresCorrection=$false;$oldState.reviewVerdict='APPROVE'
+        $oldState.candidateBase=[string]$record.candidateBase;$oldState.candidateHead=[string]$record.candidateHead;$oldState.candidateTree=[string]$record.candidateTree;$oldState.diffHash=[string]$record.diffHash;$oldState.integration=$record.integrationResult
+        $oldContract=Get-Contract ([string]$record.predecessorTaskVersionId)
+        if([string]$oldContract.gate -ne 'none'){
+            $oldGate=Get-OwnerGateApprovalStatus -TaskId ([string]$State.taskId) -TaskVersionId ([string]$record.predecessorTaskVersionId) -GateId ([string]$oldContract.gate)
+            if(-not [bool]$oldGate.satisfied -or [string]$oldGate.approval -ne 'APPROVED'){return &$deny 'predecessor owner gate approval drift'}
+        }
+        $oldSource=[ordered]@{path=[string]$record.predecessorTaskSourcePath;hash=[string]$record.predecessorTaskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
+        $proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $oldState -Task ([hashtable]$record.predecessorTask) -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$record.predecessorTaskVersionId) -RunId ([string]$record.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof
+        if(-not [bool]$proof.eligible){return &$deny "pending predecessor proof failed: $($proof.reason)"}
+        if([string]$proof.proof.proofHash -ne [string]$record.disjointProofHash -or [string]$proof.currentTarget -ne [string]$record.currentTarget){return &$deny 'pending disjoint proof or target head drift'}
+        return [ordered]@{eligible=$true;reason='pending disjoint source succession revalidated';proof=$proof;record=$record}
     }catch{return &$deny $_.Exception.Message}
 }
 
@@ -1328,7 +1435,9 @@ function Test-DispatcherPendingContractSupersessionResume {
     $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$requestedCommit^{commit}") -LogLabel 'pending-supersession-candidate-object'
     if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $requestedCommit){return $false}
     $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$requestedCommit,(Get-GitHeadV2 ([string]$State.workspace))) -LogLabel 'pending-supersession-candidate-lineage'
-    return ($ancestor.exitCode -eq 0)
+    if($ancestor.exitCode -ne 0){return $false}
+    if([bool]$State.pendingDisjointSourceSuccession){return [bool](Get-DispatcherPendingDisjointSourceSuccessionProof -State $State -Task $Task -Contract $Contract -TaskSource $TaskSource).eligible}
+    return $true
 }
 
 function Test-DispatcherPolicyCorrectionResumeState {
@@ -3732,15 +3841,20 @@ function Invoke-RealDispatcherTask {
     $contractSupersession=Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
     $pendingSupersession=Test-DispatcherPendingContractSupersessionResume -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
     $reviewSuccession=Test-DispatcherAuthorizedReviewSuccessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
-    if(($contractSupersession -or $pendingSupersession -or $reviewSuccession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
-        if($contractSupersession -or $reviewSuccession){
+    $disjointSourceSuccessionRequest=Test-DispatcherDisjointSourceSuccessionRequest -State $state -Task $Task -TaskSource $TaskSource
+    $disjointSourceSuccessionProof=$(if($disjointSourceSuccessionRequest){Get-DispatcherDisjointSourceSuccessionProof -State $state -Task $Task -TaskSource $TaskSource -Contract $contract}else{$null})
+    $disjointSourceSuccession=[bool]($disjointSourceSuccessionProof -and $disjointSourceSuccessionProof.eligible)
+    if($disjointSourceSuccessionRequest -and -not $disjointSourceSuccession){throw "dispatcher: disjoint source succession denied: $($disjointSourceSuccessionProof.reason)"}
+    if(($contractSupersession -or $pendingSupersession -or $reviewSuccession -or $disjointSourceSuccession) -and $isLevelC -and -not $ownerGateStatus.satisfied){
+        if($contractSupersession -or $reviewSuccession -or $disjointSourceSuccession){
             $previousVersion=[string]$state.taskVersionId;$previousReason=[string]$state.reason
-            $resumeCommit=$(if($reviewSuccession){[string]$state.candidateHead}elseif("$($state.status)" -eq 'WAITING_HUMAN' -and "$($state.stage)" -eq 'REVIEW'){[string]$state.candidateHead}else{[string]$state.implementationCommit})
+            $resumeCommit=$(if($reviewSuccession -or $disjointSourceSuccession){[string]$state.candidateHead}elseif("$($state.status)" -eq 'WAITING_HUMAN' -and "$($state.stage)" -eq 'REVIEW'){[string]$state.candidateHead}else{[string]$state.implementationCommit})
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -RunId $state.runId -Note ([string]$Task.ownerGate)|Out-Null
             $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit
             $state.pendingContractSupersession=$true;$state.pendingSupersessionReason=$previousReason
             if($reviewSuccession){$state.pendingReviewSuccession=$true}
+            if($disjointSourceSuccession){$state.pendingDisjointSourceSuccession=$true;$state.disjointSourceSuccession=New-DispatcherDisjointSourceSuccessionRecord -State $state -Contract $contract -TaskSource $TaskSource -Proof $disjointSourceSuccessionProof}
             $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
             if($previousReason -eq 'bounded correction budget exhausted'){
                 $priorReview=Get-LatestAuthoritative -TaskVersionId $previousVersion -Kind 'review' -RunId ([string]$state.runId) -HeadSha $resumeCommit
@@ -3764,7 +3878,7 @@ function Invoke-RealDispatcherTask {
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $state.runId -Note "supersedes $previousVersion"|Out-Null
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'dispatch' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId)|Out-Null
         }
-        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note $(if([bool]$state.pendingReviewSuccession){'reuse preserved candidate for the authorized GLM review; no new implementation'}else{'reuse preserved candidate for bounded policy correction'})|Out-Null
+        Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId -Note $(if([bool]$state.pendingDisjointSourceSuccession){'reuse preserved approved candidate under exact source-bound succession; no new implementation'}elseif([bool]$state.pendingReviewSuccession){'reuse preserved candidate for the authorized GLM review; no new implementation'}else{'reuse preserved candidate for bounded policy correction'})|Out-Null
         $state.supersededBudget=[ordered]@{
             attempt=[int]$state.attempt;cycle=[int]$state.cycle
             rollovers=[int]$state.rollovers;failovers=[int]$state.failovers
@@ -3772,7 +3886,7 @@ function Invoke-RealDispatcherTask {
         $resumeCommit=[string]$Task.candidateConstraints.resumeFromCandidateCommit
         $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit;$state.implementationCommit=$resumeCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
-        if([bool]$state.pendingReviewSuccession){
+        if([bool]$state.pendingReviewSuccession -or [bool]$state.pendingDisjointSourceSuccession){
             # Authorized review succession: the candidate is complete and only
             # the review was stranded.  Implementation stays complete so the
             # deterministic candidate-commit/verification/scan pipeline reuses
@@ -3784,8 +3898,8 @@ function Invoke-RealDispatcherTask {
             $state.attempt=0;$state.cycle=0;$state.rollovers=0;$state.failovers=0
             $state.implementationComplete=$true;$state.requiresCorrection=$false
             $state.findings=@()
-            $state.authorizedReviewRoute=[ordered]@{provider='glm';model=(Get-GlmModelId);profile='REASONING'}
-            $state.pendingContractSupersession=$false;$state.pendingReviewSuccession=$false
+            if([bool]$state.pendingReviewSuccession){$state.authorizedReviewRoute=[ordered]@{provider='glm';model=(Get-GlmModelId);profile='REASONING'}}
+            $state.pendingContractSupersession=$false;$state.pendingReviewSuccession=$false;$state.pendingDisjointSourceSuccession=$false
         }else{
             # Attempts/corrections are bounded per immutable task version. Preserve
             # the superseded counters above, then start this successor at its first
@@ -4101,7 +4215,8 @@ function Invoke-DispatcherLoop {
             $cur=Get-DispatcherState
             $task=$(if($cur){@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0]}else{$null})
             $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and ((Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source) -or (Test-DispatcherReviewInfrastructureResumeState -State $cur)))
-            if($cur -and $task -and ("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
+            $sourceSuccessionRequest=[bool]($cur -and $task -and (Test-DispatcherDisjointSourceSuccessionRequest -State $cur -Task ([hashtable]$task) -TaskSource $source))
+            if($cur -and $task -and (("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash -or $sourceSuccessionRequest)){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
             if($RunOnce -or "$($r.status)" -in @(
                 'WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED',

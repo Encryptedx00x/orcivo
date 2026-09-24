@@ -114,6 +114,21 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     return [ordered]@{state=$state;task=$task;source=$source;contract=$contract;workspace=$ws.workspace;branch=$ws.branch;runId=$runId;oldBase=$base;oldHead=$oldHead;currentTarget=$currentTarget;review=$review}
 }
 
+function New-DtaSourceSuccessor($FixtureData,[string]$Suffix='ok') {
+    $task=ConvertTo-PlainTaskHashtable (_ToHashtable ((ConvertTo-CanonicalJson $FixtureData.task)|ConvertFrom-Json))
+    $constraints=_ToHashtable $task.candidateConstraints
+    $constraints.resumePolicy='DISJOINT_SOURCE_SUCCESSION'
+    $constraints.resumeFromTaskVersionId=[string]$FixtureData.contract.taskVersionId
+    $constraints.resumeFromCandidateCommit=[string]$FixtureData.oldHead
+    $task.candidateConstraints=$constraints
+    $path=Join-Path $Root ("dta-successor-"+$Suffix+"-"+[guid]::NewGuid().ToString('N')+".tasks.json")
+    Write-Utf8 $path ((Source @($task))|ConvertTo-Json -Depth 30)
+    $source=Read-DispatcherTaskSource $path
+    $task=[hashtable]$source.tasks[0]
+    $contract=New-DispatcherContract -Task $task -TaskSource $source
+    return [ordered]@{task=$task;source=$source;contract=$contract}
+}
+
 try{
     Push-Location $Fixture
     try{
@@ -265,6 +280,65 @@ try{
             Assert-True ($fp.Count -eq 1 -and $fp[0].actor -eq 'owner' -and $fp[0].evidence.falsePositiveProven) 'missing exact owner false-positive evidence in the ledger'
             $again=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
             Assert-True ($again.status -eq 'ALREADY_RECOVERED') 'recovery replay was not idempotent'
+        }
+
+        Check 'DTA-16: exact source-bound successor is eligible without provider execution' {
+            $f=New-DtaFixture 'A16'
+            $s=New-DtaSourceSuccessor $f 'a16'
+            Assert-True (Test-DispatcherDisjointSourceSuccessionRequest -State $f.state -Task $s.task -TaskSource $s.source) 'exact successor request was not recognized'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "expected eligible source succession, got: $($p.reason)"
+            Assert-True (-not $p.providerInvocationRequired -and $p.freshReviewRequired) 'source succession must reuse the candidate without implementation and require a fresh review'
+            Assert-True ($p.disjointProof.oldHead -eq $f.oldHead -and $p.disjointProof.currentTarget -eq $f.currentTarget) 'source succession proof lost the exact candidate or target binding'
+        }
+
+        Check 'DTA-17: successor without exact predecessor version is rejected' {
+            $f=New-DtaFixture 'A17'
+            $s=New-DtaSourceSuccessor $f 'a17'
+            $s.task.candidateConstraints.resumeFromTaskVersionId=('f'*64)
+            Assert-True (-not(Test-DispatcherDisjointSourceSuccessionRequest -State $f.state -Task $s.task -TaskSource $s.source)) 'wrong predecessor version was accepted as a request'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True (-not $p.eligible) 'wrong predecessor version passed full proof'
+        }
+
+        Check 'DTA-18: semantic task drift beyond recovery bindings is rejected' {
+            $f=New-DtaFixture 'A18'
+            $s=New-DtaSourceSuccessor $f 'a18'
+            $s.task.description='changed product requirement'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True (-not $p.eligible -and $p.reason -match 'semantics drift') "semantic drift denial missing, got: $($p.reason)"
+        }
+
+        Check 'DTA-19: tampered succession record is rejected before resume' {
+            $f=New-DtaFixture 'A19'
+            $s=New-DtaSourceSuccessor $f 'a19'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture proof failed: $($p.reason)"
+            $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.disjointSourceSuccession=$record
+            $f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $f.state.disjointSourceSuccession.candidateHead=('a'*40)
+            $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True (-not $pending.eligible -and $pending.reason -match 'record hash') "tampered record denial missing, got: $($pending.reason)"
+        }
+
+        Check 'DTA-20: pending successor revalidates the exact frozen target' {
+            $f=New-DtaFixture 'A20'
+            $s=New-DtaSourceSuccessor $f 'a20'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture proof failed: $($p.reason)"
+            $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.disjointSourceSuccession=$record
+            $f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True $pending.eligible "pending successor did not revalidate: $($pending.reason)"
+
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-after-gate.json') "{`"changed`":true}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'target moved after successor gate' --quiet
+            & git -C $Fixture push --quiet origin main
+            $moved=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True (-not $moved.eligible -and $moved.reason -match 'proof or target head drift') "post-gate target drift was not rejected: $($moved.reason)"
         }
     } finally { Pop-Location }
 } finally {

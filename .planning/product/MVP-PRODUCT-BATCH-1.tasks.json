@@ -252,7 +252,13 @@
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-external-service-arch",
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "noBillingProviderActivation": true, "noCredentials": true },
+      "candidateConstraints": {
+        "noBillingProviderActivation": true,
+        "noCredentials": true,
+        "resumePolicy": "DISJOINT_SOURCE_SUCCESSION",
+        "resumeFromTaskVersionId": "0975724845294fd716e3f878e6d14c263f1320d1c051ae8f96fcf8791cc3a498",
+        "resumeFromCandidateCommit": "ce5320551c1409ed72f08411abed80d33fa3222c"
+      },
       "verificationProfile": "C",
       "phaseGate": "P06",
       "status": "SCHEDULED"
