@@ -1242,15 +1242,24 @@ const headers = {
     New-Item -ItemType Directory -Force -Path $review | Out-Null
     $patchPath = Join-Path $review 'diff.patch'
 
+    $interpolatedPatch = @'
+diff --git a/actions.ts b/actions.ts
+--- a/actions.ts
++++ b/actions.ts
+@@ -1 +1,3 @@
++const headers = {
++  Authorization: `Bearer ${token}`,
++}
+'@
+
     $ordinaryPatch = @'
 diff --git a/example.ts b/example.ts
 --- a/example.ts
 +++ b/example.ts
-@@ -1,2 +1,6 @@
-+const targetUserId = input.targetUserId
-+const service = createService()
-+type AuditRow = { approval_token: string }
-+const prisma = createClient()
+@@ -1 +1,3 @@
++const headers = {
++  Authorization: `Bearer ${token}`,
++}
 '@
     Set-Content -LiteralPath $patchPath -Value $ordinaryPatch -Encoding utf8
     $ordinary = Test-ArtifactsClean -Root $root
@@ -1271,23 +1280,25 @@ diff --git a/example.ts b/example.ts
         Expect (-not $dirtyPatch.clean) 'a real credential signature in an added/removed patch line was missed'
         Expect (($dirtyPatch.hits -join ' ') -notmatch 'fixture-pass|sk-[a]+|AIza[b]+') 'a patch secret value leaked into scanner diagnostics'
     }
+    Set-Content -LiteralPath $patchPath -Value $ordinaryPatch -Encoding utf8
 
     # Regression: reviewed-source git-diff stdout logs are semantically patches.
-    # Exact filename + real git-diff envelope are BOTH required for the relaxed
-    # source classification. High-confidence credentials must still fail closed.
+    # A real git-diff envelope is required for the relaxed source classification.
+    # High-confidence credentials must still fail closed.
     $reviewedLogRoot = Join-Path $root 'reviewed-source-logs'
     New-Item -ItemType Directory -Force -Path $reviewedLogRoot | Out-Null
     $reviewLog = Join-Path $reviewedLogRoot 'review-diff-123-abcdef123456.stdout.log'
     $stoppedLog = Join-Path $reviewedLogRoot 'stopped-recovery-diff-456-fedcba654321.stdout.log'
 
-    Set-Content -LiteralPath $reviewLog -Value $ordinaryPatch -Encoding utf8
-    Set-Content -LiteralPath $stoppedLog -Value $ordinaryPatch -Encoding utf8
+    Set-Content -LiteralPath $reviewLog -Value $interpolatedPatch -Encoding utf8
+    Set-Content -LiteralPath $stoppedLog -Value $interpolatedPatch -Encoding utf8
     $reviewedLogsClean = Test-ArtifactsClean -Root $reviewedLogRoot
     Expect $reviewedLogsClean.clean "ordinary reviewed-source diff logs were flagged: $($reviewedLogsClean.hits -join ';')"
 
-    Set-Content -LiteralPath $reviewLog -Value ($ordinaryPatch + "`n" + $secretCases[0]) -Encoding utf8
+    Set-Content -LiteralPath $reviewLog -Value ($interpolatedPatch + "`n" + $secretCases[0]) -Encoding utf8
     $reviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
     Expect (-not $reviewedLogDirty.clean) 'a real credential signature in a reviewed-source diff log was missed'
+    Set-Content -LiteralPath $reviewLog -Value $interpolatedPatch -Encoding utf8
 
     # Native stdout produced with ReviewedSourceOutput may use any diagnostic
     # label. A complete git-diff envelope is the semantic proof; the source and
@@ -1295,25 +1306,30 @@ diff --git a/example.ts b/example.ts
     $nativeRoot = Join-Path $root 'logs/native'
     New-Item -ItemType Directory -Force -Path $nativeRoot | Out-Null
     $nativeLog = Join-Path $nativeRoot 'arbitrary-diagnostic-label.stdout.log'
-    $interpolatedPatch = @'
-diff --git a/actions.ts b/actions.ts
---- a/actions.ts
-+++ b/actions.ts
-@@ -1 +1,3 @@
-+const headers = {
-+  Authorization: `Bearer ${token}`,
-+}
-'@
     Set-Content -LiteralPath $nativeLog -Value $interpolatedPatch -Encoding utf8
-    $nativeClean = Test-ArtifactsClean -Root $root
+    $nativeClean = Test-ArtifactsClean -Root (Join-Path $root 'logs')
     Expect $nativeClean.clean "a genuine native git-diff stdout log used strict log semantics: $($nativeClean.hits -join ';')"
 
     Set-Content -LiteralPath $nativeLog -Value 'Authorization=fixture-reference' -Encoding utf8
-    $nativeNonDiffDirty = Test-ArtifactsClean -Root $root
+    $nativeNonDiffDirty = Test-ArtifactsClean -Root (Join-Path $root 'logs')
     Expect (-not $nativeNonDiffDirty.clean) 'a non-diff native stdout log bypassed strict scanning'
     Remove-Item -LiteralPath $nativeRoot -Recurse -Force
 
-    Set-Content -LiteralPath $reviewLog -Value $ordinaryPatch -Encoding utf8
+    # Native reviewer diff captures are stored in logs/native as well, under
+    # reviewer-specific labels. Their complete diff envelope is the semantic
+    # proof; do not rely on a fixed native command label.
+    $reviewNativeLog = Join-Path $nativeRoot 'reviewer-002-diff.stdout.log'
+    New-Item -ItemType Directory -Force -Path $nativeRoot | Out-Null
+    Set-Content -LiteralPath $reviewNativeLog -Value $ordinaryPatch -Encoding utf8
+    $reviewNativeClean = Test-ArtifactsClean -Root (Join-Path $root 'logs')
+    Expect $reviewNativeClean.clean "a genuine reviewer native git-diff stdout log used strict log semantics: $($reviewNativeClean.hits -join ';')"
+
+    Set-Content -LiteralPath $reviewNativeLog -Value ($ordinaryPatch + "`n" + $secretCases[0]) -Encoding utf8
+    $reviewNativeDirty = Test-ArtifactsClean -Root (Join-Path $root 'logs')
+    Expect (-not $reviewNativeDirty.clean) 'a high-confidence credential in a reviewer native diff log was missed'
+    Remove-Item -LiteralPath $nativeRoot -Recurse -Force
+
+    Set-Content -LiteralPath $reviewLog -Value $interpolatedPatch -Encoding utf8
     Set-Content -LiteralPath $stoppedLog -Value ('ORCIVO_SYNTHETIC_SECRET_' + ('e' * 16)) -Encoding utf8
     $fakeReviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
     Expect (-not $fakeReviewedLogDirty.clean) 'a non-diff log with reviewed-source filename bypassed strict scanning'
