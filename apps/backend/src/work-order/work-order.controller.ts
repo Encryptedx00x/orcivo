@@ -13,9 +13,11 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { MemberRole } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkOrderCreateSchema, WorkOrderUpdateSchema } from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { WorkOrderPhotoService } from './work-order-photo.service';
 import { WorkOrderService } from './work-order.service';
 
@@ -23,6 +25,8 @@ import { WorkOrderService } from './work-order.service';
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
+  /** Papel da membership ativa (set by TenantGuard) — usado para calcular allowed_actions. */
+  role?: MemberRole;
 }
 
 const VALID_STAGES = ['BEFORE', 'DURING', 'AFTER'] as const;
@@ -37,12 +41,17 @@ export class WorkOrderController {
 
   @Get()
   findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.workOrderService.findAll(req.companyId, Number(page) || 1, Number(limit) || 20);
+    return this.workOrderService.findAll(
+      req.companyId,
+      Number(page) || 1,
+      Number(limit) || 20,
+      req.role,
+    );
   }
 
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.workOrderService.findOne(id, req.companyId);
+    return this.workOrderService.findOne(id, req.companyId, req.role);
   }
 
   @Post()
@@ -61,6 +70,61 @@ export class WorkOrderController {
     @Req() req: TenantRequest,
   ) {
     return this.workOrderService.update(id, body as never, req.companyId, req.user.userId);
+  }
+
+  // ── Ações de domínio (P-01 / ADR-016): transições explícitas, não select livre ──
+
+  /** iniciar: PENDING → IN_PROGRESS (qualquer membro ativo). */
+  @Patch(':id/start')
+  @HttpCode(200)
+  start(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.workOrderService.start(id, req.companyId, req.user.userId, req.role);
+  }
+
+  /** concluir: IN_PROGRESS → DONE (qualquer membro ativo). */
+  @Patch(':id/complete')
+  @HttpCode(200)
+  complete(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.workOrderService.complete(id, req.companyId, req.user.userId, req.role);
+  }
+
+  /** cancelar: PENDING/IN_PROGRESS → CANCELLED — motivo obrigatório. */
+  @Patch(':id/cancel')
+  @HttpCode(200)
+  cancel(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
+    return this.workOrderService.cancel(id, req.companyId, req.user.userId, reason, req.role);
+  }
+
+  // reabrir/corrigir são ações de correção sobre estados terminais — @AdminOnly (P-01).
+
+  /** reabrir: DONE/CANCELLED → IN_PROGRESS — motivo obrigatório, @AdminOnly. */
+  @Patch(':id/reopen')
+  @AdminOnly()
+  @HttpCode(200)
+  reopen(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
+    return this.workOrderService.reopen(id, req.companyId, req.user.userId, reason, req.role);
+  }
+
+  /** corrigir: ajuste pós-encerramento — não muda status, motivo obrigatório, @AdminOnly. */
+  @Patch(':id/correct')
+  @AdminOnly()
+  @HttpCode(200)
+  correct(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Body('reason') reason?: string,
+    @Body('title') title?: string,
+    @Body('notes') notes?: string,
+    @Body('scheduled_at') scheduled_at?: string,
+    @Body('assigned_to_user_id') assigned_to_user_id?: string | null,
+  ) {
+    return this.workOrderService.correct(
+      id,
+      req.companyId,
+      req.user.userId,
+      { reason, title, notes, scheduled_at, assigned_to_user_id },
+      req.role,
+    );
   }
 
   // T-2A-17: stage validado no controller antes de chamar service

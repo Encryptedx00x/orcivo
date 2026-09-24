@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { MemberRole } from '@prisma/client';
 import { WorkOrderCreateDto, WorkOrderUpdateDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -6,14 +12,57 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 
-type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+export type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
-const WO_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-  PENDING: ['IN_PROGRESS', 'CANCELLED'],
-  IN_PROGRESS: ['DONE', 'CANCELLED'],
-  DONE: [],
-  CANCELLED: [],
+/** Ações de domínio da OS (P-01 / ADR-016 / D-4). */
+export type WorkOrderAction = 'iniciar' | 'concluir' | 'cancelar' | 'reabrir' | 'corrigir';
+
+/**
+ * Ações disponíveis em cada estado. Estados terminais (DONE/CANCELLED) deixam
+ * de ser dead-ends: ganham saídas controladas (`reabrir`/`corrigir`, @AdminOnly).
+ */
+export const WO_ACTIONS: Record<WorkOrderStatus, readonly WorkOrderAction[]> = {
+  PENDING: ['iniciar', 'cancelar'],
+  IN_PROGRESS: ['concluir', 'cancelar'],
+  DONE: ['reabrir', 'corrigir'],
+  CANCELLED: ['reabrir', 'corrigir'],
 };
+
+/** Restritas a OWNER/ADMIN (AC2) — enforced pelo RoleGuard via @AdminOnly no controller. */
+export const ADMIN_ONLY_ACTIONS: readonly WorkOrderAction[] = ['reabrir', 'corrigir'];
+
+/** Exigem motivo obrigatório (AC1) — o motivo vai só para o audit trail, nunca sobrescreve dados. */
+export const MANDATORY_REASON_ACTIONS: readonly WorkOrderAction[] = [
+  'cancelar',
+  'reabrir',
+  'corrigir',
+];
+
+type StatusAction = Exclude<WorkOrderAction, 'corrigir'>;
+
+const STATUS_ACTION_SPECS: Record<
+  StatusAction,
+  { allowedFrom: WorkOrderStatus[]; to: WorkOrderStatus; auditAction: string }
+> = {
+  iniciar: { allowedFrom: ['PENDING'], to: 'IN_PROGRESS', auditAction: 'work_order.started' },
+  concluir: { allowedFrom: ['IN_PROGRESS'], to: 'DONE', auditAction: 'work_order.completed' },
+  cancelar: {
+    allowedFrom: ['PENDING', 'IN_PROGRESS'],
+    to: 'CANCELLED',
+    auditAction: 'work_order.cancelled',
+  },
+  reabrir: {
+    allowedFrom: ['DONE', 'CANCELLED'],
+    to: 'IN_PROGRESS',
+    auditAction: 'work_order.reopened',
+  },
+};
+
+const WO_DETAIL_INCLUDE = {
+  customer: true,
+  photos: true,
+  quote: { select: { id: true, number: true } },
+} as const;
 
 @Injectable()
 export class WorkOrderService {
@@ -24,6 +73,246 @@ export class WorkOrderService {
     private readonly ownership: TenantOwnershipService,
     private readonly audit: AuditService,
   ) {}
+
+  // ── Máquina de ações de domínio (P-01 / ADR-016) ───────────────────────────
+
+  /**
+   * Ações permitidas no estado dado para o papel dado (AC4 — a web renderiza
+   * os botões a partir desta lista). Sem papel informado, só ações não-admin.
+   */
+  allowedActions(status: WorkOrderStatus, role?: MemberRole | null): WorkOrderAction[] {
+    const actions = WO_ACTIONS[status] ?? [];
+    if (role === 'OWNER' || role === 'ADMIN') return [...actions];
+    return actions.filter((action) => !ADMIN_ONLY_ACTIONS.includes(action));
+  }
+
+  /** iniciar: PENDING → IN_PROGRESS (qualquer membro ativo). */
+  async start(id: string, companyId: string, userId: string, role?: MemberRole) {
+    return this.applyStatusAction(id, companyId, userId, 'iniciar', null, role);
+  }
+
+  /** concluir: IN_PROGRESS → DONE (qualquer membro ativo). */
+  async complete(id: string, companyId: string, userId: string, role?: MemberRole) {
+    return this.applyStatusAction(id, companyId, userId, 'concluir', null, role);
+  }
+
+  /** cancelar: PENDING/IN_PROGRESS → CANCELLED. Motivo obrigatório (AC1). */
+  async cancel(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
+    return this.applyStatusAction(
+      id,
+      companyId,
+      userId,
+      'cancelar',
+      this.requireReason(reason, 'cancelar'),
+      role,
+    );
+  }
+
+  /** reabrir (@AdminOnly): DONE/CANCELLED → IN_PROGRESS. Motivo obrigatório (AC1/AC2). */
+  async reopen(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
+    return this.applyStatusAction(
+      id,
+      companyId,
+      userId,
+      'reabrir',
+      this.requireReason(reason, 'reabrir'),
+      role,
+    );
+  }
+
+  /**
+   * corrigir (@AdminOnly): ajuste operacional pós-encerramento (DONE/CANCELLED).
+   * Não muda o status (ADR-016); registra o diff dos campos tocados no audit —
+   * o histórico permanece preservado (AC3). Motivo obrigatório (AC1).
+   */
+  async correct(
+    id: string,
+    companyId: string,
+    userId: string,
+    input: {
+      reason?: string;
+      title?: string;
+      notes?: string;
+      scheduled_at?: string;
+      assigned_to_user_id?: string | null;
+    },
+    role?: MemberRole,
+  ) {
+    const reason = this.requireReason(input.reason, 'corrigir');
+    const wo = await this.findOne(id, companyId);
+    const from = wo.status as WorkOrderStatus;
+    if (from !== 'DONE' && from !== 'CANCELLED') {
+      throw new BadRequestException(
+        `Corrigir é permitido apenas em OS encerrada (DONE/CANCELLED) — status atual: ${from}`,
+      );
+    }
+
+    const data: Record<string, unknown> = {};
+    if (input.title !== undefined) {
+      const title = input.title.trim();
+      if (!title) throw new BadRequestException('Título não pode ficar vazio');
+      data.title = title;
+    }
+    if (input.notes !== undefined) data.notes = input.notes;
+    if (input.scheduled_at !== undefined) {
+      const scheduled = new Date(input.scheduled_at);
+      if (Number.isNaN(scheduled.getTime())) {
+        throw new BadRequestException('Data de agendamento inválida');
+      }
+      data.scheduled_at = scheduled;
+    }
+    if (input.assigned_to_user_id !== undefined) {
+      if (input.assigned_to_user_id) {
+        await this.ownership.assertActiveMember(input.assigned_to_user_id, companyId);
+      }
+      data.assigned_to_user_id = input.assigned_to_user_id || null;
+    }
+
+    const diff: string[] = [];
+    if (data.title !== undefined && data.title !== wo.title) {
+      diff.push(`título: "${wo.title}" → "${data.title}"`);
+    }
+    if (data.notes !== undefined && (wo.notes ?? null) !== (data.notes || null)) {
+      diff.push('observações atualizadas');
+    }
+    if (
+      data.scheduled_at !== undefined &&
+      (wo.scheduled_at?.getTime() ?? null) !== (data.scheduled_at as Date).getTime()
+    ) {
+      diff.push('agendamento alterado');
+    }
+    if (
+      data.assigned_to_user_id !== undefined &&
+      wo.assigned_to_user_id !== data.assigned_to_user_id
+    ) {
+      diff.push('técnico atribuído alterado');
+    }
+
+    const humanText =
+      `OS #${wo.number} "${wo.title}" (${wo.customer.name}) corrigida após encerramento` +
+      (diff.length ? ` (${diff.join('; ')})` : '') +
+      `: ${reason}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        const result = await tx.workOrder.updateMany({ where: { id, status: from }, data });
+        if (result.count === 0) {
+          throw new ConflictException(`A OS saiu do estado ${from} antes da correção`);
+        }
+      }
+      const updated = await tx.workOrder.findUnique({ where: { id }, include: WO_DETAIL_INCLUDE });
+      if (!updated) throw new ConflictException('OS não encontrada após atualização');
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'work_order.corrected',
+        entityType: 'work_order',
+        entityId: id,
+        from,
+        to: from,
+        reason,
+        humanText,
+      });
+      return this.withAllowedActions(updated, role);
+    });
+  }
+
+  private requireReason(reason: string | undefined, action: WorkOrderAction): string {
+    const trimmed = reason?.trim();
+    if (!trimmed) {
+      throw new BadRequestException(`Motivo é obrigatório para ${action} uma OS`);
+    }
+    return trimmed;
+  }
+
+  /**
+   * Núcleo transacional compartilhado pelas ações que mudam status: valida o
+   * estado de origem, grava a mudança e a auditoria na MESMA transação
+   * (ADR-015) e usa updateMany condicional para não perder corrida concorrente.
+   */
+  private async applyStatusAction(
+    id: string,
+    companyId: string,
+    userId: string,
+    action: StatusAction,
+    reason: string | null,
+    role?: MemberRole,
+  ) {
+    const wo = await this.findOne(id, companyId);
+    const from = wo.status as WorkOrderStatus;
+    const spec = STATUS_ACTION_SPECS[action];
+    if (!spec.allowedFrom.includes(from)) {
+      throw new BadRequestException(`Transição inválida: ${from} → ${spec.to} (${action})`);
+    }
+
+    const data: Record<string, unknown> = { status: spec.to };
+    if (action === 'iniciar') data.started_at = new Date();
+    if (action === 'concluir') data.finished_at = new Date();
+    if (action === 'reabrir') {
+      // A próxima conclusão grava um novo finished_at; o anterior fica
+      // preservado na trilha de auditoria (AC3 — histórico nunca é apagado).
+      data.finished_at = null;
+      data.started_at = wo.started_at ?? new Date();
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.workOrder.updateMany({ where: { id, status: from }, data });
+      if (result.count === 0) {
+        throw new ConflictException(`Transição inválida: ${from} → ${spec.to}`);
+      }
+      const updated = await tx.workOrder.findUnique({ where: { id }, include: WO_DETAIL_INCLUDE });
+      if (!updated) throw new ConflictException('OS não encontrada após atualização');
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: spec.auditAction,
+        entityType: 'work_order',
+        entityId: id,
+        from,
+        to: spec.to,
+        reason,
+        humanText: this.describe(
+          action,
+          updated.number,
+          updated.title,
+          updated.customer.name,
+          reason,
+        ),
+      });
+      return this.withAllowedActions(updated, role);
+    });
+  }
+
+  private describe(
+    action: StatusAction,
+    number: number,
+    title: string,
+    customerName: string,
+    reason: string | null,
+  ): string {
+    const ctx = `OS #${number} "${title}" (${customerName})`;
+    switch (action) {
+      case 'iniciar':
+        return `${ctx} iniciada`;
+      case 'concluir':
+        return `${ctx} concluída`;
+      case 'cancelar':
+        return reason ? `${ctx} cancelada: ${reason}` : `${ctx} cancelada`;
+      case 'reabrir':
+        return `${ctx} reaberta para execução: ${reason}`;
+    }
+  }
+
+  private withAllowedActions<T extends { status: string }>(
+    wo: T,
+    role?: MemberRole,
+  ): T & { allowed_actions: WorkOrderAction[] } {
+    return { ...wo, allowed_actions: this.allowedActions(wo.status as WorkOrderStatus, role) };
+  }
+
+  // ── CRUD ──────────────────────────────────────────────────────────────────
 
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
     const key = `work-order:seq:${companyId}`;
@@ -85,7 +374,7 @@ export class WorkOrderService {
     });
   }
 
-  async findAll(companyId: string, page = 1, limit = 20) {
+  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole) {
     const data = await this.prisma.workOrder.findMany({
       where: { company_id: companyId },
       orderBy: { created_at: 'desc' },
@@ -93,49 +382,38 @@ export class WorkOrderService {
       take: limit,
       include: { customer: { select: { id: true, name: true } }, photos: true },
     });
-    return { data, page, limit };
+    return { data: data.map((wo) => this.withAllowedActions(wo, role)), page, limit };
   }
 
-  async findOne(id: string, companyId: string) {
+  /** Detalhe da OS com as ações permitidas para o papel do chamador (AC4). */
+  async findOne(id: string, companyId: string, role?: MemberRole) {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, company_id: companyId },
-      include: { customer: true, photos: true, quote: { select: { id: true, number: true } } },
+      include: WO_DETAIL_INCLUDE,
     });
     if (!wo) throw new NotFoundException();
-    return wo;
-  }
-
-  async updateStatus(id: string, companyId: string, newStatus: WorkOrderStatus, userId: string) {
-    const wo = await this.findOne(id, companyId);
-    const current = wo.status as WorkOrderStatus;
-    if (!WO_TRANSITIONS[current].includes(newStatus)) {
-      throw new BadRequestException(`Transição inválida: ${current} → ${newStatus}`);
-    }
-    const data: Record<string, unknown> = { status: newStatus };
-    if (newStatus === 'IN_PROGRESS') data.started_at = new Date();
-    if (newStatus === 'DONE') data.finished_at = new Date();
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.workOrder.update({ where: { id }, data });
-      await this.audit.record(tx, {
-        companyId,
-        actorType: 'USER',
-        actorUserId: userId,
-        action: 'work_order.status_changed',
-        entityType: 'work_order',
-        entityId: id,
-        from: current,
-        to: newStatus,
-        humanText: `OS #${wo.number} "${wo.title}" (${wo.customer.name}) mudou de ${current} para ${newStatus}`,
-      });
-      return updated;
-    });
+    return this.withAllowedActions(wo, role);
   }
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {
     await this.findOne(id, companyId);
     await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
     const { status, ...rest } = dto;
-    if (status) return this.updateStatus(id, companyId, status as WorkOrderStatus, userId);
+    if (status) {
+      // P-01 (ADR-016): transições por `status` livre foram substituídas por
+      // ações de domínio. Este caminho segue apenas como alias de
+      // compatibilidade (mobile) e roteia para a ação equivalente — com a
+      // mesma validação de estado e a mesma auditoria. `cancelar` exige
+      // motivo aqui também; o mobile ainda não envia motivo e recebe 400
+      // até migrar para PATCH /work-orders/:id/cancel (P-18: paridade
+      // mobile não bloqueia o MVP).
+      if (status === 'IN_PROGRESS') return this.start(id, companyId, userId);
+      if (status === 'DONE') return this.complete(id, companyId, userId);
+      if (status === 'CANCELLED') return this.cancel(id, companyId, userId);
+      throw new BadRequestException(
+        `Transição inválida via status: ${status}. Use as ações de domínio (iniciar, concluir, cancelar).`,
+      );
+    }
     return this.prisma.workOrder.update({
       where: { id },
       data: {
