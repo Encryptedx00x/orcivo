@@ -645,17 +645,26 @@ function Test-ArtifactsClean {
         # Canonicalize line endings for multiline assignment patterns. In .NET,
         # `$` stops before LF but not before the CR in a CRLF pair, which made
         # strict artifact patterns silently miss ordinary Windows log files.
-        $scanTxt = $txt.Replace("`r`n", "`n").Replace("`r", "`n")
+        $scanTxt = $txt.TrimStart([char]0xFEFF).Replace("`r`n", "`n").Replace("`r", "`n")
         $activeLinePats=$linePats
         $additionalLineScans=@()
         $isCanonicalReviewPatch=($f.Name -eq 'diff.patch' -and $f.Directory.Name -match '^review-[0-9]+$')
         $isReviewedSourceDiffLog=($f.Name -match '^(review-diff|stopped-recovery-diff)-[0-9]+-[0-9a-f]+\.stdout\.log$')
+        # Invoke-GitV2 accepts caller-supplied diagnostic labels. Its native
+        # stdout directory is supervisor-controlled, so a complete git-diff
+        # envelope there is provenance for path-aware source classification
+        # without maintaining a label allowlist.
+        $isNativeGitStdoutLog=(
+            $f.Name -match '\.stdout\.log$' -and
+            $f.Directory.Name -eq 'native' -and
+            $f.Directory.Parent -and $f.Directory.Parent.Name -eq 'logs'
+        )
         $looksLikeGitDiff=(
             $scanTxt -match '(?m)^diff --git a/.+ b/.+$' -and
             $scanTxt -match '(?m)^--- (?:a/|/dev/null)' -and
             $scanTxt -match '(?m)^\+\+\+ (?:b/|/dev/null)'
         )
-        $isReviewPatch=($isCanonicalReviewPatch -or ($isReviewedSourceDiffLog -and $looksLikeGitDiff))
+        $isReviewPatch=($isCanonicalReviewPatch -or (($isReviewedSourceDiffLog -or $isNativeGitStdoutLog) -and $looksLikeGitDiff))
         if($isReviewPatch){
             # Scan every patch byte for JSON credentials and high-confidence
             # signatures. Then classify diff body lines by their source path so

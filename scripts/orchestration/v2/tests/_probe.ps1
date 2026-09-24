@@ -1289,6 +1289,30 @@ diff --git a/example.ts b/example.ts
     $reviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
     Expect (-not $reviewedLogDirty.clean) 'a real credential signature in a reviewed-source diff log was missed'
 
+    # Native stdout produced with ReviewedSourceOutput may use any diagnostic
+    # label. A complete git-diff envelope is the semantic proof; the source and
+    # non-source bodies remain classified path by path by the scanner.
+    $nativeRoot = Join-Path $root 'logs/native'
+    New-Item -ItemType Directory -Force -Path $nativeRoot | Out-Null
+    $nativeLog = Join-Path $nativeRoot 'arbitrary-diagnostic-label.stdout.log'
+    $interpolatedPatch = @'
+diff --git a/actions.ts b/actions.ts
+--- a/actions.ts
++++ b/actions.ts
+@@ -1 +1,3 @@
++const headers = {
++  Authorization: `Bearer ${token}`,
++}
+'@
+    Set-Content -LiteralPath $nativeLog -Value $interpolatedPatch -Encoding utf8
+    $nativeClean = Test-ArtifactsClean -Root $root
+    Expect $nativeClean.clean "a genuine native git-diff stdout log used strict log semantics: $($nativeClean.hits -join ';')"
+
+    Set-Content -LiteralPath $nativeLog -Value 'Authorization=fixture-reference' -Encoding utf8
+    $nativeNonDiffDirty = Test-ArtifactsClean -Root $root
+    Expect (-not $nativeNonDiffDirty.clean) 'a non-diff native stdout log bypassed strict scanning'
+    Remove-Item -LiteralPath $nativeRoot -Recurse -Force
+
     Set-Content -LiteralPath $reviewLog -Value $ordinaryPatch -Encoding utf8
     Set-Content -LiteralPath $stoppedLog -Value ('ORCIVO_SYNTHETIC_SECRET_' + ('e' * 16)) -Encoding utf8
     $fakeReviewedLogDirty = Test-ArtifactsClean -Root $reviewedLogRoot
