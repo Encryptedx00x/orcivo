@@ -1,13 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlanCode, SubscriptionStatus } from '@prisma/client';
+import type { BillingCycle, PaymentProvider } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
-import { AsaasClient } from './asaas.client';
+import { PAYMENT_PROVIDER } from './payment-provider.token';
 
-const PRICE_MAP: Record<string, Record<string, number>> = {
-  SOLO: { MONTHLY: 9.9, YEARLY: 79.9 },
-  MAIS: { MONTHLY: 19.9, YEARLY: 199.9 },
-  EQUIPE: { MONTHLY: 39.9, YEARLY: 399.9 },
+const PRICE_MAP: Record<'SOLO' | 'MAIS' | 'EQUIPE', Record<BillingCycle, string>> = {
+  SOLO: { MONTHLY: '9.90', YEARLY: '79.90' },
+  MAIS: { MONTHLY: '19.90', YEARLY: '199.90' },
+  EQUIPE: { MONTHLY: '39.90', YEARLY: '399.90' },
 };
 
 const GRACE_PERIOD_DAYS: Record<PlanCode, number> = {
@@ -23,7 +24,7 @@ export class SubscriptionService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly asaas: AsaasClient,
+    @Inject(PAYMENT_PROVIDER) private readonly paymentProvider: PaymentProvider,
   ) {}
 
   async getOrCreate(companyId: string): Promise<{ status: SubscriptionStatus | null; plan_code: PlanCode }> {
@@ -127,38 +128,38 @@ export class SubscriptionService {
     const owner = company.members[0]?.user;
     const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
 
-    let asaasCustomerId = sub?.asaas_customer_id ?? null;
-    if (!asaasCustomerId) {
+    let providerCustomerId = sub?.asaas_customer_id ?? null;
+    if (!providerCustomerId) {
       try {
-        const customer = await this.asaas.createCustomer({
+        const customer = await this.paymentProvider.createCustomer({
           name: company.trade_name,
           email: owner?.email,
-          cpfCnpj: company.document ?? undefined,
+          document: company.document ?? undefined,
         });
-        asaasCustomerId = customer.id || null;
+        providerCustomerId = customer.id || null;
       } catch (err) {
-        this.logger.error(`Falha ao criar customer Asaas: ${err}`);
-        asaasCustomerId = null;
+        this.logger.error(`Falha ao criar customer ${this.paymentProvider.provider}: ${err}`);
+        providerCustomerId = null;
       }
     }
 
-    const value = PRICE_MAP[planCode]?.[cycle] ?? 0;
+    const value = PRICE_MAP[planCode]?.[cycle] ?? '0.00';
     const nextDueDate = new Date(Date.now() + 86400000).toISOString().split('T')[0]; // amanhã
 
-    let asaasSubId: string | null = null;
-    if (asaasCustomerId) {
+    let providerSubscriptionId: string | null = null;
+    if (providerCustomerId) {
       try {
-        const asaasSub = await this.asaas.createSubscription({
-          customer: asaasCustomerId,
-          billingType: 'PIX',
-          value,
+        const providerSubscription = await this.paymentProvider.createSubscription({
+          customerId: providerCustomerId,
+          paymentMethod: 'PIX',
+          amount: value,
           nextDueDate,
-          cycle: cycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY',
+          billingCycle: cycle,
           description: `Orcivo ${planCode} — ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
         });
-        asaasSubId = asaasSub.id || null;
+        providerSubscriptionId = providerSubscription.id || null;
       } catch (err) {
-        this.logger.error(`Falha ao criar subscription Asaas: ${err}`);
+        this.logger.error(`Falha ao criar subscription ${this.paymentProvider.provider}: ${err}`);
       }
     }
 
@@ -168,19 +169,19 @@ export class SubscriptionService {
         company_id: companyId,
         plan_code: planCode as PlanCode,
         status: 'TRIALING',
-        asaas_customer_id: asaasCustomerId,
-        asaas_sub_id: asaasSubId,
+        asaas_customer_id: providerCustomerId,
+        asaas_sub_id: providerSubscriptionId,
         grace_period_days: GRACE_PERIOD_DAYS[planCode as PlanCode] ?? 0,
       },
       update: {
         plan_code: planCode as PlanCode,
         status: 'TRIALING',
-        asaas_customer_id: asaasCustomerId ?? undefined,
-        asaas_sub_id: asaasSubId ?? undefined,
+        asaas_customer_id: providerCustomerId ?? undefined,
+        asaas_sub_id: providerSubscriptionId ?? undefined,
       },
     });
 
-    return { subscription: updatedSub, asaas_subscription_id: asaasSubId };
+    return { subscription: updatedSub, provider_subscription_id: providerSubscriptionId };
   }
 
   async isBlocked(companyId: string): Promise<boolean> {
