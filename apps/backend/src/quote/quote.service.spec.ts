@@ -217,6 +217,107 @@ describe('QuoteService', () => {
 
       await expect(service.cancel('q1', 'comp-1', 'user-1')).rejects.toThrow(BadRequestException);
     });
+
+    it('Test C1: cancel() SENT→CANCELLED grava auditoria com from/to/reason e NÃO toca em notes (AC3)', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 5,
+        status: 'CANCELLED',
+        notes: 'observação original',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      const result = await service.cancel('q1', 'comp-1', 'user-1', 'Cliente desistiu');
+
+      expect(result.notes).toBe('observação original');
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'SENT' },
+          data: { status: 'CANCELLED' },
+        }),
+      );
+      // AC3: o motivo do cancelamento nunca sobrescreve `notes`
+      const updateData = mockTx.quote.updateMany.mock.calls[0][0].data;
+      expect(Object.keys(updateData)).not.toContain('notes');
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.cancelled',
+          entityType: 'quote',
+          entityId: 'q1',
+          from: 'SENT',
+          to: 'CANCELLED',
+          reason: 'Cliente desistiu',
+          actorType: 'USER',
+          actorUserId: 'user-1',
+        }),
+      );
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('Maria');
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('Cliente desistiu');
+    });
+
+    it('Test C2: cancel() sem motivo lança BadRequestException (motivo obrigatório)', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'DRAFT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      await expect(service.cancel('q1', 'comp-1', 'user-1')).rejects.toThrow(BadRequestException);
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test C3: cancel() com motivo em branco lança BadRequestException', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+
+      await expect(service.cancel('q1', 'comp-1', 'user-1', '   ')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test C4: cancel() com transicao concorrente vencida nao grava auditoria', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.cancel('q1', 'comp-1', 'user-1', 'motivo')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'q1', status: 'SENT' } }),
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
   });
 
   describe('reject()', () => {
