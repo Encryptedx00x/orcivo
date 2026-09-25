@@ -938,7 +938,9 @@ function Test-DispatcherDisjointTargetAdvanceReceipt {
 
 # Read-only eligibility proof (spec: "recover-disjoint-target-advance"). An
 # approved candidate whose integration failed BEFORE any target mutation
-# (authority tree dirty) can be safely rebased onto a target that has since
+# A pre-publication, no-mutation integration hold (authority tree dirty,
+# remote divergence, or one narrowly proven scanner false positive) can be
+# safely rebased onto a target that has since
 # advanced ONLY through commits disjoint from the candidate's own changed
 # files and from the task's declared scope. Never bypasses review: the
 # landing state always requires a fresh REVIEWER invocation.
@@ -960,10 +962,11 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
         $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and [bool]$State.implementationComplete -and -not [bool]$State.requiresCorrection -and $history.Count -eq 1)
         $secretScanFalsePositiveHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ')
+        $remoteDivergedHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'REMOTE_DIVERGED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^origin/main \([0-9a-f]{10}\) has moved off the SHA the reviewed candidate was built on \([0-9a-f]{10}\) - rebuild \+ re-review required$')
         $priorSecretFalsePositive=[bool]($alreadyRecovered -and $history[0].secretFalsePositiveEvidence)
         if(-not $alreadyRecovered){
             $authorityDirtyHold=([string]$State.status -eq 'INTEGRATION_FAILED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq 'authority tree dirty')
-            if(-not ($authorityDirtyHold -or $secretScanFalsePositiveHold)){return &$deny 'state is not an eligible pre-publish integration hold'}
+            if(-not ($authorityDirtyHold -or $secretScanFalsePositiveHold -or $remoteDivergedHold)){return &$deny 'state is not an eligible pre-publish integration hold'}
             if(-not [bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'candidate is not implementation-complete'}
             if([string]$State.reviewVerdict -ne 'APPROVE'){return &$deny 'candidate was not APPROVE-reviewed'}
         } elseif ([string]$history[0].oldCandidateBase -notmatch '^[0-9a-f]{40}$' -or [string]$history[0].oldCandidateHead -notmatch '^[0-9a-f]{40}$' -or ([string]$history[0].integrationResult.status -eq 'SECRET_LEAK_BLOCKED' -and -not $priorSecretFalsePositive)) {
@@ -980,7 +983,12 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $ir=$(if($alreadyRecovered){$history[0].integrationResult}else{$State.integration})
         $authorityDirtyResult=([string]$ir.status -eq 'INTEGRATION_FAILED' -and [string]$ir.reason -eq 'authority tree dirty' -and [string]$ir.targetBefore -eq '')
         $secretScanResult=([string]$ir.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$ir.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ' -and [string]$ir.targetBefore -eq $oldBase)
-        if(-not $ir -or -not ($authorityDirtyResult -or $secretScanResult) -or [bool]$ir.pushed -or [string]$ir.mergeCommit -ne '' -or [string]$ir.targetAfter -ne ''){return &$deny 'integration result does not prove an eligible pre-publish, no-mutation failure'}
+        $remoteDivergedResult=$false
+        if([string]$ir.status -eq 'REMOTE_DIVERGED' -and [string]$ir.targetBefore -match '^[0-9a-f]{40}$'){
+            $remoteReason=[regex]::Match([string]$ir.reason,'^origin/main \((?<target>[0-9a-f]{10})\) has moved off the SHA the reviewed candidate was built on \((?<base>[0-9a-f]{10})\) - rebuild \+ re-review required$')
+            $remoteDivergedResult=[bool]($remoteReason.Success -and $remoteReason.Groups['target'].Value -eq ([string]$ir.targetBefore).Substring(0,10) -and $remoteReason.Groups['base'].Value -eq $oldBase.Substring(0,10))
+        }
+        if(-not $ir -or -not ($authorityDirtyResult -or $secretScanResult -or $remoteDivergedResult) -or [bool]$ir.pushed -or [string]$ir.mergeCommit -ne '' -or [string]$ir.targetAfter -ne ''){return &$deny 'integration result does not prove an eligible pre-publish, no-mutation failure'}
 
         $falsePositiveEvidence=$null
         if($secretScanResult -or $priorSecretFalsePositive){
@@ -1082,6 +1090,11 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $originTarget=$originResult.stdout.Trim()
         if($localTarget -ne $originTarget){return &$deny "local $target != origin/$target"}
         $currentTarget=$localTarget
+
+        if($remoteDivergedResult){
+            $failedTargetAncestry=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',([string]$ir.targetBefore),$currentTarget) -LogLabel 'disjoint-target-advance-remote-diverged-ancestry'
+            if($failedTargetAncestry.exitCode -ne 0){return &$deny 'current target does not descend from the exact remote-diverged target'}
+        }
 
         if($currentTarget -eq $oldBase){return &$deny 'current target equals the old candidate base - recovery is unnecessary; retry integration directly'}
         $targetRelation='DESCENDANT';$lineageMergeBase=$oldBase
@@ -1596,7 +1609,7 @@ function Recover-DispatcherDisjointTargetAdvance {
         @{from='RUNNING';event='disjoint-target-advance-checking';to='CHECKING'}
         @{from='CHECKING';event='disjoint-target-advance-reviewing';to='REVIEWING'}
     )
-    if(-not $proof.secretFalsePositiveEvidence){$steps=@(@{from='INTEGRATION_FAILED';event='disjoint-target-advance-ready';to='READY'})+$steps}
+    if(-not $proof.secretFalsePositiveEvidence){$steps=@(@{from=([string]$State.integration.status);event='disjoint-target-advance-ready';to='READY'})+$steps}
     foreach($step in $steps){
         $ledger=Get-LedgerState $TaskVersionId
         if([string]$ledger.state -eq [string]$step.from){Add-LedgerEvent -TaskVersionId $TaskVersionId -Event ([string]$step.event) -ToState ([string]$step.to) -RunId $RunId -Evidence $evidence -Note 'disjoint target advance recovered from pre-publish integration failure'|Out-Null}

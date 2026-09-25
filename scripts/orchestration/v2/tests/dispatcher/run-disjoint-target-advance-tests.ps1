@@ -48,7 +48,7 @@ $OriginBare=Join-Path $Root 'origin.git'
 $script:DtaSeq=0
 $script:DtaSalt=[guid]::NewGuid().ToString('N')
 
-function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$DivergentTargetAdvance,[switch]$LevelC) {
+function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$RemoteDivergedHold,[switch]$DivergentTargetAdvance,[switch]$LevelC) {
     $script:DtaSeq++
     $task=Task ("DTA-"+$Id) $Scope
     if($LevelC){$task.risk='C';$task.ownerGate='level-c-external-service-arch'}
@@ -87,16 +87,6 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     New-Attestation -Kind check -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$oldBindings) -Result PASS|Out-Null
     $review=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$oldBindings) -Result APPROVE -ProducerMeta @{provider='glm';invocationId=('att-'+[guid]::NewGuid().ToString('N'))}
 
-    Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
-    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING
-    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event approved -ToState APPROVED -RunId $runId|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-start -ToState INTEGRATING -RunId $runId|Out-Null
-    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-failed -ToState $failureState -RunId $runId -Note $failureReason|Out-Null
-
     $currentTarget=$base
     if($DivergentTargetAdvance){
         $tempBranch='dta-divergent-'+[guid]::NewGuid().ToString('N')
@@ -120,6 +110,21 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
         & git -C $Fixture push --quiet origin main
     }
 
+    if($RemoteDivergedHold){
+        $failureState='REMOTE_DIVERGED'
+        $failureReason="origin/main ($($currentTarget.Substring(0,10))) has moved off the SHA the reviewed candidate was built on ($($base.Substring(0,10))) - rebuild + re-review required"
+    }
+
+    Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{taskId=$task.taskId}|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event ready -ToState READY|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event running -ToState RUNNING -RunId $runId|Out-Null
+    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase CHECKING
+    Enter-DispatcherLedgerPhase -TaskVersionId $contract.taskVersionId -RunId $runId -Phase REVIEWING
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event approved -ToState APPROVED -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-start -ToState INTEGRATING -RunId $runId|Out-Null
+    Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-failed -ToState $failureState -RunId $runId -Note $failureReason|Out-Null
+
     $state=[ordered]@{
         schemaVersion='orcivo.orchestration.v2.dispatch-state/1';taskId=$task.taskId;taskVersionId=$contract.taskVersionId
         task=$task;taskSource=$source.path;taskSourceHash=$source.hash;runId=$runId
@@ -133,7 +138,7 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
         provider='claude';profile='REASONING';failovers=0;rollovers=0;unavailableProviders=@()
         providerHistory=@();importantArtifacts=@();findings=@();decisions=@()
         logicalProjectId='fixture'
-        integration=[ordered]@{status=$failureState;reason=$failureReason;state='';targetBefore=$(if($SecretFalsePositiveHold){$base}else{''});targetAfter='';mergeCommit='';pushed=$false}
+        integration=[ordered]@{status=$failureState;reason=$failureReason;state='';targetBefore=$(if($RemoteDivergedHold){$currentTarget}elseif($SecretFalsePositiveHold){$base}else{''});targetAfter='';mergeCommit='';pushed=$false}
     }
     Write-DispatcherState $state|Out-Null
     return [ordered]@{state=$state;task=$task;source=$source;contract=$contract;workspace=$ws.workspace;branch=$ws.branch;runId=$runId;oldBase=$base;oldHead=$oldHead;currentTarget=$currentTarget;review=$review}
@@ -474,6 +479,28 @@ try{
             Assert-True ($pending.eligible -and $pending.transplantRecordPending) "interrupted exact transplant was not recovered: $($pending.reason)"
             $completed=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
             Assert-True ($completed.eligible -and $f.state.disjointSourceTransplant.recordHash -match '^sha256:[0-9a-f]{64}$') 'interrupted transplant did not receive a durable signed record'
+        }
+
+        Check 'DTA-24: exact no-mutation remote divergence is eligible for fresh review' {
+            $f=New-DtaFixture 'A24' -RemoteDivergedHold
+            $p=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True $p.eligible "expected remote-diverged hold to be eligible, got: $($p.reason)"
+            Assert-True ($p.currentTarget -eq $f.currentTarget -and $p.freshReviewRequired -and -not $p.providerInvocationRequired) 'remote-diverged recovery proof is not bound to the current target and fresh review'
+        }
+
+        Check 'DTA-25: remote divergence must bind the exact failed target and candidate base' {
+            $f=New-DtaFixture 'A25' -RemoteDivergedHold
+            $f.state.integration.targetBefore=('f'*40)
+            $p=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True (-not $p.eligible -and $p.reason -eq 'integration result does not prove an eligible pre-publish, no-mutation failure') "tampered remote-diverged target was not rejected exactly: $($p.reason)"
+        }
+
+        Check 'DTA-26: remote-diverged recovery reaches REVIEWING without invoking a provider' {
+            $f=New-DtaFixture 'A26' -RemoteDivergedHold
+            $r=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and $f.state.status -eq 'RUNNING' -and $f.state.stage -eq 'REVIEW') "remote-diverged recovery did not reach fresh review: $($r.status) / $($f.state.status) / $($f.state.stage)"
+            Assert-True ((Get-LedgerState $f.contract.taskVersionId).state -eq 'REVIEWING') 'remote-diverged recovery ledger did not reach REVIEWING'
+            Assert-True (($f.state.providerHistory|Measure-Object).Count -eq 0) 'remote-diverged recovery invoked or recorded a provider'
         }
     } finally { Pop-Location }
 } finally {
