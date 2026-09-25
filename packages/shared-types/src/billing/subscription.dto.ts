@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export * from './payment-provider';
+
 export const SubscriptionStatusEnum = z.enum([
   'TRIALING',
   'ACTIVE',
