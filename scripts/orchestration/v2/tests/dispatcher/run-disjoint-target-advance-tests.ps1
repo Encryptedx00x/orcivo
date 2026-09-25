@@ -565,6 +565,12 @@ try{
             $refreshedTarget=(& git -C $Fixture rev-parse HEAD).Trim()
             $refresh=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
             Assert-True ($refresh.eligible -and $refresh.targetRefreshRequired -and [string]$refresh.proof.currentTarget -eq $refreshedTarget) "recovered source-transplanted candidate did not request an exact target refresh: $($refresh.reason)"
+            $later=_ToHashtable ((ConvertTo-CanonicalJson $proposal)|ConvertFrom-Json);$signed=_ToHashtable $later.disjointSourceTransplant
+            & git -C $f.workspace checkout --detach ([string]$signed.newCandidateHead) --quiet
+            $later.candidateBase=[string]$signed.currentTarget;$later.baseSha=[string]$signed.currentTarget;$later.candidateHead=[string]$signed.newCandidateHead;$later.implementationCommit=[string]$signed.newCandidateHead;$later.candidateTree=[string]$signed.newCandidateTree;$later.diffHash=[string]$signed.newDiffHash
+            $laterProof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $later -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($laterProof.eligible -and $laterProof.targetRefreshRequired -and [string]$laterProof.proof.currentTarget -eq $refreshedTarget) "a later exact source candidate was incorrectly rebound to the older recovery receipt: $($laterProof.reason)"
+            & git -C $f.workspace checkout --detach ([string]$proposal.candidateHead) --quiet
             $receiptPath=Get-DispatcherDisjointTargetAdvanceReceiptPath -RunId $f.runId
             $receipt=Read-V2Json $receiptPath;$receipt.newCandidateHead=('0'*40);Write-V2JsonCanonical $receiptPath $receipt
             $tampered=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh

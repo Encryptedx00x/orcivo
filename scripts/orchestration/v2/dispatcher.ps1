@@ -1181,7 +1181,10 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $receipt=$null
         if(Test-Path -LiteralPath $receiptPath){
             $receipt=Read-V2Json $receiptPath
-            if(-not(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$proof.proofHash))){return &$deny 'recovery receipt is invalid or conflicts with the proof'}
+            if(-not(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$proof.proofHash))){
+                $priorReceipt=($PermitExactSignedTransplantHead -and -not $alreadyRecovered -and $history.Count -eq 1 -and (Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$history[0].proofHash)) -and [string]$receipt.receiptHash -eq [string]$history[0].receiptHash)
+                if($priorReceipt){$receipt=$null}else{return &$deny 'recovery receipt is invalid or conflicts with the proof'}
+            }
         }
         if($alreadyRecovered -and -not $receipt){return &$deny 'completed recovery is missing its receipt'}
         if($alreadyRecovered -and ([string]$State.candidateBase -ne $currentTarget -or [string]$State.candidateHead -ne [string]$receipt.newCandidateHead)){return &$deny 'completed recovery evidence does not match the current candidate binding'}
