@@ -1752,7 +1752,7 @@ function Refresh-DispatcherBlockedCandidateTargetGate {
     $State.status='WAITING_HUMAN';$State.stage='GATE';$State.reason="Level C: $($Task.ownerGate)"
     $State.decisionNeeded='fresh owner approval bound to the latest proven disjoint target'
     $State.resumes='same preserved candidate after exact target refresh and fresh independent review'
-    $State.pendingContractSupersession=$true;$State.pendingDisjointSourceSuccession=$true;$State.pendingReviewSuccession=$true
+    $State.pendingContractSupersession=$true;$State.pendingDisjointSourceSuccession=$true
     $State.pendingSupersessionReason='approved candidate target advanced disjointly before publication'
     $State.supersededTaskVersionId=[string]$constraints.resumeFromTaskVersionId
     $State.recoveredCandidateCommit=[string]$constraints.resumeFromCandidateCommit
@@ -1760,6 +1760,29 @@ function Refresh-DispatcherBlockedCandidateTargetGate {
     Write-DispatcherState $State|Out-Null
     $refreshed=Refresh-DispatcherPendingSourceSuccessionGate -State $State -Task $Task -TaskSource $TaskSource -Contract $contract -RefreshProof $proof
     return [ordered]@{refreshed=$true;reason='fresh exact target gate approved and preserved candidate rebased';state=$refreshed.state;contract=$refreshed.contract;target=$refreshed.target}
+}
+
+function Refresh-DispatcherActiveSourceCandidateTargetGate {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[string]$RepoDir=(Get-RepoRoot))
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'REVIEW' -or [string]$Task.candidateConstraints.resumePolicy -ne 'DISJOINT_SOURCE_SUCCESSION' -or -not $State.disjointSourceTransplant){return [ordered]@{refreshed=$false;reason='active candidate is not a source-succession review'} }
+    $contract=Get-Contract ([string]$State.taskVersionId)
+    $proposal=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
+    $proposal.pendingDisjointSourceSuccession=$true
+    $proof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $Task -Contract $contract -TaskSource $TaskSource -RepoDir $RepoDir -AllowTargetRefresh
+    if(-not [bool]$proof.eligible){throw "active source candidate target proof failed closed: $($proof.reason)"}
+    if(-not [bool]$proof.targetRefreshRequired){return [ordered]@{refreshed=$false;reason=[string]$proof.reason;state=$State}}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    $State.status='WAITING_HUMAN';$State.stage='GATE';$State.reason="Level C: $($Task.ownerGate)"
+    $State.decisionNeeded='fresh owner approval bound to the latest proven disjoint target'
+    $State.resumes='same preserved candidate after exact target refresh and fresh independent review'
+    $State.pendingContractSupersession=$true;$State.pendingDisjointSourceSuccession=$true
+    $State.pendingSupersessionReason='approved candidate target advanced disjointly before publication'
+    $State.supersededTaskVersionId=[string]$constraints.resumeFromTaskVersionId
+    $State.recoveredCandidateCommit=[string]$constraints.resumeFromCandidateCommit
+    $State.gate=[ordered]@{required=$true;approval='MISSING';reason=[string]$Task.ownerGate;taskVersionId=[string]$State.taskVersionId}
+    Write-DispatcherState $State|Out-Null
+    $refreshed=Refresh-DispatcherPendingSourceSuccessionGate -State $State -Task $Task -TaskSource $TaskSource -Contract $contract -RefreshProof $proof
+    return [ordered]@{refreshed=$true;reason='active source candidate rebased to the newly approved exact target';state=$refreshed.state;contract=$refreshed.contract;target=$refreshed.target}
 }
 
 function Test-DispatcherContractSupersessionEligible {
@@ -4218,6 +4241,10 @@ function Invoke-RealDispatcherTask {
         $targetGateRefresh=Refresh-DispatcherBlockedCandidateTargetGate -State $state -Task $Task -TaskSource $TaskSource
         if([bool]$targetGateRefresh.refreshed){$state=$targetGateRefresh.state}
     }
+    if([string]$state.status -eq 'RUNNING' -and [string]$state.stage -eq 'REVIEW' -and [string]$Task.candidateConstraints.resumePolicy -eq 'DISJOINT_SOURCE_SUCCESSION'){
+        $activeTargetRefresh=Refresh-DispatcherActiveSourceCandidateTargetGate -State $state -Task $Task -TaskSource $TaskSource
+        if([bool]$activeTargetRefresh.refreshed){$state=$activeTargetRefresh.state}
+    }
     $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
     $classification = Get-TaskClassification -Task $Task
@@ -4551,6 +4578,14 @@ if($needsFreshDispatch){
         if($state.stage -eq 'REVIEW'){
             # Opposite-provider review (owner decision 2026-09-14):
             # deepseek <-> glm, codex -> deepseek, claude -> codex.
+            # A source succession reuses an implementation candidate, but it
+            # is not an authorized GLM review succession.  Clear only the
+            # stale pin that the source-gate path may have inherited; review
+            # routing then follows the ordinary opposite-provider policy.
+            if([string]$Task.candidateConstraints.resumePolicy -eq 'DISJOINT_SOURCE_SUCCESSION' -and -not [bool]$state.pendingReviewSuccession -and $state.authorizedReviewRoute){
+                $state.Remove('authorizedReviewRoute')|Out-Null
+                Write-DispatcherState $state|Out-Null
+            }
             $reviewer=Get-OrcivoOppositeProvider -Provider ([string]$state.provider);$state.reviewerProvider=$reviewer
             # Closed pin for the authorized review succession: the review must
             # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other

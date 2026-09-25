@@ -394,8 +394,9 @@ try{
         }
 
         Check 'DTA-22: divergent source transplant preserves only the approved candidate patch' {
-            $f=New-DtaFixture 'A22' -DivergentTargetAdvance
+            $f=New-DtaFixture 'A22' -DivergentTargetAdvance -LevelC
             $s=New-DtaSourceSuccessor $f 'a22'
+            New-OwnerGateApproval -TaskId $s.task.taskId -TaskVersionId $s.contract.taskVersionId -GateId $s.task.ownerGate -ApprovalScope 'fixture exact source succession scope' -ApprovedBy fixture -ApprovalSource 'isolated target-refresh test'|Out-Null
             $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
             Assert-True $p.eligible "fixture source proof failed: $($p.reason)"
             $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
@@ -447,9 +448,15 @@ try{
             New-Attestation -Kind review -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$currentBindings) -Result APPROVE -ProducerMeta @{provider='glm';invocationId=('att-'+[guid]::NewGuid().ToString('N'))}|Out-Null
             $f.state.candidateBase=$postTransplantTarget;$f.state.candidateHead=$currentHead
             $f.state.candidateTree=Get-GitTreeHash -Dir $f.workspace -Ref $currentHead;$f.state.diffHash=Get-GitDiffHash -Dir $f.workspace -BaseSha $postTransplantTarget -HeadSha $currentHead
-            $f.state.pendingDisjointSourceSuccession=$true
-            $refreshProof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
-            Assert-True ($refreshProof.eligible -and $refreshProof.targetRefreshRequired) "transplanted candidate did not safely request an exact new target gate: $($refreshProof.reason)"
+            $f.state.task=$s.task;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSource=$s.source.path;$f.state.taskSourceHash=$s.source.hash
+            $f.state.status='RUNNING';$f.state.stage='REVIEW';$f.state.reason='';$f.state.pendingContractSupersession=$false;$f.state.pendingDisjointSourceSuccession=$false;$f.state.pendingReviewSuccession=$false
+            $oldReviewedBranch=[string]$f.branch
+            & git -C $f.workspace branch -f $oldReviewedBranch $currentHead
+            Assert-True ($LASTEXITCODE -eq 0) 'could not bind the fixture reviewed branch to its current candidate head'
+            $activeRefresh=Refresh-DispatcherActiveSourceCandidateTargetGate -State $f.state -Task $s.task -TaskSource $s.source -RepoDir $Fixture
+            Assert-True ($activeRefresh.refreshed -and [string]$activeRefresh.target -eq $postTransplantTarget) "active reviewed candidate did not receive an exact target refresh: $($activeRefresh.reason)"
+            Assert-True ([string]$activeRefresh.state.candidateBase -eq $postTransplantTarget -and [string]$activeRefresh.state.branch -ne $oldReviewedBranch) 'active target refresh did not bind a new candidate branch/base'
+            Assert-True ((Get-DispatcherOptionalLocalBranchHead -Branch $oldReviewedBranch -RepoDir $f.workspace) -eq $currentHead) 'active target refresh did not preserve the prior reviewed candidate branch'
         }
 
         Check 'DTA-23: interrupted divergent transplant is recovered from exact content proof' {
