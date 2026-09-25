@@ -843,9 +843,11 @@ function Recover-DispatcherReviewTerminalJsonHold {
 }
 
 # A reviewer that exits without one authoritative terminal envelope has not
-# produced a verdict.  This proof authorizes one review-only retry on the
-# fixed GLM fallback while preserving the exact candidate and every failed
-# invocation/attestation as immutable evidence.  It deliberately reuses the
+# produced a verdict.  This proof authorizes a bounded review-only fallback:
+# first GLM, then Claude only when the pinned GLM invocation itself ends with
+# exact, hash-bound terminal evidence but no text verdict. It preserves the
+# exact candidate and every failed invocation/attestation as immutable
+# evidence. It deliberately reuses the
 # stricter terminal-JSON proof up to its terminal-envelope check so malformed,
 # tampered, or unbound provider receipts cannot enter this path.
 function Get-DispatcherReviewTimeoutRetryProof {
@@ -856,11 +858,18 @@ function Get-DispatcherReviewTimeoutRetryProof {
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$true}}
     try{
-        if(@($State.reviewTimeoutRetryHistory|Where-Object{$_}).Count -ge 1){return &$deny 'review timeout retry budget exhausted'}
-        if([string]$State.provider -eq 'glm'){return &$deny 'GLM cannot independently review its own implementation'}
+        $history=@($State.reviewTimeoutRetryHistory|Where-Object{$_})
+        if($history.Count -ge 2){return &$deny 'review timeout retry budget exhausted'}
+        if($history.Count -eq 1 -and [string]$history[0].failedInvocationId -eq $InvocationId){return &$deny 'review timeout retry budget exhausted for this invocation'}
+        $retryProvider=$(if($history.Count -eq 0){'glm'}else{'claude'})
+        $retryProfile='REASONING'
+        if([string]$State.provider -eq $retryProvider){return &$deny "$retryProvider cannot independently review its own implementation"}
+        $retryRoute=Resolve-Provider -Profile $retryProfile -Provider $retryProvider -ReviewOnly
+        if(-not $retryRoute.ok){return &$deny "$retryProvider review fallback is unavailable: $($retryRoute.reason)"}
         $terminal=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
         if($terminal.eligible){return &$deny 'immutable output contains a revalidatable terminal verdict; use terminal-JSON recovery'}
-        if([string]$terminal.reason -ne 'last agent_message does not carry exactly one valid terminal review-envelope suffix'){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
+        $expectedTerminalReasons=$(if($history.Count -eq 0){@('last agent_message does not carry exactly one valid terminal review-envelope suffix')}else{@('GLM provider stream carries no completed text result','last GLM text does not carry exactly one review-envelope marker')})
+        if([string]$terminal.reason -notin $expectedTerminalReasons){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
 
         $review=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind review -RunId $RunId -HeadSha ([string]$State.candidateHead)
         if(-not $review -or [string]$review.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.producer.invocationId -ne $InvocationId -or [string]$review.payload.reason -ne 'reviewer process did not exit 0 / timed out'){return &$deny 'latest review is not the exact no-verdict timeout attestation'}
@@ -885,9 +894,14 @@ function Get-DispatcherReviewTimeoutRetryProof {
         if($ledger.corrupt -or [string]$ledger.state -ne 'WAITING_HUMAN' -or -not $tail -or [string]$tail.event -ne 'review-hold' -or [string]$tail.runId -ne $RunId -or [string]$tail.note -ne 'HUMAN_REVIEW_REQUIRED'){return &$deny 'ledger tail is not the exact timed-out review hold'}
 
         $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})[0]
-        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-timeout-retry-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$review.attestationId;failedReviewAttestationHash=[string]$review.attestationHash;failedResultReceiptHash=[string]$attempt.resultReceiptHash;failedStdoutHash=[string]$attempt.stdoutHash;checkAttestationId=[string]$check.attestationId;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
+        if($history.Count -eq 1){
+            $prior=$history[0]
+            if([string]$prior.retryProvider -ne 'glm' -or [string]$prior.retryModel -ne (Get-GlmModelId) -or [string]$prior.retryProfile -ne 'REASONING' -or [string]$State.authorizedReviewRoute.provider -ne 'glm' -or [string]$State.authorizedReviewRoute.model -ne (Get-GlmModelId) -or [string]$State.authorizedReviewRoute.profile -ne 'REASONING'){return &$deny 'GLM fallback provenance is not the exact pinned first retry'}
+            if(-not $attempt -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -ne 0 -or [long]$attempt.usage.outputTokens -ne 0 -or [long]$attempt.usage.reasoningTokens -le 0){return &$deny 'GLM fallback did not end in an exact exit-zero reasoning-only no-output result'}
+        }
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-timeout-retry-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$review.attestationId;failedReviewAttestationHash=[string]$review.attestationHash;failedResultReceiptHash=[string]$attempt.resultReceiptHash;failedStdoutHash=[string]$attempt.stdoutHash;retryOrdinal=($history.Count+1);priorRetryProofHash=$(if($history.Count){[string]$history[-1].proofHash}else{''});checkAttestationId=[string]$check.attestationId;retryProvider=$retryProvider;retryModel=[string]$retryRoute.model;retryProfile=$retryProfile}
         $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
-        return [ordered]@{eligible=$true;reason='exact no-verdict timeout is eligible for one same-candidate GLM review retry';providerInvocationRequired=$true;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING';candidateHead=[string]$State.candidateHead;proof=$proof}
+        return [ordered]@{eligible=$true;reason="exact no-verdict timeout is eligible for bounded same-candidate $retryProvider review fallback";providerInvocationRequired=$true;retryProvider=$retryProvider;retryModel=[string]$retryRoute.model;retryProfile=$retryProfile;candidateHead=[string]$State.candidateHead;proof=$proof}
     }catch{return &$deny $_.Exception.Message}
 }
 
@@ -899,26 +913,26 @@ function Resume-DispatcherReviewTimeoutBlock {
     )
     $result=Get-DispatcherReviewTimeoutRetryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
     if(-not $result.eligible){throw "review timeout retry not eligible: $($result.reason)"}
-    $proof=$result.proof;$evidence=@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;candidateHead=[string]$State.candidateHead;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
+    $proof=$result.proof;$retryProvider=[string]$result.retryProvider;$retryModel=[string]$result.retryModel;$retryProfile=[string]$result.retryProfile;$evidence=@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;candidateHead=[string]$State.candidateHead;retryProvider=$retryProvider;retryModel=$retryModel;retryProfile=$retryProfile}
     $ledger=Get-LedgerState $TaskVersionId
     if([string]$ledger.state -eq 'WAITING_HUMAN'){
-        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'one same-candidate GLM review retry after exact no-verdict timeout'|Out-Null
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note "bounded same-candidate $retryProvider review fallback after exact no-verdict timeout"|Out-Null
         $ledger=Get-LedgerState $TaskVersionId
     }
     if([string]$ledger.state -eq 'DISPATCHED'){
-        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-running' -ToState RUNNING -RunId $RunId -Evidence $evidence -Note 'one same-candidate GLM review retry after exact no-verdict timeout'|Out-Null
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-running' -ToState RUNNING -RunId $RunId -Evidence $evidence -Note "bounded same-candidate $retryProvider review fallback after exact no-verdict timeout"|Out-Null
         $ledger=Get-LedgerState $TaskVersionId
     }
     if([string]$ledger.state -ne 'RUNNING'){throw "review timeout retry ledger prefix is incompatible: $($ledger.state)"}
 
-    $record=[ordered]@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;failedReviewAttestationHash=[string]$proof.failedReviewAttestationHash;candidateHead=[string]$State.candidateHead;priorProfile=[string]$State.profile;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
-    $State.reviewTimeoutRetryHistory=@($record)
-    $State.authorizedReviewRoute=[ordered]@{provider='glm';model=(Get-GlmModelId);profile='REASONING';reason='REVIEW_TIMEOUT_FALLBACK';proofHash=[string]$proof.proofHash}
-    $State.profile='REASONING';$State.reviewerProvider='glm'
+    $record=[ordered]@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;failedReviewAttestationHash=[string]$proof.failedReviewAttestationHash;candidateHead=[string]$State.candidateHead;priorProfile=[string]$State.profile;retryProvider=$retryProvider;retryModel=$retryModel;retryProfile=$retryProfile}
+    $State.reviewTimeoutRetryHistory=@($State.reviewTimeoutRetryHistory|Where-Object{$_})+@($record)
+    $State.authorizedReviewRoute=[ordered]@{provider=$retryProvider;model=$retryModel;profile=$retryProfile;reason=$(if($retryProvider -eq 'glm'){'REVIEW_TIMEOUT_FALLBACK'}else{'REVIEW_EMPTY_RESULT_FALLBACK'});proofHash=[string]$proof.proofHash}
+    $State.profile=$retryProfile;$State.reviewerProvider=$retryProvider
     $State.reviewVerdict='';$State.reviewInvocationId='';$State.reviewAttestationId='';$State.reviewTechnicalBlock=$null;$State.findings=@()
-    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='';$State.decisionNeeded='';$State.resumes='one exact same-candidate GLM review retry'
+    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='';$State.decisionNeeded='';$State.resumes="bounded exact same-candidate $retryProvider review fallback"
     Write-DispatcherState $State|Out-Null
-    return [ordered]@{eligible=$true;resumed=$true;taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateHead=[string]$State.candidateHead;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING';proofHash=[string]$proof.proofHash}
+    return [ordered]@{eligible=$true;resumed=$true;taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateHead=[string]$State.candidateHead;retryProvider=$retryProvider;retryModel=$retryModel;retryProfile=$retryProfile;proofHash=[string]$proof.proofHash}
 }
 
 function Get-DispatcherDisjointTargetAdvanceReceiptPath {
@@ -2313,11 +2327,10 @@ function Test-DispatcherAuthorizedReviewSuccessionEligible {
     return $true
 }
 
-# For the authorized review succession the review route is EXPLICITLY fixed:
-# GLM at exactly nvidia/z-ai/glm-5.3 on profile REASONING.  This pin is
-# stored on the durable state by the dispatcher itself and enforced at the
-# REVIEW dispatch site; the generic CRITICAL implementation reservation is
-# NOT relaxed anywhere.
+# An explicitly authorized review fallback is pinned to its exact provider,
+# resolved model, and profile. The dispatcher stores the pin on durable state
+# and enforces it at the REVIEW dispatch site; generic implementation routing
+# is not relaxed anywhere.
 function Assert-DispatcherAuthorizedReviewRoute {
     param($State,[string]$Reviewer,[string]$Profile,$Route)
     $pinned=$State.authorizedReviewRoute

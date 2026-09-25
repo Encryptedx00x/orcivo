@@ -38,8 +38,8 @@ Commands:
                                       result whose terminal JSON was framed by a prose prefix
   recover-review-terminal-json-hold  deterministically re-extract + revalidate that exact immutable
                                       reviewer terminal stdout under the current parser/schema
-  prove-review-timeout-retry        read-only proof for one exact no-verdict reviewer timeout
-  recover-review-timeout-retry      preserve the candidate and authorize one fixed GLM review retry
+  prove-review-timeout-retry        read-only proof for a bounded exact no-verdict review fallback
+  recover-review-timeout-retry      preserve the candidate and authorize the next pinned review fallback
   prove-disjoint-target-advance    read-only eligibility proof for a pre-publish integration failure
                                    whose target has since advanced only through disjoint commits
   recover-disjoint-target-advance  rebase the approved candidate onto the disjoint target advance and

@@ -1465,6 +1465,22 @@ try{
             return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;invocation=$invocation;receiptPath=$agent.resultReceiptPath;receipt=$receipt;stdoutPath=$stdoutPath;envelope=$envelope}
         }
 
+        function Set-GlmNoVerdictReviewHold {
+            param($Fixture)
+            Resume-DispatcherReviewTimeoutBlock -State $Fixture.state -Task $Fixture.task -TaskSource $Fixture.source -Contract $Fixture.contract -TaskVersionId $Fixture.contract.taskVersionId -RunId $Fixture.state.runId -InvocationId $Fixture.invocation|Out-Null
+            $state=Get-DispatcherState;$invocation='att-'+[guid]::NewGuid().ToString('N');$logs=Join-Path (Get-V2Dir) "runs\$($state.runId)\logs";$suffix=$invocation.Substring(4,8);$stem="reviewer-003-glm-$suffix"
+            $promptPath=Join-Path $logs "$stem.prompt.txt";$stdoutPath=Join-Path $logs "$stem.stdout.log";$stderrPath=Join-Path $logs "$stem.stderr.log"
+            Copy-Item ([string]$Fixture.receipt.promptArtifact) $promptPath;Write-Utf8 $stderrPath ''
+            $events=@((ConvertTo-Json ([ordered]@{type='step_start';part=[ordered]@{type='step-start'}}) -Compress -Depth 8),(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='length';tokens=[ordered]@{total=101;input=20;output=0;reasoning=80;cache=[ordered]@{write=0;read=1}};cost=0}}) -Compress -Depth 10));Write-Utf8 $stdoutPath (($events-join "`n")+"`n")
+            $agent=[ordered]@{invocationId=$invocation;provider='glm';model=(Get-GlmModelId);profile='REASONING';reasoningIntent='high';attempt=3;exitCode=0;providerClass='NONE';failureDiagnostic=$null;resultClass='AGENT_FAILURE';structuredResult=$null;promptArtifact=[IO.Path]::GetFullPath($promptPath);promptHash=(New-FileHash $promptPath);stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=(New-FileHash $stdoutPath);stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=(New-FileHash $stderrPath);controlRecordHash=(New-StringHash ([IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)));duration=1;contextRolloverRequired=$false;capabilityVersion='fixture';continuationCheckpoint='';usage=@{inputTokens=20;outputTokens=0;reasoningTokens=80;cachedTokens=1};cachedTokens=1;returnedModels=@();requestManifestPath='';requestManifestHash=$null;costUsd=0;telemetryConsistent=$true;resultReceiptPath=(Get-RealAgentResultReceiptPath -ArtifactDir $logs -InvocationId $invocation -Role reviewer -Provider glm -Attempt 3)};$receipt=Write-RealAgentResultReceipt -AgentResult $agent
+            Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase CHECKING;Enter-DispatcherLedgerPhase -TaskVersionId $state.taskVersionId -RunId $state.runId -Phase REVIEWING
+            $review=New-Attestation -Kind review -TaskVersionId $state.taskVersionId -RunId $state.runId -Bindings ([hashtable](Get-AttestationBindings -TaskVersionId $state.taskVersionId -WorktreeDir $state.workspace -BaseSha $state.candidateBase -HeadSha $state.candidateHead)) -Result HUMAN_REVIEW_REQUIRED -Payload @{problems=@('processOk=false');reason='reviewer process did not exit 0 / timed out';findings=@($null);technicalBlock=$null;reviewArtifactRecordHash=[string]$state.reviewArtifactRecord.recordHash} -ProducerMeta @{provider='glm';model=(Get-GlmModelId);profile='REASONING';invocationId=$invocation;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0}
+            Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event review-hold -ToState WAITING_HUMAN -RunId $state.runId -Note HUMAN_REVIEW_REQUIRED|Out-Null
+            $attempt=[ordered]@{invocationId=$invocation;role='REVIEWER';provider='glm';model=(Get-GlmModelId);reasoningEffort='high';attempt=3;providerClass='NONE';resultClass='AGENT_FAILURE';failureDiagnostic=$null;exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash;usage=$agent.usage}
+            $state.providerHistory=@($state.providerHistory)+@($attempt);$state.status='WAITING_HUMAN';$state.stage='REVIEW';$state.reason='HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out';$state.reviewVerdict='HUMAN_REVIEW_REQUIRED';$state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewerProvider='glm';Write-DispatcherState $state|Out-Null
+            return @{state=$state;invocation=$invocation;receipt=$receipt;stdoutPath=$stdoutPath;review=$review}
+        }
+
         Check 'RD-138' {
             $f=New-ReviewInfrastructureFixture 'RD138' $true
             $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$f.contract.taskVersionId;reviewedHead=$f.head;treeHash=$f.state.candidateTree;diffHash=$f.state.diffHash;specHash=$f.contract.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='critical';detail='page unavailable'});filesReviewed=@();technicalBlock=$f.technicalBlock;reviewerMeta=[ordered]@{provider='deepseek';model='fixture';effort='low';toolPolicy='review-data-only';promptTemplateVersion='v'} }
@@ -1829,6 +1845,24 @@ try{
             $f.state.reviewAttestationId=$review.attestationId;$f.state.reviewerProvider='glm';$f.state.providerHistory[-1]=[ordered]@{invocationId=$f.invocation;role='REVIEWER';provider='glm';model=(Get-GlmModelId);reasoningEffort='high';attempt=2;providerClass='NONE';resultClass='AGENT_FAILURE';failureDiagnostic=$null;exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash};Write-DispatcherState $f.state|Out-Null
             $p=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
             Assert-True ($p.eligible -and $p.replayVerdict -eq 'APPROVE' -and $p.candidateHead -eq $f.head) "a hash-bound terminal GLM review envelope was not eligible for provider-neutral recovery: $($p.reason)"
+        }
+        Check 'RD-218' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD218' -NoEnvelope;$glm=Set-GlmNoVerdictReviewHold $f
+            $p=Get-DispatcherReviewTimeoutRetryProof -State $glm.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation
+            Assert-True ($p.eligible -and $p.retryProvider -eq 'claude' -and $p.retryProfile -eq 'REASONING') "an exact terminal GLM no-output result was not eligible for one Claude review fallback: $($p.reason)"
+            $r=Resume-DispatcherReviewTimeoutBlock -State $glm.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation;$s=Get-DispatcherState
+            Assert-True ($r.resumed -and $s.authorizedReviewRoute.provider -eq 'claude' -and $s.reviewTimeoutRetryHistory.Count -eq 2 -and $s.providerHistory.Count -eq 3) 'GLM no-output recovery did not preserve evidence and pin exactly one Claude review fallback'
+        }
+        Check 'RD-219' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD219' -NoEnvelope;$glm=Set-GlmNoVerdictReviewHold $f
+            Resume-DispatcherReviewTimeoutBlock -State $glm.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation|Out-Null
+            $p=Get-DispatcherReviewTimeoutRetryProof -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'budget exhausted') 'a third review fallback remained authorized after GLM and Claude were exhausted'
+        }
+        Check 'RD-220' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD220' -NoEnvelope;$glm=Set-GlmNoVerdictReviewHold $f;$glm.state.providerHistory[-1].usage.outputTokens=1
+            $p=Get-DispatcherReviewTimeoutRetryProof -State $glm.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'reasoning-only no-output') 'a GLM attempt with nonzero output tokens remained eligible for Claude fallback'
         }
 
         Check 'RD-150' {
