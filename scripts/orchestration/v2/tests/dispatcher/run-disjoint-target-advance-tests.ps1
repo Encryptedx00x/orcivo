@@ -570,6 +570,25 @@ try{
             $tampered=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
             Assert-True (-not $tampered.eligible -and $tampered.reason -match 'receipt is invalid') "tampered recovery receipt was not rejected: $($tampered.reason)"
         }
+        Check 'DTA-30: later source refresh is not rebound to an older target-recovery receipt' {
+            $f=New-DtaFixture 'A30' -DivergentTargetAdvance -LevelC;$s=New-DtaSourceSuccessor $f 'a30'
+            New-OwnerGateApproval -TaskId $s.task.taskId -TaskVersionId $s.contract.taskVersionId -GateId $s.task.ownerGate -ApprovalScope 'fixture later source refresh scope' -ApprovedBy fixture -ApprovalSource 'isolated target-recovery test'|Out-Null
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture source proof failed: $($p.reason)"
+            $f.state.disjointSourceSuccession=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $moved=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
+            Assert-True ($moved.eligible -and $moved.transplanted) 'fixture source transplant failed'
+            $f.state.status='RUNNING';$f.state.stage='REVIEW';$f.state.reviewVerdict=''
+            $f.state.disjointTargetAdvanceRecoveryHistory=@([ordered]@{newCandidateHead=('1'*40);newCandidateBase=('2'*40);proofHash=('sha256:'+('3'*64));receiptHash=('sha256:'+('4'*64));checkAttestationId='atn-stale'})
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-later-source-refresh.json') "{`"laterSourceRefresh`":true}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'later source refresh target advance (disjoint)' --quiet
+            & git -C $Fixture push --quiet origin main
+            $latestTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+            $refresh=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($refresh.eligible -and $refresh.targetRefreshRequired -and [string]$refresh.proof.currentTarget -eq $latestTarget) "later source refresh was incorrectly rebound to an older recovery receipt: $($refresh.reason)"
+        }
     } finally { Pop-Location }
 } finally {
     try{Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue}catch{}

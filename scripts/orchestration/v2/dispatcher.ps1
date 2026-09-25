@@ -1418,7 +1418,8 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
                 $transplantEvidence=$currentCandidateEvidence
             }
             $recoveryHistory=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
-            if($AllowTargetRefresh -and [string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and $recoveryHistory.Count -eq 1){
+            $matchesTargetRecovery=($recoveryHistory.Count -eq 1 -and [string]$State.candidateHead -eq [string]$recoveryHistory[0].newCandidateHead -and [string]$State.candidateBase -eq [string]$recoveryHistory[0].newCandidateBase)
+            if($AllowTargetRefresh -and [string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and $matchesTargetRecovery){
                 $recovery=$recoveryHistory[0]
                 $workspace=[string]$State.workspace;$head=[string]$State.candidateHead;$base=[string]$State.candidateBase
                 if($head -ne (Get-GitHeadV2 $workspace) -or $head -ne [string]$recovery.newCandidateHead -or $base -ne [string]$recovery.newCandidateBase -or [string]$transplantEvidence.newCandidateHead -ne $head -or [string]$transplantEvidence.candidateBase -ne $base -or [string]$transplantEvidence.newCandidateTree -ne [string]$State.candidateTree -or [string]$transplantEvidence.newDiffHash -ne [string]$State.diffHash){return &$deny 'recovered source-transplanted candidate binding drift'}
