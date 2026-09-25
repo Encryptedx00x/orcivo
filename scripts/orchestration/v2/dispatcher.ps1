@@ -1308,10 +1308,13 @@ function Refresh-DispatcherPendingSourceSuccessionGate {
     $priorApproval=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId $oldVersion -GateId ([string]$Task.ownerGate)
     if(-not [bool]$priorApproval.satisfied -or [string]$priorApproval.approval -ne 'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$priorApproval.approvalScope)){throw 'source succession target refresh requires an existing exact predecessor owner approval'}
     $approvalScope="$($priorApproval.approvalScope) Rebind only to exact disjoint target $target; no prior scope is expanded."
-    Approve-DispatcherOwnerGate -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$newContract.taskVersionId) -ApprovalScope $approvalScope -ApprovedBy 'Encryptedx (delegated to Codex)' -ApprovalSource 'Explicit user delegation for queued tasks in Codex conversation 2026-09-24' -TaskFile ([string]$TaskSource.path)|Out-Null
-    $reconciled=Reconcile-DispatcherOwnerGateProjection -Task $Task -TaskSource $TaskSource -TaskVersionId ([string]$newContract.taskVersionId)
-    if(-not [bool]$reconciled.authority.satisfied -or [string]$reconciled.authority.approval -ne 'APPROVED'){throw 'source succession refreshed gate was not recognized as approved'}
-    return [ordered]@{contract=$newContract;state=(Get-DispatcherState);target=$target;approval=$reconciled.authority}
+    $approval=Approve-DispatcherOwnerGate -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$newContract.taskVersionId) -ApprovalScope $approvalScope -ApprovedBy 'Encryptedx (delegated to Codex)' -ApprovalSource 'Explicit user delegation for queued tasks in Codex conversation 2026-09-24' -TaskFile ([string]$TaskSource.path)
+    $latest=Get-DispatcherState
+    $authority=Get-DispatcherOwnerGateAuthority -State $latest -Task $Task -TaskSource $TaskSource
+    if(-not [bool]$authority.ok -or -not [bool]$authority.satisfied -or [string]$authority.approval -ne 'APPROVED'){throw 'source succession refreshed gate was not recognized as approved'}
+    $latest.gate=[ordered]@{required=$true;approval=[string]$authority.approval;reason=[string]$authority.gateId;taskVersionId=[string]$latest.taskVersionId;authority=[string]$authority.authority;gateHash=[string]$authority.gateHash}
+    Write-DispatcherState $latest|Out-Null
+    return [ordered]@{contract=$newContract;state=(Get-DispatcherState);target=$target;approval=$authority;approvalResult=$approval}
 }
 
 # Mutating recovery: rebases the isolated candidate workspace onto the
