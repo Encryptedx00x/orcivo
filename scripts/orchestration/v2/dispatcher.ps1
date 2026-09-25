@@ -947,7 +947,18 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $expectedWsHead=$(if($alreadyRecovered){[string]$State.candidateHead}else{$oldHead})
         if(-not $alreadyRecovered -and $PermitExactSignedTransplantHead -and $State.disjointSourceTransplant){
             $transplant=_ToHashtable $State.disjointSourceTransplant;$transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
-            if([string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned)) -or [string]$transplant.newCandidateHead -ne $wsHead){return &$deny 'current workspace head is not the exact signed transplanted candidate'}
+            if([string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned))){return &$deny 'signed source transplant record is invalid'}
+            $signedTransplantHead=[string]$transplant.newCandidateHead -eq $wsHead
+            $freshSuccessionHead=$false
+            if(-not $signedTransplantHead -and [string]$State.sourceTransplantCurrentHead -eq $wsHead -and [string]$State.sourceTransplantCurrentBase -match '^[0-9a-f]{40}$'){
+                $successorVersion=[string]$transplant.successorTaskVersionId
+                $currentCheck=Get-LatestAuthoritative -TaskVersionId $successorVersion -Kind check -RunId ([string]$transplant.runId) -HeadSha $wsHead
+                $currentReview=Get-LatestAuthoritative -TaskVersionId $successorVersion -Kind review -RunId ([string]$transplant.runId) -HeadSha $wsHead
+                $freshSuccessionHead=($currentCheck -and [string]$currentCheck.result -eq 'PASS' -and $currentReview -and [string]$currentReview.result -eq 'APPROVE' -and
+                    (Test-AttestationFresh -Attestation $currentCheck -WorktreeDir $workspace -BaseSha ([string]$State.sourceTransplantCurrentBase) -HeadSha $wsHead).fresh -and
+                    (Test-AttestationFresh -Attestation $currentReview -WorktreeDir $workspace -BaseSha ([string]$State.sourceTransplantCurrentBase) -HeadSha $wsHead).fresh)
+            }
+            if(-not $signedTransplantHead -and -not $freshSuccessionHead){return &$deny 'current workspace head is not the signed transplant or its freshly attested exact successor'}
             $expectedWsHead=$wsHead
         }
         if($wsHead -ne $expectedWsHead){return &$deny 'candidate workspace HEAD drift'}
@@ -1131,7 +1142,7 @@ function Get-DispatcherGitPathObject {
 function Get-DispatcherDisjointSourceTransplantEvidence {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)]$SuccessionRecord,
-        [string]$RepoDir=(Get-RepoRoot),[string]$CandidateHead='',[switch]$AllowTargetDrift
+        [string]$RepoDir=(Get-RepoRoot),[string]$CandidateHead='',[string]$CandidateBase='',[switch]$AllowTargetDrift
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
     try{
@@ -1159,25 +1170,28 @@ function Get-DispatcherDisjointSourceTransplantEvidence {
             if($origin.exitCode -ne 0 -or $origin.stdout.Trim() -ne $currentTarget -or $currentTarget -ne [string]$SuccessionRecord.currentTarget){return &$deny 'source transplant target head drift'}
         }
 
-        $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$currentTarget,$CandidateHead) -LogLabel 'disjoint-source-transplant-ancestry'
-        if($ancestor.exitCode -ne 0){return &$deny 'transplanted candidate is not descended from the frozen target'}
+        if(-not $CandidateBase){$CandidateBase=$currentTarget}
+        if($CandidateBase -notmatch '^[0-9a-f]{40}$'){return &$deny 'transplanted candidate base is invalid'}
+        $baseAncestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$currentTarget,$CandidateBase) -LogLabel 'disjoint-source-transplant-base-ancestry'
+        $candidateAncestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$CandidateBase,$CandidateHead) -LogLabel 'disjoint-source-transplant-ancestry'
+        if($baseAncestor.exitCode -ne 0 -or $candidateAncestor.exitCode -ne 0){return &$deny 'transplanted candidate base is not descended from the frozen target or candidate head'}
         $oldBase=[string]$SuccessionRecord.candidateBase;$oldHead=[string]$SuccessionRecord.candidateHead
         $oldCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$oldBase..$oldHead") -LogLabel 'disjoint-source-transplant-old-count'
-        $newCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$currentTarget..$CandidateHead") -LogLabel 'disjoint-source-transplant-new-count'
+        $newCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$CandidateBase..$CandidateHead") -LogLabel 'disjoint-source-transplant-new-count'
         if($oldCount.exitCode -ne 0 -or $newCount.exitCode -ne 0 -or $oldCount.stdout.Trim() -ne $newCount.stdout.Trim()){return &$deny 'transplanted candidate commit count drift'}
 
         $oldPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $oldBase -HeadSha $oldHead|Sort-Object)
-        $newPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $currentTarget -HeadSha $CandidateHead|Sort-Object)
+        $newPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $CandidateBase -HeadSha $CandidateHead|Sort-Object)
         if(($oldPaths -join '|') -ne ($newPaths -join '|')){return &$deny 'transplanted candidate changed-path set drift'}
         foreach($path in $oldPaths){
             $oldObject=Get-DispatcherGitPathObject -RepoDir $workspace -Ref $oldHead -Path $path
             $newObject=Get-DispatcherGitPathObject -RepoDir $workspace -Ref $CandidateHead -Path $path
             if([bool]$oldObject.present -ne [bool]$newObject.present -or ([bool]$oldObject.present -and [string]$oldObject.object -ne [string]$newObject.object)){return &$deny "transplanted candidate path '$path' content drift"}
         }
-        $newDiffHash=Get-GitDiffHash -Dir $workspace -BaseSha $currentTarget -HeadSha $CandidateHead
+        $newDiffHash=Get-GitDiffHash -Dir $workspace -BaseSha $CandidateBase -HeadSha $CandidateHead
         if($newDiffHash -ne [string]$SuccessionRecord.diffHash){return &$deny 'transplanted candidate patch hash drift'}
         return [ordered]@{
-            eligible=$true;reason='divergent source candidate transplant is exact';oldCandidateBase=$oldBase;oldCandidateHead=$oldHead
+            eligible=$true;reason='divergent source candidate transplant is exact';oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;candidateBase=$CandidateBase
             currentTarget=$currentTarget;newCandidateHead=$CandidateHead;newCandidateTree=(Get-GitTreeHash -Dir $workspace -Ref $CandidateHead)
             newDiffHash=$newDiffHash;candidateChangedPaths=$newPaths;commitCount=[int]$newCount.stdout.Trim()
         }
@@ -1250,8 +1264,15 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
             $transplantEvidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir -CandidateHead ([string]$transplant.newCandidateHead) -AllowTargetDrift:$AllowTargetRefresh
             if(-not [bool]$transplantEvidence.eligible){return &$deny "pending source transplant validation failed: $($transplantEvidence.reason)"}
             if([string]$transplant.newCandidateTree -ne [string]$transplantEvidence.newCandidateTree -or [string]$transplant.newDiffHash -ne [string]$transplantEvidence.newDiffHash -or (@($transplant.candidateChangedPaths) -join '|') -ne (@($transplantEvidence.candidateChangedPaths) -join '|')){return &$deny 'pending source transplant evidence drift'}
+            if([string]$State.candidateHead -and [string]$State.candidateHead -ne [string]$transplant.newCandidateHead){
+                $currentCandidateEvidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir -CandidateHead ([string]$State.candidateHead) -CandidateBase ([string]$State.candidateBase) -AllowTargetDrift:$AllowTargetRefresh
+                if(-not [bool]$currentCandidateEvidence.eligible){return &$deny "current approved candidate no longer matches the signed source patch: $($currentCandidateEvidence.reason)"}
+                if([string]$currentCandidateEvidence.newDiffHash -ne [string]$transplant.newDiffHash -or (@($currentCandidateEvidence.candidateChangedPaths) -join '|') -ne (@($transplant.candidateChangedPaths) -join '|')){return &$deny 'current approved candidate patch differs from the signed source transplant'}
+                $transplantEvidence=$currentCandidateEvidence
+            }
             if($AllowTargetRefresh){
                 $oldState=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
+                $oldState.sourceTransplantCurrentHead=[string]$State.candidateHead;$oldState.sourceTransplantCurrentBase=[string]$State.candidateBase
                 $oldState.taskVersionId=[string]$record.predecessorTaskVersionId;$oldState.taskSourceHash=[string]$record.predecessorTaskSourceHash;$oldState.taskSource=[string]$record.predecessorTaskSourcePath;$oldState.task=$record.predecessorTask
                 $oldState.status='INTEGRATION_FAILED';$oldState.stage='INTEGRATE';$oldState.reason='authority tree dirty';$oldState.implementationComplete=$true;$oldState.requiresCorrection=$false;$oldState.reviewVerdict='APPROVE'
                 $oldState.candidateBase=[string]$record.candidateBase;$oldState.candidateHead=[string]$record.candidateHead;$oldState.candidateTree=[string]$record.candidateTree;$oldState.diffHash=[string]$record.diffHash;$oldState.integration=$record.integrationResult

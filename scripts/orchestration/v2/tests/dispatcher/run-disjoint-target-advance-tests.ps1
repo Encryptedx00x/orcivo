@@ -417,20 +417,33 @@ try{
             Assert-True ((Get-GitHeadV2ForRef -Dir $Fixture -Ref $importBranch.branch) -eq $moved.newCandidateHead) 'new candidate import ref does not point to the approved transplanted head'
             $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
             Assert-True $pending.eligible "signed transplant did not revalidate: $($pending.reason)"
+            $reconcileState=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json)
+            $reconcileState.task=$s.task;$reconcileState.taskVersionId=$s.contract.taskVersionId;$reconcileState.taskSource=$s.source.path;$reconcileState.taskSourceHash=$s.source.hash
+            $reconcileState.status='RESUMABLE';$reconcileState.stage='IMPLEMENT';$reconcileState.reason='candidate HEAD is not descended from the durable base SHA'
+            $reconcileState.baseSha=$f.oldBase;$reconcileState.implementationComplete=$true;$reconcileState.implementationCommit=$moved.newCandidateHead;$reconcileState.candidateHead=''
+            Assert-True (Test-DispatcherTransplantBaseReconciliationEligible -State $reconcileState -Task $s.task -TaskSource $s.source) 'exact signed transplant lineage was not eligible for narrow base reconciliation'
+            $reconcileState.disjointSourceTransplant.recordHash='sha256:' + ('0' * 64)
+            Assert-True (-not (Test-DispatcherTransplantBaseReconciliationEligible -State $reconcileState -Task $s.task -TaskSource $s.source)) 'tampered transplant record was accepted for base reconciliation'
             Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-post-transplant-advance.json') "{`"postTransplant`":`"$($f.runId)`"}`n"
             & git -C $Fixture add .
             & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'post-transplant disjoint target advance' --quiet
             & git -C $Fixture push --quiet origin main
             Assert-True ($LASTEXITCODE -eq 0) 'could not advance the fixture target after candidate transplant'
+            $postTransplantTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+            & git -C $f.workspace fetch --no-tags --quiet $Fixture main
+            & git -C $f.workspace checkout -b ('orch-v2/run-dta-current-'+[guid]::NewGuid().ToString('N').Substring(0,12)) $moved.newCandidateHead --quiet
+            Assert-True ($LASTEXITCODE -eq 0) 'could not create the fresh candidate fixture branch'
+            & git -C $f.workspace rebase --onto $postTransplantTarget $f.currentTarget | Out-Null
+            Assert-True ($LASTEXITCODE -eq 0) 'could not simulate a freshly reviewed candidate on the advanced target'
+            $currentHead=(& git -C $f.workspace rev-parse HEAD).Trim()
+            $currentBindings=Get-AttestationBindings -TaskVersionId $s.contract.taskVersionId -WorktreeDir $f.workspace -BaseSha $postTransplantTarget -HeadSha $currentHead
+            New-Attestation -Kind check -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$currentBindings) -Result PASS|Out-Null
+            New-Attestation -Kind review -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$currentBindings) -Result APPROVE -ProducerMeta @{provider='glm';invocationId=('att-'+[guid]::NewGuid().ToString('N'))}|Out-Null
+            $f.state.candidateBase=$postTransplantTarget;$f.state.candidateHead=$currentHead
+            $f.state.candidateTree=Get-GitTreeHash -Dir $f.workspace -Ref $currentHead;$f.state.diffHash=Get-GitDiffHash -Dir $f.workspace -BaseSha $postTransplantTarget -HeadSha $currentHead
             $f.state.pendingDisjointSourceSuccession=$true
             $refreshProof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
             Assert-True ($refreshProof.eligible -and $refreshProof.targetRefreshRequired) "transplanted candidate did not safely request an exact new target gate: $($refreshProof.reason)"
-            $f.state.task=$s.task;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSource=$s.source.path;$f.state.taskSourceHash=$s.source.hash
-            $f.state.status='RESUMABLE';$f.state.stage='IMPLEMENT';$f.state.reason='candidate HEAD is not descended from the durable base SHA'
-            $f.state.baseSha=$f.oldBase;$f.state.implementationComplete=$true;$f.state.implementationCommit=$moved.newCandidateHead;$f.state.candidateHead=''
-            Assert-True (Test-DispatcherTransplantBaseReconciliationEligible -State $f.state -Task $s.task -TaskSource $s.source) 'exact signed transplant lineage was not eligible for narrow base reconciliation'
-            $f.state.disjointSourceTransplant.recordHash='sha256:' + ('0' * 64)
-            Assert-True (-not (Test-DispatcherTransplantBaseReconciliationEligible -State $f.state -Task $s.task -TaskSource $s.source)) 'tampered transplant record was accepted for base reconciliation'
         }
 
         Check 'DTA-23: interrupted divergent transplant is recovered from exact content proof' {
