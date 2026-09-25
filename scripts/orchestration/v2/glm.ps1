@@ -172,6 +172,7 @@ function ConvertTo-GlmAgentEnvelope {
     $h = _ToHashtable $Parsed
     if (-not $h) { return $null }
     if ("$($h['schemaVersion'])" -eq 'orcivo.orchestration.v2.agent-result/1' -and "$($h['role'])") { return $h }
+    if ("$($h['schemaVersion'])" -eq 'orcivo.orchestration.v2.review-envelope/1' -and "$($h['verdict'])") { return $h }
     if (-not $h.Contains('resultClass')) { return $null }
     $class = [string]$h['resultClass']
     if ($class -notin @('SUCCESS','BLOCK','CONTEXT_ROLLOVER','AGENT_FAILURE','TEST_FAILURE')) { return $null }

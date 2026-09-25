@@ -355,6 +355,13 @@ try{
             Assert-True ([string]$refusedState.model -eq 'zai-coding-plan/glm-5.3' -and [int]$refusedState.attempt -eq 7 -and [string]$refusedState.providerHistory[0].model -eq 'zai-coding-plan/glm-5.3') 'a refused sync mutated the durable route, the attempt counter, or historical evidence'
         }finally{$script:V2Dir=$oldV2;$script:V2Config=$oldCfg;$script:LedgerDir=$oldLedger;$script:DeepSeekRuntimePath=$oldRuntime;$script:DeepSeekBudgetDir=$oldBudget}
     }
+    Check 'GL-18' {
+        $review=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=('a'*64);reviewedHead=('b'*40);treeHash=('c'*40);diffHash=('sha256:'+('d'*64));specHash=('sha256:'+('e'*64));verdict='APPROVE';criteria=@();findings=@();filesReviewed=@();technicalBlock=$null;reviewerMeta=[ordered]@{provider='glm';model=(Get-GlmModelId);effort='high';toolPolicy='review-data-only';promptTemplateVersion='v2'}}
+        $pretty=ConvertTo-Json $review -Depth 20
+        $raw=(@((ConvertTo-Json ([ordered]@{type='step_start';part=[ordered]@{type='step-start'}}) -Compress -Depth 6),(ConvertTo-Json ([ordered]@{type='text';part=[ordered]@{type='text';text=$pretty}}) -Compress -Depth 24),(ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop';tokens=[ordered]@{total=100;input=20;output=10;reasoning=5;cache=[ordered]@{write=0;read=70}};cost=0}}) -Compress -Depth 8)) -join "`n")+"`n"
+        $parsed=ConvertFrom-RealGlmOutput $raw
+        Assert-True ($parsed.structured -and [string]$parsed.structured.schemaVersion -eq 'orcivo.orchestration.v2.review-envelope/1' -and [string]$parsed.structured.verdict -eq 'APPROVE') 'a terminal GLM review envelope was discarded by the live adapter'
+    }
 }finally{
     if($null -ne $originalPath){$env:PATH=$originalPath}
     $results|ForEach-Object{Write-Output $_}
