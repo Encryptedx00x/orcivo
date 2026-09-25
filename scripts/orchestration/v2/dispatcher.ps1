@@ -1218,7 +1218,7 @@ function Complete-DispatcherDisjointSourceTransplant {
 }
 
 function Get-DispatcherPendingDisjointSourceSuccessionProof {
-    param($State,[hashtable]$Task,$Contract,$TaskSource,[string]$RepoDir=(Get-RepoRoot))
+    param($State,[hashtable]$Task,$Contract,$TaskSource,[string]$RepoDir=(Get-RepoRoot),[switch]$AllowTargetRefresh)
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
     try{
         if(-not [bool]$State.pendingDisjointSourceSuccession){return &$deny 'disjoint source succession is not pending'}
@@ -1262,9 +1262,56 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
         $oldSource=[ordered]@{path=[string]$record.predecessorTaskSourcePath;hash=[string]$record.predecessorTaskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
         $proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $oldState -Task ([hashtable]$record.predecessorTask) -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$record.predecessorTaskVersionId) -RunId ([string]$record.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof -PermitDivergentTargetForSourceSuccession
         if(-not [bool]$proof.eligible){return &$deny "pending predecessor proof failed: $($proof.reason)"}
-        if([string]$proof.proof.proofHash -ne [string]$record.disjointProofHash -or [string]$proof.currentTarget -ne [string]$record.currentTarget -or [string]$proof.targetRelation -ne [string]$record.targetRelation -or [string]$proof.lineageMergeBase -ne [string]$record.lineageMergeBase){return &$deny 'pending disjoint proof or target lineage drift'}
+        $targetDrift=([string]$proof.currentTarget -ne [string]$record.currentTarget)
+        if([string]$proof.targetRelation -ne [string]$record.targetRelation -or [string]$proof.lineageMergeBase -ne [string]$record.lineageMergeBase){return &$deny 'pending disjoint proof or target lineage drift'}
+        if($targetDrift -or [string]$proof.proof.proofHash -ne [string]$record.disjointProofHash){
+            if(-not $AllowTargetRefresh -or -not $targetDrift){return &$deny 'pending disjoint proof or target head drift'}
+            $advance=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',[string]$record.currentTarget,[string]$proof.currentTarget) -LogLabel 'pending-source-succession-target-refresh-ancestry'
+            if($advance.exitCode -ne 0){return &$deny 'refreshed target is not a descendant of the previously approved target'}
+            return [ordered]@{eligible=$true;reason='disjoint target advanced after gate; a new exact-version gate is required';targetRefreshRequired=$true;proof=$proof;record=$record}
+        }
         return [ordered]@{eligible=$true;reason='pending disjoint source succession revalidated';proof=$proof;record=$record}
     }catch{return &$deny $_.Exception.Message}
+}
+
+function Refresh-DispatcherPendingSourceSuccessionGate {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)]$Contract,[Parameter(Mandatory)]$RefreshProof)
+    if(-not [bool]$RefreshProof.eligible -or -not [bool]$RefreshProof.targetRefreshRequired){throw 'source succession target refresh requires a fresh disjoint proof'}
+    if([string]$State.status -ne 'WAITING_HUMAN' -or [string]$State.stage -ne 'GATE' -or [string]$State.reason -ne "Level C: $($Task.ownerGate)"){throw 'source succession target refresh requires the exact pending Level C gate'}
+    $record=_ToHashtable $State.disjointSourceSuccession
+    $target=[string]$RefreshProof.proof.currentTarget
+    $newContract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride "$target@$($TaskSource.hash)"
+    if([string]$newContract.taskVersionId -eq [string]$State.taskVersionId -or [string]$newContract.specHash -ne [string]$Contract.specHash){throw 'source succession refresh did not produce a distinct planning-bound contract with identical task semantics'}
+
+    $oldVersion=[string]$State.taskVersionId
+    $oldTarget=[string]$record.currentTarget
+    $record.successorTaskVersionId=[string]$newContract.taskVersionId
+    $record.currentTarget=$target
+    $record.disjointProofHash=[string]$RefreshProof.proof.proof.proofHash
+    $record.targetRelation=[string]$RefreshProof.proof.targetRelation
+    $record.lineageMergeBase=[string]$RefreshProof.proof.lineageMergeBase
+    $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $signed)
+
+    Initialize-LedgerTask -TaskVersionId $newContract.taskVersionId -Identity @{taskId=$Task.taskId;planningHead=$newContract.planningHead;specHash=$newContract.specHash;acceptanceHash=$newContract.acceptanceHash}|Out-Null
+    if([string](Get-LedgerState $newContract.taskVersionId).state -eq 'DISCOVERED'){Add-LedgerEvent -TaskVersionId $newContract.taskVersionId -Event 'ready' -ToState 'READY' -RunId $State.runId -Note "successor gate refreshed from $oldVersion at target $target"|Out-Null}
+    if([string](Get-LedgerState $newContract.taskVersionId).state -eq 'READY'){Add-LedgerEvent -TaskVersionId $newContract.taskVersionId -Event 'level-c-hold' -ToState 'WAITING_HUMAN' -RunId $State.runId -Note ([string]$Task.ownerGate)|Out-Null}
+
+    $history=@($State.sourceSuccessionTargetRefreshHistory|Where-Object{$_})
+    $history+=,[ordered]@{previousTaskVersionId=$oldVersion;taskVersionId=[string]$newContract.taskVersionId;previousTarget=$oldTarget;target=$target;previousProofHash=[string]$RefreshProof.record.disjointProofHash;proofHash=[string]$record.disjointProofHash;refreshedAt=(Get-Date).ToUniversalTime().ToString('o')}
+    $State.taskVersionId=[string]$newContract.taskVersionId
+    $State.disjointSourceSuccession=$record
+    $State.sourceSuccessionTargetRefreshHistory=$history
+    $State.gate=[ordered]@{required=$true;approval='MISSING';reason=[string]$Task.ownerGate;taskVersionId=[string]$newContract.taskVersionId}
+    Write-DispatcherState $State|Out-Null
+
+    $priorApproval=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId $oldVersion -GateId ([string]$Task.ownerGate)
+    if(-not [bool]$priorApproval.satisfied -or [string]$priorApproval.approval -ne 'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$priorApproval.approvalScope)){throw 'source succession target refresh requires an existing exact predecessor owner approval'}
+    $approvalScope="$($priorApproval.approvalScope) Rebind only to exact disjoint target $target; no prior scope is expanded."
+    Approve-DispatcherOwnerGate -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$newContract.taskVersionId) -ApprovalScope $approvalScope -ApprovedBy 'Encryptedx (delegated to Codex)' -ApprovalSource 'Explicit user delegation for queued tasks in Codex conversation 2026-09-24' -TaskFile ([string]$TaskSource.path)|Out-Null
+    $reconciled=Reconcile-DispatcherOwnerGateProjection -Task $Task -TaskSource $TaskSource -TaskVersionId ([string]$newContract.taskVersionId)
+    if(-not [bool]$reconciled.authority.satisfied -or [string]$reconciled.authority.approval -ne 'APPROVED'){throw 'source succession refreshed gate was not recognized as approved'}
+    return [ordered]@{contract=$newContract;state=(Get-DispatcherState);target=$target;approval=$reconciled.authority}
 }
 
 # Mutating recovery: rebases the isolated candidate workspace onto the
@@ -3981,6 +4028,15 @@ function Invoke-RealDispatcherTask {
     }
     $contractSupersession=Test-DispatcherContractSupersessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
     $pendingSupersession=Test-DispatcherPendingContractSupersessionResume -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
+    if([bool]$state.pendingContractSupersession -and -not $pendingSupersession){
+        $pendingProof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $state -Task $Task -Contract $contract -TaskSource $TaskSource -AllowTargetRefresh
+        if(-not [bool]$pendingProof.eligible -or -not [bool]$pendingProof.targetRefreshRequired){throw "dispatcher: pending successor proof failed closed: $($pendingProof.reason)"}
+        $refreshed=Refresh-DispatcherPendingSourceSuccessionGate -State $state -Task $Task -TaskSource $TaskSource -Contract $contract -RefreshProof $pendingProof
+        $state=$refreshed.state;$contract=$refreshed.contract
+        $ownerGateStatus=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$contract.taskVersionId) -GateId ([string]$Task.ownerGate)
+        $pendingSupersession=Test-DispatcherPendingContractSupersessionResume -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
+        if(-not $pendingSupersession){throw 'dispatcher: refreshed source succession did not revalidate under its exact new owner gate'}
+    }
     $reviewSuccession=Test-DispatcherAuthorizedReviewSuccessionEligible -State $state -Task $Task -Contract $contract -TaskSource $TaskSource
     $disjointSourceSuccessionRequest=Test-DispatcherDisjointSourceSuccessionRequest -State $state -Task $Task -TaskSource $TaskSource
     $disjointSourceSuccessionProof=$(if($disjointSourceSuccessionRequest){Get-DispatcherDisjointSourceSuccessionProof -State $state -Task $Task -TaskSource $TaskSource -Contract $contract}else{$null})

@@ -48,12 +48,14 @@ $OriginBare=Join-Path $Root 'origin.git'
 $script:DtaSeq=0
 $script:DtaSalt=[guid]::NewGuid().ToString('N')
 
-function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$DivergentTargetAdvance) {
+function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$DivergentTargetAdvance,[switch]$LevelC) {
     $script:DtaSeq++
     $task=Task ("DTA-"+$Id) $Scope
+    if($LevelC){$task.risk='C';$task.ownerGate='level-c-external-service-arch'}
     $sourcePath=Join-Path $Root ("dta-"+$Id+"-"+$script:DtaSeq+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
     $source=Read-DispatcherTaskSource $sourcePath;$task=[hashtable]$source.tasks[0]
     $contract=New-DispatcherContract -Task $task -TaskSource $source
+    if($LevelC){New-OwnerGateApproval -TaskId $task.taskId -TaskVersionId $contract.taskVersionId -GateId $task.ownerGate -ApprovalScope 'fixture exact candidate scope' -ApprovedBy fixture -ApprovalSource 'isolated target-refresh test'|Out-Null}
 
     $base=(& git -C $Fixture rev-parse HEAD).Trim()
     $divergenceCommon=''
@@ -346,13 +348,21 @@ try{
         }
 
         Check 'DTA-20: pending successor revalidates the exact frozen target' {
-            $f=New-DtaFixture 'A20'
+            $f=New-DtaFixture 'A20' -LevelC
             $s=New-DtaSourceSuccessor $f 'a20'
             $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
             Assert-True $p.eligible "fixture proof failed: $($p.reason)"
             $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
             $f.state.pendingDisjointSourceSuccession=$true;$f.state.disjointSourceSuccession=$record
             $f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $f.state.pendingContractSupersession=$true;$f.state.supersededTaskVersionId=$f.contract.taskVersionId;$f.state.recoveredCandidateCommit=$f.oldHead
+            $f.state.status='WAITING_HUMAN';$f.state.stage='GATE';$f.state.reason="Level C: $($s.task.ownerGate)"
+            Initialize-LedgerTask -TaskVersionId $s.contract.taskVersionId -Identity @{taskId=$s.task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event ready -ToState READY -RunId $f.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event level-c-hold -ToState WAITING_HUMAN -RunId $f.runId -Note $s.task.ownerGate|Out-Null
+            Write-DispatcherState $f.state|Out-Null
+            Approve-DispatcherOwnerGate -TaskId $s.task.taskId -TaskVersionId $s.contract.taskVersionId -ApprovalScope 'fixture exact successor candidate scope' -ApprovedBy fixture -ApprovalSource 'isolated target-refresh test' -TaskFile $s.source.path|Out-Null
+            Reconcile-DispatcherOwnerGateProjection -Task $s.task -TaskSource $s.source -TaskVersionId $s.contract.taskVersionId|Out-Null
             $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
             Assert-True $pending.eligible "pending successor did not revalidate: $($pending.reason)"
 
@@ -361,7 +371,16 @@ try{
             & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'target moved after successor gate' --quiet
             & git -C $Fixture push --quiet origin main
             $moved=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
-            Assert-True (-not $moved.eligible -and $moved.reason -match 'proof or target (?:head|lineage) drift') "post-gate target drift was not rejected: $($moved.reason)"
+            Assert-True (-not $moved.eligible -and $moved.reason -match 'target head drift') "post-gate target drift was not rejected: $($moved.reason)"
+            $refresh=Get-DispatcherPendingDisjointSourceSuccessionProof -State (Get-DispatcherState) -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($refresh.eligible -and $refresh.targetRefreshRequired) "safe disjoint target advance did not request a fresh exact gate: $($refresh.reason)"
+            $oldWorkspace=[string]$f.state.workspace;$oldRun=[string]$f.state.runId;$oldCandidate=[string]$f.state.recoveredCandidateCommit
+            $result=Refresh-DispatcherPendingSourceSuccessionGate -State (Get-DispatcherState) -Task $s.task -TaskSource $s.source -Contract $s.contract -RefreshProof $refresh
+            $after=Get-DispatcherState;$approval=Get-OwnerGateApprovalStatus -TaskId $s.task.taskId -TaskVersionId $result.contract.taskVersionId -GateId $s.task.ownerGate
+            Assert-True ($result.contract.taskVersionId -ne $s.contract.taskVersionId -and $approval.satisfied -and $approval.approval -eq 'APPROVED') 'refreshed target was not bound to a newly approved exact task version'
+            Assert-True ($after.workspace -eq $oldWorkspace -and $after.runId -eq $oldRun -and $after.recoveredCandidateCommit -eq $oldCandidate -and $after.pendingContractSupersession) 'target refresh changed the preserved candidate lineage'
+            $revalidated=Get-DispatcherPendingDisjointSourceSuccessionProof -State $after -Task $s.task -Contract $result.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True ($revalidated.eligible -and -not $revalidated.targetRefreshRequired) "newly approved target-bound successor did not revalidate: $($revalidated.reason)"
         }
 
         Check 'DTA-21: divergent target is allowed only by exact source succession' {
