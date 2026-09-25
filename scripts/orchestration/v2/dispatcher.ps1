@@ -1178,7 +1178,7 @@ function Get-DispatcherDisjointSourceTransplantEvidence {
         $oldBase=[string]$SuccessionRecord.candidateBase;$oldHead=[string]$SuccessionRecord.candidateHead
         $oldCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$oldBase..$oldHead") -LogLabel 'disjoint-source-transplant-old-count'
         $newCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$CandidateBase..$CandidateHead") -LogLabel 'disjoint-source-transplant-new-count'
-        if($oldCount.exitCode -ne 0 -or $newCount.exitCode -ne 0 -or $oldCount.stdout.Trim() -ne $newCount.stdout.Trim()){return &$deny 'transplanted candidate commit count drift'}
+        if($oldCount.exitCode -ne 0 -or $newCount.exitCode -ne 0 -or [int]$oldCount.stdout.Trim() -lt 1 -or [int]$newCount.stdout.Trim() -lt 1){return &$deny 'transplanted candidate has no source-bound commits'}
 
         $oldPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $oldBase -HeadSha $oldHead|Sort-Object)
         $newPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $CandidateBase -HeadSha $CandidateHead|Sort-Object)

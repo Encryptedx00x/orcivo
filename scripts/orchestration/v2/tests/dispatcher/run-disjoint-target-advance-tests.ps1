@@ -436,6 +436,12 @@ try{
             & git -C $f.workspace rebase --onto $postTransplantTarget $f.currentTarget | Out-Null
             Assert-True ($LASTEXITCODE -eq 0) 'could not simulate a freshly reviewed candidate on the advanced target'
             $currentHead=(& git -C $f.workspace rev-parse HEAD).Trim()
+            $candidateTree=(& git -C $f.workspace rev-parse "$currentHead^{tree}").Trim()
+            $mergeHead=(& git -C $f.workspace -c user.name=rd -c user.email=rd@local commit-tree $candidateTree -p $currentHead -p $postTransplantTarget -m 'candidate synchronization merge').Trim()
+            Assert-True ($LASTEXITCODE -eq 0 -and $mergeHead -match '^[0-9a-f]{40}$') 'could not create the fixture synchronization merge commit'
+            & git -C $f.workspace checkout --detach $mergeHead --quiet
+            Assert-True ($LASTEXITCODE -eq 0) 'could not select the fixture synchronization merge commit'
+            $currentHead=$mergeHead
             $currentBindings=Get-AttestationBindings -TaskVersionId $s.contract.taskVersionId -WorktreeDir $f.workspace -BaseSha $postTransplantTarget -HeadSha $currentHead
             New-Attestation -Kind check -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$currentBindings) -Result PASS|Out-Null
             New-Attestation -Kind review -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$currentBindings) -Result APPROVE -ProducerMeta @{provider='glm';invocationId=('att-'+[guid]::NewGuid().ToString('N'))}|Out-Null
