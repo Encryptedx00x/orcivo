@@ -858,7 +858,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
         [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
         [string]$RepoDir=(Get-RepoRoot),[switch]$PermitActiveRunnerForReadOnlyProof,
-        [switch]$PermitDivergentTargetForSourceSuccession
+        [switch]$PermitDivergentTargetForSourceSuccession,[switch]$PermitExactSignedTransplantHead
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
     try{
@@ -945,6 +945,11 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
         $wsHead=Get-GitHeadV2 $workspace
         $expectedWsHead=$(if($alreadyRecovered){[string]$State.candidateHead}else{$oldHead})
+        if(-not $alreadyRecovered -and $PermitExactSignedTransplantHead -and $State.disjointSourceTransplant){
+            $transplant=_ToHashtable $State.disjointSourceTransplant;$transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
+            if([string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned)) -or [string]$transplant.newCandidateHead -ne $wsHead){return &$deny 'current workspace head is not the exact signed transplanted candidate'}
+            $expectedWsHead=$wsHead
+        }
         if($wsHead -ne $expectedWsHead){return &$deny 'candidate workspace HEAD drift'}
         $wsStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'disjoint-target-advance-recovery-status'
         if($wsStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){return &$deny 'candidate workspace is dirty'}
@@ -1126,7 +1131,7 @@ function Get-DispatcherGitPathObject {
 function Get-DispatcherDisjointSourceTransplantEvidence {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)]$SuccessionRecord,
-        [string]$RepoDir=(Get-RepoRoot),[string]$CandidateHead=''
+        [string]$RepoDir=(Get-RepoRoot),[string]$CandidateHead='',[switch]$AllowTargetDrift
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
     try{
@@ -1140,13 +1145,19 @@ function Get-DispatcherDisjointSourceTransplantEvidence {
 
         if(-not(Test-GitCleanV2 $RepoDir)){return &$deny 'authority tree is dirty during source transplant validation'}
         $target=(Get-V2Config).target.branch
-        $branch=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'disjoint-source-transplant-branch'
-        if($branch.exitCode -ne 0 -or $branch.stdout.Trim() -ne $target){return &$deny "authority checkout is not on '$target'"}
-        $fetch=Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'disjoint-source-transplant-fetch'
-        if($fetch.exitCode -ne 0){return &$deny 'authority fetch failed during source transplant validation'}
-        $currentTarget=Get-GitHeadV2 $RepoDir
-        $origin=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'disjoint-source-transplant-origin'
-        if($origin.exitCode -ne 0 -or $origin.stdout.Trim() -ne $currentTarget -or $currentTarget -ne [string]$SuccessionRecord.currentTarget){return &$deny 'source transplant target head drift'}
+        if($AllowTargetDrift){
+            $currentTarget=[string]$SuccessionRecord.currentTarget
+            $targetObject=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse','--verify',"$currentTarget^{commit}") -LogLabel 'disjoint-source-transplant-recorded-target'
+            if($targetObject.exitCode -ne 0 -or $targetObject.stdout.Trim() -ne $currentTarget){return &$deny 'recorded source transplant target object is unavailable'}
+        }else{
+            $branch=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'disjoint-source-transplant-branch'
+            if($branch.exitCode -ne 0 -or $branch.stdout.Trim() -ne $target){return &$deny "authority checkout is not on '$target'"}
+            $fetch=Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'disjoint-source-transplant-fetch'
+            if($fetch.exitCode -ne 0){return &$deny 'authority fetch failed during source transplant validation'}
+            $currentTarget=Get-GitHeadV2 $RepoDir
+            $origin=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'disjoint-source-transplant-origin'
+            if($origin.exitCode -ne 0 -or $origin.stdout.Trim() -ne $currentTarget -or $currentTarget -ne [string]$SuccessionRecord.currentTarget){return &$deny 'source transplant target head drift'}
+        }
 
         $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$currentTarget,$CandidateHead) -LogLabel 'disjoint-source-transplant-ancestry'
         if($ancestor.exitCode -ne 0){return &$deny 'transplanted candidate is not descended from the frozen target'}
@@ -1236,9 +1247,25 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
             $transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
             if([string]$transplant.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-source-transplant/1' -or [string]$transplant.recordHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned))){return &$deny 'pending source transplant record is invalid'}
             if([string]$transplant.successionRecordHash -ne [string]$record.recordHash -or [string]$transplant.successorTaskVersionId -ne [string]$record.successorTaskVersionId -or [string]$transplant.runId -ne [string]$record.runId){return &$deny 'pending source transplant record binding drift'}
-            $transplantEvidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir -CandidateHead ([string]$transplant.newCandidateHead)
+            $transplantEvidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir -CandidateHead ([string]$transplant.newCandidateHead) -AllowTargetDrift:$AllowTargetRefresh
             if(-not [bool]$transplantEvidence.eligible){return &$deny "pending source transplant validation failed: $($transplantEvidence.reason)"}
             if([string]$transplant.newCandidateTree -ne [string]$transplantEvidence.newCandidateTree -or [string]$transplant.newDiffHash -ne [string]$transplantEvidence.newDiffHash -or (@($transplant.candidateChangedPaths) -join '|') -ne (@($transplantEvidence.candidateChangedPaths) -join '|')){return &$deny 'pending source transplant evidence drift'}
+            if($AllowTargetRefresh){
+                $oldState=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
+                $oldState.taskVersionId=[string]$record.predecessorTaskVersionId;$oldState.taskSourceHash=[string]$record.predecessorTaskSourceHash;$oldState.taskSource=[string]$record.predecessorTaskSourcePath;$oldState.task=$record.predecessorTask
+                $oldState.status='INTEGRATION_FAILED';$oldState.stage='INTEGRATE';$oldState.reason='authority tree dirty';$oldState.implementationComplete=$true;$oldState.requiresCorrection=$false;$oldState.reviewVerdict='APPROVE'
+                $oldState.candidateBase=[string]$record.candidateBase;$oldState.candidateHead=[string]$record.candidateHead;$oldState.candidateTree=[string]$record.candidateTree;$oldState.diffHash=[string]$record.diffHash;$oldState.integration=$record.integrationResult
+                $oldContract=Get-Contract ([string]$record.predecessorTaskVersionId)
+                $oldSource=[ordered]@{path=[string]$record.predecessorTaskSourcePath;hash=[string]$record.predecessorTaskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
+                $proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $oldState -Task ([hashtable]$record.predecessorTask) -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$record.predecessorTaskVersionId) -RunId ([string]$record.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof -PermitDivergentTargetForSourceSuccession -PermitExactSignedTransplantHead
+                if(-not [bool]$proof.eligible){return &$deny "pending predecessor proof failed: $($proof.reason)"}
+                if([string]$proof.targetRelation -ne [string]$record.targetRelation -or [string]$proof.lineageMergeBase -ne [string]$record.lineageMergeBase){return &$deny 'pending disjoint proof or target lineage drift'}
+                if([string]$proof.currentTarget -ne [string]$record.currentTarget){
+                    $advance=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',[string]$record.currentTarget,[string]$proof.currentTarget) -LogLabel 'pending-source-succession-transplant-target-refresh-ancestry'
+                    if($advance.exitCode -ne 0){return &$deny 'refreshed target is not a descendant of the previously approved target'}
+                    return [ordered]@{eligible=$true;reason='disjoint target advanced after gate; a new exact-version gate is required';targetRefreshRequired=$true;proof=$proof;record=$record;transplant=$transplant;transplantEvidence=$transplantEvidence}
+                }
+            }
             return [ordered]@{eligible=$true;reason='pending divergent source transplant revalidated';record=$record;transplant=$transplant;transplantEvidence=$transplantEvidence}
         }
 
@@ -1315,6 +1342,48 @@ function Refresh-DispatcherPendingSourceSuccessionGate {
     if(-not [bool]$authority.ok -or -not [bool]$authority.satisfied -or [string]$authority.approval -ne 'APPROVED'){throw 'source succession refreshed gate was not recognized as approved'}
     $latest.gate=[ordered]@{required=$true;approval=[string]$authority.approval;reason=[string]$authority.gateId;taskVersionId=[string]$latest.taskVersionId;authority=[string]$authority.authority;gateHash=[string]$authority.gateHash}
     Write-DispatcherState $latest|Out-Null
+
+    # A target can advance again after an earlier transplant was already
+    # reviewed.  Preserve that reviewed work by replaying only the original
+    # source-bound candidate commits onto the newly approved target; keep the
+    # prior branch/ref intact and bind a new, unique branch to this target.
+    if($latest.disjointSourceTransplant -and [string]$latest.disjointSourceSuccession.targetRelation -eq 'DIVERGENT_SOURCE_SUCCESSION'){
+        $succession=_ToHashtable $latest.disjointSourceSuccession
+        $workspace=[string]$latest.workspace
+        $oldCandidateHead=[string]$succession.candidateHead
+        $oldCandidateBase=[string]$succession.candidateBase
+        if([string]$latest.candidateHead -notmatch '^[0-9a-f]{40}$'){throw 'refreshed source succession candidate head is invalid'}
+        $newBranch="$( [string]$latest.branch )-target-$($target.Substring(0,12))"
+        if($newBranch.Length -gt 160 -or $newBranch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$'){throw 'refreshed source succession branch name is invalid'}
+        $branchRef=Get-DispatcherOptionalLocalBranchHead -Branch $newBranch -RepoDir $workspace
+        if($branchRef){
+            if((Get-GitHeadV2 $workspace) -ne $branchRef){throw 'refreshed source succession branch exists but is not checked out'}
+        }else{
+            $checkout=Invoke-GitV2 -Dir $workspace -Arguments @('checkout','-b',$newBranch,$oldCandidateHead,'--quiet') -LogLabel 'source-succession-refresh-branch'
+            Assert-GitSucceededV2 $checkout 'source succession target refresh: preserve old candidate branch and create refreshed branch'|Out-Null
+        }
+        if((Get-GitHeadV2 $workspace) -eq $oldCandidateHead){
+            $fetch=Invoke-GitV2 -Dir $workspace -Arguments @('fetch','--no-tags','--quiet',(Get-RepoRoot),$target) -LogLabel 'source-succession-refresh-fetch-target'
+            Assert-GitSucceededV2 $fetch 'source succession target refresh: fetch exact approved target'|Out-Null
+            $rebase=Invoke-GitV2 -Dir $workspace -Arguments @('rebase','--onto',$target,$oldCandidateBase) -LogLabel 'source-succession-refresh-rebase'
+            if($rebase.exitCode -ne 0){[void](Invoke-GitV2 -Dir $workspace -Arguments @('rebase','--abort') -LogLabel 'source-succession-refresh-rebase-abort');throw "source succession target refresh conflicted: $(Get-GitFailureSummaryV2 $rebase 'git rebase')"}
+        }
+        $newHead=Get-GitHeadV2 $workspace
+        $evidence=Get-DispatcherDisjointSourceTransplantEvidence -State $latest -SuccessionRecord $succession -RepoDir (Get-RepoRoot) -CandidateHead $newHead
+        if(-not [bool]$evidence.eligible){throw "refreshed source succession candidate failed exact patch proof: $($evidence.reason)"}
+        $transplant=[ordered]@{
+            schemaVersion='orcivo.orchestration.v2.disjoint-source-transplant/1';successorTaskVersionId=[string]$newContract.taskVersionId;runId=[string]$latest.runId
+            successionRecordHash=[string]$succession.recordHash;oldCandidateBase=[string]$evidence.oldCandidateBase;oldCandidateHead=[string]$evidence.oldCandidateHead
+            currentTarget=[string]$evidence.currentTarget;newCandidateHead=[string]$evidence.newCandidateHead;newCandidateTree=[string]$evidence.newCandidateTree
+            newDiffHash=[string]$evidence.newDiffHash;candidateChangedPaths=@($evidence.candidateChangedPaths);commitCount=[int]$evidence.commitCount;recordHash=''
+        }
+        $transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
+        $transplant.recordHash=New-StringHash (ConvertTo-CanonicalJson $transplantSigned)
+        $latest.branch=$newBranch;$latest.baseSha=$target;$latest.candidateBase=$target;$latest.candidateHead=$newHead
+        $latest.candidateTree=[string]$evidence.newCandidateTree;$latest.diffHash=[string]$evidence.newDiffHash;$latest.implementationCommit=$newHead
+        $latest.disjointSourceTransplant=$transplant
+        Write-DispatcherState $latest|Out-Null
+    }
     return [ordered]@{contract=$newContract;state=(Get-DispatcherState);target=$target;approval=$authority;approvalResult=$approval}
 }
 
@@ -1605,6 +1674,73 @@ function Resume-DispatcherCandidate {
     return $true
 }
 
+function Test-DispatcherCandidateImportResumeEligible {
+    param($State,[hashtable]$Task,$TaskSource)
+    try{
+        if(-not $State -or "$($State.status)" -ne 'BLOCKED' -or "$($State.stage)" -ne 'INTEGRATE' -or -not ([string]$State.reason).StartsWith('integrator import approved candidate failed with exit ',[System.StringComparison]::Ordinal)){return $false}
+        if(-not $Task -or -not $TaskSource -or [string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskVersionId -notmatch '^[0-9a-f]{64}$' -or -not(Test-SafeId ([string]$State.runId))){return $false}
+        if([string]$State.candidateBase -notmatch '^[0-9a-f]{40}$' -or [string]$State.candidateHead -notmatch '^[0-9a-f]{40}$' -or [string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return $false}
+        $contract=Get-Contract ([string]$State.taskVersionId)
+        if([string]$contract.taskId -ne [string]$Task.taskId -or [string]$contract.bindings.taskSourceHash -ne [string]$TaskSource.hash){return $false}
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return $false}
+        $status=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'candidate-import-resume-status'
+        if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout) -or (Get-GitHeadV2 $workspace) -ne [string]$State.candidateHead){return $false}
+        if((Get-GitTreeHash -Dir $workspace -Ref ([string]$State.candidateHead)) -ne [string]$State.candidateTree){return $false}
+        $check=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind check -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+        $review=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind review -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+        if(-not $check -or [string]$check.result -ne 'PASS' -or -not $review -or [string]$review.result -ne 'APPROVE'){return $false}
+        if(-not (Test-AttestationFresh -Attestation $check -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)).fresh){return $false}
+        if(-not (Test-AttestationFresh -Attestation $review -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)).fresh){return $false}
+        return $true
+    }catch{return $false}
+}
+
+function Get-DispatcherOptionalLocalBranchHead {
+    param([Parameter(Mandatory)][string]$Branch,[string]$RepoDir=(Get-RepoRoot))
+    if($Branch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$'){throw 'candidate branch ref is outside the dispatcher run namespace'}
+    $result=Invoke-GitV2 -Dir $RepoDir -Arguments @('show-ref','--verify','--hash',"refs/heads/$Branch") -LogLabel 'candidate-import-optional-branch-ref'
+    if($result.exitCode -eq 1 -or ([string]$result.stderr -match "not a valid ref")){return ''}
+    Assert-GitSucceededV2 $result 'candidate import branch ref inspection'|Out-Null
+    return [string]$result.stdout.Trim()
+}
+
+function Resolve-DispatcherCandidateImportBranch {
+    param([Parameter(Mandatory)]$State,[string]$RepoDir=(Get-RepoRoot))
+    $branch=[string]$State.branch;$head=[string]$State.candidateHead
+    if($branch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$' -or $head -notmatch '^[0-9a-f]{40}$'){throw 'candidate import branch resolution requires exact run branch and candidate head'}
+    $existing=Get-DispatcherOptionalLocalBranchHead -Branch $branch -RepoDir $RepoDir
+    if(-not $existing -or $existing -eq $head){return [ordered]@{branch=$branch;preservedBranch='';existingHead=$existing}}
+    $newBranch="$branch-import-$($head.Substring(0,12))"
+    if($newBranch.Length -gt 160 -or $newBranch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$'){throw 'candidate import preservation branch is invalid'}
+    $newExisting=Get-DispatcherOptionalLocalBranchHead -Branch $newBranch -RepoDir $RepoDir
+    if($newExisting -and $newExisting -ne $head){throw 'candidate import preservation branch already points to a different commit'}
+    return [ordered]@{branch=$newBranch;preservedBranch=$branch;existingHead=$existing}
+}
+
+function Refresh-DispatcherBlockedCandidateTargetGate {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,[string]$RepoDir=(Get-RepoRoot))
+    if(-not(Test-DispatcherCandidateImportResumeEligible -State $State -Task $Task -TaskSource $TaskSource)){throw 'candidate target gate refresh requires an exact blocked import-resume state'}
+    $contract=Get-Contract ([string]$State.taskVersionId)
+    if([string]$contract.gate -ne [string]$Task.ownerGate -or [string]$Task.ownerGate -eq 'none'){throw 'candidate target gate refresh requires the exact declared Level C gate'}
+    $proposal=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
+    $proposal.pendingDisjointSourceSuccession=$true
+    $proof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $Task -Contract $contract -TaskSource $TaskSource -RepoDir $RepoDir -AllowTargetRefresh
+    if(-not [bool]$proof.eligible -or -not [bool]$proof.targetRefreshRequired){return [ordered]@{refreshed=$false;reason=[string]$proof.reason;state=$State}}
+    $constraints=_ToHashtable $Task.candidateConstraints
+    $State.status='WAITING_HUMAN';$State.stage='GATE';$State.reason="Level C: $($Task.ownerGate)"
+    $State.decisionNeeded='fresh owner approval bound to the latest proven disjoint target'
+    $State.resumes='same preserved candidate after exact target refresh and fresh independent review'
+    $State.pendingContractSupersession=$true;$State.pendingDisjointSourceSuccession=$true;$State.pendingReviewSuccession=$true
+    $State.pendingSupersessionReason='approved candidate target advanced disjointly before publication'
+    $State.supersededTaskVersionId=[string]$constraints.resumeFromTaskVersionId
+    $State.recoveredCandidateCommit=[string]$constraints.resumeFromCandidateCommit
+    $State.gate=[ordered]@{required=$true;approval='MISSING';reason=[string]$Task.ownerGate;taskVersionId=[string]$State.taskVersionId}
+    Write-DispatcherState $State|Out-Null
+    $refreshed=Refresh-DispatcherPendingSourceSuccessionGate -State $State -Task $Task -TaskSource $TaskSource -Contract $contract -RefreshProof $proof
+    return [ordered]@{refreshed=$true;reason='fresh exact target gate approved and preserved candidate rebased';state=$refreshed.state;contract=$refreshed.contract;target=$refreshed.target}
+}
+
 function Test-DispatcherContractSupersessionEligible {
     param($State, [hashtable]$Task, $Contract, $TaskSource)
     if(-not $State){return $false}
@@ -1745,7 +1881,7 @@ function Complete-DispatcherCandidateCommit {
 function Resolve-DispatcherContract {
     param([hashtable]$Task, $TaskSource, $State=$null)
     if($null -eq $State){$State=Get-DispatcherState}
-    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherReviewInfrastructureResumeState -State $State)))
+    $isDurableResume=[bool]($State -and $State.taskId -eq $Task.taskId -and $State.taskSourceHash -eq $TaskSource.hash -and ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherCandidateImportResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or (Test-DispatcherReviewInfrastructureResumeState -State $State)))
     if(-not $isDurableResume){return (New-DispatcherContract -Task $Task -TaskSource $TaskSource)}
     $frozen=Get-Contract ([string]$State.taskVersionId)
     $contract=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$frozen.planningHead)
@@ -4057,6 +4193,10 @@ function Invoke-RealDispatcherTask {
     param([hashtable]$Task, $TaskSource, [string]$ProviderOverride='')
     $cfg = Get-V2Config; $pcfg=$cfg.pilot
     $state=Get-DispatcherState
+    if(Test-DispatcherCandidateImportResumeEligible -State $state -Task $Task -TaskSource $TaskSource){
+        $targetGateRefresh=Refresh-DispatcherBlockedCandidateTargetGate -State $state -Task $Task -TaskSource $TaskSource
+        if([bool]$targetGateRefresh.refreshed){$state=$targetGateRefresh.state}
+    }
     $contract=Resolve-DispatcherContract -Task $Task -TaskSource $TaskSource -State $state
     Initialize-LedgerTask -TaskVersionId $contract.taskVersionId -Identity @{ taskId=$Task.taskId; planningHead=$contract.planningHead; specHash=$contract.specHash; acceptanceHash=$contract.acceptanceHash } | Out-Null
     $classification = Get-TaskClassification -Task $Task
@@ -4428,10 +4568,12 @@ if($needsFreshDispatch){
         }
 
         if($state.stage -eq 'INTEGRATE'){
-            Assert-SafeGitV2 @('fetch',$state.workspace,"HEAD:refs/heads/$($state.branch)")
-            $import=Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('fetch','--no-tags','--quiet',[string]$state.workspace,"HEAD:refs/heads/$($state.branch)") -LogLabel 'integrator-import-candidate'
+            $importTarget=Resolve-DispatcherCandidateImportBranch -State $state
+            Assert-SafeGitV2 @('fetch',$state.workspace,"HEAD:refs/heads/$($importTarget.branch)")
+            $import=Invoke-GitV2 -Dir (Get-RepoRoot) -Arguments @('fetch','--no-tags','--quiet',[string]$state.workspace,"HEAD:refs/heads/$($importTarget.branch)") -LogLabel 'integrator-import-candidate'
             if($import.exitCode -ne 0){$state.status='BLOCKED';$state.reason=Get-GitFailureSummaryV2 $import 'integrator import approved candidate';Write-DispatcherState $state|Out-Null;return $state}
-            $imported=Get-GitHeadV2ForRef -Dir (Get-RepoRoot) -Ref ([string]$state.branch);if($imported -ne $state.candidateHead){$state.status='BLOCKED';$state.reason='imported ref is not the reviewed candidate';Write-DispatcherState $state|Out-Null;return $state}
+            $imported=Get-GitHeadV2ForRef -Dir (Get-RepoRoot) -Ref ([string]$importTarget.branch);if($imported -ne $state.candidateHead){$state.status='BLOCKED';$state.reason='imported ref is not the reviewed candidate';Write-DispatcherState $state|Out-Null;return $state}
+            if([string]$state.branch -ne [string]$importTarget.branch){$state.branch=[string]$importTarget.branch;Write-DispatcherState $state|Out-Null}
             $ir=Invoke-Integration -TaskVersionId $state.taskVersionId -RunId $state.runId -RepoDir (Get-RepoRoot) -WorktreeDir $state.workspace -Branch $state.branch -BaseSha $state.candidateBase -HeadSha $state.candidateHead -SecretScanRoots @((Join-Path (Get-V2Dir) "runs\$($state.runId)"))
             $state.integration=$ir;$state.status=$ir.status;$state.reason=$ir.reason;Write-DispatcherState $state|Out-Null
             if($ir.status -eq 'PUBLISHED'){memoryFinalize $Task ([string]$state.logicalProjectId)|Out-Null;Remove-DispatcherWorkspace $state.workspace}
@@ -4446,6 +4588,7 @@ function Test-DispatcherLoopResumeEligible {
         ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or
             (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or
+            (Test-DispatcherCandidateImportResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherReviewInfrastructureResumeState -State $State)))
 }

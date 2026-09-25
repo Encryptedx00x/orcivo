@@ -405,8 +405,26 @@ try{
             Assert-True ($moved.eligible -and $moved.transplanted -and $moved.newCandidateHead -ne $f.oldHead) 'candidate was not transplanted onto the divergent target'
             Assert-True ($moved.currentTarget -eq $f.currentTarget -and $moved.newDiffHash -eq $f.state.diffHash) 'transplant lost target or diff binding'
             Assert-True ($f.state.baseSha -eq $f.currentTarget -and $f.state.candidateBase -eq $f.currentTarget) 'transplant did not advance both durable base bindings to the exact target'
+            $oldBranch='orch-v2/run-dta-preserve-'+[guid]::NewGuid().ToString('N').Substring(0,12)
+            & git -C $Fixture fetch --quiet $f.workspace "$($f.oldHead):refs/heads/$oldBranch"
+            Assert-True ($LASTEXITCODE -eq 0) 'could not establish the old local run ref for the import-preservation test'
+            $f.state.branch=$oldBranch;$f.state.candidateHead=$moved.newCandidateHead
+            $importBranch=Resolve-DispatcherCandidateImportBranch -State $f.state -RepoDir $Fixture
+            Assert-True ($importBranch.branch -ne $oldBranch -and $importBranch.preservedBranch -eq $oldBranch) 'divergent import did not select a distinct candidate branch'
+            & git -C $Fixture fetch --quiet $f.workspace "HEAD:refs/heads/$($importBranch.branch)"
+            Assert-True ($LASTEXITCODE -eq 0) 'new candidate import ref was not fetchable'
+            Assert-True ((Get-GitHeadV2ForRef -Dir $Fixture -Ref $oldBranch) -eq $f.oldHead) 'divergent candidate import overwrote the preserved historical branch'
+            Assert-True ((Get-GitHeadV2ForRef -Dir $Fixture -Ref $importBranch.branch) -eq $moved.newCandidateHead) 'new candidate import ref does not point to the approved transplanted head'
             $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
             Assert-True $pending.eligible "signed transplant did not revalidate: $($pending.reason)"
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-post-transplant-advance.json') "{`"postTransplant`":`"$($f.runId)`"}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'post-transplant disjoint target advance' --quiet
+            & git -C $Fixture push --quiet origin main
+            Assert-True ($LASTEXITCODE -eq 0) 'could not advance the fixture target after candidate transplant'
+            $f.state.pendingDisjointSourceSuccession=$true
+            $refreshProof=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($refreshProof.eligible -and $refreshProof.targetRefreshRequired) "transplanted candidate did not safely request an exact new target gate: $($refreshProof.reason)"
             $f.state.task=$s.task;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSource=$s.source.path;$f.state.taskSourceHash=$s.source.hash
             $f.state.status='RESUMABLE';$f.state.stage='IMPLEMENT';$f.state.reason='candidate HEAD is not descended from the durable base SHA'
             $f.state.baseSha=$f.oldBase;$f.state.implementationComplete=$true;$f.state.implementationCommit=$moved.newCandidateHead;$f.state.candidateHead=''
