@@ -1419,7 +1419,8 @@ try{
         # processOk=false) produced HUMAN_REVIEW_REQUIRED: reviewer process did
         # not exit 0 / timed out.
         function New-ReviewTerminalJsonHoldFixture {
-            param([string]$Id,[switch]$DoubleMarker)
+            param([string]$Id,[switch]$DoubleMarker,[switch]$NoEnvelope)
+            if($NoEnvelope){$providerRuntimePath=Join-Path (Get-V2Dir) 'provider-runtime.v1.json';if(-not(Test-Path -LiteralPath $providerRuntimePath)){Copy-Item (Join-Path $Repo '.orchestration\v2\provider-runtime.v1.json') $providerRuntimePath}}
             $workspace=Join-Path $Root ("review-tjson-"+$Id);& git init -b main --quiet $workspace
             New-Item -ItemType Directory -Force -Path (Join-Path $workspace 'work')|Out-Null
             Write-Utf8 (Join-Path $workspace 'work\result.ts') "export const result = 'base';`n";& git -C $workspace add .;& git -C $workspace -c user.name=rd -c user.email=rd@local commit -m base --quiet;$base=(& git -C $workspace rev-parse HEAD).Trim()
@@ -1430,7 +1431,8 @@ try{
             $diffResult=Invoke-GitV2 -Dir $workspace -Arguments @('diff','--no-color',"$base..$head") -LogLabel ("fixture-tjson-diff-"+$Id) -ReviewedSourceOutput;$diff=$diffResult.stdout.TrimEnd("`r","`n");$reviewDir=Join-Path (Get-V2Dir) "runs\$runId\review-000"
             $prompt=Build-ReviewPrompt -DataDir $reviewDir -TaskVersionId $contract.taskVersionId -Head $head -TreeHash $bindings.treeHash -DiffHash $bindings.diffHash -SpecHash $contract.specHash -AcceptanceText $contract.acceptanceText -SpecText $contract.specText -Diff $diff -ChangedFiles @('work/result.ts') -CheckSummary 'PASS profile=B; secretScan=CLEAN' -CriteriaIds @($contract.acceptanceCriteriaIds) -StructuredOutput
             $holdReason='HUMAN_REVIEW_REQUIRED: reviewer process did not exit 0 / timed out'
-            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='REVIEW';reason=$holdReason;workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;candidateHead=$head;candidateTree=$bindings.treeHash;diffHash=$bindings.diffHash;provider='glm';profile='FAST';model=(Get-GlmModelId);attempt=1;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$true;requiresCorrection=$false;implementationCommit=$head;verification=$null;reviewVerdict='HUMAN_REVIEW_REQUIRED';logicalProjectId='fixture';integration=$null;reviewTerminalJsonRecoveryHistory=@()}
+            $implementerProvider=$(if($NoEnvelope){'codex'}else{'glm'});$implementerModel=$(if($NoEnvelope){'fixture-codex'}else{Get-GlmModelId})
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId=$runId;taskId=$task.taskId;taskVersionId=$contract.taskVersionId;task=$task;taskSource=$source.path;taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='REVIEW';reason=$holdReason;workspace=$workspace;branch='main';baseSha=$base;candidateBase=$base;candidateHead=$head;candidateTree=$bindings.treeHash;diffHash=$bindings.diffHash;provider=$implementerProvider;profile='FAST';model=$implementerModel;attempt=1;cycle=0;rollovers=0;failovers=0;findings=@();decisions=@();importantArtifacts=@();providerHistory=@();unavailableProviders=@();implementationComplete=$true;requiresCorrection=$false;implementationCommit=$head;verification=$null;reviewVerdict='HUMAN_REVIEW_REQUIRED';logicalProjectId='fixture';integration=$null;reviewTerminalJsonRecoveryHistory=@();reviewTimeoutRetryHistory=@()}
             $record=New-DispatcherReviewArtifactRecord -DataDir $reviewDir -State $state;$state.reviewArtifactRecord=$record
             $vp=Invoke-VerificationProfile -ProfileId $contract.verificationProfile -WorktreeDir $workspace -BaseSha $base -HeadSha $head;$state.verification=$vp
             $treeScan=Test-GitTreeSecretsClean -RepoDir $workspace -BaseRef $base -Ref $head;$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$runId"));$state.secretScan=[ordered]@{clean=([bool]$treeScan.clean -and [bool]$artifactScan.clean);candidate=[ordered]@{clean=[bool]$treeScan.clean;baseSha=$base;headSha=$head;hits=@($treeScan.hits)};artifacts=[ordered]@{clean=[bool]$artifactScan.clean;hits=@($artifactScan.hits)};hits=@()}
@@ -1446,7 +1448,7 @@ try{
             $envelope=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$contract.taskVersionId;reviewedHead=$head;treeHash=$bindings.treeHash;diffHash=$bindings.diffHash;specHash=$contract.specHash;verdict='APPROVE';criteria=@([ordered]@{id='AC1';met=$true;evidence='fixture evidence'});findings=@([ordered]@{severity='info';file=$null;line=$null;detail='fixture review complete'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider='deepseek';model='deepseek-v4-flash';effort='low';toolPolicy=$toolPolicy;promptTemplateVersion='v2'}}
             $envelopeJson=($envelope|ConvertTo-Json -Compress -Depth 20)
             if(-not $envelopeJson.StartsWith((Get-ReviewEnvelopeTerminalMarker))){throw 'fixture: envelope JSON did not serialize with schemaVersion first'}
-            $agentMessageText=$(if($DoubleMarker){"All three artifacts are reconstructed.`n`n$envelopeJson extra $envelopeJson"}else{"All three artifacts are reconstructed: acceptance.txt, spec.txt, diff.patch, each matching the manifest.`n`n$envelopeJson"})
+            $agentMessageText=$(if($NoEnvelope){'Review timed out before a structured verdict was produced.'}elseif($DoubleMarker){"All three artifacts are reconstructed.`n`n$envelopeJson extra $envelopeJson"}else{"All three artifacts are reconstructed: acceptance.txt, spec.txt, diff.patch, each matching the manifest.`n`n$envelopeJson"})
             $eventLines=@(
                 (@{type='thread.started';thread_id='th_fixture'}|ConvertTo-Json -Compress -Depth 10),
                 (@{type='turn.started'}|ConvertTo-Json -Compress -Depth 10),
@@ -1459,7 +1461,7 @@ try{
             $receipt=Write-RealAgentResultReceipt -AgentResult $agent
             $review=New-Attestation -Kind review -TaskVersionId $contract.taskVersionId -RunId $runId -Bindings ([hashtable]$bindings) -Result HUMAN_REVIEW_REQUIRED -Payload @{problems=@('processOk=false');reason='reviewer process did not exit 0 / timed out';findings=@($null);technicalBlock=$null;reviewArtifactRecordHash=[string]$record.recordHash} -ProducerMeta @{provider='deepseek';model='deepseek-v4-flash';profile='FAST';invocationId=$invocation;fresh=$true;memory='disabled';workspace='review-data-only';exitCode=0}
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event review-hold -ToState WAITING_HUMAN -RunId $runId -Note HUMAN_REVIEW_REQUIRED|Out-Null
-            $state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewTechnicalBlock=$null;$state.reviewerProvider='deepseek';$state.providerHistory=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));role='IMPLEMENTER';provider='glm';model=(Get-GlmModelId);resultClass='SUCCESS';providerClass='NONE';exitCode=0},[ordered]@{invocationId=$invocation;role='REVIEWER';provider='deepseek';model='deepseek-v4-flash';reasoningEffort='low';attempt=$attempt;providerClass='NONE';resultClass='AGENT_FAILURE';failureDiagnostic=$null;exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash});Write-DispatcherState $state|Out-Null
+            $state.reviewInvocationId=$invocation;$state.reviewAttestationId=$review.attestationId;$state.reviewTechnicalBlock=$null;$state.reviewerProvider='deepseek';$state.providerHistory=@([ordered]@{invocationId=('att-'+[guid]::NewGuid().ToString('N'));role='IMPLEMENTER';provider=$implementerProvider;model=$implementerModel;resultClass='SUCCESS';providerClass='NONE';exitCode=0},[ordered]@{invocationId=$invocation;role='REVIEWER';provider='deepseek';model='deepseek-v4-flash';reasoningEffort='low';attempt=$attempt;providerClass='NONE';resultClass='AGENT_FAILURE';failureDiagnostic=$null;exitCode=0;stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=$agent.stdoutHash;stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=$agent.stderrHash;controlRecordHash=$agent.controlRecordHash;telemetryConsistent=$true;resultReceiptHash=[string]$receipt.receiptHash});Write-DispatcherState $state|Out-Null
             return @{state=$state;task=$task;source=$source;contract=$contract;workspace=$workspace;base=$base;head=$head;review=$review;check=$check;record=$record;invocation=$invocation;receiptPath=$agent.resultReceiptPath;receipt=$receipt;stdoutPath=$stdoutPath;envelope=$envelope}
         }
 
@@ -1781,6 +1783,41 @@ try{
             Assert-True ($first.status -eq 'RECOVERED_TO_INTEGRATE' -and $second.status -eq 'ALREADY_RECOVERED' -and $s.stage -eq 'INTEGRATE' -and $s.status -eq 'RUNNING' -and $s.reviewVerdict -eq 'APPROVE' -and (Get-LedgerState $f.contract.taskVersionId).state -eq 'APPROVED' -and $s.candidateHead -eq $f.head -and $s.implementationComplete) 'recovered state did not idempotently and safely reach INTEGRATE/APPROVED'
             Assert-True ((New-FileHash $oldPath) -eq $oldHash) 'original HUMAN_REVIEW_REQUIRED evidence was rewritten or lost'
             Assert-True ((ConvertTo-CanonicalJson $s.providerHistory) -eq $beforeHistory) 'terminal-JSON recovery added or rewrote providerHistory'
+        }
+
+        Check 'RD-212' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD212' -NoEnvelope
+            $p=Get-DispatcherReviewTimeoutRetryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True ($p.eligible -and $p.providerInvocationRequired -and $p.retryProvider -eq 'glm' -and $p.retryProfile -eq 'REASONING' -and $p.candidateHead -eq $f.head) "a genuine timeout without a terminal envelope was not eligible for one exact GLM review retry: $($p.reason)"
+        }
+        Check 'RD-213' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD213' -NoEnvelope;$oldHead=$f.state.candidateHead;$oldHistory=ConvertTo-CanonicalJson $f.state.providerHistory
+            $r=Resume-DispatcherReviewTimeoutBlock -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            $s=Get-DispatcherState;$ledger=Get-LedgerState $f.contract.taskVersionId
+            Assert-True ($r.resumed -and $s.status -eq 'RUNNING' -and $s.stage -eq 'REVIEW' -and $ledger.state -eq 'RUNNING' -and $s.candidateHead -eq $oldHead -and $s.authorizedReviewRoute.provider -eq 'glm' -and $s.authorizedReviewRoute.profile -eq 'REASONING' -and $s.reviewTimeoutRetryHistory.Count -eq 1) 'timeout recovery did not preserve the candidate and enter a single pinned GLM review retry'
+            Assert-True ((ConvertTo-CanonicalJson $s.providerHistory) -eq $oldHistory) 'timeout recovery rewrote immutable provider history'
+        }
+        Check 'RD-214' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD214' -NoEnvelope;Add-Content -LiteralPath $f.stdoutPath -Value 'tamper'
+            $p=Get-DispatcherReviewTimeoutRetryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'evidence|hash|stdout|receipt') 'tampered reviewer output remained eligible for timeout retry'
+        }
+        Check 'RD-215' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD215' -NoEnvelope
+            Resume-DispatcherReviewTimeoutBlock -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null
+            $p=Get-DispatcherReviewTimeoutRetryProof -State (Get-DispatcherState) -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation
+            Assert-True (-not $p.eligible -and $p.reason -match 'budget exhausted') 'a second timeout retry remained authorized for the same task version'
+        }
+        Check 'RD-216' {
+            $f=New-ReviewTerminalJsonHoldFixture 'RD216' -NoEnvelope;Resume-DispatcherReviewTimeoutBlock -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $f.invocation|Out-Null
+            $calls=New-Object System.Collections.Generic.List[object]
+            function Invoke-RealAgent { param($Provider,$Role,$TaskVersion,$Profile,$Workspace,$StructuredPrompt,$ArtifactDir,$TimeoutSec,$Attempt,$ContinuationCheckpoint,$InvocationId,$BeforeLaunch)
+                $calls.Add([ordered]@{provider=$Provider;role=$Role;profile=$Profile});$s=Get-DispatcherState;$c=Get-Contract $s.taskVersionId;$inv='att-'+[guid]::NewGuid().ToString('N')
+                $e=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-envelope/1';taskVersion=$s.taskVersionId;reviewedHead=$s.candidateHead;treeHash=$s.candidateTree;diffHash=$s.diffHash;specHash=$c.specHash;verdict='BLOCK';criteria=@();findings=@([ordered]@{severity='high';file=$null;line=$null;detail='fixture semantic blocker'});filesReviewed=@('work/result.ts');technicalBlock=$null;reviewerMeta=[ordered]@{provider=$Provider;model=(Get-GlmModelId);effort='high';toolPolicy='review-data-only';promptTemplateVersion='v2'}}
+                return [ordered]@{invocationId=$inv;provider=$Provider;model=(Get-GlmModelId);profile=$Profile;reasoningIntent='high';attempt=$Attempt;exitCode=0;providerClass='NONE';resultClass='BLOCK';structuredResult=$e;stdoutArtifact='';stderrArtifact='';stdoutHash=('sha256:'+('b'*64));stderrHash=('sha256:'+('d'*64));controlRecordHash=('sha256:'+('c'*64));usage=$null;cachedTokens=$null;costUsd=$null;telemetryConsistent=$true;resultReceiptHash=('sha256:'+('e'*64))}
+            }
+            try{$r=Invoke-RealDispatcherTask -Task $f.task -TaskSource $f.source}finally{. (Join-Path $V2 'real-agent.ps1')}
+            Assert-True ($calls.Count -eq 1 -and $calls[0].role -eq 'reviewer' -and $calls[0].provider -eq 'glm' -and $calls[0].profile -eq 'REASONING' -and $r.status -eq 'WAITING_HUMAN' -and $r.candidateHead -eq $f.head) 'timeout retry did not invoke exactly one pinned GLM reviewer over the preserved candidate'
         }
 
         Check 'RD-150' {

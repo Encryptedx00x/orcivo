@@ -832,6 +832,85 @@ function Recover-DispatcherReviewTerminalJsonHold {
     return [ordered]@{status='RECOVERED_TO_INTEGRATE';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;candidateHead=[string]$State.candidateHead;replayVerdict='APPROVE';ledgerState='APPROVED';stage='INTEGRATE';providerInvocationRequired=$false;recoveryReceiptHash=[string]$receipt.receiptHash;reviewAttestationId=[string]$recoveryAttestation.attestationId;nextCommand='powershell -NoProfile -ExecutionPolicy Bypass -File scripts/orchestration/v2/pilot.ps1 run'}
 }
 
+# A reviewer that exits without one authoritative terminal envelope has not
+# produced a verdict.  This proof authorizes one review-only retry on the
+# fixed GLM fallback while preserving the exact candidate and every failed
+# invocation/attestation as immutable evidence.  It deliberately reuses the
+# stricter terminal-JSON proof up to its terminal-envelope check so malformed,
+# tampered, or unbound provider receipts cannot enter this path.
+function Get-DispatcherReviewTimeoutRetryProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$true}}
+    try{
+        if(@($State.reviewTimeoutRetryHistory|Where-Object{$_}).Count -ge 1){return &$deny 'review timeout retry budget exhausted'}
+        if([string]$State.provider -eq 'glm'){return &$deny 'GLM cannot independently review its own implementation'}
+        $terminal=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+        if($terminal.eligible){return &$deny 'immutable output contains a revalidatable terminal verdict; use terminal-JSON recovery'}
+        if([string]$terminal.reason -ne 'last agent_message does not carry exactly one valid terminal review-envelope suffix'){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
+
+        $review=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind review -RunId $RunId -HeadSha ([string]$State.candidateHead)
+        if(-not $review -or [string]$review.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.producer.invocationId -ne $InvocationId -or [string]$review.payload.reason -ne 'reviewer process did not exit 0 / timed out'){return &$deny 'latest review is not the exact no-verdict timeout attestation'}
+        $reviewFresh=Test-AttestationFresh -Attestation $review -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $reviewFresh.fresh){return &$deny 'timeout review attestation is stale or tampered'}
+
+        $check=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind check -RunId $RunId -HeadSha ([string]$State.candidateHead)
+        if(-not $check -or [string]$check.result -ne 'PASS' -or -not[bool]$State.verification.pass){return &$deny 'deterministic check evidence is not PASS'}
+        $checkFresh=Test-AttestationFresh -Attestation $check -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $checkFresh.fresh){return &$deny 'deterministic check attestation is stale or tampered'}
+        $liveVerification=Invoke-VerificationProfile -ProfileId ([string]$Contract.verificationProfile) -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
+        if(-not $liveVerification.pass -or [string]$liveVerification.effectiveInvocationHash -ne [string]$check.payload.effectiveInvocationHash){return &$deny 'deterministic verification no longer passes identically'}
+
+        if(-not[bool]$State.secretScan.clean -or -not[bool]$State.secretScan.candidate.clean -or -not[bool]$State.secretScan.artifacts.clean){return &$deny 'persisted secret-scan evidence is not CLEAN'}
+        $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$State.candidateBase) -Ref ([string]$State.candidateHead)
+        $artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+        if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or review artifacts no longer scan CLEAN'}
+
+        $later=@(Get-Attestations -TaskVersionId $TaskVersionId|Where-Object{[string]$_.runId -eq $RunId -and [string]$_.bindings.headSHA -eq [string]$State.candidateHead -and [string]$_.kind -in @('approval','integration')})
+        if($later.Count){return &$deny 'approval or integration exists after the timed-out review'}
+        $ledger=Get-LedgerState $TaskVersionId;$tail=@(Get-DispatcherLedgerEvents $TaskVersionId)|Select-Object -Last 1
+        if($ledger.corrupt -or [string]$ledger.state -ne 'WAITING_HUMAN' -or -not $tail -or [string]$tail.event -ne 'review-hold' -or [string]$tail.runId -ne $RunId -or [string]$tail.note -ne 'HUMAN_REVIEW_REQUIRED'){return &$deny 'ledger tail is not the exact timed-out review hold'}
+
+        $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})[0]
+        $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-timeout-retry-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$review.attestationId;failedReviewAttestationHash=[string]$review.attestationHash;failedResultReceiptHash=[string]$attempt.resultReceiptHash;failedStdoutHash=[string]$attempt.stdoutHash;checkAttestationId=[string]$check.attestationId;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
+        $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
+        return [ordered]@{eligible=$true;reason='exact no-verdict timeout is eligible for one same-candidate GLM review retry';providerInvocationRequired=$true;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING';candidateHead=[string]$State.candidateHead;proof=$proof}
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function Resume-DispatcherReviewTimeoutBlock {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
+        [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,
+        [Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId
+    )
+    $result=Get-DispatcherReviewTimeoutRetryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+    if(-not $result.eligible){throw "review timeout retry not eligible: $($result.reason)"}
+    $proof=$result.proof;$evidence=@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;candidateHead=[string]$State.candidateHead;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
+    $ledger=Get-LedgerState $TaskVersionId
+    if([string]$ledger.state -eq 'WAITING_HUMAN'){
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId (New-AttemptId) -Evidence $evidence -Note 'one same-candidate GLM review retry after exact no-verdict timeout'|Out-Null
+        $ledger=Get-LedgerState $TaskVersionId
+    }
+    if([string]$ledger.state -eq 'DISPATCHED'){
+        Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'review-timeout-retry-running' -ToState RUNNING -RunId $RunId -Evidence $evidence -Note 'one same-candidate GLM review retry after exact no-verdict timeout'|Out-Null
+        $ledger=Get-LedgerState $TaskVersionId
+    }
+    if([string]$ledger.state -ne 'RUNNING'){throw "review timeout retry ledger prefix is incompatible: $($ledger.state)"}
+
+    $record=[ordered]@{proofHash=[string]$proof.proofHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$proof.failedReviewAttestationId;failedReviewAttestationHash=[string]$proof.failedReviewAttestationHash;candidateHead=[string]$State.candidateHead;priorProfile=[string]$State.profile;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING'}
+    $State.reviewTimeoutRetryHistory=@($record)
+    $State.authorizedReviewRoute=[ordered]@{provider='glm';model=(Get-GlmModelId);profile='REASONING';reason='REVIEW_TIMEOUT_FALLBACK';proofHash=[string]$proof.proofHash}
+    $State.profile='REASONING';$State.reviewerProvider='glm'
+    $State.reviewVerdict='';$State.reviewInvocationId='';$State.reviewAttestationId='';$State.reviewTechnicalBlock=$null;$State.findings=@()
+    $State.status='RUNNING';$State.stage='REVIEW';$State.reason='';$State.decisionNeeded='';$State.resumes='one exact same-candidate GLM review retry'
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{eligible=$true;resumed=$true;taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateHead=[string]$State.candidateHead;retryProvider='glm';retryModel=(Get-GlmModelId);retryProfile='REASONING';proofHash=[string]$proof.proofHash}
+}
+
 function Get-DispatcherDisjointTargetAdvanceReceiptPath {
     param([Parameter(Mandatory)][string]$RunId)
     if($RunId -notmatch '^run-[0-9A-Za-z-]{8,160}$'){throw 'disjoint target advance recovery: invalid run id'}
@@ -4582,11 +4661,11 @@ if($needsFreshDispatch){
             # is not an authorized GLM review succession.  Clear only the
             # stale pin that the source-gate path may have inherited; review
             # routing then follows the ordinary opposite-provider policy.
-            if([string]$Task.candidateConstraints.resumePolicy -eq 'DISJOINT_SOURCE_SUCCESSION' -and -not [bool]$state.pendingReviewSuccession -and $state.authorizedReviewRoute){
+            if([string]$Task.candidateConstraints.resumePolicy -eq 'DISJOINT_SOURCE_SUCCESSION' -and -not [bool]$state.pendingReviewSuccession -and $state.authorizedReviewRoute -and [string]$state.authorizedReviewRoute.reason -ne 'REVIEW_TIMEOUT_FALLBACK'){
                 $state.Remove('authorizedReviewRoute')|Out-Null
                 Write-DispatcherState $state|Out-Null
             }
-            $reviewer=Get-OrcivoOppositeProvider -Provider ([string]$state.provider);$state.reviewerProvider=$reviewer
+            $reviewer=$(if($state.authorizedReviewRoute){[string]$state.authorizedReviewRoute.provider}else{Get-OrcivoOppositeProvider -Provider ([string]$state.provider)});$state.reviewerProvider=$reviewer
             # Closed pin for the authorized review succession: the review must
             # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other
             # reviewer, profile, or model fails closed here.
