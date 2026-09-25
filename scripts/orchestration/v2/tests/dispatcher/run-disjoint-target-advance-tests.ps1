@@ -523,6 +523,53 @@ try{
             $r=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
             Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and $f.state.candidateBase -eq $latestTarget) 'interrupted recovery did not continue onto the latest disjoint target'
         }
+
+        Check 'DTA-29: source-transplanted candidate may enter fresh review after target recovery' {
+            $f=New-DtaFixture 'A29' -DivergentTargetAdvance -LevelC
+            $s=New-DtaSourceSuccessor $f 'a29'
+            New-OwnerGateApproval -TaskId $s.task.taskId -TaskVersionId $s.contract.taskVersionId -GateId $s.task.ownerGate -ApprovalScope 'fixture recovered source-transplant scope' -ApprovedBy fixture -ApprovalSource 'isolated target-recovery test'|Out-Null
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture source proof failed: $($p.reason)"
+            $f.state.disjointSourceSuccession=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $moved=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
+            Assert-True ($moved.eligible -and $moved.transplanted) 'fixture source transplant failed'
+            $bindings=Get-AttestationBindings -TaskVersionId $s.contract.taskVersionId -WorktreeDir $f.workspace -BaseSha $f.state.candidateBase -HeadSha $f.state.candidateHead
+            New-Attestation -Kind check -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$bindings) -Result PASS|Out-Null
+            New-Attestation -Kind review -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Bindings ([hashtable]$bindings) -Result APPROVE -ProducerMeta @{provider='glm';invocationId=('att-'+[guid]::NewGuid().ToString('N'))}|Out-Null
+            Initialize-LedgerTask -TaskVersionId $s.contract.taskVersionId -Identity @{taskId=$s.task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event running -ToState RUNNING -RunId $f.runId|Out-Null
+            Enter-DispatcherLedgerPhase -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Phase CHECKING
+            Enter-DispatcherLedgerPhase -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -Phase REVIEWING
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event approved -ToState APPROVED -RunId $f.runId|Out-Null
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-source-recovery-advance.json') "{`"sourceRecovery`":true}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'source recovery target advance (disjoint)' --quiet
+            & git -C $Fixture push --quiet origin main
+            $latestTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+            $reason="origin/main ($($latestTarget.Substring(0,10))) has moved off the SHA the reviewed candidate was built on ($(([string]$f.state.candidateBase).Substring(0,10))) - rebuild + re-review required"
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event integrate-start -ToState INTEGRATING -RunId $f.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $s.contract.taskVersionId -Event integrate-failed -ToState REMOTE_DIVERGED -RunId $f.runId -Note $reason|Out-Null
+            $f.state.status='REMOTE_DIVERGED';$f.state.stage='INTEGRATE';$f.state.reason=$reason;$f.state.reviewVerdict='APPROVE'
+            $f.state.integration=[ordered]@{status='REMOTE_DIVERGED';reason=$reason;state='';targetBefore=$latestTarget;targetAfter='';mergeCommit='';pushed=$false}
+            Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -TaskVersionId $s.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture|Out-Null
+            $proposal=_ToHashtable ((ConvertTo-CanonicalJson $f.state)|ConvertFrom-Json);$proposal.pendingDisjointSourceSuccession=$true
+            $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($pending.eligible -and -not $pending.targetRefreshRequired) "recovered source-transplanted candidate could not enter fresh review: $($pending.reason)"
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-after-recovered-review.json') "{`"afterRecoveredReview`":true}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'advance after recovered review (disjoint)' --quiet
+            & git -C $Fixture push --quiet origin main
+            $refreshedTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+            $refresh=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True ($refresh.eligible -and $refresh.targetRefreshRequired -and [string]$refresh.proof.currentTarget -eq $refreshedTarget) "recovered source-transplanted candidate did not request an exact target refresh: $($refresh.reason)"
+            $receiptPath=Get-DispatcherDisjointTargetAdvanceReceiptPath -RunId $f.runId
+            $receipt=Read-V2Json $receiptPath;$receipt.newCandidateHead=('0'*40);Write-V2JsonCanonical $receiptPath $receipt
+            $tampered=Get-DispatcherPendingDisjointSourceSuccessionProof -State $proposal -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
+            Assert-True (-not $tampered.eligible -and $tampered.reason -match 'receipt is invalid') "tampered recovery receipt was not rejected: $($tampered.reason)"
+        }
     } finally { Pop-Location }
 } finally {
     try{Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue}catch{}

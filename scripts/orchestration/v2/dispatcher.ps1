@@ -1403,6 +1403,46 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
                 if([string]$currentCandidateEvidence.newDiffHash -ne [string]$transplant.newDiffHash -or (@($currentCandidateEvidence.candidateChangedPaths) -join '|') -ne (@($transplant.candidateChangedPaths) -join '|')){return &$deny 'current approved candidate patch differs from the signed source transplant'}
                 $transplantEvidence=$currentCandidateEvidence
             }
+            $recoveryHistory=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
+            if($AllowTargetRefresh -and [string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and $recoveryHistory.Count -eq 1){
+                $recovery=$recoveryHistory[0]
+                $workspace=[string]$State.workspace;$head=[string]$State.candidateHead;$base=[string]$State.candidateBase
+                if($head -ne (Get-GitHeadV2 $workspace) -or $head -ne [string]$recovery.newCandidateHead -or $base -ne [string]$recovery.newCandidateBase -or [string]$transplantEvidence.newCandidateHead -ne $head -or [string]$transplantEvidence.candidateBase -ne $base -or [string]$transplantEvidence.newCandidateTree -ne [string]$State.candidateTree -or [string]$transplantEvidence.newDiffHash -ne [string]$State.diffHash){return &$deny 'recovered source-transplanted candidate binding drift'}
+                $receiptPath=Get-DispatcherDisjointTargetAdvanceReceiptPath -RunId ([string]$State.runId)
+                if(-not(Test-Path -LiteralPath $receiptPath)){return &$deny 'recovered source-transplanted candidate receipt is missing'}
+                $receipt=Read-V2Json $receiptPath
+                if(-not(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$recovery.proofHash)) -or [string]$receipt.receiptHash -ne [string]$recovery.receiptHash -or [string]$receipt.newCandidateHead -ne $head -or [string]$receipt.currentTarget -ne $base){return &$deny 'recovered source-transplanted candidate receipt is invalid'}
+                $currentCheck=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind check -RunId ([string]$State.runId) -HeadSha $head
+                if(-not $currentCheck -or [string]$currentCheck.result -ne 'PASS' -or -not(Test-AttestationFresh -Attestation $currentCheck -WorktreeDir $workspace -BaseSha $base -HeadSha $head).fresh -or [string]$currentCheck.attestationId -ne [string]$recovery.checkAttestationId){return &$deny 'recovered source-transplanted candidate check attestation is not fresh and exact'}
+                if(-not(Test-GitCleanV2 $RepoDir)){return &$deny 'authority tree is dirty during recovered source-transplant validation'}
+                $target=(Get-V2Config).target.branch
+                $fetch=Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'recovered-source-transplant-fetch'
+                $origin=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'recovered-source-transplant-origin'
+                $authorityTarget=Get-GitHeadV2 $RepoDir
+                if($fetch.exitCode -ne 0 -or $origin.exitCode -ne 0 -or $origin.stdout.Trim() -ne $authorityTarget){return &$deny 'recovered source-transplanted candidate authority is not synchronized with remote truth'}
+                if($authorityTarget -eq $base){return [ordered]@{eligible=$true;reason='recovered source-transplanted candidate is ready for its required fresh review';targetRefreshRequired=$false;record=$record;transplant=$transplant;transplantEvidence=$transplantEvidence;recoveryReceipt=$receipt}}
+
+                $advance=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$base,$authorityTarget) -LogLabel 'recovered-source-transplant-target-refresh-ancestry'
+                if($advance.exitCode -ne 0){return &$deny 'recovered source-transplanted candidate target was rewritten or diverged'}
+                $targetAdvancePaths=@(Get-GitChangedFiles -Dir $RepoDir -BaseSha $base -HeadSha $authorityTarget|Sort-Object)
+                $candidatePaths=@($transplantEvidence.candidateChangedPaths|ForEach-Object{[string]$_}|Sort-Object)
+                $taskScope=@($Task.scope|ForEach-Object{[string]$_}|Where-Object{$_})
+                $overlap=@()
+                foreach($p in $targetAdvancePaths){
+                    if($candidatePaths -contains $p){$overlap+=,$p;continue}
+                    foreach($scope in $taskScope){if($p -eq $scope -or $p.StartsWith(($scope.TrimEnd('/')+'/'))){$overlap+=,$p;break}}
+                }
+                $overlap=@($overlap|Select-Object -Unique)
+                if($overlap.Count){return &$deny "recovered source-transplanted candidate target advance overlaps candidate/task scope: $($overlap -join ', ')"}
+                $refreshCore=[ordered]@{
+                    schemaVersion='orcivo.orchestration.v2.recovered-source-transplant-refresh-proof/1';taskId=[string]$State.taskId;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId
+                    priorTarget=$base;currentTarget=$authorityTarget;targetRelation=[string]$record.targetRelation;lineageMergeBase=[string]$record.lineageMergeBase
+                    targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidatePaths;recoveryProofHash=[string]$recovery.proofHash;recoveryReceiptHash=[string]$receipt.receiptHash;checkAttestationId=[string]$currentCheck.attestationId
+                }
+                $refreshHash=New-StringHash (ConvertTo-CanonicalJson $refreshCore)
+                $refreshProof=[ordered]@{currentTarget=$authorityTarget;targetRelation=[string]$record.targetRelation;lineageMergeBase=[string]$record.lineageMergeBase;targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidatePaths;proof=[ordered]@{proofHash=$refreshHash;bindings=$refreshCore}}
+                return [ordered]@{eligible=$true;reason='target advanced disjointly after recovered source-transplant; a new exact-version gate is required';targetRefreshRequired=$true;proof=$refreshProof;record=$record;transplant=$transplant;transplantEvidence=$transplantEvidence;recoveryReceipt=$receipt}
+            }
             if($AllowTargetRefresh){
                 $oldState=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
                 $oldState.sourceTransplantCurrentHead=[string]$State.candidateHead;$oldState.sourceTransplantCurrentBase=[string]$State.candidateBase
