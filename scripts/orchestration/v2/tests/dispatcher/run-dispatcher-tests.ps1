@@ -1864,6 +1864,10 @@ try{
             $p=Get-DispatcherReviewTimeoutRetryProof -State $glm.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.state.runId -InvocationId $glm.invocation
             Assert-True (-not $p.eligible -and $p.reason -match 'reasoning-only no-output') 'a GLM attempt with nonzero output tokens remained eligible for Claude fallback'
         }
+        Check 'RD-221' {
+            $ids=@(Get-AcceptanceCriteriaIds 'AC1: first criterion; AC2: second criterion; AC3: third criterion')
+            Assert-True (($ids -join '|') -eq 'AC1|AC2|AC3') "semicolon-delimited acceptance criteria were not frozen exactly: $($ids -join '|')"
+        }
 
         Check 'RD-150' {
             $reader=Join-Path $V2 'review-reader.mjs'

@@ -37,12 +37,12 @@ function Get-ContractPath {
     return (Join-Path $script:ContractDir "$TaskVersionId.json")
 }
 
-# canonical acceptance-criteria ID extraction: lines beginning "AC1:", "AC12 :" ...
+# Canonical acceptance-criteria ID extraction: criteria beginning the text or
+# following a newline/semicolon, for example "AC1:" or "; AC2)".
 function Get-AcceptanceCriteriaIds {
     param([string]$AcceptanceText)
     $ids = New-Object System.Collections.Generic.List[string]
-    foreach ($line in ($AcceptanceText -split "`n")) {
-        $m = [regex]::Match($line, '^\s*([A-Za-z][A-Za-z0-9_-]{0,31})\s*[:\)]')
+    foreach ($m in [regex]::Matches($AcceptanceText, '(?m)(?:^|[;\r\n])\s*([A-Za-z][A-Za-z0-9_-]{0,31})\s*[:\)]')) {
         if ($m.Success) {
             $id = $m.Groups[1].Value
             if (-not $ids.Contains($id)) { [void]$ids.Add($id) }
