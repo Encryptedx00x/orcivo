@@ -4344,6 +4344,16 @@ if($needsFreshDispatch){
     }
 }
 
+function Test-DispatcherLoopResumeEligible {
+    param($State,[hashtable]$Task,$TaskSource)
+    return [bool]($State -and $Task -and [string]$State.taskSourceHash -eq [string]$TaskSource.hash -and
+        ("$($State.status)" -in @('RUNNING','WAITING_PROVIDER') -or
+            (Test-DispatcherOwnerGateResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
+            (Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or
+            (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
+            (Test-DispatcherReviewInfrastructureResumeState -State $State)))
+}
+
 function Invoke-DispatcherLoop {
     param([switch]$RunOnce,[string]$TaskFile='',[string]$ProviderOverride='')
     $cfg=Get-V2Config;$pcfg=$cfg.pilot
@@ -4359,7 +4369,7 @@ function Invoke-DispatcherLoop {
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
             $task=$(if($cur){@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0]}else{$null})
-            $resumeEligible=[bool]($cur -and $task -and $cur.taskSourceHash -eq $source.hash -and ((Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source) -or (Test-DispatcherReviewInfrastructureResumeState -State $cur)))
+            $resumeEligible=Test-DispatcherLoopResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source
             $sourceSuccessionRequest=[bool]($cur -and $task -and (Test-DispatcherDisjointSourceSuccessionRequest -State $cur -Task ([hashtable]$task) -TaskSource $source))
             if($cur -and $task -and (("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash -or $sourceSuccessionRequest)){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}

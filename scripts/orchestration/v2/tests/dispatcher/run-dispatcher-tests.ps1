@@ -406,6 +406,15 @@ try{
             $later.status='BLOCKED';Write-Utf8 $p ($source|ConvertTo-Json -Depth 20)
             Assert-True ((Get-NextDispatcherDecision (Read-DispatcherTaskSource $p)).action -eq 'IDLE') 'scheduler dispatched a later source-blocked task'
         }
+        Check 'RD-01C' {
+            $gateTask=Task 'LEVEL-C' @() 'C' 'level-c-external-service-arch'
+            $p=Join-Path $Fixture 'level-c-resume.json';Write-Utf8 $p ((Source @($gateTask))|ConvertTo-Json -Depth 20)
+            $source=Read-DispatcherTaskSource $p;$gateTask=[hashtable]$source.tasks[0]
+            $gateState=[ordered]@{taskId='LEVEL-C';taskVersionId=('a'*64);taskSourceHash=$source.hash;status='WAITING_HUMAN';stage='GATE';reason='Level C: level-c-external-service-arch'}
+            Assert-True (Test-DispatcherLoopResumeEligible -State $gateState -Task $gateTask -TaskSource $source) 'dispatcher loop failed to resume the same owner-approved Level C wait'
+            $gateState.status='FAILED'
+            Assert-True (-not (Test-DispatcherLoopResumeEligible -State $gateState -Task $gateTask -TaskSource $source)) 'dispatcher loop treated a failed Level C task as resumable'
+        }
         Check 'RD-02' {
             $a=Get-TaskClassification -Task (Task 'FAST')
             $c=Task 'CRITICAL' @() 'C' 'OWNER_DECISION';$c.description='security tenancy money payment migration external integration irreversible architecture';$b=Get-TaskClassification -Task $c
