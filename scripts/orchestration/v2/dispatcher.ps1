@@ -855,7 +855,8 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
     param(
         [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,[Parameter(Mandatory)]$TaskSource,
         [Parameter(Mandatory)]$Contract,[Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
-        [string]$RepoDir=(Get-RepoRoot),[switch]$PermitActiveRunnerForReadOnlyProof
+        [string]$RepoDir=(Get-RepoRoot),[switch]$PermitActiveRunnerForReadOnlyProof,
+        [switch]$PermitDivergentTargetForSourceSuccession
     )
     $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason;providerInvocationRequired=$false}}
     try{
@@ -976,8 +977,19 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $currentTarget=$localTarget
 
         if($currentTarget -eq $oldBase){return &$deny 'current target equals the old candidate base - recovery is unnecessary; retry integration directly'}
+        $targetRelation='DESCENDANT';$lineageMergeBase=$oldBase
         $ancestry=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$oldBase,$currentTarget) -LogLabel 'disjoint-target-advance-ancestry'
-        if($ancestry.exitCode -ne 0){return &$deny 'current target is not a descendant of the old candidate base'}
+        if($ancestry.exitCode -ne 0){
+            if(-not $PermitDivergentTargetForSourceSuccession){return &$deny 'current target is not a descendant of the old candidate base'}
+            $mergeBaseResult=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base',$oldBase,$currentTarget) -LogLabel 'disjoint-source-succession-merge-base'
+            if($mergeBaseResult.exitCode -ne 0 -or $mergeBaseResult.stdout.Trim() -notmatch '^[0-9a-f]{40}$'){return &$deny 'divergent target does not have one valid merge base with the old candidate base'}
+            $lineageMergeBase=$mergeBaseResult.stdout.Trim()
+            foreach($tip in @($oldBase,$currentTarget)){
+                $fromCommon=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$lineageMergeBase,$tip) -LogLabel 'disjoint-source-succession-common-ancestry'
+                if($fromCommon.exitCode -ne 0){return &$deny 'divergent target merge-base ancestry is invalid'}
+            }
+            $targetRelation='DIVERGENT_SOURCE_SUCCESSION'
+        }
 
         $targetAdvancePaths=@(Get-GitChangedFiles -Dir $RepoDir -BaseSha $oldBase -HeadSha $currentTarget|Sort-Object)
         $taskScope=@($Task.scope|ForEach-Object{[string]$_}|Where-Object{$_})
@@ -993,7 +1005,8 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
             schemaVersion='orcivo.orchestration.v2.disjoint-target-advance-proof/1'
             taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId
             oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=$oldTree;oldDiffHash=$oldDiffHash
-            currentTarget=$currentTarget;targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths
+            currentTarget=$currentTarget;targetRelation=$targetRelation;lineageMergeBase=$lineageMergeBase
+            targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths
             reviewAttestationId=[string]$review.attestationId;checkAttestationId=[string]$check.attestationId
             failSeq=$failSeq;secretFalsePositiveEvidence=$falsePositiveEvidence
         }
@@ -1010,7 +1023,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
 
         return [ordered]@{
             eligible=$true;alreadyRecovered=$alreadyRecovered;reason='disjoint target advance is eligible for evidence-driven recovery'
-            oldBase=$oldBase;oldHead=$oldHead;currentTarget=$currentTarget
+            oldBase=$oldBase;oldHead=$oldHead;currentTarget=$currentTarget;targetRelation=$targetRelation;lineageMergeBase=$lineageMergeBase
             targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths;overlap=@()
             providerInvocationRequired=$false;freshReviewRequired=$true
             candidateHead=[string]$(if($alreadyRecovered){$State.candidateHead}else{$oldHead})
@@ -1074,7 +1087,7 @@ function Get-DispatcherDisjointSourceSuccessionProof {
         }
 
         $oldSource=[ordered]@{path=[string]$State.taskSource;hash=[string]$State.taskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
-        $oldProof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $State -Task $predecessorTask -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$State.taskVersionId) -RunId ([string]$State.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof
+        $oldProof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $State -Task $predecessorTask -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$State.taskVersionId) -RunId ([string]$State.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof -PermitDivergentTargetForSourceSuccession
         if(-not [bool]$oldProof.eligible){return &$deny "predecessor disjoint-target proof failed: $($oldProof.reason)"}
         return [ordered]@{eligible=$true;reason='exact source-bound successor may reuse the preserved candidate';providerInvocationRequired=$false;freshReviewRequired=$true;predecessorTask=$predecessorTask;predecessorContract=$oldContract;disjointProof=$oldProof;proofHash=[string]$oldProof.proof.proofHash}
     }catch{return &$deny $_.Exception.Message}
@@ -1089,11 +1102,117 @@ function New-DispatcherDisjointSourceSuccessionRecord {
         successorTaskVersionId=[string]$Contract.taskVersionId;successorTaskSourceHash=[string]$TaskSource.hash
         runId=[string]$State.runId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash
         predecessorTask=$Proof.predecessorTask;integrationResult=$State.integration;disjointProofHash=[string]$Proof.proofHash;currentTarget=[string]$Proof.disjointProof.currentTarget
+        targetRelation=[string]$Proof.disjointProof.targetRelation;lineageMergeBase=[string]$Proof.disjointProof.lineageMergeBase
         recordHash=''
     }
     $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
     $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $signed)
     return $record
+}
+
+function Get-DispatcherGitPathObject {
+    param([Parameter(Mandatory)][string]$RepoDir,[Parameter(Mandatory)][string]$Ref,[Parameter(Mandatory)][string]$Path)
+    $result=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"${Ref}:$Path") -LogLabel 'disjoint-source-succession-path-object'
+    if($result.exitCode -eq 0 -and $result.stdout.Trim() -match '^[0-9a-f]{40}$'){return [ordered]@{present=$true;object=$result.stdout.Trim()}}
+    return [ordered]@{present=$false;object=''}
+}
+
+# Validates a candidate that was transplanted from a divergent predecessor
+# lineage onto the exact target frozen by the source-succession gate.  Blob
+# identity (including matching deletions), changed-path identity, patch hash,
+# and commit-count identity make this stronger than a clean cherry-pick alone.
+function Get-DispatcherDisjointSourceTransplantEvidence {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)]$SuccessionRecord,
+        [string]$RepoDir=(Get-RepoRoot),[string]$CandidateHead=''
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    try{
+        if([string]$SuccessionRecord.targetRelation -ne 'DIVERGENT_SOURCE_SUCCESSION'){return &$deny 'source succession does not authorize a divergent-lineage transplant'}
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
+        $wsStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'disjoint-source-transplant-status'
+        if($wsStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){return &$deny 'candidate workspace is dirty'}
+        if(-not $CandidateHead){$CandidateHead=Get-GitHeadV2 $workspace}
+        if($CandidateHead -notmatch '^[0-9a-f]{40}$' -or $CandidateHead -eq [string]$SuccessionRecord.candidateHead){return &$deny 'candidate workspace does not contain a transplanted head'}
+
+        if(-not(Test-GitCleanV2 $RepoDir)){return &$deny 'authority tree is dirty during source transplant validation'}
+        $target=(Get-V2Config).target.branch
+        $branch=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse','--abbrev-ref','HEAD') -LogLabel 'disjoint-source-transplant-branch'
+        if($branch.exitCode -ne 0 -or $branch.stdout.Trim() -ne $target){return &$deny "authority checkout is not on '$target'"}
+        $fetch=Invoke-GitV2 -Dir $RepoDir -Arguments @('fetch','origin','--prune','--quiet') -LogLabel 'disjoint-source-transplant-fetch'
+        if($fetch.exitCode -ne 0){return &$deny 'authority fetch failed during source transplant validation'}
+        $currentTarget=Get-GitHeadV2 $RepoDir
+        $origin=Invoke-GitV2 -Dir $RepoDir -Arguments @('rev-parse',"origin/$target") -LogLabel 'disjoint-source-transplant-origin'
+        if($origin.exitCode -ne 0 -or $origin.stdout.Trim() -ne $currentTarget -or $currentTarget -ne [string]$SuccessionRecord.currentTarget){return &$deny 'source transplant target head drift'}
+
+        $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',$currentTarget,$CandidateHead) -LogLabel 'disjoint-source-transplant-ancestry'
+        if($ancestor.exitCode -ne 0){return &$deny 'transplanted candidate is not descended from the frozen target'}
+        $oldBase=[string]$SuccessionRecord.candidateBase;$oldHead=[string]$SuccessionRecord.candidateHead
+        $oldCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$oldBase..$oldHead") -LogLabel 'disjoint-source-transplant-old-count'
+        $newCount=Invoke-GitV2 -Dir $workspace -Arguments @('rev-list','--count',"$currentTarget..$CandidateHead") -LogLabel 'disjoint-source-transplant-new-count'
+        if($oldCount.exitCode -ne 0 -or $newCount.exitCode -ne 0 -or $oldCount.stdout.Trim() -ne $newCount.stdout.Trim()){return &$deny 'transplanted candidate commit count drift'}
+
+        $oldPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $oldBase -HeadSha $oldHead|Sort-Object)
+        $newPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $currentTarget -HeadSha $CandidateHead|Sort-Object)
+        if(($oldPaths -join '|') -ne ($newPaths -join '|')){return &$deny 'transplanted candidate changed-path set drift'}
+        foreach($path in $oldPaths){
+            $oldObject=Get-DispatcherGitPathObject -RepoDir $workspace -Ref $oldHead -Path $path
+            $newObject=Get-DispatcherGitPathObject -RepoDir $workspace -Ref $CandidateHead -Path $path
+            if([bool]$oldObject.present -ne [bool]$newObject.present -or ([bool]$oldObject.present -and [string]$oldObject.object -ne [string]$newObject.object)){return &$deny "transplanted candidate path '$path' content drift"}
+        }
+        $newDiffHash=Get-GitDiffHash -Dir $workspace -BaseSha $currentTarget -HeadSha $CandidateHead
+        if($newDiffHash -ne [string]$SuccessionRecord.diffHash){return &$deny 'transplanted candidate patch hash drift'}
+        return [ordered]@{
+            eligible=$true;reason='divergent source candidate transplant is exact';oldCandidateBase=$oldBase;oldCandidateHead=$oldHead
+            currentTarget=$currentTarget;newCandidateHead=$CandidateHead;newCandidateTree=(Get-GitTreeHash -Dir $workspace -Ref $CandidateHead)
+            newDiffHash=$newDiffHash;candidateChangedPaths=$newPaths;commitCount=[int]$newCount.stdout.Trim()
+        }
+    }catch{return &$deny $_.Exception.Message}
+}
+
+function Complete-DispatcherDisjointSourceTransplant {
+    param([Parameter(Mandatory)]$State,[string]$RepoDir=(Get-RepoRoot))
+    $succession=_ToHashtable $State.disjointSourceSuccession
+    if([string]$succession.targetRelation -ne 'DIVERGENT_SOURCE_SUCCESSION'){return [ordered]@{eligible=$true;transplanted=$false;candidateHead=[string]$succession.candidateHead}}
+    if($State.disjointSourceTransplant){
+        $existing=_ToHashtable $State.disjointSourceTransplant
+        $signed=[ordered]@{};foreach($key in $existing.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$existing[$key]}}
+        if([string]$existing.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $signed))){throw 'disjoint source transplant record hash is invalid'}
+        $validated=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $succession -RepoDir $RepoDir -CandidateHead ([string]$existing.newCandidateHead)
+        if(-not [bool]$validated.eligible){throw "disjoint source transplant record validation failed: $($validated.reason)"}
+        $validated.transplanted=$true
+        return $validated
+    }
+
+    $workspace=[string]$State.workspace;$oldHead=[string]$succession.candidateHead;$oldBase=[string]$succession.candidateBase;$currentTarget=[string]$succession.currentTarget
+    $wsHead=Get-GitHeadV2 $workspace
+    if($wsHead -eq $oldHead){
+        $fetch=Invoke-GitV2 -Dir $workspace -Arguments @('fetch','--no-tags','--quiet',$RepoDir,$currentTarget) -LogLabel 'disjoint-source-transplant-fetch-target'
+        Assert-GitSucceededV2 $fetch 'disjoint source transplant: fetch frozen target into candidate workspace'|Out-Null
+        $rebase=Invoke-GitV2 -Dir $workspace -Arguments @('rebase','--onto',$currentTarget,$oldBase) -LogLabel 'disjoint-source-transplant-rebase'
+        if($rebase.exitCode -ne 0){
+            [void](Invoke-GitV2 -Dir $workspace -Arguments @('rebase','--abort') -LogLabel 'disjoint-source-transplant-rebase-abort')
+            throw "disjoint source transplant: candidate patch conflicts with the frozen target: $(Get-GitFailureSummaryV2 $rebase 'git rebase')"
+        }
+        $wsHead=Get-GitHeadV2 $workspace
+    }
+    $evidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $succession -RepoDir $RepoDir -CandidateHead $wsHead
+    if(-not [bool]$evidence.eligible){throw "disjoint source transplant failed closed: $($evidence.reason)"}
+    $record=[ordered]@{
+        schemaVersion='orcivo.orchestration.v2.disjoint-source-transplant/1';successorTaskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId
+        successionRecordHash=[string]$succession.recordHash;oldCandidateBase=[string]$evidence.oldCandidateBase;oldCandidateHead=[string]$evidence.oldCandidateHead
+        currentTarget=[string]$evidence.currentTarget;newCandidateHead=[string]$evidence.newCandidateHead;newCandidateTree=[string]$evidence.newCandidateTree
+        newDiffHash=[string]$evidence.newDiffHash;candidateChangedPaths=@($evidence.candidateChangedPaths);commitCount=[int]$evidence.commitCount;recordHash=''
+    }
+    $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
+    $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $signed)
+    $State.disjointSourceTransplant=$record
+    $State.candidateBase=[string]$evidence.currentTarget;$State.candidateHead=[string]$evidence.newCandidateHead;$State.candidateTree=[string]$evidence.newCandidateTree;$State.diffHash=[string]$evidence.newDiffHash
+    $State.implementationCommit=[string]$evidence.newCandidateHead
+    Write-DispatcherState $State|Out-Null
+    $evidence.transplanted=$true
+    return $evidence
 }
 
 function Get-DispatcherPendingDisjointSourceSuccessionProof {
@@ -1109,6 +1228,26 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
         $constraints=_ToHashtable $Task.candidateConstraints
         if([string]$constraints.resumePolicy -ne 'DISJOINT_SOURCE_SUCCESSION' -or [string]$constraints.resumeFromTaskVersionId -ne [string]$record.predecessorTaskVersionId -or [string]$constraints.resumeFromCandidateCommit -ne [string]$record.candidateHead){return &$deny 'pending successor recovery constraints drift'}
 
+        if($State.disjointSourceTransplant){
+            $transplant=_ToHashtable $State.disjointSourceTransplant
+            $transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
+            if([string]$transplant.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-source-transplant/1' -or [string]$transplant.recordHash -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned))){return &$deny 'pending source transplant record is invalid'}
+            if([string]$transplant.successionRecordHash -ne [string]$record.recordHash -or [string]$transplant.successorTaskVersionId -ne [string]$record.successorTaskVersionId -or [string]$transplant.runId -ne [string]$record.runId){return &$deny 'pending source transplant record binding drift'}
+            $transplantEvidence=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir -CandidateHead ([string]$transplant.newCandidateHead)
+            if(-not [bool]$transplantEvidence.eligible){return &$deny "pending source transplant validation failed: $($transplantEvidence.reason)"}
+            if([string]$transplant.newCandidateTree -ne [string]$transplantEvidence.newCandidateTree -or [string]$transplant.newDiffHash -ne [string]$transplantEvidence.newDiffHash -or (@($transplant.candidateChangedPaths) -join '|') -ne (@($transplantEvidence.candidateChangedPaths) -join '|')){return &$deny 'pending source transplant evidence drift'}
+            return [ordered]@{eligible=$true;reason='pending divergent source transplant revalidated';record=$record;transplant=$transplant;transplantEvidence=$transplantEvidence}
+        }
+
+        # Crash recovery window: the rebase may have completed before its
+        # signed transplant record was written. Exact content/path/patch proof
+        # allows the next run to finish recording that same mutation.
+        if([string]$record.targetRelation -eq 'DIVERGENT_SOURCE_SUCCESSION' -and (Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$record.candidateHead){
+            $inferred=Get-DispatcherDisjointSourceTransplantEvidence -State $State -SuccessionRecord $record -RepoDir $RepoDir
+            if(-not [bool]$inferred.eligible){return &$deny "unrecorded source transplant is invalid: $($inferred.reason)"}
+            return [ordered]@{eligible=$true;reason='exact unrecorded divergent source transplant recovered';record=$record;transplantEvidence=$inferred;transplantRecordPending=$true}
+        }
+
         $oldState=_ToHashtable ((ConvertTo-CanonicalJson $State)|ConvertFrom-Json)
         $oldState.taskVersionId=[string]$record.predecessorTaskVersionId;$oldState.taskSourceHash=[string]$record.predecessorTaskSourceHash;$oldState.taskSource=[string]$record.predecessorTaskSourcePath;$oldState.task=$record.predecessorTask
         $oldState.status='INTEGRATION_FAILED';$oldState.stage='INTEGRATE';$oldState.reason='authority tree dirty';$oldState.implementationComplete=$true;$oldState.requiresCorrection=$false;$oldState.reviewVerdict='APPROVE'
@@ -1119,9 +1258,9 @@ function Get-DispatcherPendingDisjointSourceSuccessionProof {
             if(-not [bool]$oldGate.satisfied -or [string]$oldGate.approval -ne 'APPROVED'){return &$deny 'predecessor owner gate approval drift'}
         }
         $oldSource=[ordered]@{path=[string]$record.predecessorTaskSourcePath;hash=[string]$record.predecessorTaskSourceHash;source=[ordered]@{batch=[string]$oldContract.bindings.batch}}
-        $proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $oldState -Task ([hashtable]$record.predecessorTask) -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$record.predecessorTaskVersionId) -RunId ([string]$record.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof
+        $proof=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $oldState -Task ([hashtable]$record.predecessorTask) -TaskSource $oldSource -Contract $oldContract -TaskVersionId ([string]$record.predecessorTaskVersionId) -RunId ([string]$record.runId) -RepoDir $RepoDir -PermitActiveRunnerForReadOnlyProof -PermitDivergentTargetForSourceSuccession
         if(-not [bool]$proof.eligible){return &$deny "pending predecessor proof failed: $($proof.reason)"}
-        if([string]$proof.proof.proofHash -ne [string]$record.disjointProofHash -or [string]$proof.currentTarget -ne [string]$record.currentTarget){return &$deny 'pending disjoint proof or target head drift'}
+        if([string]$proof.proof.proofHash -ne [string]$record.disjointProofHash -or [string]$proof.currentTarget -ne [string]$record.currentTarget -or [string]$proof.targetRelation -ne [string]$record.targetRelation -or [string]$proof.lineageMergeBase -ne [string]$record.lineageMergeBase){return &$deny 'pending disjoint proof or target lineage drift'}
         return [ordered]@{eligible=$true;reason='pending disjoint source succession revalidated';proof=$proof;record=$record}
     }catch{return &$deny $_.Exception.Message}
 }
@@ -3872,6 +4011,10 @@ function Invoke-RealDispatcherTask {
     if($contractSupersession -or $pendingSupersession){
         $previousVersion=$(if($pendingSupersession){[string]$state.supersededTaskVersionId}else{[string]$state.taskVersionId})
         $previousReason=$(if($pendingSupersession){[string]$state.pendingSupersessionReason}else{[string]$state.reason})
+        $sourceTransplant=$null
+        if($pendingSupersession -and [bool]$state.pendingDisjointSourceSuccession){
+            $sourceTransplant=Complete-DispatcherDisjointSourceTransplant -State $state
+        }
         if($pendingSupersession){
             Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event 'gate-approved' -ToState 'DISPATCHED' -RunId $state.runId -AttemptId (New-AttemptId) -Note ([string]$Task.ownerGate)|Out-Null
         }else{
@@ -3883,7 +4026,7 @@ function Invoke-RealDispatcherTask {
             attempt=[int]$state.attempt;cycle=[int]$state.cycle
             rollovers=[int]$state.rollovers;failovers=[int]$state.failovers
         }
-        $resumeCommit=[string]$Task.candidateConstraints.resumeFromCandidateCommit
+        $resumeCommit=$(if($sourceTransplant -and [bool]$sourceTransplant.transplanted -ne $false){[string]$sourceTransplant.newCandidateHead}else{[string]$Task.candidateConstraints.resumeFromCandidateCommit})
         $state.supersededTaskVersionId=$previousVersion;$state.recoveredCandidateCommit=$resumeCommit;$state.implementationCommit=$resumeCommit
         $state.taskVersionId=$contract.taskVersionId;$state.task=$Task;$state.taskSource=$TaskSource.path;$state.taskSourceHash=$TaskSource.hash
         if([bool]$state.pendingReviewSuccession -or [bool]$state.pendingDisjointSourceSuccession){

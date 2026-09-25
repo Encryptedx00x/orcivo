@@ -48,7 +48,7 @@ $OriginBare=Join-Path $Root 'origin.git'
 $script:DtaSeq=0
 $script:DtaSalt=[guid]::NewGuid().ToString('N')
 
-function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold) {
+function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$DivergentTargetAdvance) {
     $script:DtaSeq++
     $task=Task ("DTA-"+$Id) $Scope
     $sourcePath=Join-Path $Root ("dta-"+$Id+"-"+$script:DtaSeq+".tasks.json");Write-Utf8 $sourcePath ((Source @($task))|ConvertTo-Json -Depth 20)
@@ -56,6 +56,15 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     $contract=New-DispatcherContract -Task $task -TaskSource $source
 
     $base=(& git -C $Fixture rev-parse HEAD).Trim()
+    $divergenceCommon=''
+    if($DivergentTargetAdvance){
+        $divergenceCommon=$base
+        Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-old-line.json') "{`"oldLine`":`"$Id-$script:DtaSeq`"}`n"
+        & git -C $Fixture add .
+        & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'old target line (disjoint)' --quiet
+        $base=(& git -C $Fixture rev-parse HEAD).Trim()
+        & git -C $Fixture push --quiet origin main
+    }
     $runId='run-dta-'+(New-StringHash ($script:DtaSalt+'|'+$Id+'|'+$script:DtaSeq+'|run')).Substring(7,16)
     $workspaceId='run-'+(New-StringHash ($script:DtaSalt+'|'+$Id+'|'+$script:DtaSeq+'|workspace')).Substring(7,16)
     $ws=New-DispatcherWorkspace -RunId $runId -WorkspaceId $workspaceId -BaseSha $base -SourceRepo $Fixture
@@ -87,7 +96,21 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
     Add-LedgerEvent -TaskVersionId $contract.taskVersionId -Event integrate-failed -ToState $failureState -RunId $runId -Note $failureReason|Out-Null
 
     $currentTarget=$base
-    if(-not $SkipTargetAdvance){
+    if($DivergentTargetAdvance){
+        $tempBranch='dta-divergent-'+[guid]::NewGuid().ToString('N')
+        & git -C $Fixture switch --quiet -c $tempBranch $divergenceCommon
+        Write-Utf8 (Join-Path $Fixture $AdvancePath) "{`"divergent`":`"$Id-$script:DtaSeq`"}`n"
+        & git -C $Fixture add .
+        & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'divergent target replacement (disjoint)' --quiet
+        $currentTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+        & git -C $Fixture branch -f main $currentTarget
+        & git -C $Fixture switch --quiet main
+        & git -C $Fixture branch -D $tempBranch | Out-Null
+        $tempRemoteRef='refs/heads/dta-fixture-'+[guid]::NewGuid().ToString('N')
+        & git -C $Fixture push --quiet origin "${currentTarget}:$tempRemoteRef"
+        & git -C $OriginBare update-ref refs/heads/main $currentTarget
+        & git -C $OriginBare update-ref -d $tempRemoteRef
+    } elseif(-not $SkipTargetAdvance){
         Write-Utf8 (Join-Path $Fixture $AdvancePath) "{`"marker`":`"$Id-$script:DtaSeq`"}`n"
         & git -C $Fixture add .
         & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'target advance (disjoint)' --quiet
@@ -338,7 +361,49 @@ try{
             & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'target moved after successor gate' --quiet
             & git -C $Fixture push --quiet origin main
             $moved=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
-            Assert-True (-not $moved.eligible -and $moved.reason -match 'proof or target head drift') "post-gate target drift was not rejected: $($moved.reason)"
+            Assert-True (-not $moved.eligible -and $moved.reason -match 'proof or target (?:head|lineage) drift') "post-gate target drift was not rejected: $($moved.reason)"
+        }
+
+        Check 'DTA-21: divergent target is allowed only by exact source succession' {
+            $f=New-DtaFixture 'A21' -DivergentTargetAdvance
+            $generic=Get-DispatcherDisjointTargetAdvanceRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True (-not $generic.eligible -and $generic.reason -match 'not a descendant') "generic recovery unexpectedly accepted divergent target: $($generic.reason)"
+            $s=New-DtaSourceSuccessor $f 'a21'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "source succession rejected disjoint divergent target: $($p.reason)"
+            Assert-True ($p.disjointProof.targetRelation -eq 'DIVERGENT_SOURCE_SUCCESSION' -and $p.disjointProof.lineageMergeBase -match '^[0-9a-f]{40}$') 'divergent source proof lacks the exact lineage binding'
+        }
+
+        Check 'DTA-22: divergent source transplant preserves only the approved candidate patch' {
+            $f=New-DtaFixture 'A22' -DivergentTargetAdvance
+            $s=New-DtaSourceSuccessor $f 'a22'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture source proof failed: $($p.reason)"
+            $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.disjointSourceSuccession=$record
+            $f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            $moved=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
+            Assert-True ($moved.eligible -and $moved.transplanted -and $moved.newCandidateHead -ne $f.oldHead) 'candidate was not transplanted onto the divergent target'
+            Assert-True ($moved.currentTarget -eq $f.currentTarget -and $moved.newDiffHash -eq $f.state.diffHash) 'transplant lost target or diff binding'
+            $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True $pending.eligible "signed transplant did not revalidate: $($pending.reason)"
+        }
+
+        Check 'DTA-23: interrupted divergent transplant is recovered from exact content proof' {
+            $f=New-DtaFixture 'A23' -DivergentTargetAdvance
+            $s=New-DtaSourceSuccessor $f 'a23'
+            $p=Get-DispatcherDisjointSourceSuccessionProof -State $f.state -Task $s.task -TaskSource $s.source -Contract $s.contract -RepoDir $Fixture
+            Assert-True $p.eligible "fixture source proof failed: $($p.reason)"
+            $record=New-DispatcherDisjointSourceSuccessionRecord -State $f.state -Contract $s.contract -TaskSource $s.source -Proof $p
+            $f.state.pendingDisjointSourceSuccession=$true;$f.state.disjointSourceSuccession=$record
+            $f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSourceHash=$s.source.hash;$f.state.taskSource=$s.source.path;$f.state.task=$s.task
+            & git -C $f.workspace fetch --no-tags --quiet $Fixture $f.currentTarget
+            & git -C $f.workspace rebase --onto $f.currentTarget $f.oldBase | Out-Null
+            Assert-True ($LASTEXITCODE -eq 0) 'fixture could not simulate completed transplant before state write'
+            $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
+            Assert-True ($pending.eligible -and $pending.transplantRecordPending) "interrupted exact transplant was not recovered: $($pending.reason)"
+            $completed=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
+            Assert-True ($completed.eligible -and $f.state.disjointSourceTransplant.recordHash -match '^sha256:[0-9a-f]{64}$') 'interrupted transplant did not receive a durable signed record'
         }
     } finally { Pop-Location }
 } finally {
