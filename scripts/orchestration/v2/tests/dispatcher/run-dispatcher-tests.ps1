@@ -2659,6 +2659,36 @@ try{
             $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId ([string]$ar.invocationId)
             Assert-True ([string]$finalized.disposition -eq 'POLICY_BLOCK' -and [string]$f.state.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and $post -and -not [bool]$post.policyCompliant -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts'))) 'exhausted policy correction did not fail closed while preserving useful work'
         }
+
+        Check 'RD-222' {
+            # A retryable terminal BLOCK may leave useful, policy-compliant
+            # in-scope work. The next bounded attempt must inherit only the
+            # exact signed result snapshot, without discarding or trusting
+            # any later workspace drift.
+            $f=New-ResultSnapshotUnitFixture 'RD222'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='BLOCK';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$finalized.disposition -eq 'RETRY') 'fixture did not enter the bounded retry path'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD222-retry.prompt.txt';Write-Utf8 $prompt2 'continue from the exact signed partial result'
+            $pre2=New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2
+            Assert-True (@($pre2.paths) -contains 'work/useful.ts' -and [string]$pre2.stateBinding.workspaceHead -eq [string]$f.base) 'the exact signed policy-compliant partial result could not launch its bounded retry'
+
+            $tampered=New-ResultSnapshotUnitFixture 'RD222T'
+            Write-Utf8 (Join-Path $tampered.workspace 'work\useful.ts') "export const useful = true;`n"
+            $tamperedResult=New-ResultSnapshotAgentResult $tampered
+            $tamperedResult.providerClass='NONE';$tamperedResult.resultClass='BLOCK';$tamperedResult.exitCode=0
+            Complete-DispatcherAgentInvocation -State $tampered.state -Task $tampered.task -AgentResult $tamperedResult -Role 'IMPLEMENTER'|Out-Null
+            Write-Utf8 (Join-Path $tampered.workspace 'work\useful.ts') "export const useful = 'tampered';`n"
+            $tampered.state.attempt=2;Write-DispatcherState $tampered.state|Out-Null
+            $tamperedPrompt=Join-Path $Root 'result-unit-RD222-tampered.prompt.txt';Write-Utf8 $tamperedPrompt 'must not inherit drifted bytes'
+            $rejected=$false
+            try{New-DispatcherWorkspaceInvocationSnapshot -State $tampered.state -Task $tampered.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $tamperedPrompt -PromptHash (New-FileHash $tamperedPrompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null}catch{$rejected=$true}
+            Assert-True ($rejected -and @($tampered.state.workspaceInvocationSnapshots).Count -eq 1) 'a drifted partial result was inherited by a retry'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

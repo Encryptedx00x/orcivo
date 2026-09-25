@@ -2992,6 +2992,14 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $isPolicyCorrectionBaseline=$false
     $isPolicyHoldRetryBaseline=$false
     $policyHoldWorkspaceHead=''
+    $isSignedRetryBaseline=$false
+    $signedRetryWorkspaceHead=''
+    $signedRetry=Get-DispatcherSignedRetryBaseline -State $State -Task $Task
+    if($signedRetry.ok){
+        $isSignedRetryBaseline=$true
+        $signedRetryWorkspaceHead=[string]$signedRetry.workspaceHead
+        $partial=$signedRetry.observation
+    }
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -3095,7 +3103,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -3126,7 +3134,8 @@ function New-DispatcherWorkspaceInvocationSnapshot {
 # The post-execution snapshot never uses this: it is bound to
 # the exact HEAD frozen by the pre snapshot.
 function Get-DispatcherPreLaunchExpectedHead {
-    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='')
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='',[bool]$IsSignedRetryBaseline=$false,[string]$SignedRetryWorkspaceHead='')
+    if($IsSignedRetryBaseline){return $SignedRetryWorkspaceHead}
     if($IsPolicyHoldRetryBaseline){return $PolicyHoldWorkspaceHead}
     if($IsPolicyCorrectionBaseline){
         $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
@@ -4869,6 +4878,36 @@ function Test-DispatcherLoopResumeEligible {
             (Test-DispatcherCandidateImportResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherReviewInfrastructureResumeState -State $State)))
+}
+
+# A retryable terminal result may leave useful in-scope work. A later attempt
+# may inherit it only when the latest provider-history entry, both invocation
+# snapshots, the current HEAD, and a fresh workspace observation all bind to
+# exactly the same policy-compliant bytes. This is retry continuity, not a
+# candidate/recovery shortcut: any missing evidence or later drift fails closed.
+function Get-DispatcherSignedRetryBaseline {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    if([bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'lineage is not a normal bounded retry'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'retry is not RUNNING/IMPLEMENT'}
+    foreach($field in @('implementationCommit','recoveredCandidateCommit','candidateHead','candidateTree','diffHash')){if([string]$State.$field){return &$deny 'retry already has candidate evidence'}}
+    $history=@($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})
+    if(-not $history.Count){return &$deny 'retry has no provider history'}
+    $entry=$history[-1]
+    if([string]$entry.providerClass -ne 'NONE' -or [string]$entry.resultClass -notin @('BLOCK','TEST_FAILURE','AGENT_FAILURE')){return &$deny 'latest result is not a normal retryable terminal result'}
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    if(-not $pre -or -not $post -or [string]$post.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/2' -or -not [bool]$post.policyCompliant -or -not @($post.paths|Where-Object{$_}).Count){return &$deny 'latest result is not a signed policy-compliant partial result'}
+    $integrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $post -ExpectedPreSnapshotHash ([string]$pre.snapshotHash)
+    if(-not $integrity.ok -or [string]$entry.workspaceResultSnapshotHash -ne [string]$post.resultHash){return &$deny 'retry result binding is invalid'}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$post.workspaceHead){return &$deny 'retry workspace HEAD drift'}
+    $observation=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $observation.clean){return &$deny "retry workspace is not an admissible partial result: $($observation.reason)"}
+    if([string]$observation.diffHash -ne [string]$post.partialDiffHash){return &$deny 'retry diff hash drift'}
+    if([string]$observation.filesHash -ne [string]$post.partialFilesHash){return &$deny 'retry files hash drift'}
+    if((ConvertTo-CanonicalJson @($observation.paths)) -cne (ConvertTo-CanonicalJson @($post.paths))){return &$deny 'retry paths drift'}
+    if((ConvertTo-CanonicalJson @($observation.fileBindings)) -cne (ConvertTo-CanonicalJson @($post.fileBindings))){return &$deny 'retry file bindings drift'}
+    return [ordered]@{ok=$true;reason='exact signed retry baseline verified';observation=$observation;workspaceHead=[string]$post.workspaceHead}
 }
 
 function Invoke-DispatcherLoop {
