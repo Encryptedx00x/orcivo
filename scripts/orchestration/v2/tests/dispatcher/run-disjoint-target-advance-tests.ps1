@@ -404,8 +404,15 @@ try{
             $moved=Complete-DispatcherDisjointSourceTransplant -State $f.state -RepoDir $Fixture
             Assert-True ($moved.eligible -and $moved.transplanted -and $moved.newCandidateHead -ne $f.oldHead) 'candidate was not transplanted onto the divergent target'
             Assert-True ($moved.currentTarget -eq $f.currentTarget -and $moved.newDiffHash -eq $f.state.diffHash) 'transplant lost target or diff binding'
+            Assert-True ($f.state.baseSha -eq $f.currentTarget -and $f.state.candidateBase -eq $f.currentTarget) 'transplant did not advance both durable base bindings to the exact target'
             $pending=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture
             Assert-True $pending.eligible "signed transplant did not revalidate: $($pending.reason)"
+            $f.state.task=$s.task;$f.state.taskVersionId=$s.contract.taskVersionId;$f.state.taskSource=$s.source.path;$f.state.taskSourceHash=$s.source.hash
+            $f.state.status='RESUMABLE';$f.state.stage='IMPLEMENT';$f.state.reason='candidate HEAD is not descended from the durable base SHA'
+            $f.state.baseSha=$f.oldBase;$f.state.implementationComplete=$true;$f.state.implementationCommit=$moved.newCandidateHead;$f.state.candidateHead=''
+            Assert-True (Test-DispatcherTransplantBaseReconciliationEligible -State $f.state -Task $s.task -TaskSource $s.source) 'exact signed transplant lineage was not eligible for narrow base reconciliation'
+            $f.state.disjointSourceTransplant.recordHash='sha256:' + ('0' * 64)
+            Assert-True (-not (Test-DispatcherTransplantBaseReconciliationEligible -State $f.state -Task $s.task -TaskSource $s.source)) 'tampered transplant record was accepted for base reconciliation'
         }
 
         Check 'DTA-23: interrupted divergent transplant is recovered from exact content proof' {

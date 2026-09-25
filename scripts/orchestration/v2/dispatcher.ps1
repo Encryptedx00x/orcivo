@@ -1210,6 +1210,7 @@ function Complete-DispatcherDisjointSourceTransplant {
     $signed=[ordered]@{};foreach($key in $record.Keys){if([string]$key -ne 'recordHash'){$signed[[string]$key]=$record[$key]}}
     $record.recordHash=New-StringHash (ConvertTo-CanonicalJson $signed)
     $State.disjointSourceTransplant=$record
+    $State.baseSha=[string]$evidence.currentTarget
     $State.candidateBase=[string]$evidence.currentTarget;$State.candidateHead=[string]$evidence.newCandidateHead;$State.candidateTree=[string]$evidence.newCandidateTree;$State.diffHash=[string]$evidence.newDiffHash
     $State.implementationCommit=[string]$evidence.newCandidateHead
     Write-DispatcherState $State|Out-Null
@@ -1544,15 +1545,51 @@ function Test-DispatcherCandidateResumeEligible {
     $reason=[string]$State.reason
     $commitRetry=$reason.StartsWith('candidate git commit failed with exit ',[System.StringComparison]::Ordinal)
     $scanRetry=$reason.Equals('secret scan failed before review',[System.StringComparison]::Ordinal)
-    if(-not ($commitRetry -or $scanRetry)){return $false}
+    $transplantBaseRetry=$reason.Equals('candidate HEAD is not descended from the durable base SHA',[System.StringComparison]::Ordinal) -and (Test-DispatcherTransplantBaseReconciliationEligible -State $State -Task $Task -TaskSource $TaskSource)
+    if(-not ($commitRetry -or $scanRetry -or $transplantBaseRetry)){return $false}
     if(-not ($State.workspace -and (Test-Path -LiteralPath ([string]$State.workspace)))){return $false}
+    if($transplantBaseRetry){return $true}
     if(-not $State.candidateHead){return $true}
     return (Test-DispatcherHistoricalCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource)
+}
+
+function Test-DispatcherTransplantBaseReconciliationEligible {
+    param($State,[hashtable]$Task,$TaskSource)
+    try{
+        if(-not $State -or -not $Task -or -not $TaskSource -or -not $State.disjointSourceSuccession -or -not $State.disjointSourceTransplant){return $false}
+        if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash -or [string]$State.taskVersionId -notmatch '^[0-9a-f]{64}$' -or -not(Test-SafeId ([string]$State.runId))){return $false}
+        $succession=_ToHashtable $State.disjointSourceSuccession;$transplant=_ToHashtable $State.disjointSourceTransplant
+        $successionSigned=[ordered]@{};foreach($key in $succession.Keys){if([string]$key -ne 'recordHash'){$successionSigned[[string]$key]=$succession[$key]}}
+        $transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
+        if([string]$succession.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-source-succession/1' -or [string]$succession.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $successionSigned))){return $false}
+        if([string]$transplant.schemaVersion -ne 'orcivo.orchestration.v2.disjoint-source-transplant/1' -or [string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned))){return $false}
+        if([string]$succession.targetRelation -ne 'DIVERGENT_SOURCE_SUCCESSION' -or [string]$succession.successorTaskVersionId -ne [string]$State.taskVersionId -or [string]$succession.successorTaskSourceHash -ne [string]$TaskSource.hash -or [string]$succession.runId -ne [string]$State.runId){return $false}
+        if([string]$transplant.successionRecordHash -ne [string]$succession.recordHash -or [string]$transplant.successorTaskVersionId -ne [string]$State.taskVersionId -or [string]$transplant.runId -ne [string]$State.runId){return $false}
+        if([string]$transplant.currentTarget -notmatch '^[0-9a-f]{40}$' -or [string]$State.candidateBase -ne [string]$transplant.currentTarget -or [string]$State.baseSha -eq [string]$transplant.currentTarget){return $false}
+        if([string]$State.implementationCommit -ne [string]$transplant.newCandidateHead -or [string]$State.candidateTree -and [string]$State.candidateTree -ne [string]$transplant.newCandidateTree){return $false}
+        $contract=Get-Contract ([string]$State.taskVersionId)
+        if([string]$contract.taskId -ne [string]$Task.taskId -or [string]$contract.bindings.taskSourceHash -ne [string]$TaskSource.hash){return $false}
+        if([string]$contract.gate -ne 'none'){$approval=Get-OwnerGateApprovalStatus -TaskId ([string]$Task.taskId) -TaskVersionId ([string]$State.taskVersionId) -GateId ([string]$contract.gate);if(-not [bool]$approval.satisfied -or [string]$approval.approval -ne 'APPROVED'){return $false}}
+        $workspace=[string]$State.workspace
+        if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return $false}
+        $status=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'transplant-base-reconciliation-status'
+        if($status.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$status.stdout) -or (Get-GitHeadV2 $workspace) -ne [string]$State.implementationCommit){return $false}
+        $tree=Get-GitTreeHash -Dir $workspace -Ref ([string]$State.implementationCommit)
+        if($tree -ne [string]$transplant.newCandidateTree){return $false}
+        $ancestor=Invoke-GitV2 -Dir $workspace -Arguments @('merge-base','--is-ancestor',[string]$transplant.currentTarget,[string]$State.implementationCommit) -LogLabel 'transplant-base-reconciliation-lineage'
+        return ($ancestor.exitCode -eq 0)
+    }catch{return $false}
 }
 
 function Resume-DispatcherCandidate {
     param($State,[hashtable]$Task,$TaskSource)
     if(-not(Test-DispatcherCandidateResumeEligible -State $State -Task $Task -TaskSource $TaskSource)){return $false}
+    $reconcileTransplantBase=([string]$State.reason -eq 'candidate HEAD is not descended from the durable base SHA' -and (Test-DispatcherTransplantBaseReconciliationEligible -State $State -Task $Task -TaskSource $TaskSource))
+    if($reconcileTransplantBase){
+        if(-not $State.baseShaReconciliationHistory){$State.baseShaReconciliationHistory=@()}
+        $State.baseShaReconciliationHistory=@($State.baseShaReconciliationHistory)+@([ordered]@{previousBaseSha=[string]$State.baseSha;reconciledBaseSha=[string]$State.candidateBase;candidateHead=[string]$State.implementationCommit;transplantRecordHash=[string]$State.disjointSourceTransplant.recordHash;taskVersionId=[string]$State.taskVersionId;runId=[string]$State.runId;reconciledAt=[DateTime]::UtcNow.ToString('o')})
+        $State.baseSha=[string]$State.candidateBase
+    }
     $ledgerState=(Get-LedgerState $State.taskVersionId).state
     $historicalCandidate=[bool]$State.candidateHead
     $resumeNote=$(if($historicalCandidate){"historical reviewed head $($State.candidateHead); resume unreviewed implementation $($State.implementationCommit)"}else{'resume committed implementation candidate'})
