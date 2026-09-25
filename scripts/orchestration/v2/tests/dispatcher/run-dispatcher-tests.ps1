@@ -393,6 +393,19 @@ try{
             $d=Get-NextDispatcherDecision (Read-DispatcherTaskSource $p)
             Assert-True ($d.action -eq 'READY' -and $d.task.taskId -eq 'A') 'scheduler ignored dependency or source task status'
         }
+        Check 'RD-01B' {
+            $upstream=Task 'UPSTREAM' @() 'B' 'none' 'BLOCKED'
+            $blocked=Task 'P04-BLOCKED' @('UPSTREAM')
+            $blocked.phaseGate='P04'
+            $later=Task 'P06-READY'
+            $later.phaseGate='P06'
+            $source=Source @($upstream,$blocked,$later);$source.phaseOrder=@('P04','P06')
+            $p=Join-Path $Fixture 'phase-dependencies.json';Write-Utf8 $p ($source|ConvertTo-Json -Depth 20)
+            $d=Get-NextDispatcherDecision (Read-DispatcherTaskSource $p)
+            Assert-True ($d.action -eq 'READY' -and $d.task.taskId -eq 'P06-READY') 'dependency-blocked earlier phase starved independent ready work'
+            $later.status='BLOCKED';Write-Utf8 $p ($source|ConvertTo-Json -Depth 20)
+            Assert-True ((Get-NextDispatcherDecision (Read-DispatcherTaskSource $p)).action -eq 'IDLE') 'scheduler dispatched a later source-blocked task'
+        }
         Check 'RD-02' {
             $a=Get-TaskClassification -Task (Task 'FAST')
             $c=Task 'CRITICAL' @() 'C' 'OWNER_DECISION';$c.description='security tenancy money payment migration external integration irreversible architecture';$b=Get-TaskClassification -Task $c

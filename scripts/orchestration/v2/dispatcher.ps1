@@ -198,15 +198,17 @@ function Get-NextDispatcherDecision {
         return @{ action='WAITING_HUMAN'; taskId=$first.taskId; reason="planning gate(s) not approved: $($first.gates -join ', ')"; decisionNeeded="approve the named planning gate in the authoritative task source"; resumes="scheduler recomputes the same graph and selects the next READY task" }
     }
 
-    $minPhase = ($gateEligible | ForEach-Object { if ($rank.ContainsKey("$($_.phaseGate)")) { [int]$rank["$($_.phaseGate)"] } else { 9999 } } | Measure-Object -Minimum).Minimum
-    $phaseTasks = @($gateEligible | Where-Object { $r=$(if($rank.ContainsKey("$($_.phaseGate)")){[int]$rank["$($_.phaseGate)"]}else{9999}); $r -eq $minPhase })
-    $ready = @()
-    foreach ($t in $phaseTasks) {
-        $depsOk = $true
-        foreach ($d in @($t.dependencies)) { if (-not $sourceDone[[string]$d]) { $depsOk = $false; break } }
-        if ($depsOk) { $ready += $t }
-    }
-    if ($ready.Count -eq 0) { return @{ action='IDLE'; reason='no READY tasks; earliest phase is dependency-blocked' } }
+    # Preserve phase priority among dispatchable work, but do not let a task
+    # waiting on an earlier dependency starve independent tasks in later phases.
+    $rankedTasks = @($gateEligible | ForEach-Object {
+        $phaseRank=$(if($rank.ContainsKey("$($_.phaseGate)")){[int]$rank["$($_.phaseGate)"]}else{9999})
+        $depsOk=$true
+        foreach($d in @($_.dependencies)){if(-not $sourceDone[[string]$d]){$depsOk=$false;break}}
+        if($depsOk){[pscustomobject]@{task=$_;phaseRank=$phaseRank}}
+    })
+    if ($rankedTasks.Count -eq 0) { return @{ action='IDLE'; reason='no READY tasks; all remaining tasks are dependency-blocked' } }
+    $minPhase=($rankedTasks|Measure-Object -Property phaseRank -Minimum).Minimum
+    $ready=@($rankedTasks|Where-Object{$_.phaseRank -eq $minPhase}|ForEach-Object{$_.task})
     $next = @($ready | Sort-Object taskId | Select-Object -First 1)[0]
     return @{ action='READY'; task=$next; reason='next owner-approved task with passed gates and dependencies' }
 }
