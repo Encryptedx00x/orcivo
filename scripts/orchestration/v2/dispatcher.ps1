@@ -1819,9 +1819,9 @@ function Test-DispatcherPendingContractSupersessionResume {
     if(-not $State.workspace -or -not(Test-Path -LiteralPath ([string]$State.workspace))){return $false}
     $object=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('rev-parse','--verify',"$requestedCommit^{commit}") -LogLabel 'pending-supersession-candidate-object'
     if($object.exitCode -ne 0 -or $object.stdout.Trim() -ne $requestedCommit){return $false}
+    if([bool]$State.pendingDisjointSourceSuccession){return [bool](Get-DispatcherPendingDisjointSourceSuccessionProof -State $State -Task $Task -Contract $Contract -TaskSource $TaskSource).eligible}
     $ancestor=Invoke-GitV2 -Dir ([string]$State.workspace) -Arguments @('merge-base','--is-ancestor',$requestedCommit,(Get-GitHeadV2 ([string]$State.workspace))) -LogLabel 'pending-supersession-candidate-lineage'
     if($ancestor.exitCode -ne 0){return $false}
-    if([bool]$State.pendingDisjointSourceSuccession){return [bool](Get-DispatcherPendingDisjointSourceSuccessionProof -State $State -Task $Task -Contract $Contract -TaskSource $TaskSource).eligible}
     return $true
 }
 
