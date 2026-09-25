@@ -595,6 +595,12 @@ try{
             $refresh=Get-DispatcherPendingDisjointSourceSuccessionProof -State $f.state -Task $s.task -Contract $s.contract -TaskSource $s.source -RepoDir $Fixture -AllowTargetRefresh
             Assert-True ($refresh.eligible -and $refresh.targetRefreshRequired -and [string]$refresh.proof.currentTarget -eq $latestTarget) "later source refresh was incorrectly rebound to an older recovery receipt: $($refresh.reason)"
         }
+        Check 'DTA-31: repeated source refresh branch names stay bounded and stable' {
+            $runId='run-'+('a'*120);$target='b'*40
+            $first=Get-DispatcherSourceRefreshBranchName -RunId $runId -Target $target
+            $second=Get-DispatcherSourceRefreshBranchName -RunId $runId -Target $target
+            Assert-True ($first -eq $second -and $first.Length -le 160 -and $first -eq "orch-v2/$runId-target-$($target.Substring(0,12))") 'source refresh branch name accumulated prior target suffixes or exceeded the bound'
+        }
     } finally { Pop-Location }
 } finally {
     try{Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue}catch{}

@@ -1565,8 +1565,7 @@ function Refresh-DispatcherPendingSourceSuccessionGate {
         $oldCandidateHead=[string]$succession.candidateHead
         $oldCandidateBase=[string]$succession.candidateBase
         if([string]$latest.candidateHead -notmatch '^[0-9a-f]{40}$'){throw 'refreshed source succession candidate head is invalid'}
-        $newBranch="$( [string]$latest.branch )-target-$($target.Substring(0,12))"
-        if($newBranch.Length -gt 160 -or $newBranch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$'){throw 'refreshed source succession branch name is invalid'}
+        $newBranch=Get-DispatcherSourceRefreshBranchName -RunId ([string]$latest.runId) -Target $target
         $branchRef=Get-DispatcherOptionalLocalBranchHead -Branch $newBranch -RepoDir $workspace
         if($branchRef){
             if((Get-GitHeadV2 $workspace) -ne $branchRef){throw 'refreshed source succession branch exists but is not checked out'}
@@ -1918,6 +1917,14 @@ function Test-DispatcherCandidateImportResumeEligible {
         if(-not (Test-AttestationFresh -Attestation $review -WorktreeDir $workspace -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)).fresh){return $false}
         return $true
     }catch{return $false}
+}
+
+function Get-DispatcherSourceRefreshBranchName {
+    param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$Target)
+    if($RunId -notmatch '^run-[0-9A-Za-z-]{8,120}$' -or $Target -notmatch '^[0-9a-f]{40}$'){throw 'source refresh branch binding is invalid'}
+    $branch="orch-v2/$RunId-target-$($Target.Substring(0,12))"
+    if($branch.Length -gt 160 -or $branch -notmatch '^orch-v2/run-[0-9A-Za-z-]{8,120}(?:-[A-Za-z0-9-]+)*$'){throw 'refreshed source succession branch name is invalid'}
+    return $branch
 }
 
 function Get-DispatcherOptionalLocalBranchHead {
