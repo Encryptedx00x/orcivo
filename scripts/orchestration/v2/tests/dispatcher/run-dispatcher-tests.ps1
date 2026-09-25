@@ -2688,6 +2688,17 @@ try{
             $rejected=$false
             try{New-DispatcherWorkspaceInvocationSnapshot -State $tampered.state -Task $tampered.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $tamperedPrompt -PromptHash (New-FileHash $tamperedPrompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null}catch{$rejected=$true}
             Assert-True ($rejected -and @($tampered.state.workspaceInvocationSnapshots).Count -eq 1) 'a drifted partial result was inherited by a retry'
+
+            $providerFailure=New-ResultSnapshotUnitFixture 'RD222P'
+            Write-Utf8 (Join-Path $providerFailure.workspace 'work\useful.ts') "export const useful = true;`n"
+            $providerFailureResult=New-ResultSnapshotAgentResult $providerFailure
+            $providerFailureResult.providerClass='TEMPORARY_AUTH_FAILURE';$providerFailureResult.resultClass='AGENT_FAILURE';$providerFailureResult.exitCode=1
+            $failedProvider=Complete-DispatcherAgentInvocation -State $providerFailure.state -Task $providerFailure.task -AgentResult $providerFailureResult -Role 'IMPLEMENTER'
+            Assert-True ([string]$failedProvider.disposition -eq 'PROVIDER_FAILURE') 'fixture did not enter provider failover'
+            $providerFailure.state.attempt=2;Write-DispatcherState $providerFailure.state|Out-Null
+            $failoverPrompt=Join-Path $Root 'result-unit-RD222-failover.prompt.txt';Write-Utf8 $failoverPrompt 'continue exact partial work with the fallback provider'
+            $failoverPre=New-DispatcherWorkspaceInvocationSnapshot -State $providerFailure.state -Task $providerFailure.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $failoverPrompt -PromptHash (New-FileHash $failoverPrompt) -Provider claude -Model sonnet -ReasoningEffort low -Attempt 2
+            Assert-True (@($failoverPre.paths) -contains 'work/useful.ts' -and [string]$failoverPre.stateBinding.workspaceHead -eq [string]$providerFailure.base) 'an exact signed partial result could not continue across provider failover'
         }
     } finally {Pop-Location}
 

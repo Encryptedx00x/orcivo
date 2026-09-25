@@ -4894,7 +4894,7 @@ function Get-DispatcherSignedRetryBaseline {
     $history=@($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})
     if(-not $history.Count){return &$deny 'retry has no provider history'}
     $entry=$history[-1]
-    if([string]$entry.providerClass -ne 'NONE' -or [string]$entry.resultClass -notin @('BLOCK','TEST_FAILURE','AGENT_FAILURE')){return &$deny 'latest result is not a normal retryable terminal result'}
+    if([string]$entry.resultClass -notin @('BLOCK','TEST_FAILURE','AGENT_FAILURE')){return &$deny 'latest result is not a retryable terminal result'}
     $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId ([string]$entry.invocationId)
     $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$entry.invocationId)
     if(-not $pre -or -not $post -or [string]$post.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/2' -or -not [bool]$post.policyCompliant -or -not @($post.paths|Where-Object{$_}).Count){return &$deny 'latest result is not a signed policy-compliant partial result'}
