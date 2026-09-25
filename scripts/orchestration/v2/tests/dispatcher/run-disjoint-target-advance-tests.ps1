@@ -48,7 +48,7 @@ $OriginBare=Join-Path $Root 'origin.git'
 $script:DtaSeq=0
 $script:DtaSalt=[guid]::NewGuid().ToString('N')
 
-function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$RemoteDivergedHold,[switch]$DivergentTargetAdvance,[switch]$LevelC) {
+function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-order'),[switch]$SkipTargetAdvance,[string]$AdvancePath='.orchestration/v2/schemas/dta-advance.json',[switch]$SecretFalsePositiveHold,[switch]$RemoteDivergedHold,[switch]$CandidateDeletesFile,[switch]$DivergentTargetAdvance,[switch]$LevelC) {
     $script:DtaSeq++
     $task=Task ("DTA-"+$Id) $Scope
     if($LevelC){$task.risk='C';$task.ownerGate='level-c-external-service-arch'}
@@ -78,7 +78,8 @@ function New-DtaFixture([string]$Id,[string[]]$Scope=@('apps/backend/src/work-or
         $failureState='SECRET_LEAK_BLOCKED';$failureReason='pre-publication secret scan found 1 hit(s): \native\dta-false-positive.stdout.log :: /(?i)\bauthorization\b[ \t]*[:=][ \t]*\S+/'
     }
 
-    Write-Utf8 (Join-Path $ws.workspace 'apps\backend\src\work-order\feature.txt') "candidate feature $Id $script:DtaSeq`n"
+    if($CandidateDeletesFile){Remove-Item -LiteralPath (Join-Path $ws.workspace 'apps\backend\src\work-order\README.md') -Force}
+    else{Write-Utf8 (Join-Path $ws.workspace 'apps\backend\src\work-order\feature.txt') "candidate feature $Id $script:DtaSeq`n"}
     & git -C $ws.workspace add .
     & git -C $ws.workspace -c user.name=rd -c user.email=rd@local commit -m 'candidate' --quiet
     $oldHead=(& git -C $ws.workspace rev-parse HEAD).Trim()
@@ -501,6 +502,26 @@ try{
             Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and $f.state.status -eq 'RUNNING' -and $f.state.stage -eq 'REVIEW') "remote-diverged recovery did not reach fresh review: $($r.status) / $($f.state.status) / $($f.state.stage)"
             Assert-True ((Get-LedgerState $f.contract.taskVersionId).state -eq 'REVIEWING') 'remote-diverged recovery ledger did not reach REVIEWING'
             Assert-True (($f.state.providerHistory|Measure-Object).Count -eq 0) 'remote-diverged recovery invoked or recorded a provider'
+        }
+
+        Check 'DTA-27: recovery preserves an intentional candidate deletion' {
+            $f=New-DtaFixture 'A27' -RemoteDivergedHold -CandidateDeletesFile
+            $r=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and -not (Test-Path -LiteralPath (Join-Path $f.workspace 'apps\backend\src\work-order\README.md'))) 'remote-diverged recovery did not preserve the candidate deletion'
+        }
+
+        Check 'DTA-28: interrupted recovery continues after another disjoint target advance' {
+            $f=New-DtaFixture 'A28' -RemoteDivergedHold
+            & git -C $f.workspace fetch --no-tags --quiet $Fixture $f.currentTarget
+            & git -C $f.workspace merge $f.currentTarget --no-edit -m 'interrupted fixture recovery' --quiet
+            Assert-True ($LASTEXITCODE -eq 0) 'fixture could not create the interrupted recovery merge'
+            Write-Utf8 (Join-Path $Fixture '.orchestration\v2\schemas\dta-second-advance.json') "{`"second`":true}`n"
+            & git -C $Fixture add .
+            & git -C $Fixture -c user.name=rd -c user.email=rd@local commit -m 'second target advance (disjoint)' --quiet
+            & git -C $Fixture push --quiet origin main
+            $latestTarget=(& git -C $Fixture rev-parse HEAD).Trim()
+            $r=Recover-DispatcherDisjointTargetAdvance -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -RepoDir $Fixture
+            Assert-True ($r.status -eq 'RECOVERED_TO_REVIEW' -and $f.state.candidateBase -eq $latestTarget) 'interrupted recovery did not continue onto the latest disjoint target'
         }
     } finally { Pop-Location }
 } finally {

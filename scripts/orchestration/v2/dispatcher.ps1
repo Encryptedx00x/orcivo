@@ -1042,6 +1042,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         if(-not $workspace -or -not(Test-Path -LiteralPath $workspace)){return &$deny 'candidate workspace is missing'}
         $wsHead=Get-GitHeadV2 $workspace
         $expectedWsHead=$(if($alreadyRecovered){[string]$State.candidateHead}else{$oldHead})
+        $interruptedRecoveryHead=''
         if(-not $alreadyRecovered -and $PermitExactSignedTransplantHead -and $State.disjointSourceTransplant){
             $transplant=_ToHashtable $State.disjointSourceTransplant;$transplantSigned=[ordered]@{};foreach($key in $transplant.Keys){if([string]$key -ne 'recordHash'){$transplantSigned[[string]$key]=$transplant[$key]}}
             if([string]$transplant.recordHash -ne (New-StringHash (ConvertTo-CanonicalJson $transplantSigned))){return &$deny 'signed source transplant record is invalid'}
@@ -1058,7 +1059,10 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
             if(-not $signedTransplantHead -and -not $freshSuccessionHead){return &$deny 'current workspace head is not the signed transplant or its freshly attested exact successor'}
             $expectedWsHead=$wsHead
         }
-        if($wsHead -ne $expectedWsHead){return &$deny 'candidate workspace HEAD drift'}
+        if($wsHead -ne $expectedWsHead){
+            if($alreadyRecovered -or $wsHead -notmatch '^[0-9a-f]{40}$'){return &$deny 'candidate workspace HEAD drift'}
+            $interruptedRecoveryHead=$wsHead
+        }
         $wsStatus=Invoke-GitV2 -Dir $workspace -Arguments @('status','--porcelain=v1') -LogLabel 'disjoint-target-advance-recovery-status'
         if($wsStatus.exitCode -ne 0 -or -not[string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){return &$deny 'candidate workspace is dirty'}
 
@@ -1121,12 +1125,39 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $overlap=@($overlap|Select-Object -Unique)
         if($overlap.Count){return &$deny "target advance overlaps candidate/task scope: $($overlap -join ', ')"}
 
+        $interruptedTarget=''
+        if($interruptedRecoveryHead){
+            $parentsResult=Invoke-GitV2 -Dir $workspace -Arguments @('log','-1','--pretty=%P',$interruptedRecoveryHead) -LogLabel 'disjoint-target-advance-interrupted-parents'
+            if($parentsResult.exitCode -ne 0){return &$deny 'interrupted recovery HEAD parents could not be inspected'}
+            $parents=@($parentsResult.stdout.Trim() -split '\s+'|Where-Object{$_ -match '^[0-9a-f]{40}$'})
+            if($parents.Count -ne 2){return &$deny 'interrupted recovery HEAD is not one exact two-parent merge'}
+            $targetLineParents=@()
+            foreach($parent in $parents){
+                $parentExistsOnTarget=Invoke-GitV2 -Dir $RepoDir -Arguments @('cat-file','-e',"${parent}^{commit}") -LogLabel 'disjoint-target-advance-interrupted-parent-exists'
+                if($parentExistsOnTarget.exitCode -eq 0){
+                    $parentAncestry=Invoke-GitV2 -Dir $RepoDir -Arguments @('merge-base','--is-ancestor',$parent,$currentTarget) -LogLabel 'disjoint-target-advance-interrupted-parent-ancestry'
+                    if($parentAncestry.exitCode -eq 0){$targetLineParents+=,$parent}
+                }
+            }
+            if($targetLineParents.Count -ne 1){return &$deny 'interrupted recovery merge does not bind one exact ancestor of the current target'}
+            $interruptedTarget=[string]$targetLineParents[0]
+            $interruptedPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $interruptedTarget -HeadSha $interruptedRecoveryHead|Sort-Object)
+            if(($interruptedPaths -join '|') -ne ($candidateChangedPaths -join '|')){return &$deny 'interrupted recovery merge changed-file set drift'}
+            if((Get-GitDiffHash -Dir $workspace -BaseSha $interruptedTarget -HeadSha $interruptedRecoveryHead) -ne $oldDiffHash){return &$deny 'interrupted recovery merge diff binding drift'}
+            foreach($p in $candidateChangedPaths){
+                $oldEntry=Invoke-GitV2 -Dir $workspace -Arguments @('ls-tree',$oldHead,'--',$p) -LogLabel 'disjoint-target-advance-interrupted-old-entry'
+                $mergedEntry=Invoke-GitV2 -Dir $workspace -Arguments @('ls-tree',$interruptedRecoveryHead,'--',$p) -LogLabel 'disjoint-target-advance-interrupted-merged-entry'
+                if($oldEntry.exitCode -ne 0 -or $mergedEntry.exitCode -ne 0 -or $oldEntry.stdout.Trim() -ne $mergedEntry.stdout.Trim()){return &$deny "interrupted recovery merge drifted candidate path '$p'"}
+            }
+        }
+
         $proof=[ordered]@{
             schemaVersion='orcivo.orchestration.v2.disjoint-target-advance-proof/1'
             taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId
             oldCandidateBase=$oldBase;oldCandidateHead=$oldHead;oldCandidateTree=$oldTree;oldDiffHash=$oldDiffHash
             currentTarget=$currentTarget;targetRelation=$targetRelation;lineageMergeBase=$lineageMergeBase
             targetAdvancePaths=$targetAdvancePaths;candidateChangedPaths=$candidateChangedPaths
+            interruptedRecoveryHead=$interruptedRecoveryHead;interruptedTarget=$interruptedTarget
             reviewAttestationId=[string]$review.attestationId;checkAttestationId=[string]$check.attestationId
             failSeq=$failSeq;secretFalsePositiveEvidence=$falsePositiveEvidence
         }
@@ -1539,6 +1570,18 @@ function Recover-DispatcherDisjointTargetAdvance {
             throw "disjoint target advance recovery: unexpected conflict merging current target into the candidate workspace: $(Get-GitFailureSummaryV2 $merge 'git merge')"
         }
         $newHead=Get-GitHeadV2 $workspace
+    } elseif([string]$proof.interruptedRecoveryHead -eq $wsHead) {
+        if([string]$proof.interruptedTarget -eq $currentTarget){$newHead=$wsHead}
+        else{
+            $fetch=Invoke-GitV2 -Dir $workspace -Arguments @('fetch','--no-tags','--quiet',$RepoDir,$currentTarget) -LogLabel 'disjoint-target-advance-fetch-latest-target'
+            Assert-GitSucceededV2 $fetch 'disjoint target advance: fetch latest target into interrupted recovery workspace'|Out-Null
+            $merge=Invoke-GitV2 -Dir $workspace -Arguments @('merge',$currentTarget,'--no-edit','-m',"chore(orchestration): continue disjoint target advance $($currentTarget.Substring(0,10))") -LogLabel 'disjoint-target-advance-continue-merge'
+            if($merge.exitCode -ne 0){
+                [void](Invoke-GitV2 -Dir $workspace -Arguments @('merge','--abort') -LogLabel 'disjoint-target-advance-continue-merge-abort')
+                throw "disjoint target advance recovery: unexpected conflict continuing onto the latest target: $(Get-GitFailureSummaryV2 $merge 'git merge')"
+            }
+            $newHead=Get-GitHeadV2 $workspace
+        }
     } else {
         $parentsResult=Invoke-GitV2 -Dir $workspace -Arguments @('log','-1','--pretty=%P',$wsHead) -LogLabel 'disjoint-target-advance-parents'
         Assert-GitSucceededV2 $parentsResult 'disjoint target advance: inspect candidate workspace HEAD parents'|Out-Null
@@ -1550,11 +1593,11 @@ function Recover-DispatcherDisjointTargetAdvance {
     $newChangedPaths=@(Get-GitChangedFiles -Dir $workspace -BaseSha $currentTarget -HeadSha $newHead|Sort-Object)
     if(($newChangedPaths -join '|') -ne ((@($proof.candidateChangedPaths)) -join '|')){throw 'disjoint target advance recovery: changed-file set drifted after the merge - fail closed'}
     foreach($p in $newChangedPaths){
-        $oldBlob=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse',"${oldHead}:$p") -LogLabel 'disjoint-target-advance-old-blob'
-        $newBlob=Invoke-GitV2 -Dir $workspace -Arguments @('rev-parse',"${newHead}:$p") -LogLabel 'disjoint-target-advance-new-blob'
-        Assert-GitSucceededV2 $oldBlob "disjoint target advance: resolve old blob for $p"|Out-Null
-        Assert-GitSucceededV2 $newBlob "disjoint target advance: resolve new blob for $p"|Out-Null
-        if($oldBlob.stdout.Trim() -ne $newBlob.stdout.Trim()){throw "disjoint target advance recovery: candidate file '$p' content drifted after the merge - fail closed"}
+        $oldEntry=Invoke-GitV2 -Dir $workspace -Arguments @('ls-tree',$oldHead,'--',$p) -LogLabel 'disjoint-target-advance-old-tree-entry'
+        $newEntry=Invoke-GitV2 -Dir $workspace -Arguments @('ls-tree',$newHead,'--',$p) -LogLabel 'disjoint-target-advance-new-tree-entry'
+        Assert-GitSucceededV2 $oldEntry "disjoint target advance: resolve old tree entry for $p"|Out-Null
+        Assert-GitSucceededV2 $newEntry "disjoint target advance: resolve new tree entry for $p"|Out-Null
+        if($oldEntry.stdout.Trim() -ne $newEntry.stdout.Trim()){throw "disjoint target advance recovery: candidate file '$p' content or mode drifted after the merge - fail closed"}
     }
 
     $newTreeHash=Get-GitTreeHash -Dir $workspace -Ref $newHead
