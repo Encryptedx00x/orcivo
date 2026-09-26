@@ -43,6 +43,7 @@ export class CustomerService {
     const { page, limit, search } = query;
     const where = {
       company_id: companyId,
+      deleted_at: null,
       ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
     };
     const data = await this.prisma.customer.findMany({
@@ -56,9 +57,54 @@ export class CustomerService {
 
   async findOne(id: string, companyId: string) {
     const customer = await this.prisma.customer.findFirst({
-      where: { id, company_id: companyId },
+      where: { id, company_id: companyId, deleted_at: null },
     });
     if (!customer) throw new NotFoundException();
     return customer;
+  }
+
+  async update(id: string, dto: CustomerCreateDto, companyId: string, userId: string) {
+    await this.findOne(id, companyId); // 404 se cross-tenant, inexistente ou já excluído
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.update({
+        where: { id },
+        data: dto,
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'customer.updated',
+        entityType: 'customer',
+        entityId: customer.id,
+        from: null,
+        to: null,
+        humanText: `Cliente "${customer.name}" atualizado`,
+      });
+      return customer;
+    });
+  }
+
+  async remove(id: string, companyId: string, userId: string) {
+    const existing = await this.findOne(id, companyId); // 404 se cross-tenant, inexistente ou já excluído
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.update({
+        where: { id },
+        data: { deleted_at: new Date() },
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'customer.deleted',
+        entityType: 'customer',
+        entityId: customer.id,
+        from: 'ACTIVE',
+        to: 'DELETED',
+        humanText: `Cliente "${existing.name}" excluído`,
+      });
+      return customer;
+    });
   }
 }

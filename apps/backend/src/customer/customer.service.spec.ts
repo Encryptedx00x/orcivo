@@ -1,7 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 
-const mockTx = { customer: { create: jest.fn() }, auditLog: { create: jest.fn() } };
+const mockTx = {
+  customer: { create: jest.fn(), update: jest.fn() },
+  auditLog: { create: jest.fn() },
+};
 const mockPrisma = {
   customer: {
     create: jest.fn(),
@@ -71,6 +74,84 @@ describe('CustomerService', () => {
     it('lança NotFoundException (404) para customer de outro tenant', async () => {
       mockPrisma.customer.findFirst.mockResolvedValue(null);
       await expect(service.findOne('cust-B', 'tenant-A')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('update', () => {
+    it('atualiza customer tenant-scoped e grava auditoria', async () => {
+      const existing = { id: 'cust-1', company_id: 'tenant-1', name: 'A' };
+      const updated = { id: 'cust-1', company_id: 'tenant-1', name: 'B' };
+      mockPrisma.customer.findFirst.mockResolvedValue(existing);
+      mockTx.customer.update.mockResolvedValue(updated);
+
+      const result = await service.update('cust-1', { name: 'B' } as never, 'tenant-1', 'user-1');
+
+      expect(mockPrisma.customer.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'cust-1',
+            company_id: 'tenant-1',
+            deleted_at: null,
+          }),
+        }),
+      );
+      expect(mockTx.customer.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'cust-1' }, data: { name: 'B' } }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'customer.updated',
+          entityType: 'customer',
+          entityId: 'cust-1',
+          actorUserId: 'user-1',
+        }),
+      );
+      expect(result).toEqual(updated);
+    });
+
+    it('lança NotFoundException (404) para customer de outro tenant', async () => {
+      mockPrisma.customer.findFirst.mockResolvedValue(null);
+      await expect(
+        service.update('cust-B', { name: 'B' } as never, 'tenant-A', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockTx.customer.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('remove', () => {
+    it('faz soft delete (deleted_at) e grava auditoria — nunca hard delete', async () => {
+      const existing = { id: 'cust-1', company_id: 'tenant-1', name: 'Cliente A' };
+      const deleted = { ...existing, deleted_at: new Date() };
+      mockPrisma.customer.findFirst.mockResolvedValue(existing);
+      mockTx.customer.update.mockResolvedValue(deleted);
+
+      const result = await service.remove('cust-1', 'tenant-1', 'user-1');
+
+      expect(mockTx.customer.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'cust-1' },
+          data: { deleted_at: expect.any(Date) },
+        }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'customer.deleted',
+          entityType: 'customer',
+          entityId: 'cust-1',
+          actorUserId: 'user-1',
+        }),
+      );
+      expect(result).toEqual(deleted);
+    });
+
+    it('lança NotFoundException (404) para customer de outro tenant ou já excluído', async () => {
+      mockPrisma.customer.findFirst.mockResolvedValue(null);
+      await expect(service.remove('cust-B', 'tenant-A', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockTx.customer.update).not.toHaveBeenCalled();
     });
   });
 });
