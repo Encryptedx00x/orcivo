@@ -472,10 +472,10 @@ try{
             $w=Get-ProviderWait $tv;Assert-True ($w.taskVersionId -eq $tv -and $w.runId -eq 'run-wait' -and $w.checkpoint.nextAction -eq 'resume IMPLEMENT') 'WAITING_PROVIDER checkpoint was not restartable'
             $state=[ordered]@{taskVersionId=$tv;runId='run-wait';stage='IMPLEMENT';status='WAITING_PROVIDER';provider='claude';task=@{};unavailableProviders=@('claude','codex')}
             $w.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $tv) $w
-            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex='PROVIDER_UNAVAILABLE'}
-            Assert-True (-not (Resume-DispatcherProviderWait $state)) 'both unavailable providers resumed'
+            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex='PROVIDER_UNAVAILABLE';glm='PROVIDER_UNAVAILABLE';deepseek='PROVIDER_UNAVAILABLE'}
+            Assert-True (-not (Resume-DispatcherProviderWait $state)) 'all unavailable providers resumed'
             $w=Get-ProviderWait $tv;$w.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $tv) $w
-            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex=$null}
+            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex=$null;glm='PROVIDER_UNAVAILABLE';deepseek='PROVIDER_UNAVAILABLE'}
             Assert-True ((Resume-DispatcherProviderWait $state) -and $state.provider -eq 'codex' -and (Get-LedgerState $tv).state -eq 'RUNNING') 'healthy opposite provider did not restore the same durable task'
             Assert-True ([bool](Get-ProviderWait $tv).resolvedAt) 'resumed provider wait was not durably resolved'
             $script:ProviderHealthFaults=$null
@@ -1867,6 +1867,12 @@ try{
         Check 'RD-221' {
             $ids=@(Get-AcceptanceCriteriaIds 'AC1: first criterion; AC2: second criterion; AC3: third criterion')
             Assert-True (($ids -join '|') -eq 'AC1|AC2|AC3') "semicolon-delimited acceptance criteria were not frozen exactly: $($ids -join '|')"
+        }
+        Check 'RD-223' {
+            $script:ProviderHealthFaults=@{codex='PROVIDER_UNAVAILABLE';claude='RATE_LIMIT';glm=$null;deepseek='PROVIDER_UNAVAILABLE'}
+            try{$d=Get-FailoverDecision -CurrentProvider claude -Class RATE_LIMIT -FailoversSoFar 1 -UnavailableProviders @('codex','claude')}
+            finally{$script:ProviderHealthFaults=$null}
+            Assert-True ($d.action -eq 'FAILOVER' -and $d.nextProvider -eq 'glm') 'the second bounded failover did not skip unavailable Codex and select enabled GLM'
         }
 
         Check 'RD-150' {

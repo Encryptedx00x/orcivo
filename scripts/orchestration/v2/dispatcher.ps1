@@ -4750,9 +4750,9 @@ if($needsFreshDispatch){
                 if("$($finalized.disposition)" -eq 'PROVIDER_FAILURE'){
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
                     if(Get-DispatcherPinnedQuarantinedRetryRoute $state){return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)}
-                    $other=@((Get-OrcivoEnabledProviders)|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
-                    if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
-                        $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
+                    $failoverDecision=Get-FailoverDecision -CurrentProvider ([string]$state.provider) -Class ([string]$ar.providerClass) -FailoversSoFar ([int]$state.failovers) -UnavailableProviders @($state.unavailableProviders)
+                    if([string]$failoverDecision.action -eq 'FAILOVER'){
+                        $old=[string]$state.provider;$other=[string]$failoverDecision.nextProvider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
                         Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
                         Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
                         $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other ([string]$state.logicalProjectId)|Out-Null;Write-DispatcherState $state|Out-Null;continue
