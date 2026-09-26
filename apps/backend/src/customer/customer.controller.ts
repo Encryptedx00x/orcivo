@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { CustomerCreateSchema, CustomerListQuerySchema } from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CustomerService } from './customer.service';
@@ -33,5 +44,20 @@ export class CustomerController {
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.customerService.findOne(id, req.companyId);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(CustomerCreateSchema)) body: unknown,
+    @Req() req: TenantRequest,
+  ) {
+    return this.customerService.update(id, body as never, req.companyId, req.user.userId);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  remove(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.customerService.remove(id, req.companyId, req.user.userId);
   }
 }

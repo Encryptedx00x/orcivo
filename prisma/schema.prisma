@@ -120,8 +120,9 @@ model Customer {
   notes               String?
   assigned_to_user_id String?
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 
   company     Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
   assigned_to User?   @relation("AssignedTo", fields: [assigned_to_user_id], references: [id])
@@ -133,6 +134,7 @@ model Customer {
 
   @@index([company_id])
   @@index([company_id, name])
+  @@index([company_id, deleted_at])
   @@map("customers")
 }
 
