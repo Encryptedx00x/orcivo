@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, BookOpen, X, Check, FileText, Share2 } from 'lucide-react';
 import Link from 'next/link';
-import { multiplyDecimal, sumDecimal, formatMoney } from '@orcivo/shared-types';
+import { multiplyDecimal, sumDecimal, formatMoney, CustomerCreateSchema } from '@orcivo/shared-types';
 
 // ── Token aliases ─────────────────────────────────────────────────────
 const T = {
@@ -89,6 +89,11 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [newCustomerError, setNewCustomerError] = useState('');
+  const [newCustomerLoading, setNewCustomerLoading] = useState(false);
 
   // Form state
   const [customerId, setCustomerId] = useState('');
@@ -122,6 +127,44 @@ export default function NovoOrcamentoForm(): JSX.Element {
   }
   function updateItem(idx: number, field: keyof QuoteItemRow, val: string) {
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+  }
+
+  // ── Cadastro rápido de cliente — cria sem sair do rascunho ──────────
+  async function handleCreateCustomer() {
+    setNewCustomerError('');
+    const payload = Object.fromEntries(
+      Object.entries({
+        name: newCustomerName,
+        phone: newCustomerPhone || undefined,
+      }).filter(([, v]) => v !== undefined),
+    );
+    const parsed = CustomerCreateSchema.safeParse(payload);
+    if (!parsed.success) {
+      setNewCustomerError(parsed.error.issues.map(i => i.message).join(', '));
+      return;
+    }
+    setNewCustomerLoading(true);
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Erro ao cadastrar cliente.' }));
+        throw new Error((err as { message?: string }).message ?? 'Erro ao cadastrar cliente.');
+      }
+      const created = (await res.json()) as Customer;
+      setCustomers(prev => [...prev, created]);
+      setCustomerId(created.id);
+      setShowNewCustomerDialog(false);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+    } catch (err: unknown) {
+      setNewCustomerError(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.');
+    } finally {
+      setNewCustomerLoading(false);
+    }
   }
 
   // ── Calculations (Decimal.js) ────────────────────────────────────
@@ -213,15 +256,26 @@ export default function NovoOrcamentoForm(): JSX.Element {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label className="ov-label">Cliente *</label>
-            <select
-              className="ov-input"
-              value={customerId}
-              onChange={e => setCustomerId(e.target.value)}
-              required
-            >
-              <option value="">Selecione um cliente</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                className="ov-input"
+                value={customerId}
+                onChange={e => setCustomerId(e.target.value)}
+                required
+                style={{ flex: 1 }}
+              >
+                <option value="">Selecione um cliente</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button
+                type="button"
+                className="ov-btn ov-btn-outline"
+                style={{ height: 38, fontSize: 13, gap: 6, whiteSpace: 'nowrap' }}
+                onClick={() => setShowNewCustomerDialog(true)}
+              >
+                <Plus size={14} />Cadastrar novo cliente
+              </button>
+            </div>
           </div>
           {selectedCustomer?.phone && (
             <div>
@@ -501,6 +555,71 @@ export default function NovoOrcamentoForm(): JSX.Element {
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick-create customer dialog ────────────────────────────── */}
+      {showNewCustomerDialog && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(10,10,15,.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16,
+        }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: T.ink }}>Cadastrar novo cliente</h3>
+              <button
+                type="button"
+                onClick={() => { setShowNewCustomerDialog(false); setNewCustomerError(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.fg3, display: 'flex' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label className="ov-label">Nome *</label>
+                <input
+                  className="ov-input"
+                  value={newCustomerName}
+                  onChange={e => setNewCustomerName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="ov-label">Telefone</label>
+                <input
+                  className="ov-input"
+                  value={newCustomerPhone}
+                  onChange={e => setNewCustomerPhone(e.target.value)}
+                  placeholder="(11) 90000-0000"
+                />
+              </div>
+              {newCustomerError && (
+                <div style={{ background: T.dangerBg, border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: T.danger, fontSize: 13 }}>
+                  {newCustomerError}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-outline"
+                  onClick={() => { setShowNewCustomerDialog(false); setNewCustomerError(''); }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-primary"
+                  disabled={newCustomerLoading || !newCustomerName.trim()}
+                  onClick={() => { void handleCreateCustomer(); }}
+                  style={{ opacity: newCustomerLoading || !newCustomerName.trim() ? 0.6 : 1 }}
+                >
+                  {newCustomerLoading ? 'Salvando…' : 'Salvar cliente'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
