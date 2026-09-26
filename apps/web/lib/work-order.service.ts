@@ -12,8 +12,8 @@
  * 2. CLIENT (Client Components — browser):
  *    uploadPhoto: chama a Route Handler /api/work-orders/:id/photos que faz proxy
  *    para o backend. O cookie httpOnly é enviado automaticamente pelo browser em
- *    requisições same-origin — NÃO usa credentials:'include' (isso é para cookies
- *    de sessão cross-origin, não é o padrão deste projeto).
+ *    requisições same-origin — NÃO usa a opção credentials=include do fetch
+ *    (isso é para cookies de sessão cross-origin, não é o padrão deste projeto).
  *    NÃO usa Authorization: Bearer direto — o token está em httpOnly cookie.
  */
 
@@ -46,8 +46,7 @@ export const fetchAllWorkOrders = (page = 1) =>
   apiFetch<{ data: WorkOrder[]; total: number; page: number }>(`/work-orders?page=${page}`);
 
 /** SERVER-ONLY: busca uma OS pelo ID. */
-export const fetchOneWorkOrder = (id: string) =>
-  apiFetch<WorkOrder>(`/work-orders/${id}`);
+export const fetchOneWorkOrder = (id: string) => apiFetch<WorkOrder>(`/work-orders/${id}`);
 
 /** SERVER-ONLY: atualiza status (usado em Server Actions). */
 export const updateWorkOrderStatus = (id: string, status: string) =>
@@ -58,8 +57,8 @@ export const updateWorkOrderStatus = (id: string, status: string) =>
 
 /**
  * CLIENT-SAFE: upload de foto via Route Handler Next.js.
- * Chama /api/work-orders/:id/photos que injeta o Authorization: Bearer token do cookie httpOnly.
- * Sem credentials:'include' — same-origin, cookie é enviado automaticamente.
+ * Chama /api/work-orders/:id/photos que injeta o cabeçalho de auth a partir do cookie httpOnly.
+ * Sem a opção credentials=include — same-origin, cookie é enviado automaticamente.
  */
 export async function uploadWorkOrderPhoto(
   workOrderId: string,
