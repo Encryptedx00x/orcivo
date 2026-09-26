@@ -445,6 +445,18 @@ function Invoke-RealAgent {
         # is fully determined by the route result.
         return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=''; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';stderrHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false;resultReceiptPath='';resultReceiptHash='' }
     }
+    if($Provider -eq 'deepseek'){
+        # Checked here, non-throwing, for the same reason route resolution is
+        # checked above: a paid provider that cannot afford this invocation is
+        # a launch that never happened, not a crash. Assert-DeepSeekInvocationBudget
+        # (called again just before the reservation, right before the paid
+        # child launches) remains the throwing fail-safe for the residual race
+        # between this check and that reservation.
+        $budgetStatus=Get-DeepSeekBudgetStatus
+        if(-not $budgetStatus.ok -or [decimal]$route.estimatedUsd -gt [decimal]$budgetStatus.remainingUsd){
+            return [ordered]@{ invocationId=$invocationId;provider=$Provider; model=[string]$route.model; profile=$Profile; attempt=$Attempt; exitCode=127; providerClass='PROVIDER_UNAVAILABLE'; resultClass='AGENT_FAILURE'; structuredResult=$null; stdoutArtifact=$stdoutLog; stderrArtifact=$stderrLog; stdoutHash='sha256:absent';stderrHash='sha256:absent';controlRecordHash='sha256:absent';duration=0; contextRolloverRequired=$false;resultReceiptPath='';resultReceiptHash='' }
+        }
+    }
     $deepSeekRequestManifest=$null;$deepSeekRequestManifestPath=''
     if($Provider -eq 'deepseek'){
         $deepSeekRequestManifest=New-DeepSeekRequestManifest -InvocationId $invocationId -PromptHash (New-FileHash $promptFile) -Model ([string]$route.model) -Reasoning ([string]$route.reasoningIntent) -Profile $Profile
