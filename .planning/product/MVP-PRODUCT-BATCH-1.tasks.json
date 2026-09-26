@@ -307,7 +307,7 @@
       "description": "A 'Registrar recebimento' modal (Decimal amount, method, date, status) on the OS detail + finance page calling POST /payments; the OS finance panel sums real linked payments; audit via AuditService.",
       "acceptance": "AC1: the modal creates a payment via POST /payments with a Decimal amount; AC2: the OS finance panel reflects real linked payments (recebido/pendente); AC3: creation writes an audit row; AC4: no float money anywhere in the flow.",
       "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/web/app/(app)/ordens-de-servico", "apps/web/app/(app)/financeiro", "apps/backend/src/payment", "packages/shared-types/src/helpers/money.ts"],
+      "scope": ["apps/web/app/(app)/ordens-de-servico", "apps/web/app/(app)/financeiro", "apps/web/lib/work-order.service.ts", "apps/backend/src/payment", "packages/shared-types/src/helpers/money.ts"],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-money",
