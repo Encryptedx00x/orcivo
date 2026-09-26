@@ -3104,6 +3104,8 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $isPolicyCorrectionBaseline=$false
     $isPolicyHoldRetryBaseline=$false
     $policyHoldWorkspaceHead=''
+    $isReviewCorrectionBaseline=$false
+    $reviewCorrectionWorkspaceHead=''
     $isSignedRetryBaseline=$false
     $signedRetryWorkspaceHead=''
     $signedRetry=Get-DispatcherSignedRetryBaseline -State $State -Task $Task
@@ -3182,9 +3184,23 @@ function New-DispatcherWorkspaceInvocationSnapshot {
                 }
             }
 
-            if(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
+            if(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline){
+                # An ordinary REQUEST_CHANGES review on a fully-attested
+                # candidate is bounded correction, not a policy violation:
+                # the corrector continues from the exact reviewed candidate
+                # HEAD. See Get-DispatcherReviewCorrectionBaseline for the
+                # hash-bound proof this requires.
+                $reviewCorrection=Get-DispatcherReviewCorrectionBaseline -State $State -Task $Task
+                if($reviewCorrection.ok){
+                    $isReviewCorrectionBaseline=$true
+                    $reviewCorrectionWorkspaceHead=[string]$reviewCorrection.workspaceHead
+                    $partial=$reviewCorrection.observation
+                }
+            }
+
+            if(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline -and -not $isReviewCorrectionBaseline -and (Test-DispatcherCleanInertRetryBaseline -State $State)){
                 $isCleanInertRetry=$true
-            }elseif(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline){
+            }elseif(-not $isCleanRetry -and -not $isPolicyHoldRetryBaseline -and -not $isReviewCorrectionBaseline){
                 # A CLEAN workspace over an implementation that policy
                 # compliance blocked is legitimate ONLY as the strictly
                 # proven committed policy-correction baseline: the durable
@@ -3202,10 +3218,10 @@ function New-DispatcherWorkspaceInvocationSnapshot {
                 }
             }
 
-            if($isCleanRetry -or $isCleanInertRetry -or $isPolicyCorrectionBaseline){
+            if($isCleanRetry -or $isCleanInertRetry -or $isPolicyCorrectionBaseline -or $isReviewCorrectionBaseline){
                 $partial=[ordered]@{
                     clean=$true
-                    reason=$(if($isCleanRetry){'verified clean quarantined retry baseline'}elseif($isCleanInertRetry){'verified clean inert-retry baseline'}else{'verified committed policy-correction baseline'})
+                    reason=$(if($isCleanRetry){'verified clean quarantined retry baseline'}elseif($isCleanInertRetry){'verified clean inert-retry baseline'}elseif($isReviewCorrectionBaseline){'verified review-correction baseline'}else{'verified committed policy-correction baseline'})
                     paths=@()
                     fileBindings=@()
                     diffHash=(New-StringHash '')
@@ -3215,7 +3231,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead -IsReviewCorrectionBaseline ([bool]$isReviewCorrectionBaseline) -ReviewCorrectionWorkspaceHead $reviewCorrectionWorkspaceHead
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -3246,9 +3262,10 @@ function New-DispatcherWorkspaceInvocationSnapshot {
 # The post-execution snapshot never uses this: it is bound to
 # the exact HEAD frozen by the pre snapshot.
 function Get-DispatcherPreLaunchExpectedHead {
-    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='',[bool]$IsSignedRetryBaseline=$false,[string]$SignedRetryWorkspaceHead='')
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='',[bool]$IsSignedRetryBaseline=$false,[string]$SignedRetryWorkspaceHead='',[bool]$IsReviewCorrectionBaseline=$false,[string]$ReviewCorrectionWorkspaceHead='')
     if($IsSignedRetryBaseline){return $SignedRetryWorkspaceHead}
     if($IsPolicyHoldRetryBaseline){return $PolicyHoldWorkspaceHead}
+    if($IsReviewCorrectionBaseline){return $ReviewCorrectionWorkspaceHead}
     if($IsPolicyCorrectionBaseline){
         $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
         if(-not $verified.ok){return ''}
@@ -3326,6 +3343,35 @@ function Get-DispatcherPolicyHoldRetryBaseline {
     if((ConvertTo-CanonicalJson @($observation.fileBindings)) -cne (ConvertTo-CanonicalJson @($post.fileBindings))){return &$deny 'policy hold file bindings drift'}
     if((ConvertTo-CanonicalJson @($observation.policyViolations)) -cne (ConvertTo-CanonicalJson @($post.policyViolations))){return &$deny 'policy hold violations drift'}
     return [ordered]@{ok=$true;reason='exact signed policy-hold baseline verified';observation=$observation;workspaceHead=[string]$post.workspaceHead}
+}
+
+# An ordinary REQUEST_CHANGES review on a fully-formed, attested candidate is
+# bounded correction, not a policy violation: the corrector continues from
+# the exact reviewed candidate HEAD instead of a rebuilt/rewound workspace.
+# Legitimate ONLY when the workspace is byte-for-byte the reviewed candidate
+# (clean, no drift since the review) and the authoritative review attestation
+# for that exact candidate lineage is REQUEST_CHANGES and hash-bound to this
+# task/run/candidate/contract. Any drift, missing attestation, mismatched
+# verdict, or tampered binding fails closed to the ordinary denial.
+function Get-DispatcherReviewCorrectionBaseline {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    if([bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'lineage is not a normal review-correction retry'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'review correction is not RUNNING/IMPLEMENT'}
+    if([int]$State.cycle -le 0){return &$deny 'review correction requires an active correction cycle'}
+    if([string]$State.reviewVerdict -ne 'REQUEST_CHANGES'){return &$deny 'review correction requires a REQUEST_CHANGES verdict'}
+    foreach($sha in @([string]$State.implementationCommit,[string]$State.candidateBase,[string]$State.candidateHead)){
+        if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'review correction requires a full candidate lineage'}
+    }
+    if([string]$State.candidateTree -notmatch '^[0-9a-f]{40}$' -or [string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'review correction requires bound candidate hashes'}
+    if([string]$State.reviewAttestationId -notmatch '^atn-[0-9a-f]{32}$'){return &$deny 'review correction requires a bound review attestation id'}
+    $review=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind 'review' -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
+    if(-not $review -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.result -ne 'REQUEST_CHANGES'){return &$deny 'review correction attestation is not the latest authoritative REQUEST_CHANGES for this candidate'}
+    if(-not(Test-DispatcherAttestationCandidateBinding -Attestation $review -State $State -Workspace ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead) -ExpectedDiffHash ([string]$State.diffHash))){return &$deny 'review correction attestation binding is invalid'}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$State.candidateHead){return &$deny 'review correction workspace HEAD drift'}
+    $observation=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if($observation.clean -or [string]$observation.reason -ne 'workspace has no preserved partial changes'){return &$deny 'review correction workspace is not the clean reviewed candidate'}
+    return [ordered]@{ok=$true;reason='exact signed review-correction baseline verified';workspaceHead=[string]$State.candidateHead;observation=[ordered]@{clean=$true;reason='verified review-correction baseline';paths=@();fileBindings=@();diffHash=(New-StringHash '');filesHash=(New-StringHash '')}}
 }
 
 # Recompute the hash chain of a persisted pre-invocation snapshot.  A snapshot
