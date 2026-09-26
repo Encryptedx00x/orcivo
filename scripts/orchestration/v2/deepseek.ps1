@@ -130,6 +130,17 @@ function Get-OrcivoEnabledProviders {
     return @((Get-V2Config).providerFailover.order)
 }
 
+function Get-OrcivoCrossProviderFailoverBudget {
+    $runtime=Get-DeepSeekRuntimeConfig
+    $enabled=@(Get-OrcivoEnabledProviders)
+    $configured=[int](Get-V2Config).providerFailover.maxCrossProviderFailoversPerLineage
+    if($runtime.enabled -and $null -ne $runtime.maxCrossProviderFailoversPerLineage){
+        $requested=[int]$runtime.maxCrossProviderFailoversPerLineage
+        if($requested -ge 0 -and $requested -le [Math]::Max(0,$enabled.Count-1)){return $requested}
+    }
+    return [Math]::Min($configured,[Math]::Max(0,$enabled.Count-1))
+}
+
 # Deterministic opposite-provider pairing for cross review (owner decision
 # 2026-09-14): deepseek <-> glm, codex -> deepseek, claude -> codex.
 # Preferences are honoured only inside the ENABLED provider set; when no

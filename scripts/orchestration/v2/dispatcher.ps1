@@ -2443,6 +2443,118 @@ function Set-DispatcherStoppedAfterAgentIfRequested {
     return $true
 }
 
+function Get-DispatcherGlmTerminalSuccessRecoveryReceiptPath {
+    param([Parameter(Mandatory)][string]$RunId,[Parameter(Mandatory)][string]$InvocationId)
+    return (Join-Path (Get-V2Dir) "runs\$RunId\recovery\glm-terminal-success-$InvocationId.json")
+}
+
+function Test-DispatcherGlmTerminalSuccessRecoveryReceipt {
+    param($Receipt,[Parameter(Mandatory)][string]$ExpectedProofHash)
+    try {
+        if(-not $Receipt -or [string]$Receipt.schemaVersion -ne 'orcivo.orchestration.v2.glm-terminal-success-recovery/1'){return $false}
+        if([string]$Receipt.proofHash -ne $ExpectedProofHash -or [string]$Receipt.receiptHash -notmatch '^sha256:[0-9a-f]{64}$'){return $false}
+        $signed=[ordered]@{};foreach($key in $Receipt.Keys){if($key -ne 'receiptHash'){$signed[$key]=$Receipt[$key]}}
+        return ([string]$Receipt.receiptHash -eq (New-ContentHash $signed))
+    } catch { return $false }
+}
+
+# Reclassify one immutable GLM implementer result that an older, already-loaded
+# adapter recorded as NONE/AGENT_FAILURE even though its terminal text contains
+# the task-bound structured SUCCESS payload understood by the current adapter.
+# The original agent-result receipt and provider-history entry are immutable;
+# this produces a separate hash-bound recovery receipt and completion authority.
+function Get-DispatcherGlmTerminalSuccessRecoveryProof {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)]$Contract,
+        [Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId
+    )
+    $deny={param([string]$Reason)return [ordered]@{eligible=$false;reason=$Reason}}
+    if(Test-DispatcherRecoveryExecutionActive){return &$deny 'runner or scheduler lease is active'}
+    if($InvocationId -notmatch '^att-[0-9a-f]{32}$'){return &$deny 'invalid invocation id'}
+    if([string]$State.taskId -ne [string]$Task.taskId -or [string]$State.taskVersionId -ne $TaskVersionId -or [string]$Contract.taskVersionId -ne $TaskVersionId -or [string]$State.runId -ne $RunId){return &$deny 'task, version, or run binding mismatch'}
+    if([string]$State.taskSource -ne [string]$TaskSource.path -or [string]$State.taskSourceHash -ne [string]$TaskSource.hash){return &$deny 'task source binding mismatch'}
+    $revalidated=New-DispatcherContract -Task $Task -TaskSource $TaskSource -PlanningHeadOverride ([string]$Contract.planningHead)
+    if([string]$revalidated.taskVersionId -ne $TaskVersionId){return &$deny 'frozen task contract drift'}
+    $authority=Get-DispatcherOwnerGateAuthority -State $State -Task $Task -TaskSource $TaskSource
+    if(-not $authority.ok -or -not $authority.satisfied){return &$deny 'exact owner-gate authority is not satisfied'}
+    if([string]$State.status -ne 'AGENT_FAILURE' -or [string]$State.stage -ne 'IMPLEMENT' -or [string]$State.reason -ne "provider invocation $InvocationId ended as NONE/AGENT_FAILURE"){return &$deny 'state is not the exact stale GLM terminal-result failure'}
+    if([bool]$State.implementationComplete -or [string]$State.implementationCommit -or [string]$State.candidateHead -or $State.integration -or @(Get-Attestations -TaskVersionId $TaskVersionId).Count){return &$deny 'successor implementation, candidate, integration, or attestation exists'}
+    $ledger=Get-LedgerState $TaskVersionId;$tail=@(Read-JsonLines (Get-LedgerPath $TaskVersionId)|Select-Object -Last 1)[0]
+    if($ledger.corrupt -or [string]$ledger.state -ne 'FAILED' -or -not $tail -or [string]$tail.event -ne 'execute-failed' -or [string]$tail.runId -ne $RunId -or [string]$tail.note -ne 'AGENT_FAILURE'){return &$deny 'ledger is not the exact failed invocation tail'}
+    $history=@($State.providerHistory|Where-Object{$_});$matches=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
+    if($matches.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){return &$deny 'invocation history binding mismatch'}
+    $attempt=$matches[0]
+    if([string]$attempt.role -notin @('IMPLEMENTER','CORRECTOR') -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [int]$attempt.attempt -ne [int]$State.attempt -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or [string]$attempt.resultClass -ne 'AGENT_FAILURE'){return &$deny 'history is not the stale terminal GLM result shape'}
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId $InvocationId;$post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId $InvocationId
+    if(-not $pre -or -not $post){return &$deny 'workspace invocation snapshots are incomplete'}
+    $preIntegrity=Test-DispatcherWorkspaceInvocationSnapshotIntegrity -Snapshot $pre;$postIntegrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $post -ExpectedPreSnapshotHash ([string]$pre.snapshotHash)
+    if(-not $preIntegrity.ok -or -not $postIntegrity.ok){return &$deny 'workspace invocation snapshot integrity failed'}
+    if([string]$pre.stateBinding.taskVersionId -ne $TaskVersionId -or [string]$pre.stateBinding.runId -ne $RunId -or [string]$pre.provider -ne 'glm' -or [int]$pre.attempt -ne [int]$attempt.attempt -or [string]$post.stdoutHash -ne [string]$attempt.stdoutHash){return &$deny 'workspace invocation snapshot binding drift'}
+    if(-not(Test-Path -LiteralPath ([string]$State.workspace)) -or (Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$post.workspaceHead){return &$deny 'workspace HEAD drift'}
+    $partial=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task -PolicyCorrectionState $State
+    if(-not $partial.clean -or -not [bool]$partial.policyCompliant){return &$deny 'current partial workspace is absent or policy-noncompliant'}
+    if([string]$partial.diffHash -ne [string]$post.partialDiffHash -or [string]$partial.filesHash -ne [string]$post.partialFilesHash -or (ConvertTo-CanonicalJson @($partial.paths)) -ne (ConvertTo-CanonicalJson @($post.paths)) -or (ConvertTo-CanonicalJson @($partial.fileBindings)) -ne (ConvertTo-CanonicalJson @($post.fileBindings))){return &$deny 'current workspace differs from the signed result snapshot'}
+    $receiptPath=[string]$attempt.stdoutArtifact -replace '\.stdout\.log$','.agent-result.json'
+    if(-not(Test-Path -LiteralPath $receiptPath)){return &$deny 'original agent-result receipt is absent'}
+    try{$receipt=Read-V2Json $receiptPath}catch{return &$deny 'original agent-result receipt is unreadable'}
+    $receiptSigned=[ordered]@{};foreach($key in $receipt.Keys){if($key -ne 'receiptHash'){$receiptSigned[$key]=$receipt[$key]}}
+    if([string]$receipt.receiptHash -ne (New-ContentHash $receiptSigned) -or [string]$receipt.receiptHash -ne [string]$attempt.resultReceiptHash -or [string]$receipt.invocationId -ne $InvocationId -or [string]$receipt.provider -ne 'glm' -or [int]$receipt.exitCode -ne 0 -or [string]$receipt.providerClass -ne 'NONE' -or [string]$receipt.resultClass -ne 'AGENT_FAILURE' -or $receipt.structuredResult){return &$deny 'original failure receipt is invalid or no longer matches history'}
+    $stdoutPath=[IO.Path]::GetFullPath([string]$attempt.stdoutArtifact);$logs=[IO.Path]::GetFullPath((Join-Path (Get-V2Dir) "runs\$RunId\logs"));$suffix=$InvocationId.Substring(4,8)
+    if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-glm-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'stdout artifact path is not invocation-bound'}
+    if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne [string]$attempt.stdoutHash -or [string]$receipt.stdoutHash -ne [string]$attempt.stdoutHash){return &$deny 'stdout artifact hash mismatch'}
+    $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)
+    # Invoke-NativeCaptured returns a normalized in-memory string while its
+    # durable stdout file preserves native line endings, so controlRecordHash
+    # cannot be recomputed from the file on every host.  Its immutable signed
+    # receipt/history agreement remains required; stdout bytes are bound above.
+    if([string]$receipt.controlRecordHash -ne [string]$attempt.controlRecordHash){return &$deny 'GLM control-record receipt/history mismatch'}
+    $parsed=ConvertFrom-RealGlmOutput $raw;$events=@($parsed.events)
+    if(-not $events.Count -or [string]$events[-1].type -ne 'step_finish' -or [string]$events[-1].part.reason -ne 'stop' -or @($events|Where-Object{"$($_.type)" -match 'error' -or $_.error}).Count){return &$deny 'GLM stream does not end in a unique successful terminal event'}
+    $texts=@($events|Where-Object{"$($_.type)" -eq 'text' -and $_.part -and "$($_.part.type)" -eq 'text'}|ForEach-Object{[string]$_.part.text})
+    if(-not $texts.Count){return &$deny 'terminal GLM text is absent'}
+    $payload=Get-GlmStructuredPayload -Text ([string]$texts[-1]);$payloadHash=$(if($payload){New-ContentHash (_ToHashtable $payload)}else{''})
+    if(-not $payload -or [string]$payload.task -ne [string]$Task.taskId -or [string]$payload.taskVersion -ne $TaskVersionId -or [string]$payload.resultClass -ne 'SUCCESS'){return &$deny 'terminal payload lacks exact task/version SUCCESS bindings'}
+    $canonical=ConvertTo-GlmAgentEnvelope $payload
+    $schemaErrors=Test-JsonSchema (ConvertFrom-JsonTyped (ConvertTo-CanonicalJson $canonical)) (Get-Content -Raw -LiteralPath (Get-AgentResultSchemaPath)|ConvertFrom-Json)
+    if($schemaErrors.Count){return &$deny 'terminal payload does not normalize to the frozen agent-result schema'}
+    $candidateScan=Test-GitTreeSecretsClean -RepoDir ([string]$State.workspace) -BaseRef ([string]$post.workspaceHead -replace '^$',[string]$State.baseSha) -Ref ([string]$post.workspaceHead);$artifactScan=Test-TreeSecretsClean -Roots @((Join-Path (Get-V2Dir) "runs\$RunId"))
+    if(-not $candidateScan.clean -or -not $artifactScan.clean){return &$deny 'candidate or run artifact secret scan is dirty'}
+    $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.glm-terminal-success-proof/1';taskId=[string]$Task.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;attempt=[int]$attempt.attempt;provider='glm';model=[string]$attempt.model;stdoutHash=[string]$attempt.stdoutHash;originalReceiptHash=[string]$receipt.receiptHash;preSnapshotHash=[string]$pre.snapshotHash;postSnapshotHash=[string]$post.resultHash;partialDiffHash=[string]$post.partialDiffHash;partialFilesHash=[string]$post.partialFilesHash;payloadHash=$payloadHash;canonicalResultHash=(New-ContentHash (_ToHashtable $canonical));ledgerTailHash=[string]$tail.eventHash;workspaceHead=[string]$post.workspaceHead}
+    $proof.proofHash=New-ContentHash $proof
+    $recoveryPath=Get-DispatcherGlmTerminalSuccessRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$recoveryReceipt=$null
+    if(Test-Path -LiteralPath $recoveryPath){$recoveryReceipt=Read-V2Json $recoveryPath;if(-not(Test-DispatcherGlmTerminalSuccessRecoveryReceipt -Receipt $recoveryReceipt -ExpectedProofHash ([string]$proof.proofHash))){return &$deny 'recovery receipt conflicts with the immutable proof'}}
+    return [ordered]@{eligible=$true;reason='immutable terminal GLM SUCCESS verified';proof=$proof;canonicalResult=$canonical;recoveryReceipt=$recoveryReceipt;providerInvocationRequired=$false}
+}
+
+function Recover-DispatcherGlmTerminalSuccess {
+    param(
+        [Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task,
+        [Parameter(Mandatory)]$TaskSource,[Parameter(Mandatory)]$Contract,
+        [Parameter(Mandatory)][string]$TaskVersionId,[Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$InvocationId
+    )
+    $existing=@($State.glmTerminalSuccessRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})
+    if($existing.Count -eq 1 -and [bool]$State.implementationComplete){return [ordered]@{status='ALREADY_RECOVERED';providerInvocationRequired=$false;recovery=$existing[0]}}
+    $result=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+    if(-not $result.eligible){throw "GLM terminal success recovery: $($result.reason)"}
+    $proof=$result.proof;$receiptPath=Get-DispatcherGlmTerminalSuccessRecoveryReceiptPath -RunId $RunId -InvocationId $InvocationId;$receipt=$result.recoveryReceipt
+    if(-not $receipt){
+        $receipt=[ordered]@{schemaVersion='orcivo.orchestration.v2.glm-terminal-success-recovery/1';createdAt=(Get-Date).ToUniversalTime().ToString('o');taskId=[string]$Task.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;proofHash=[string]$proof.proofHash;stdoutHash=[string]$proof.stdoutHash;originalReceiptHash=[string]$proof.originalReceiptHash;postSnapshotHash=[string]$proof.postSnapshotHash;payloadHash=[string]$proof.payloadHash;canonicalResultHash=[string]$proof.canonicalResultHash;providerInvocationRequired=$false}
+        $receipt.receiptHash=New-ContentHash $receipt;Write-V2JsonCanonical $receiptPath $receipt
+    }
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'glm-terminal-success-recovered' -ToState READY -RunId $RunId -AttemptId $InvocationId -Evidence @{proofHash=$proof.proofHash;receiptHash=$receipt.receiptHash;stdoutHash=$proof.stdoutHash;originalReceiptHash=$proof.originalReceiptHash} -Note 'reclassified by current task-bound terminal parser'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'glm-terminal-success-dispatch' -ToState DISPATCHED -RunId $RunId -AttemptId $InvocationId -Evidence @{proofHash=$proof.proofHash;receiptHash=$receipt.receiptHash} -Note 'resume exact completed implementation'|Out-Null
+    Add-LedgerEvent -TaskVersionId $TaskVersionId -Event 'running' -ToState RUNNING -RunId $RunId -AttemptId $InvocationId -Evidence @{proofHash=$proof.proofHash;receiptHash=$receipt.receiptHash} -Note 'resume same candidate without provider invocation'|Out-Null
+    $recovery=[ordered]@{recoveredAt=(Get-Date).ToUniversalTime().ToString('o');invocationId=$InvocationId;proofHash=[string]$proof.proofHash;receiptPath=$receiptPath;receiptHash=[string]$receipt.receiptHash;stdoutHash=[string]$proof.stdoutHash;originalReceiptHash=[string]$proof.originalReceiptHash;postSnapshotHash=[string]$proof.postSnapshotHash;canonicalResultHash=[string]$proof.canonicalResultHash;providerInvocationRequired=$false}
+    $State.glmTerminalSuccessRecoveryHistory=@($State.glmTerminalSuccessRecoveryHistory|Where-Object{$_})+@($recovery)
+    $State.implementationComplete=$true;$State.requiresCorrection=$false;$State.implementationInvocationId=$InvocationId;$State.status='RUNNING';$State.reason=''
+    $State.decisions=@(@($result.canonicalResult.decisions)|Where-Object{$_});$State.importantArtifacts=@(@($State.importantArtifacts|Where-Object{$_})+@($receiptPath)|Select-Object -Unique)
+    Write-DispatcherState $State|Out-Null
+    return [ordered]@{status='RECOVERED';taskId=[string]$Task.taskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;providerInvocationRequired=$false;receiptHash=[string]$receipt.receiptHash;nextCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\orchestration\v2\pilot.ps1 run'}
+}
+
 function Test-DispatcherHistoricalProviderFailureRecovery {
     param(
         [Parameter(Mandatory)]$State,
@@ -2992,6 +3104,14 @@ function New-DispatcherWorkspaceInvocationSnapshot {
     $isPolicyCorrectionBaseline=$false
     $isPolicyHoldRetryBaseline=$false
     $policyHoldWorkspaceHead=''
+    $isSignedRetryBaseline=$false
+    $signedRetryWorkspaceHead=''
+    $signedRetry=Get-DispatcherSignedRetryBaseline -State $State -Task $Task
+    if($signedRetry.ok){
+        $isSignedRetryBaseline=$true
+        $signedRetryWorkspaceHead=[string]$signedRetry.workspaceHead
+        $partial=$signedRetry.observation
+    }
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -3095,7 +3215,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
@@ -3126,7 +3246,8 @@ function New-DispatcherWorkspaceInvocationSnapshot {
 # The post-execution snapshot never uses this: it is bound to
 # the exact HEAD frozen by the pre snapshot.
 function Get-DispatcherPreLaunchExpectedHead {
-    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='')
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][bool]$IsFreshCleanBaseline,[Parameter(Mandatory)][bool]$IsCleanInertRetry,[bool]$IsPolicyCorrectionBaseline=$false,[bool]$IsPolicyHoldRetryBaseline=$false,[string]$PolicyHoldWorkspaceHead='',[bool]$IsSignedRetryBaseline=$false,[string]$SignedRetryWorkspaceHead='')
+    if($IsSignedRetryBaseline){return $SignedRetryWorkspaceHead}
     if($IsPolicyHoldRetryBaseline){return $PolicyHoldWorkspaceHead}
     if($IsPolicyCorrectionBaseline){
         $verified=Test-DispatcherPolicyCorrectionRecord -Record ($State.policyCorrectionRecord) -State $State
@@ -4741,9 +4862,9 @@ if($needsFreshDispatch){
                 if("$($finalized.disposition)" -eq 'PROVIDER_FAILURE'){
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
                     if(Get-DispatcherPinnedQuarantinedRetryRoute $state){return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)}
-                    $other=@((Get-OrcivoEnabledProviders)|Where-Object{$_ -ne $state.provider}|Select-Object -First 1)[0]
-                    if($other -and $state.unavailableProviders -notcontains $other -and [int]$state.failovers -lt [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage){
-                        $old=$state.provider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
+                    $failoverDecision=Get-FailoverDecision -CurrentProvider ([string]$state.provider) -Class ([string]$ar.providerClass) -FailoversSoFar ([int]$state.failovers) -UnavailableProviders @($state.unavailableProviders)
+                    if([string]$failoverDecision.action -eq 'FAILOVER'){
+                        $old=[string]$state.provider;$other=[string]$failoverDecision.nextProvider; Enter-DispatcherProviderWait $state $ar.providerClass $old|Out-Null
                         Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'provider-failover' -ToState 'DISPATCHED' -RunId $state.runId -Note "$old -> $other"|Out-Null
                         Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $state.runId|Out-Null
                         $state.provider=$other;$state.failovers=[int]$state.failovers+1;$state.status='RUNNING';memoryHandoff $Task $old $other ([string]$state.logicalProjectId)|Out-Null;Write-DispatcherState $state|Out-Null;continue
@@ -4869,6 +4990,36 @@ function Test-DispatcherLoopResumeEligible {
             (Test-DispatcherCandidateImportResumeEligible -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherPolicyCorrectionResumeState -State $State -Task $Task -TaskSource $TaskSource) -or
             (Test-DispatcherReviewInfrastructureResumeState -State $State)))
+}
+
+# A retryable terminal result may leave useful in-scope work. A later attempt
+# may inherit it only when the latest provider-history entry, both invocation
+# snapshots, the current HEAD, and a fresh workspace observation all bind to
+# exactly the same policy-compliant bytes. This is retry continuity, not a
+# candidate/recovery shortcut: any missing evidence or later drift fails closed.
+function Get-DispatcherSignedRetryBaseline {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][hashtable]$Task)
+    $deny={param([string]$Reason)return [ordered]@{ok=$false;reason=$Reason}}
+    if([bool]$State.implementationComplete -or [bool]$State.requiresCorrection){return &$deny 'lineage is not a normal bounded retry'}
+    if([string]$State.status -ne 'RUNNING' -or [string]$State.stage -ne 'IMPLEMENT'){return &$deny 'retry is not RUNNING/IMPLEMENT'}
+    foreach($field in @('implementationCommit','recoveredCandidateCommit','candidateHead','candidateTree','diffHash')){if([string]$State.$field){return &$deny 'retry already has candidate evidence'}}
+    $history=@($State.providerHistory|Where-Object{$_ -and [string]$_.role -in @('IMPLEMENTER','CORRECTOR')})
+    if(-not $history.Count){return &$deny 'retry has no provider history'}
+    $entry=$history[-1]
+    if([string]$entry.resultClass -notin @('BLOCK','TEST_FAILURE','AGENT_FAILURE')){return &$deny 'latest result is not a retryable terminal result'}
+    $pre=Get-DispatcherWorkspaceInvocationSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $State -InvocationId ([string]$entry.invocationId)
+    if(-not $pre -or -not $post -or [string]$post.schemaVersion -ne 'orcivo.orchestration.v2.workspace-invocation-result/2' -or -not [bool]$post.policyCompliant -or -not @($post.paths|Where-Object{$_}).Count){return &$deny 'latest result is not a signed policy-compliant partial result'}
+    $integrity=Test-DispatcherWorkspaceInvocationResultSnapshotIntegrity -Result $post -ExpectedPreSnapshotHash ([string]$pre.snapshotHash)
+    if(-not $integrity.ok -or [string]$entry.workspaceResultSnapshotHash -ne [string]$post.resultHash){return &$deny 'retry result binding is invalid'}
+    if((Get-GitHeadV2 ([string]$State.workspace)) -ne [string]$post.workspaceHead){return &$deny 'retry workspace HEAD drift'}
+    $observation=Get-DispatcherDirtyWorkspaceProof -Workspace ([string]$State.workspace) -Task $Task
+    if(-not $observation.clean){return &$deny "retry workspace is not an admissible partial result: $($observation.reason)"}
+    if([string]$observation.diffHash -ne [string]$post.partialDiffHash){return &$deny 'retry diff hash drift'}
+    if([string]$observation.filesHash -ne [string]$post.partialFilesHash){return &$deny 'retry files hash drift'}
+    if((ConvertTo-CanonicalJson @($observation.paths)) -cne (ConvertTo-CanonicalJson @($post.paths))){return &$deny 'retry paths drift'}
+    if((ConvertTo-CanonicalJson @($observation.fileBindings)) -cne (ConvertTo-CanonicalJson @($post.fileBindings))){return &$deny 'retry file bindings drift'}
+    return [ordered]@{ok=$true;reason='exact signed retry baseline verified';observation=$observation;workspaceHead=[string]$post.workspaceHead}
 }
 
 function Invoke-DispatcherLoop {

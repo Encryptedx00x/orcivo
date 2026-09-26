@@ -10,7 +10,7 @@ Rules:
     fail over just because the task failed.
   * <= config.providerFailover.maxCrossProviderFailoversPerLineage switches per
     attempt lineage.
-  * When BOTH providers are unavailable -> the ledger goes WAITING_PROVIDER, a
+  * When ALL enabled providers are unavailable -> the ledger goes WAITING_PROVIDER, a
     durable wait record persists everything needed to resume, and the supervisor
     keeps polling with backoff. When a provider is healthy again the task resumes
     automatically - no human action, and this survives a supervisor/PC restart.
@@ -84,19 +84,20 @@ function Get-FailoverDecision {
     param(
         [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$CurrentProvider,
         [Parameter(Mandatory)][string]$Class,
-        [int]$FailoversSoFar = 0
+        [int]$FailoversSoFar = 0,
+        [string[]]$UnavailableProviders = @()
     )
     $cfg = Get-V2Config
     if (-not (Test-IsProviderClass $Class)) {
         return [ordered]@{ action = 'NO_FAILOVER'; nextProvider = $null; reason = "class '$Class' is not a provider class - a task failure never fails over" }
     }
     $order = @(Get-OrcivoEnabledProviders)
-    $others = @($order | Where-Object { $_ -ne $CurrentProvider })
-    $max = [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage
+    $others = @($order | Where-Object { $_ -ne $CurrentProvider -and @($UnavailableProviders) -notcontains $_ })
+    $max = Get-OrcivoCrossProviderFailoverBudget
 
     if ($FailoversSoFar -ge $max) {
         # already used our switch budget for this lineage
-        $healthy = @(Get-HealthyProviders)
+        $healthy = @(Get-HealthyProviders | Where-Object { @($UnavailableProviders) -notcontains $_ })
         if ($healthy.Count -eq 0) {
             return [ordered]@{ action = 'WAITING_PROVIDER'; nextProvider = $null; reason = "provider class '$Class'; failover budget spent ($FailoversSoFar/$max); no healthy provider" }
         }

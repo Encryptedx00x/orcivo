@@ -472,10 +472,10 @@ try{
             $w=Get-ProviderWait $tv;Assert-True ($w.taskVersionId -eq $tv -and $w.runId -eq 'run-wait' -and $w.checkpoint.nextAction -eq 'resume IMPLEMENT') 'WAITING_PROVIDER checkpoint was not restartable'
             $state=[ordered]@{taskVersionId=$tv;runId='run-wait';stage='IMPLEMENT';status='WAITING_PROVIDER';provider='claude';task=@{};unavailableProviders=@('claude','codex')}
             $w.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $tv) $w
-            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex='PROVIDER_UNAVAILABLE'}
-            Assert-True (-not (Resume-DispatcherProviderWait $state)) 'both unavailable providers resumed'
+            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex='PROVIDER_UNAVAILABLE';glm='PROVIDER_UNAVAILABLE';deepseek='PROVIDER_UNAVAILABLE'}
+            Assert-True (-not (Resume-DispatcherProviderWait $state)) 'all unavailable providers resumed'
             $w=Get-ProviderWait $tv;$w.nextRetryAt=(Get-Date).ToUniversalTime().AddSeconds(-1).ToString('o');Write-V2JsonCanonical (Get-ProviderWaitPath $tv) $w
-            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex=$null}
+            $script:ProviderHealthFaults=@{claude='PROVIDER_UNAVAILABLE';codex=$null;glm='PROVIDER_UNAVAILABLE';deepseek='PROVIDER_UNAVAILABLE'}
             Assert-True ((Resume-DispatcherProviderWait $state) -and $state.provider -eq 'codex' -and (Get-LedgerState $tv).state -eq 'RUNNING') 'healthy opposite provider did not restore the same durable task'
             Assert-True ([bool](Get-ProviderWait $tv).resolvedAt) 'resumed provider wait was not durably resolved'
             $script:ProviderHealthFaults=$null
@@ -1868,6 +1868,14 @@ try{
             $ids=@(Get-AcceptanceCriteriaIds 'AC1: first criterion; AC2: second criterion; AC3: third criterion')
             Assert-True (($ids -join '|') -eq 'AC1|AC2|AC3') "semicolon-delimited acceptance criteria were not frozen exactly: $($ids -join '|')"
         }
+        Check 'RD-223' {
+            $providerRuntimePath=Join-Path (Get-V2Dir) 'provider-runtime.v1.json'
+            Copy-Item (Join-Path $Repo '.orchestration\v2\provider-runtime.v1.json') $providerRuntimePath -Force
+            $script:ProviderHealthFaults=@{codex='PROVIDER_UNAVAILABLE';claude='RATE_LIMIT';glm=$null;deepseek='PROVIDER_UNAVAILABLE'}
+            try{$d=Get-FailoverDecision -CurrentProvider claude -Class RATE_LIMIT -FailoversSoFar 1 -UnavailableProviders @('codex','claude')}
+            finally{$script:ProviderHealthFaults=$null}
+            Assert-True ($d.action -eq 'FAILOVER' -and $d.nextProvider -eq 'glm') 'the second bounded failover did not skip unavailable Codex and select enabled GLM'
+        }
 
         Check 'RD-150' {
             $reader=Join-Path $V2 'review-reader.mjs'
@@ -2427,6 +2435,33 @@ try{
         function New-ResultSnapshotAgentResult($f){
             return [ordered]@{invocationId=$f.invocation;provider='glm';model=(Get-GlmModelId);reasoningIntent='low';attempt=1;promptHash=(New-FileHash $f.prompt);stdoutHash=('sha256:'+('a'*64))}
         }
+        function New-GlmTerminalSuccessRecoveryFixture([string]$Id,[switch]$WrongVersion){
+            $f=New-ResultSnapshotUnitFixture $Id
+            Write-Utf8 (Join-Path $f.workspace 'work\result.ts') "export const result = 'complete';`n"
+            $logs=Join-Path (Get-V2Dir) "runs\$($f.runId)\logs";New-Item -ItemType Directory -Force -Path $logs|Out-Null
+            $suffix=$f.invocation.Substring(4,8);$stem="implementer-001-glm-$suffix"
+            $stdoutPath=Join-Path $logs "$stem.stdout.log";$stderrPath=Join-Path $logs "$stem.stderr.log"
+            $payload=[ordered]@{task=[string]$f.task.taskId;taskVersion=$(if($WrongVersion){'0'*64}else{[string]$f.contract.taskVersionId});resultClass='SUCCESS';files=@('work/result.ts');summary='fixture implementation complete';acceptance=[ordered]@{AC1='covered'};checks=[ordered]@{unit='pass'};notes='fixture'}
+            $text="All checks pass.`n`n``````json`n$(ConvertTo-Json $payload -Depth 10)`n``````"
+            $raw=(@(
+                (ConvertTo-Json ([ordered]@{type='step_start';part=[ordered]@{type='step-start'}}) -Compress -Depth 8),
+                (ConvertTo-Json ([ordered]@{type='text';part=[ordered]@{type='text';text=$text}}) -Compress -Depth 12),
+                (ConvertTo-Json ([ordered]@{type='step_finish';part=[ordered]@{type='step-finish';reason='stop';tokens=[ordered]@{input=2;output=3;reasoning=1;cache=[ordered]@{read=0}};cost=0}}) -Compress -Depth 12)
+            ) -join "`n")+"`n"
+            Write-Utf8 $stdoutPath $raw;Write-Utf8 $stderrPath ''
+            $agent=[ordered]@{invocationId=$f.invocation;provider='glm';model=(Get-GlmModelId);profile='FAST';reasoningIntent='low';attempt=1;exitCode=0;providerClass='NONE';failureDiagnostic=$null;resultClass='AGENT_FAILURE';structuredResult=$null;promptArtifact=[IO.Path]::GetFullPath($f.prompt);promptHash=(New-FileHash $f.prompt);stdoutArtifact=[IO.Path]::GetFullPath($stdoutPath);stdoutHash=(New-FileHash $stdoutPath);stderrArtifact=[IO.Path]::GetFullPath($stderrPath);stderrHash=(New-FileHash $stderrPath);controlRecordHash=(New-StringHash $raw);duration=1;contextRolloverRequired=$false;capabilityVersion='';continuationCheckpoint='';usage=[ordered]@{inputTokens=2;outputTokens=3;cachedTokens=0;reasoningTokens=1;costUsd=$null};cachedTokens=0;returnedModels=@();requestManifestPath='';requestManifestHash='';costUsd=$null;telemetryConsistent=$true;resultReceiptPath=(Get-RealAgentResultReceiptPath -ArtifactDir $logs -InvocationId $f.invocation -Role implementer -Provider glm -Attempt 1)}
+            $receipt=Write-RealAgentResultReceipt -AgentResult $agent
+            $post=New-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -Task $f.task -AgentResult $agent
+            $f.state.providerHistory=@([ordered]@{invocationId=$f.invocation;role='IMPLEMENTER';provider='glm';model=(Get-GlmModelId);reasoningEffort='low';attempt=1;providerClass='NONE';resultClass='AGENT_FAILURE';exitCode=0;promptArtifact=$agent.promptArtifact;promptHash=$agent.promptHash;workspaceResultSnapshotHash=$post.resultHash;stdoutArtifact=$agent.stdoutArtifact;stdoutHash=$agent.stdoutHash;controlRecordHash=$agent.controlRecordHash;usage=$agent.usage;cachedTokens=0;costUsd=$null;telemetryConsistent=$true;resultReceiptHash=$receipt.receiptHash})
+            Initialize-LedgerTask -TaskVersionId $f.contract.taskVersionId -Identity @{taskId=$f.task.taskId}|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event ready -ToState READY|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event dispatch -ToState DISPATCHED -RunId $f.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event running -ToState RUNNING -RunId $f.runId|Out-Null
+            Add-LedgerEvent -TaskVersionId $f.contract.taskVersionId -Event execute-failed -ToState FAILED -RunId $f.runId -Note AGENT_FAILURE|Out-Null
+            $f.state.status='AGENT_FAILURE';$f.state.reason="provider invocation $($f.invocation) ended as NONE/AGENT_FAILURE";Write-DispatcherState $f.state|Out-Null
+            $f.agent=$agent;$f.receipt=$receipt;$f.post=$post;$f.stdoutPath=$stdoutPath
+            return $f
+        }
 
         Check 'RD-197' {
             # SUCCESS + dirty workspace: existing behavior unchanged.
@@ -2658,6 +2693,65 @@ try{
             $ledger=Get-LedgerState ([string]$f.state.taskVersionId)
             $post=Get-DispatcherWorkspaceInvocationResultSnapshot -State $f.state -InvocationId ([string]$ar.invocationId)
             Assert-True ([string]$finalized.disposition -eq 'POLICY_BLOCK' -and [string]$f.state.status -eq 'BLOCKED' -and [string]$ledger.state -eq 'FAILED' -and $post -and -not [bool]$post.policyCompliant -and (Test-Path -LiteralPath (Join-Path $f.workspace 'work\useful.ts'))) 'exhausted policy correction did not fail closed while preserving useful work'
+        }
+
+        Check 'RD-222' {
+            # A retryable terminal BLOCK may leave useful, policy-compliant
+            # in-scope work. The next bounded attempt must inherit only the
+            # exact signed result snapshot, without discarding or trusting
+            # any later workspace drift.
+            $f=New-ResultSnapshotUnitFixture 'RD222'
+            Write-Utf8 (Join-Path $f.workspace 'work\useful.ts') "export const useful = true;`n"
+            $ar=New-ResultSnapshotAgentResult $f
+            $ar.providerClass='NONE';$ar.resultClass='BLOCK';$ar.exitCode=0
+            $finalized=Complete-DispatcherAgentInvocation -State $f.state -Task $f.task -AgentResult $ar -Role 'IMPLEMENTER'
+            Assert-True ([string]$finalized.disposition -eq 'RETRY') 'fixture did not enter the bounded retry path'
+
+            $f.state.attempt=2;Write-DispatcherState $f.state|Out-Null
+            $prompt2=Join-Path $Root 'result-unit-RD222-retry.prompt.txt';Write-Utf8 $prompt2 'continue from the exact signed partial result'
+            $pre2=New-DispatcherWorkspaceInvocationSnapshot -State $f.state -Task $f.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $prompt2 -PromptHash (New-FileHash $prompt2) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2
+            Assert-True (@($pre2.paths) -contains 'work/useful.ts' -and [string]$pre2.stateBinding.workspaceHead -eq [string]$f.base) 'the exact signed policy-compliant partial result could not launch its bounded retry'
+
+            $tampered=New-ResultSnapshotUnitFixture 'RD222T'
+            Write-Utf8 (Join-Path $tampered.workspace 'work\useful.ts') "export const useful = true;`n"
+            $tamperedResult=New-ResultSnapshotAgentResult $tampered
+            $tamperedResult.providerClass='NONE';$tamperedResult.resultClass='BLOCK';$tamperedResult.exitCode=0
+            Complete-DispatcherAgentInvocation -State $tampered.state -Task $tampered.task -AgentResult $tamperedResult -Role 'IMPLEMENTER'|Out-Null
+            Write-Utf8 (Join-Path $tampered.workspace 'work\useful.ts') "export const useful = 'tampered';`n"
+            $tampered.state.attempt=2;Write-DispatcherState $tampered.state|Out-Null
+            $tamperedPrompt=Join-Path $Root 'result-unit-RD222-tampered.prompt.txt';Write-Utf8 $tamperedPrompt 'must not inherit drifted bytes'
+            $rejected=$false
+            try{New-DispatcherWorkspaceInvocationSnapshot -State $tampered.state -Task $tampered.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $tamperedPrompt -PromptHash (New-FileHash $tamperedPrompt) -Provider glm -Model (Get-GlmModelId) -ReasoningEffort low -Attempt 2|Out-Null}catch{$rejected=$true}
+            Assert-True ($rejected -and @($tampered.state.workspaceInvocationSnapshots).Count -eq 1) 'a drifted partial result was inherited by a retry'
+
+            $providerFailure=New-ResultSnapshotUnitFixture 'RD222P'
+            Write-Utf8 (Join-Path $providerFailure.workspace 'work\useful.ts') "export const useful = true;`n"
+            $providerFailureResult=New-ResultSnapshotAgentResult $providerFailure
+            $providerFailureResult.providerClass='TEMPORARY_AUTH_FAILURE';$providerFailureResult.resultClass='AGENT_FAILURE';$providerFailureResult.exitCode=1
+            $failedProvider=Complete-DispatcherAgentInvocation -State $providerFailure.state -Task $providerFailure.task -AgentResult $providerFailureResult -Role 'IMPLEMENTER'
+            Assert-True ([string]$failedProvider.disposition -eq 'PROVIDER_FAILURE') 'fixture did not enter provider failover'
+            $providerFailure.state.attempt=2;Write-DispatcherState $providerFailure.state|Out-Null
+            $failoverPrompt=Join-Path $Root 'result-unit-RD222-failover.prompt.txt';Write-Utf8 $failoverPrompt 'continue exact partial work with the fallback provider'
+            $failoverPre=New-DispatcherWorkspaceInvocationSnapshot -State $providerFailure.state -Task $providerFailure.task -InvocationId ('att-'+[guid]::NewGuid().ToString('N')) -PromptArtifact $failoverPrompt -PromptHash (New-FileHash $failoverPrompt) -Provider claude -Model sonnet -ReasoningEffort low -Attempt 2
+            Assert-True (@($failoverPre.paths) -contains 'work/useful.ts' -and [string]$failoverPre.stateBinding.workspaceHead -eq [string]$providerFailure.base) 'an exact signed partial result could not continue across provider failover'
+        }
+        Check 'RD-224' {
+            $f=New-GlmTerminalSuccessRecoveryFixture 'RD224'
+            $proof=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation
+            $first=Recover-DispatcherGlmTerminalSuccess -State $f.state -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation
+            $durable=Get-DispatcherState;$seq=(Get-LedgerState $f.contract.taskVersionId).seq
+            $second=Recover-DispatcherGlmTerminalSuccess -State $durable -Task $f.task -TaskSource $f.source -Contract $f.contract -TaskVersionId $f.contract.taskVersionId -RunId $f.runId -InvocationId $f.invocation
+            $original=Read-V2Json $f.agent.resultReceiptPath
+            Assert-True ($proof.eligible -and -not $proof.providerInvocationRequired -and $first.status -eq 'RECOVERED' -and $second.status -eq 'ALREADY_RECOVERED' -and (Get-LedgerState $f.contract.taskVersionId).seq -eq $seq) 'terminal GLM SUCCESS recovery was not provider-free and idempotent'
+            Assert-True ($durable.status -eq 'RUNNING' -and $durable.implementationComplete -and $durable.implementationInvocationId -eq $f.invocation -and $original.resultClass -eq 'AGENT_FAILURE' -and -not $original.structuredResult -and $durable.providerHistory[-1].resultClass -eq 'AGENT_FAILURE') 'recovery did not preserve original failure evidence or authorize exact implementation completion'
+        }
+        Check 'RD-225' {
+            $wrong=New-GlmTerminalSuccessRecoveryFixture 'RD225W' -WrongVersion
+            $wrongProof=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $wrong.state -Task $wrong.task -TaskSource $wrong.source -Contract $wrong.contract -TaskVersionId $wrong.contract.taskVersionId -RunId $wrong.runId -InvocationId $wrong.invocation
+            $tampered=New-GlmTerminalSuccessRecoveryFixture 'RD225T';Add-Content -LiteralPath $tampered.stdoutPath -Value 'tamper'
+            $tamperedProof=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $tampered.state -Task $tampered.task -TaskSource $tampered.source -Contract $tampered.contract -TaskVersionId $tampered.contract.taskVersionId -RunId $tampered.runId -InvocationId $tampered.invocation
+            $script:DispatcherRecoveryRunnerProbe=$true;try{$active=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $tampered.state -Task $tampered.task -TaskSource $tampered.source -Contract $tampered.contract -TaskVersionId $tampered.contract.taskVersionId -RunId $tampered.runId -InvocationId $tampered.invocation}finally{$script:DispatcherRecoveryRunnerProbe=$false}
+            Assert-True (-not $wrongProof.eligible -and $wrongProof.reason -match 'task/version' -and -not $tamperedProof.eligible -and $tamperedProof.reason -match 'hash' -and -not $active.eligible) 'GLM recovery accepted wrong lineage, tampered stdout, or active execution'
         }
     } finally {Pop-Location}
 

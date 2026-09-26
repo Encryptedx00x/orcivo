@@ -10,6 +10,62 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Estado corrente — 2026-09-25 — AUTOPILOT ATIVO
+
+`main`/`origin/main` continham `b085e83` antes desta atualização documental.
+O dispatcher agora congela corretamente critérios inline (`AC1; AC2; AC3`) e
+permite retry/failover limitado somente sobre um snapshot parcial exato,
+assinado e policy-compliant. Regressões RD-197, RD-207, RD-208, RD-209,
+RD-221 e RD-222: PASS.
+
+O autopilot está em `PB1-P06-dead-contact-ctas`, task version
+`d14e15a25ed1cfe00b4cf6e373df7dcb2ab84cec06d6907156f6e788a020368b`,
+run `run-fa985eff349d445985f1649df6ece086`. Último estado observado:
+`WAITING_PROVIDER / IMPLEMENT`, provider `claude`, após `RATE_LIMIT`. O
+backoff é durável e o trabalho parcial do candidato está preservado pelos
+snapshots de invocação/resultado.
+
+### Próxima ação exata
+
+No root do repositório:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\orchestration\v2\pilot.ps1 status
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\orchestration\v2\pilot.ps1 run
+```
+
+Se um processo `pilot.ps1 run` já possuir a lease `scheduler/main`, monitorar
+esse processo em vez de iniciar outro. Caso contrário, manter o segundo comando
+em foreground e acompanhar backoff, implementação, check, review por provedor
+oposto, integração, publicação e as tasks seguintes da fila. Corrigir bugs
+mecânicos do dispatcher test-first, commitar/push normal e retomar o mesmo run.
+
+### Autoridade já concedida pelo owner
+
+Decidir autonomamente todas as escolhas técnicas reversíveis e todos os
+`WAITING_HUMAN` da fila, exceto uma solicitação literalmente humana de operar e
+avaliar visualmente app/site. Commit e push normais estão autorizados. Não
+pedir aprovação para decisões técnicas rotineiras.
+
+### Não fazer
+
+- Não editar manualmente managed candidate workspace, dispatcher JSON, ledger,
+  approvals, checkpoints ou attestations.
+- Não usar reset, stash, clean, force-push, reescrita de histórico ou comandos
+  destrutivos.
+- Não iniciar segunda implementação nem descartar o parcial existente.
+- Não simular provider, copiar prompt manualmente ou usar a sessão interativa
+  como implementadora; o supervisor deve lançar CLIs reais.
+- Não invocar providers fora do fluxo oficial nem fazer probes desnecessários.
+- Parar somente antes de ação destrutiva ou decisão visual/de negócio realmente
+  humana.
+
+Evidência viva: `.orchestration/v2/dispatcher/current.json`,
+`.orchestration/v2/logs/spine.log`, `pilot.ps1 status` e
+`.planning/product/MVP-PRODUCT-BATCH-1.plan.json`.
+
+---
+
 ## P03 = PASS — T10/T13 executados (2026-09-04)
 
 O owner autorizou **explicitamente** T10 e T13, incluindo a orientação para
@@ -492,6 +548,7 @@ cat .planning/phases/03.1-estabilizacao-pos-fase-3/03.1-DISCOVERY-UAT-2026-09-01
 
 | Data | Agente | Entregue | HEAD ao fechar |
 |---|---|---|---|
+| 2026-09-25 | Codex | Autopilot PB1-P06 preservado em WAITING_PROVIDER/IMPLEMENT; parser de AC inline e continuidade hash-bound de parciais em retry/failover corrigidos e testados. Instruções exatas de retomada e limites de autonomia adicionados no topo. | (ver `git log -1`) |
 | 2026-09-04 | Claude | **P03 = PASS.** Ambiente identificado primeiro (`STORAGE_ENVIRONMENT = LOCAL_DEV`, único MinIO alcançável deste host). T10 (policy privada aplicada/verificada com rollback documentado) e T13 (UAT automatizado `storage.e2e.spec.ts`, 8/8: autenticado/anônimo/adulterado/cross-tenant) autorizados pelo owner e executados. Suite backend 18/125 (120 passed/5 todo/0 fail). `batch-reconcile.ps1` corrigido para ler gates reais em vez de assumir estado fixo; `.plan.json` reconciliado (`gatesPassed=true`, `dispatchableNow` com 5 tasks). P04 UNBLOCKED. Planning atualizado (STATE/ROADMAP/PROGRESS/PLAN/HANDOFF + product batch docs + `03.1-P03-T10-T13-RESULT.md`). Nenhuma task `PB1-*` implementada (execução real é do autopilot dispatcher). | (ver `git log -1`) |
 | 2026-09-03 | Claude | **P02 = PASS.** T12 (migrations em `orcivo_dev` persistente + backup + backfill íntegro 0/0 + zero drift + reseed) e T13 (A/B por automação de API, suíte 16/16) autorizados pelo owner e executados. P03 UNBLOCKED. `REAL_EXECUTION_AUTHORIZED` criado. Planning atualizado (STATE/ROADMAP/SUMMARY/VERIFICATION/UAT/HANDOFF + `03.1-P02-T12-T13-RESULT.md`). | (ver `git log -1`) |
 | 2026-09-02 | Claude | **Remediação de segurança da orquestração.** V1 marcado `LEGACY_REJECTED_REFERENCE_ONLY` (guard bloqueia run/loop/cleanup; regressão 23/23 preservada). V2 security spine clean-room em `scripts/orchestration/v2/` (namespace `.orchestration/v2/`): ledger monotônico content-addressed (C-01), contract freeze + protected paths + post-diff scope (H-06/M-01/M-03), attestations content-addressed + staleness (C-03), review envelope JSON fail-closed (C-02/H-03/M-05), leases atômicas 4 namespaces + integração serial + fetch/CAS (H-05/H-04), preflight obrigatório + human gate durável (H-07/C-04 parcial), classificação por control channel + corpus negativo (H-01), streaming redaction + secret scan (H-11), Win32 argv/ID grammar (H-12). Suíte adversarial 40/40 (`v2/tests/`, repos descartáveis, sem modelo). Docs: THREAT-MODEL + ATTESTATIONS. Deferidos: C-05/C-06/H-08/H-09/H-10 + smoke real. NÃO production-ready; NÃO READY_FOR_CANARY. `READY_FOR_SECOND_SECURITY_REVIEW = YES`. | (ver `git log -1`) |
