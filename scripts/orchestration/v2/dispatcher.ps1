@@ -2505,7 +2505,11 @@ function Get-DispatcherGlmTerminalSuccessRecoveryProof {
     if(-not $stdoutPath.StartsWith(($logs.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $stdoutPath) -ne ('implementer-{0:000}-glm-{1}.stdout.log' -f [int]$attempt.attempt,$suffix)){return &$deny 'stdout artifact path is not invocation-bound'}
     if(-not(Test-Path -LiteralPath $stdoutPath) -or (New-FileHash $stdoutPath) -ne [string]$attempt.stdoutHash -or [string]$receipt.stdoutHash -ne [string]$attempt.stdoutHash){return &$deny 'stdout artifact hash mismatch'}
     $raw=[IO.File]::ReadAllText($stdoutPath,[Text.Encoding]::UTF8)
-    if((New-StringHash $raw) -ne [string]$attempt.controlRecordHash -or [string]$receipt.controlRecordHash -ne [string]$attempt.controlRecordHash){return &$deny 'GLM control-record hash mismatch'}
+    # Invoke-NativeCaptured returns a normalized in-memory string while its
+    # durable stdout file preserves native line endings, so controlRecordHash
+    # cannot be recomputed from the file on every host.  Its immutable signed
+    # receipt/history agreement remains required; stdout bytes are bound above.
+    if([string]$receipt.controlRecordHash -ne [string]$attempt.controlRecordHash){return &$deny 'GLM control-record receipt/history mismatch'}
     $parsed=ConvertFrom-RealGlmOutput $raw;$events=@($parsed.events)
     if(-not $events.Count -or [string]$events[-1].type -ne 'step_finish' -or [string]$events[-1].part.reason -ne 'stop' -or @($events|Where-Object{"$($_.type)" -match 'error' -or $_.error}).Count){return &$deny 'GLM stream does not end in a unique successful terminal event'}
     $texts=@($events|Where-Object{"$($_.type)" -eq 'text' -and $_.part -and "$($_.part.type)" -eq 'text'}|ForEach-Object{[string]$_.part.text})
