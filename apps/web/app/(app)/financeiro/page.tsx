@@ -1,4 +1,10 @@
-import { sumDecimal, formatMoney } from '@orcivo/shared-types';
+import {
+  averageDecimal,
+  decimalPercentage,
+  formatMoney,
+  maxDecimal,
+  sumDecimal,
+} from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
 import {
   FinanceiroContent,
@@ -36,12 +42,16 @@ export default async function FinanceiroPage(): Promise<JSX.Element> {
     payments = res.data;
   } catch {}
   try {
-    const res = await apiFetch<{ data: Array<{ id: string; name: string }> }>('/customers?limit=200');
+    const res = await apiFetch<{ data: Array<{ id: string; name: string }> }>(
+      '/customers?limit=200',
+    );
     customers = res.data.map((c) => ({ id: c.id, name: c.name }));
   } catch {}
 
   const now = new Date();
-  const monthLabel = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^./, (c) => c.toUpperCase());
+  const monthLabel = now
+    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    .replace(/^./, (c) => c.toUpperCase());
 
   const entries: PaymentRow[] = payments.map((p) => ({
     id: p.id,
@@ -62,28 +72,56 @@ export default async function FinanceiroPage(): Promise<JSX.Element> {
   const pending = sumBy((p) => p.status === 'PENDING' || p.status === 'PARTIAL');
   const overdue = sumBy((p) => p.status === 'OVERDUE');
   const receivedCount = payments.filter((p) => p.status === 'PAID').length;
-  const pendingCount = payments.filter((p) => p.status === 'PENDING' || p.status === 'PARTIAL').length;
+  const pendingCount = payments.filter(
+    (p) => p.status === 'PENDING' || p.status === 'PARTIAL',
+  ).length;
   const overdueCount = payments.filter((p) => p.status === 'OVERDUE').length;
-  const avgTicket = receivedCount ? formatMoney((Number(received) / receivedCount).toFixed(2)) : formatMoney('0');
+  const avgTicket = formatMoney(
+    averageDecimal(payments.filter((p) => p.status === 'PAID').map((p) => p.amount)),
+  );
 
   const kpis: FinanceKpi[] = [
-    { label: 'Recebido no período', value: formatMoney(received), sub: `${receivedCount} recebimento${receivedCount === 1 ? '' : 's'}` },
+    {
+      label: 'Recebido no período',
+      value: formatMoney(received),
+      sub: `${receivedCount} recebimento${receivedCount === 1 ? '' : 's'}`,
+    },
     { label: 'Pendente', value: formatMoney(pending), sub: `${pendingCount} em aberto` },
-    { label: 'Vencido', value: formatMoney(overdue), sub: `${overdueCount} recebimento${overdueCount === 1 ? '' : 's'}`, danger: overdueCount > 0 },
+    {
+      label: 'Vencido',
+      value: formatMoney(overdue),
+      sub: `${overdueCount} recebimento${overdueCount === 1 ? '' : 's'}`,
+      danger: overdueCount > 0,
+    },
     { label: 'Ticket médio', value: avgTicket, sub: 'por recebimento' },
   ];
 
   // Chart: recebido por dia (últimos 30 dias)
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const buckets = new Array(DAYS).fill(0) as number[];
+  const buckets = new Array(DAYS).fill('0.00') as string[];
   for (const p of payments) {
     if (p.status !== 'PAID' || !p.paid_at) continue;
     const d = new Date(p.paid_at);
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const diff = Math.floor((today.getTime() - dayStart.getTime()) / 86_400_000);
-    if (diff >= 0 && diff < DAYS) buckets[DAYS - 1 - diff] += Number(p.amount);
+    if (diff >= 0 && diff < DAYS) {
+      const bucketIndex = DAYS - 1 - diff;
+      buckets[bucketIndex] = sumDecimal([buckets[bucketIndex], p.amount]);
+    }
   }
-  const bars: ChartBar[] = buckets.map((v, i) => ({ h: v, highlight: i >= DAYS - 5 }));
+  const chartMaximum = maxDecimal(buckets);
+  const bars: ChartBar[] = buckets.map((value, i) => ({
+    percent: decimalPercentage(value, chartMaximum),
+    highlight: i >= DAYS - 5,
+  }));
 
-  return <FinanceiroContent entries={entries} kpis={kpis} bars={bars} monthLabel={monthLabel} customers={customers} />;
+  return (
+    <FinanceiroContent
+      entries={entries}
+      kpis={kpis}
+      bars={bars}
+      monthLabel={monthLabel}
+      customers={customers}
+    />
+  );
 }

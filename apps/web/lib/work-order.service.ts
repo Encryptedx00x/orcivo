@@ -41,12 +41,24 @@ export interface WorkOrder {
   quote?: { id: string; number: number };
 }
 
+export interface WorkOrderPayment {
+  id: string;
+  amount: string;
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
+}
+
 /** SERVER-ONLY: lista OS com paginação. */
 export const fetchAllWorkOrders = (page = 1) =>
   apiFetch<{ data: WorkOrder[]; total: number; page: number }>(`/work-orders?page=${page}`);
 
 /** SERVER-ONLY: busca uma OS pelo ID. */
 export const fetchOneWorkOrder = (id: string) => apiFetch<WorkOrder>(`/work-orders/${id}`);
+
+/** SERVER-ONLY: lista recebimentos vinculados a uma OS. */
+export const fetchWorkOrderPayments = (workOrderId: string) =>
+  apiFetch<{ data: WorkOrderPayment[] }>(
+    `/payments?work_order_id=${encodeURIComponent(workOrderId)}`,
+  );
 
 /** SERVER-ONLY: atualiza status (usado em Server Actions). */
 export const updateWorkOrderStatus = (id: string, status: string) =>
