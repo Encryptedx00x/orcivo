@@ -60,6 +60,7 @@ export class PaymentService {
       company_id: companyId,
       ...(query.status ? { status: query.status } : {}),
       ...(query.method ? { method: query.method } : {}),
+      ...(query.work_order_id ? { work_order_id: query.work_order_id } : {}),
     };
     const data = await this.prisma.payment.findMany({
       where,

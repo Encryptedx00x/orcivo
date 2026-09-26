@@ -13,13 +13,7 @@ export const PaymentMethodEnum = z.enum([
   'OUTRO',
 ]);
 
-export const PaymentStatusEnum = z.enum([
-  'PENDING',
-  'PAID',
-  'OVERDUE',
-  'PARTIAL',
-  'CANCELLED',
-]);
+export const PaymentStatusEnum = z.enum(['PENDING', 'PAID', 'OVERDUE', 'PARTIAL', 'CANCELLED']);
 
 export const PaymentCreateSchema = z.object({
   customer_id: z.string().uuid(),
@@ -43,5 +37,6 @@ export type PaymentSettleDto = z.infer<typeof PaymentSettleSchema>;
 export const PaymentListQuerySchema = z.object({
   status: PaymentStatusEnum.optional(),
   method: PaymentMethodEnum.optional(),
+  work_order_id: z.string().uuid().optional(),
 });
 export type PaymentListQueryDto = z.infer<typeof PaymentListQuerySchema>;
