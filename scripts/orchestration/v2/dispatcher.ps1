@@ -975,7 +975,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
 
         $history=@($State.disjointTargetAdvanceRecoveryHistory|Where-Object{$_})
         $alreadyRecovered=([string]$State.status -eq 'RUNNING' -and [string]$State.stage -eq 'REVIEW' -and [string]$State.reviewVerdict -eq '' -and [bool]$State.implementationComplete -and -not [bool]$State.requiresCorrection -and $history.Count -eq 1)
-        $secretScanFalsePositiveHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ')
+        $secretScanFalsePositiveHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^pre-publication secret scan found [1-5] hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: /[^;]+/( ; \\native\\[^\\\s;]+\.stdout\.log :: /[^;]+/){0,4}$')
         $remoteDivergedHold=[bool](-not $alreadyRecovered -and [string]$State.status -eq 'REMOTE_DIVERGED' -and [string]$State.stage -eq 'INTEGRATE' -and [string]$State.reason -eq [string]$State.integration.reason -and [string]$State.reason -match '^origin/main \([0-9a-f]{10}\) has moved off the SHA the reviewed candidate was built on \([0-9a-f]{10}\) - rebuild \+ re-review required$')
         $priorSecretFalsePositive=[bool]($alreadyRecovered -and $history[0].secretFalsePositiveEvidence)
         if(-not $alreadyRecovered){
@@ -996,7 +996,7 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
 
         $ir=$(if($alreadyRecovered){$history[0].integrationResult}else{$State.integration})
         $authorityDirtyResult=([string]$ir.status -eq 'INTEGRATION_FAILED' -and [string]$ir.reason -eq 'authority tree dirty' -and [string]$ir.targetBefore -eq '')
-        $secretScanResult=([string]$ir.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$ir.reason -match '^pre-publication secret scan found 1 hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: ' -and [string]$ir.targetBefore -eq $oldBase)
+        $secretScanResult=([string]$ir.status -eq 'SECRET_LEAK_BLOCKED' -and [string]$ir.reason -match '^pre-publication secret scan found [1-5] hit\(s\): \\native\\[^\\\s;]+\.stdout\.log :: /[^;]+/( ; \\native\\[^\\\s;]+\.stdout\.log :: /[^;]+/){0,4}$' -and [string]$ir.targetBefore -eq $oldBase)
         $remoteDivergedResult=$false
         if([string]$ir.status -eq 'REMOTE_DIVERGED' -and [string]$ir.targetBefore -match '^[0-9a-f]{40}$'){
             $remoteReason=[regex]::Match([string]$ir.reason,'^origin/main \((?<target>[0-9a-f]{10})\) has moved off the SHA the reviewed candidate was built on \((?<base>[0-9a-f]{10})\) - rebuild \+ re-review required$')
