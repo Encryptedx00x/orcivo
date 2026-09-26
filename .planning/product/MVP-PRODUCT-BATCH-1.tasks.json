@@ -286,7 +286,7 @@
       "title": "PATCH /company/me — company profile + PIX persistence",
       "type": "FEATURE_INCOMPLETE",
       "source": "P-04 / D-2",
-      "description": "PATCH /company/me (@AdminOnly) validating profile fields + pix_key by key type (CPF/CNPJ/email/phone/random). shared-types DTO. Wire the 'empresa' and 'pix' tabs (state + handlers). Audit via AuditService. Logo upload stays POST-MVP.",
+      "description": "PATCH /company/me (@AdminOnly) validating profile fields + pix_key by key type (CPF/CNPJ/email/phone/random). shared-types DTO. Wire the 'empresa' and 'pix' tabs (state + handlers). Audit via AuditService. Logo upload stays POST-MVP. (Retry: prior attempt's review output failed schema validation, unrelated to task scope.)",
       "acceptance": "AC1: PATCH /company/me persists profile + pix_key, @AdminOnly, tenant-scoped; AC2: pix_key validated by type; AC3: the two config tabs save and reload real values; AC4: change writes an audit row; AC5: logo upload not included.",
       "dependencies": ["PB1-P02-audit-service"],
       "scope": ["apps/backend/src/company", "packages/shared-types/src/company", "apps/web/app/(app)/configuracoes"],
