@@ -284,18 +284,26 @@ export default function NovoClientePage(): JSX.Element {
                 }}
               >
                 <span>Endereço</span>
-                <span
+                <button
+                  type="button"
+                  disabled
+                  title="Busca por CEP indisponível"
                   style={{
                     color: '#6D28D9',
                     fontSize: 13,
                     fontWeight: 500,
                     letterSpacing: 0,
                     textTransform: 'none',
-                    cursor: 'pointer',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontFamily: 'inherit',
+                    opacity: 0.5,
+                    cursor: 'not-allowed',
                   }}
                 >
                   Buscar por CEP
-                </span>
+                </button>
               </h3>
               <div
                 style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px 200px', gap: 14 }}
