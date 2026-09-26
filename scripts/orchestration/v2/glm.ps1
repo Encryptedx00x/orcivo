@@ -137,7 +137,7 @@ function Get-GlmFencedBlocks {
 # order, from (1) whole-text JSON, (2) the last parseable ```json fenced
 # block, (3) the last parseable generic fenced block - accepted only when it
 # contains the expected structured-result field marker.
-function ConvertFrom-GlmStructuredText {
+function Get-GlmStructuredPayload {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
     $parsed = $null
@@ -158,6 +158,12 @@ function ConvertFrom-GlmStructuredText {
             if ($candidate -and ($candidate.PSObject.Properties.Name -contains 'resultClass' -or $candidate.PSObject.Properties.Name -contains 'verdict')) { $parsed = $candidate; break }
         }
     }
+    return $parsed
+}
+
+function ConvertFrom-GlmStructuredText {
+    param([string]$Text)
+    $parsed = Get-GlmStructuredPayload -Text $Text
     if (-not $parsed) { return $null }
     return (ConvertTo-GlmAgentEnvelope $parsed)
 }

@@ -38,6 +38,9 @@ Commands:
                                       result whose terminal JSON was framed by a prose prefix
   recover-review-terminal-json-hold  deterministically re-extract + revalidate that exact immutable
                                       reviewer terminal stdout under the current parser/schema
+  prove-glm-terminal-success         read-only proof for an immutable task-bound GLM SUCCESS that
+                                      an older loaded adapter recorded as AGENT_FAILURE
+  recover-glm-terminal-success       reconcile that exact result without another provider invocation
   prove-review-timeout-retry        read-only proof for a bounded exact no-verdict review fallback
   recover-review-timeout-retry      preserve the candidate and authorize the next pinned review fallback
   prove-disjoint-target-advance    read-only eligibility proof for a pre-publish integration failure
@@ -50,7 +53,7 @@ Commands:
   stop             ask a running pilot loop to stop
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'prove-review-schema-hold', 'recover-review-schema-hold', 'prove-review-terminal-json-hold', 'recover-review-terminal-json-hold', 'prove-review-timeout-retry', 'recover-review-timeout-retry', 'prove-disjoint-target-advance', 'recover-disjoint-target-advance', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
+    [Parameter(Position = 0)][ValidateSet('status', 'approve-gate', 'reconcile-owner-gate', 'reconcile-orphaned-scheduler-lease', 'configure-deepseek-pricing', 'smoke-deepseek', 'reconcile-deepseek-local-prelaunch', 'reconcile-deepseek-request-manifest-upper-bound', 'reconcile-deepseek-run-reservation-ceiling', 'reconcile-deepseek-run-cache-aware', 'reconcile-deepseek-unknown-reservation', 'prove-review-schema-hold', 'recover-review-schema-hold', 'prove-review-terminal-json-hold', 'recover-review-terminal-json-hold', 'prove-glm-terminal-success', 'recover-glm-terminal-success', 'prove-review-timeout-retry', 'recover-review-timeout-retry', 'prove-disjoint-target-advance', 'recover-disjoint-target-advance', 'recover-completed-implementation', 'recover-provider-failure', 'recover-agent-infrastructure-failure', 'recover-stopped-implementation', 'recover-incomplete-provider-result', 'recover-incomplete-provider-result-with-mutation', 'recover-incomplete-running-invocation', 'recover-quarantined-retry-route', 'quarantine-incomplete-provider-result', 'selftest', 'docker-preflight', 'run', 'run-once', 'start', 'stop')][string]$Command = 'status',
     [string]$TaskFile = '',
     [ValidateSet('','claude','codex')][string]$ProviderOverride = '',
     [string]$TaskId = '',
@@ -540,6 +543,32 @@ switch ($Command) {
         if(-not $schedulerLease.ok){throw 'recover-review-terminal-json-hold: scheduler lease is active'}
         $script:DispatcherRecoveryRunnerProbe=$false
         try{$result=Recover-DispatcherReviewTerminalJsonHold -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}
+        finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;[void](Remove-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -LeaseId $schedulerLease.leaseId);&$restoreSafeDirectory}
+        Write-RealDispatcherPilotCheckpoint -State (Get-DispatcherState)|Out-Null
+        $result|ConvertTo-Json -Depth 12
+    }
+    { $_ -in @('prove-glm-terminal-success','recover-glm-terminal-success') } {
+        if(-not $TaskId -or -not $TaskVersionId -or -not $RunId -or -not $InvocationId){throw "$Command requires -TaskId, -TaskVersionId, -RunId, and -InvocationId"}
+        if(-not $TaskFile){$TaskFile=Join-Path (Get-RepoRoot) ((Get-PilotConfig).taskSourceFile -replace '/','\')}
+        $source=Read-DispatcherTaskSource $TaskFile;$matches=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId})
+        if($matches.Count -ne 1){throw "${Command}: task '$TaskId' is not uniquely present in the owner-approved task source"}
+        $task=[hashtable]$matches[0];$state=Get-DispatcherState
+        if(-not $state){throw "${Command}: no durable dispatcher state"}
+        $contract=Get-Contract $TaskVersionId
+        $safeDirectoryIndex=[int]$(if($env:GIT_CONFIG_COUNT){$env:GIT_CONFIG_COUNT}else{'0'});$safeDirectoryCountBefore=$env:GIT_CONFIG_COUNT
+        [Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",'safe.directory','Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",[IO.Path]::GetFullPath([string]$state.workspace),'Process');$env:GIT_CONFIG_COUNT=[string]($safeDirectoryIndex+1)
+        $restoreSafeDirectory={if($null -eq $safeDirectoryCountBefore){Remove-Item Env:GIT_CONFIG_COUNT -ErrorAction SilentlyContinue}else{$env:GIT_CONFIG_COUNT=$safeDirectoryCountBefore};[Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_$safeDirectoryIndex",$null,'Process');[Environment]::SetEnvironmentVariable("GIT_CONFIG_VALUE_$safeDirectoryIndex",$null,'Process')}
+        if($Command -eq 'prove-glm-terminal-success'){
+            if(Test-Path -LiteralPath (Get-LeasePath -Namespace scheduler -Key (Get-V2Config).target.branch)){throw 'prove-glm-terminal-success: scheduler lease is active'}
+            $script:DispatcherRecoveryRunnerProbe=$false
+            try{$proof=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;&$restoreSafeDirectory}
+            [ordered]@{eligible=[bool]$proof.eligible;reason=[string]$proof.reason;providerInvocationRequired=[bool]$proof.providerInvocationRequired;proofHash=[string]$proof.proof.proofHash;stdoutHash=[string]$proof.proof.stdoutHash;originalReceiptHash=[string]$proof.proof.originalReceiptHash;postSnapshotHash=[string]$proof.proof.postSnapshotHash;payloadHash=[string]$proof.proof.payloadHash}|ConvertTo-Json -Depth 8
+            exit $(if($proof.eligible){0}else{1})
+        }
+        $schedulerLease=New-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -RunId $RunId -Scope 'glm-terminal-success-recovery'
+        if(-not $schedulerLease.ok){throw 'recover-glm-terminal-success: scheduler lease is active'}
+        $script:DispatcherRecoveryRunnerProbe=$false
+        try{$result=Recover-DispatcherGlmTerminalSuccess -State $state -Task $task -TaskSource $source -Contract $contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId}
         finally{Remove-Variable -Scope Script -Name DispatcherRecoveryRunnerProbe -ErrorAction SilentlyContinue;[void](Remove-Lease -Namespace scheduler -Key (Get-V2Config).target.branch -LeaseId $schedulerLease.leaseId);&$restoreSafeDirectory}
         Write-RealDispatcherPilotCheckpoint -State (Get-DispatcherState)|Out-Null
         $result|ConvertTo-Json -Depth 12
