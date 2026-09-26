@@ -128,7 +128,7 @@
       "TIMEOUT",
       "UNKNOWN"
     ],
-    "maxCrossProviderFailoversPerLineage": 2
+    "maxCrossProviderFailoversPerLineage": 1
   },
   "budgets": {
     "runTimeoutSec": 900,
@@ -394,9 +394,9 @@
     }
   },
   "providerFailover": {
-    "$comment": "PARTE 13/14/15. Automatic provider switch ONLY for a class in classification.providerClasses coming from the control channel. TEST_FAILED / BUG / BUILD_FAILED / REVIEW_REQUEST_CHANGES / INVALID_IMPLEMENTATION never fail over. All enabled providers unavailable -> WAITING_PROVIDER; the supervisor keeps polling and auto-resumes with no human action.",
-    "order": ["claude", "codex", "glm"],
-    "maxCrossProviderFailoversPerLineage": 2,
+    "$comment": "PARTE 13/14/15. Automatic provider switch ONLY for a class in classification.providerClasses coming from the control channel. TEST_FAILED / BUG / BUILD_FAILED / REVIEW_REQUEST_CHANGES / INVALID_IMPLEMENTATION never fail over. Both providers unavailable -> WAITING_PROVIDER; the supervisor keeps polling and auto-resumes with no human action.",
+    "order": ["claude", "codex"],
+    "maxCrossProviderFailoversPerLineage": 1,
     "bothUnavailableState": "WAITING_PROVIDER",
     "pollBackoffSec": [30, 60, 120, 300, 600],
     "pollMaxIntervalSec": 900,

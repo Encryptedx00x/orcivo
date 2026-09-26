@@ -93,7 +93,7 @@ function Get-FailoverDecision {
     }
     $order = @(Get-OrcivoEnabledProviders)
     $others = @($order | Where-Object { $_ -ne $CurrentProvider -and @($UnavailableProviders) -notcontains $_ })
-    $max = [int]$cfg.providerFailover.maxCrossProviderFailoversPerLineage
+    $max = Get-OrcivoCrossProviderFailoverBudget
 
     if ($FailoversSoFar -ge $max) {
         # already used our switch budget for this lineage

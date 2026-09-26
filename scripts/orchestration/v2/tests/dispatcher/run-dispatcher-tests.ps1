@@ -1869,6 +1869,8 @@ try{
             Assert-True (($ids -join '|') -eq 'AC1|AC2|AC3') "semicolon-delimited acceptance criteria were not frozen exactly: $($ids -join '|')"
         }
         Check 'RD-223' {
+            $providerRuntimePath=Join-Path (Get-V2Dir) 'provider-runtime.v1.json'
+            Copy-Item (Join-Path $Repo '.orchestration\v2\provider-runtime.v1.json') $providerRuntimePath -Force
             $script:ProviderHealthFaults=@{codex='PROVIDER_UNAVAILABLE';claude='RATE_LIMIT';glm=$null;deepseek='PROVIDER_UNAVAILABLE'}
             try{$d=Get-FailoverDecision -CurrentProvider claude -Class RATE_LIMIT -FailoversSoFar 1 -UnavailableProviders @('codex','claude')}
             finally{$script:ProviderHealthFaults=$null}
