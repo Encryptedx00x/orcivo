@@ -705,7 +705,7 @@ switch ($Command) {
         $r = Invoke-DispatcherLoop -RunOnce:($Command -eq 'run-once') -TaskFile $TaskFile -ProviderOverride $ProviderOverride
         Write-RealDispatcherPilotCheckpoint -State $r | Out-Null
         $r | ConvertTo-Json -Depth 20
-        exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
+        exit $(if ("$($r.status)" -in @('FAILED','BLOCKED','BLOCK','RESUMABLE','TEST_FAILURE','AGENT_FAILURE')) { 1 } else { 0 })
     }
     'stop' {
         $f = Join-Path (Get-V2Dir) (Get-PilotConfig).stopFile

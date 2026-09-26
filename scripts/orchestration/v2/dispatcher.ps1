@@ -5088,7 +5088,7 @@ function Invoke-DispatcherLoop {
             if($cur -and $task -and (("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash -or $sourceSuccessionRequest)){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
             if($RunOnce -or "$($r.status)" -in @(
-                'WAITING_HUMAN','FAILED','BLOCKED','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED',
+                'WAITING_HUMAN','FAILED','BLOCKED','BLOCK','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED',
                 'INTEGRATION_FAILED','SECRET_LEAK_BLOCKED','PUSH_FAILED','REMOTE_DIVERGED',
                 'AMBIGUOUS_REMOTE','NOT_PUBLISHED_CONFIRMED','QUARANTINED'
             )){return $r}
