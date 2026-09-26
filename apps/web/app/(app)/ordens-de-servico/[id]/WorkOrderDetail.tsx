@@ -19,6 +19,7 @@ import {
 import type { WorkOrder, WorkOrderPhoto } from '../../../../lib/work-order.service';
 import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from '../actions';
+import { contactLinks } from '../../clientes/contact-links';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
@@ -106,6 +107,7 @@ interface Props {
 export function WorkOrderDetail({ initial }: Props): JSX.Element {
   const router = useRouter();
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
+  const contact = contactLinks(order.customer.phone);
   const [pendingAction, setPendingAction] = useState<WorkOrderAction | null>(null);
   const [reason, setReason] = useState('');
   const [correctTitle, setCorrectTitle] = useState(initial.title ?? '');
@@ -682,14 +684,29 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
               >
                 Ver perfil →
               </Link>
-              <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
-                <button style={{ ...btnContactSmall, flex: 1 }}>
-                  <Phone size={12} /> Ligar
-                </button>
-                <button style={{ ...btnContactSmall, flex: 1, color: '#16A34A' }}>
-                  <MessageCircle size={12} /> WhatsApp
-                </button>
-              </div>
+              {contact && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                  <a
+                    href={contact.tel}
+                    style={{ ...btnContactSmall, flex: 1, textDecoration: 'none' }}
+                  >
+                    <Phone size={12} /> Ligar
+                  </a>
+                  <a
+                    href={contact.whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      ...btnContactSmall,
+                      flex: 1,
+                      color: '#16A34A',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <MessageCircle size={12} /> WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
@@ -756,7 +773,16 @@ export function WorkOrderDetail({ initial }: Props): JSX.Element {
                 </span>
               </div>
               <button
-                style={{ ...btnPrimary, width: '100%', marginTop: 12, justifyContent: 'center' }}
+                disabled
+                title="Registro de recebimento indisponível nesta tela"
+                style={{
+                  ...btnPrimary,
+                  width: '100%',
+                  marginTop: 12,
+                  justifyContent: 'center',
+                  opacity: 0.5,
+                  cursor: 'not-allowed',
+                }}
               >
                 <Plus size={14} /> Registrar recebimento
               </button>
