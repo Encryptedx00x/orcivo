@@ -345,7 +345,7 @@
       "dependencies": ["PB1-P02-audit-service"],
       "scope": ["apps/backend/src/customer", "apps/web/app/(app)/clientes", "prisma/schema.prisma", "prisma/migrations"],
       "protectedPathGrants": ["prisma/schema.prisma"],
-      "risk": "B",
+      "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-persistent-migration",
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
