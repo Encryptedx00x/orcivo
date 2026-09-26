@@ -3073,7 +3073,19 @@ function Get-DispatcherDirtyWorkspaceProof {
         }
         $sourceScan=Test-ArtifactsClean -Root $sourceRoot -SourceTree
         $diffScan=Test-ArtifactsClean -Root $reviewRoot
-        if(-not $sourceScan.clean -or -not $diffScan.clean){return &$deny 'partial workspace secret scan is dirty'}
+        if(-not $sourceScan.clean -or -not $diffScan.clean){
+            # Diagnostic-only, same as every other scanner hit in this file:
+            # path + regex, never the matched line/value. This never weakens
+            # the unconditional pre-publish gate (Test-GitTreeSecretsClean /
+            # Set-DispatcherSecretBlock) - it only lets an interim, retryable
+            # mid-implementation observation route through the same bounded
+            # policy-correction cycle scope violations already use, instead of
+            # crashing the dispatcher outright.
+            $secretHits=@(@($sourceScan.hits)+@($diffScan.hits)|Where-Object{$_}|Sort-Object -Unique)
+            $violation="partial workspace secret scan is dirty: $($secretHits -join '; ')"
+            if(-not $ObservePolicyViolations){return &$deny $violation}
+            $policyViolations+=$violation
+        }
         $fileBindings=@($paths|Sort-Object -Unique|ForEach-Object{$p=$_;$full=Resolve-SafePath $Workspace $p;"$p=$(if(Test-Path -LiteralPath $full -PathType Leaf){New-FileHash $full}else{'deleted'})"})
         return [ordered]@{clean=$true;reason=$(if($policyViolations.Count){'partial workspace observed with policy violations'}else{'authorized partial workspace verified'});policyCompliant=($policyViolations.Count -eq 0);policyViolations=@($policyViolations|Sort-Object -Unique);paths=@($paths|Sort-Object -Unique);fileBindings=@($fileBindings);diffHash=(New-StringHash ([string]$diff.stdout));filesHash=(New-StringHash ($fileBindings -join "`n"))}
     }finally{
