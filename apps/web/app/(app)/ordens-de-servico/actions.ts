@@ -25,6 +25,7 @@ const ACTION_ROUTES: Record<WorkOrderAction, string> = {
 export type WorkOrderAction = 'iniciar' | 'concluir' | 'cancelar' | 'reabrir' | 'corrigir';
 
 export type WorkOrderWithActions = WorkOrder & {
+  customer: WorkOrder['customer'] & { phone?: string | null };
   allowed_actions?: WorkOrderAction[];
   /** Presente na resposta do backend, ausente do tipo legado da lib. */
   notes?: string | null;
