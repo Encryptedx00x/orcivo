@@ -2413,7 +2413,7 @@ function Resume-DispatcherProviderWait {
         # Opposite-provider review (owner decision 2026-09-14): deepseek <-> glm,
         # codex -> deepseek, claude -> codex.  For the current PB1-P02 candidate
         # (DeepSeek implementer, Codex quota-blocked reviewer) this selects GLM.
-        $requiredReviewer = Get-OrcivoOppositeProvider -Provider ([string]$State.provider)
+        $requiredReviewer = Get-OrcivoOppositeProvider -Provider ([string]$State.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($State.unavailableProviders) -notcontains $_ })
         if (@($ready.healthy) -notcontains $requiredReviewer) {
             Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId
             return $false
@@ -4975,7 +4975,7 @@ if($needsFreshDispatch){
                 $state.Remove('authorizedReviewRoute')|Out-Null
                 Write-DispatcherState $state|Out-Null
             }
-            $reviewer=$(if($state.authorizedReviewRoute){[string]$state.authorizedReviewRoute.provider}else{Get-OrcivoOppositeProvider -Provider ([string]$state.provider)});$state.reviewerProvider=$reviewer
+            $reviewer=$(if($state.authorizedReviewRoute){[string]$state.authorizedReviewRoute.provider}else{Get-OrcivoOppositeProvider -Provider ([string]$state.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($state.unavailableProviders) -notcontains $_ })});$state.reviewerProvider=$reviewer
             # Closed pin for the authorized review succession: the review must
             # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other
             # reviewer, profile, or model fails closed here.
@@ -4991,7 +4991,10 @@ if($needsFreshDispatch){
             if($reviewDataAfter -ne $reviewDataBefore){$rr.structuredResult=$null;$rr.resultClass='AGENT_FAILURE';$state.findings+=,'reviewer mutated its review-data workspace'}
             $state.providerHistory+=,@{invocationId=$rr.invocationId;role='REVIEWER';provider=$rr.provider;model=$rr.model;reasoningEffort=$rr.reasoningIntent;attempt=$rr.attempt;providerClass=$rr.providerClass;resultClass=$rr.resultClass;failureDiagnostic=$rr.failureDiagnostic;exitCode=$rr.exitCode;stdoutArtifact=$rr.stdoutArtifact;stdoutHash=$rr.stdoutHash;stderrArtifact=$rr.stderrArtifact;stderrHash=$rr.stderrHash;controlRecordHash=$rr.controlRecordHash;usage=$rr.usage;cachedTokens=$rr.cachedTokens;costUsd=$rr.costUsd;telemetryConsistent=$rr.telemetryConsistent;resultReceiptHash=$rr.resultReceiptHash}
             Write-DispatcherState $state|Out-Null
-            if(Test-IsCanonicalProviderClass $rr.providerClass){return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)}
+            if(Test-IsCanonicalProviderClass $rr.providerClass){
+                $state.unavailableProviders=@(@($state.unavailableProviders)+$reviewer|Select-Object -Unique)
+                return (Enter-DispatcherProviderWait $state $rr.providerClass $reviewer)
+            }
             if($rr.structuredResult){$rr.structuredResult=ConvertTo-DispatcherNormalizedReviewResult $rr.structuredResult}
             $wrapped=$(if($rr.structuredResult){"$($cfg.review.beginMarker)`n$(ConvertTo-CanonicalJson $rr.structuredResult)`n$($cfg.review.endMarker)"}else{''})
             $parsed=Parse-ReviewEnvelope -Stdout $wrapped -Expected @{taskVersion=$state.taskVersionId;head=$state.candidateHead;treeHash=$state.candidateTree;diffHash=$state.diffHash;specHash=$contract.specHash;changedFiles=$changed;criteriaIds=@($contract.acceptanceCriteriaIds);reviewArtifacts=@($state.reviewArtifactRecord.artifacts);processOk=(($rr.exitCode -eq 0)-and [bool]$rr.structuredResult)}
