@@ -3363,7 +3363,7 @@ function Get-DispatcherReviewCorrectionBaseline {
     foreach($sha in @([string]$State.implementationCommit,[string]$State.candidateBase,[string]$State.candidateHead)){
         if($sha -notmatch '^[0-9a-f]{40}$'){return &$deny 'review correction requires a full candidate lineage'}
     }
-    if([string]$State.candidateTree -notmatch '^sha256:[0-9a-f]{64}$' -or [string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'review correction requires bound candidate hashes'}
+    if([string]$State.candidateTree -notmatch '^[0-9a-f]{40}$' -or [string]$State.diffHash -notmatch '^sha256:[0-9a-f]{64}$'){return &$deny 'review correction requires bound candidate hashes'}
     if([string]$State.reviewAttestationId -notmatch '^atn-[0-9a-f]{32}$'){return &$deny 'review correction requires a bound review attestation id'}
     $review=Get-LatestAuthoritative -TaskVersionId ([string]$State.taskVersionId) -Kind 'review' -RunId ([string]$State.runId) -HeadSha ([string]$State.candidateHead)
     if(-not $review -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.result -ne 'REQUEST_CHANGES'){return &$deny 'review correction attestation is not the latest authoritative REQUEST_CHANGES for this candidate'}
