@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-09-01T23:59:29.401Z"
+status: `in_progress` — P00 PASS; P01 auto PASS; **P02 = PASS**; **P03 (storage
+last_updated: "2026-09-27T03:49:20.984Z"
 progress:
   total_phases: 5
   completed_phases: 3
@@ -41,7 +41,9 @@ A/B permanece no bloco UAT de P10. `REAL_EXECUTION_AUTHORIZED` token criado em
 **Ferramenta de orquestração (2026-09-03):** `THREAT_MODEL = LOCAL_TRUSTED_HOST`
 fixado pelo owner; camada de autonomia pragmática V2.1 construída sobre a spine V2
 (classifier semântico, router adaptativo, failover Claude↔Codex, WAITING_PROVIDER
+
 + auto-resume, context rollover, correction loop, generation fencing,
+
 INTEGRATION_INTENT). Deterministic Wave 0 30/30; spine 108/108; smoke real
 Claude/Codex PASS. **Não ligado a task real (NC-01).** Ver
 `.planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md` e `AGENT-HANDOFF.md`.
@@ -194,6 +196,7 @@ Waves 1-3 concluídas. Pendentes:
 
 - Waves P00–P03 verificadas (P02 = PASS 2026-09-03; P03 = PASS 2026-09-04).
   Waves P04–P11 não verificadas.
+
 - Gate R e todos os 75 casos UAT permanecem pendentes (execução pós-P10).
 - Fase 4 não pode começar antes do encerramento da fase 03.1 (P04+ dos
   `PB1-*` já pode começar — não é a Fase 4 do roadmap histórico).
