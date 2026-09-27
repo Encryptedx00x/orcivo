@@ -3126,6 +3126,20 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         $signedRetryWorkspaceHead=[string]$signedRetry.workspaceHead
         $partial=$signedRetry.observation
     }
+    # Get-DispatcherDirtyWorkspaceProof only ever returns clean=true when real
+    # uncommitted content exists and already passed scope/protected-path/secret
+    # validation (a truly empty diff is itself denied as "no preserved partial
+    # changes"). When that holds and no candidate has ever been committed for
+    # this lineage, the provider is - by definition - still building on top of
+    # baseSha; that is the only sha the workspace can legitimately stand on.
+    $isCleanPolicyCompliantBaseline=[bool](
+        $partial.clean -and
+        -not $isSignedRetryBaseline -and
+        -not [string]$State.recoveredCandidateCommit -and
+        -not [string]$State.implementationCommit -and
+        -not [string]$State.candidateHead -and
+        [string]$State.baseSha -match '^[0-9a-f]{40}$'
+    )
     if(-not $partial.clean){
         # A brand-new implementation legitimately starts from an unchanged
         # clone at baseSha. Accept it only when there is no prior provider
@@ -3243,7 +3257,7 @@ function New-DispatcherWorkspaceInvocationSnapshot {
         }
     }
 
-    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]$isFreshCleanBaseline) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead -IsReviewCorrectionBaseline ([bool]$isReviewCorrectionBaseline) -ReviewCorrectionWorkspaceHead $reviewCorrectionWorkspaceHead
+    $expectedHead=Get-DispatcherPreLaunchExpectedHead -State $State -IsFreshCleanBaseline ([bool]($isFreshCleanBaseline -or $isCleanPolicyCompliantBaseline)) -IsCleanInertRetry ([bool]$isCleanInertRetry) -IsPolicyCorrectionBaseline ([bool]$isPolicyCorrectionBaseline) -IsPolicyHoldRetryBaseline ([bool]$isPolicyHoldRetryBaseline) -PolicyHoldWorkspaceHead $policyHoldWorkspaceHead -IsSignedRetryBaseline ([bool]$isSignedRetryBaseline) -SignedRetryWorkspaceHead $signedRetryWorkspaceHead -IsReviewCorrectionBaseline ([bool]$isReviewCorrectionBaseline) -ReviewCorrectionWorkspaceHead $reviewCorrectionWorkspaceHead
 
     if(
         $expectedHead -notmatch '^[0-9a-f]{40}$' -or
