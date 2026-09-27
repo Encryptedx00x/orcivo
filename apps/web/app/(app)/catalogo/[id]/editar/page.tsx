@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { catalogService } from '../../../../../lib/catalog.service';
 import { updateCatalogItemAction } from '../../actions';
+import { InventoryFields } from '../../InventoryFields';
+import { CatalogForm } from '../../CatalogForm';
 
 interface Props {
   params: { id: string };
@@ -44,11 +46,11 @@ export default async function EditarCatalogoPage({ params }: Props): Promise<JSX
       </div>
 
       <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 28, maxWidth: 580 }}>
-        <form action={updateAction} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <CatalogForm action={updateAction}>
           {/* Nome */}
           <div>
             <label htmlFor="name" style={labelStyle}>Nome *</label>
-            <input id="name" name="name" type="text" required defaultValue={item.name} style={inputStyle} />
+            <input id="name" name="name" type="text" required maxLength={200} defaultValue={item.name} style={inputStyle} />
           </div>
 
           {/* Tipo */}
@@ -60,23 +62,18 @@ export default async function EditarCatalogoPage({ params }: Props): Promise<JSX
             </select>
           </div>
 
-          {/* Preço */}
-          <div>
-            <label htmlFor="unit_price" style={labelStyle}>Preço unitário *</label>
-            <input id="unit_price" name="unit_price" type="text" required defaultValue={item.unit_price} pattern="^\d+([.,]\d{1,2})?$" style={inputStyle} />
-            <p style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Use vírgula ou ponto como separador decimal.</p>
-          </div>
+          <InventoryFields item={item} />
 
           {/* Unidade */}
           <div>
             <label htmlFor="unit" style={labelStyle}>Unidade (opcional)</label>
-            <input id="unit" name="unit" type="text" defaultValue={item.unit ?? ''} placeholder="hr, un, m²" style={inputStyle} />
+            <input id="unit" name="unit" type="text" maxLength={20} defaultValue={item.unit ?? ''} placeholder="hr, un, m²" style={inputStyle} />
           </div>
 
           {/* Descrição */}
           <div>
             <label htmlFor="description" style={labelStyle}>Descrição (opcional)</label>
-            <textarea id="description" name="description" defaultValue={item.description ?? ''} placeholder="Detalhe o serviço ou produto..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            <textarea id="description" name="description" maxLength={1000} defaultValue={item.description ?? ''} placeholder="Detalhe o serviço ou produto..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
           </div>
 
           {/* Ativo */}
@@ -97,7 +94,7 @@ export default async function EditarCatalogoPage({ params }: Props): Promise<JSX
             <button type="submit" style={btnPrimary}>Salvar alterações</button>
             <Link href="/catalogo" style={btnSecondary}>Cancelar</Link>
           </div>
-        </form>
+        </CatalogForm>
       </div>
     </div>
   );

@@ -1,15 +1,16 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Plus, Package, Search, ChevronRight } from 'lucide-react';
+import { Plus, Package, Search, ChevronRight, Upload } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
-import type { CatalogItem } from '../../../lib/catalog.service';
+import { isLowStock, type InventoryItem } from './inventory';
 
 function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {
   const COLORS: Record<string, { background: string; color: string }> = {
     slate:   { background: '#F1F5F9', color: '#334155' },
     success: { background: '#DCFCE7', color: '#166534' },
     brand:   { background: '#F5F3FF', color: '#4C1D95' },
+    warning: { background: '#FEF3C7', color: '#92400E' },
   };
   const c = COLORS[k] ?? COLORS.slate;
   return (
@@ -22,7 +23,7 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
 
 const TYPE_LABEL: Record<string, string> = { SERVICE: 'Serviço', PRODUCT: 'Produto', LABOR: 'Mão de obra' };
 
-export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Element {
+export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Element {
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('todos');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -44,19 +45,23 @@ export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Elemen
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.015em', color: '#0A0A0F', margin: 0 }}>Catálogo</h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{activeCount} itens ativos · {inactiveCount} inativos</div>
         </div>
-        <Link href="/catalogo/novo" className="ov-btn ov-btn-primary"><Plus size={16} />Novo item</Link>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <Link href="/catalogo/importar" className="ov-btn ov-btn-secondary"><Upload size={16} />Importar CSV/JSON</Link>
+          <Link href="/catalogo/novo" className="ov-btn ov-btn-primary"><Plus size={16} />Novo item</Link>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="ov-card" style={{ padding: 14, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div className="ov-card" style={{ padding: 14, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <div className="ov-search" style={{ flex: 1 }}>
           <Search size={16} color="#64748B" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar no catálogo…" />
+          <input aria-label="Buscar no catálogo" value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar no catálogo…" />
         </div>
         <select
           className="ov-input"
           style={{ width: 160, height: 36 }}
           value={typeFilter}
+          aria-label="Filtrar por tipo"
           onChange={e => setTypeFilter(e.target.value)}
         >
           <option value="todos">Todos os tipos</option>
@@ -67,6 +72,7 @@ export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Elemen
           className="ov-input"
           style={{ width: 160, height: 36 }}
           value={statusFilter}
+          aria-label="Filtrar por status"
           onChange={e => setStatusFilter(e.target.value)}
         >
           <option value="todos">Ativos e inativos</option>
@@ -89,14 +95,16 @@ export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Elemen
 
       {/* Table */}
       {filtered.length > 0 && (
-        <div className="ov-card" style={{ overflow: 'hidden' }}>
+        <div className="ov-card" style={{ overflowX: 'auto' }}>
           <table className="ov-table">
             <thead>
               <tr>
                 <th>Tipo</th>
                 <th>Nome</th>
                 <th>Unidade</th>
-                <th style={{ textAlign: 'right' }}>Preço</th>
+                <th>Estoque</th>
+                <th style={{ textAlign: 'right' }}>Preço de custo</th>
+                <th style={{ textAlign: 'right' }}>Preço de venda</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -107,14 +115,21 @@ export function CatalogoContent({ items }: { items: CatalogItem[] }): JSX.Elemen
                   <td><Pill k="brand">{TYPE_LABEL[item.type] ?? item.type}</Pill></td>
                   <td style={{ fontWeight: 500, color: item.is_active ? '#0A0A0F' : '#64748B' }}>{item.name}</td>
                   <td className="muted">{item.unit ?? '—'}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>{formatMoney(item.unit_price)}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                      <span>{item.quantity ?? '—'}</span>
+                      {isLowStock(item) && <Pill k="warning">Estoque baixo</Pill>}
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.cost_price !== undefined ? formatMoney(item.cost_price) : '—'}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{formatMoney(item.sale_price ?? item.unit_price)}</td>
                   <td>
                     {item.is_active
                       ? <Pill k="success">Ativo</Pill>
                       : <Pill k="slate">Inativo</Pill>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <Link href={`/catalogo/${item.id}/editar`} style={{ color: '#94A3B8', display: 'inline-flex' }}>
+                    <Link href={`/catalogo/${item.id}/editar`} aria-label={`Editar ${item.name}`} style={{ color: '#94A3B8', display: 'inline-flex' }}>
                       <ChevronRight size={16} />
                     </Link>
                   </td>

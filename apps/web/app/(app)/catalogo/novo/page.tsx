@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createCatalogItemAction } from '../actions';
+import { InventoryFields } from '../InventoryFields';
+import { CatalogForm } from '../CatalogForm';
 
 export default function NovoCatalogoPage(): JSX.Element {
   return (
@@ -14,11 +16,11 @@ export default function NovoCatalogoPage(): JSX.Element {
       </div>
 
       <div style={{ backgroundColor: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 28, maxWidth: 580 }}>
-        <form action={createCatalogItemAction} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <CatalogForm action={createCatalogItemAction}>
           {/* Nome */}
           <div>
             <label htmlFor="name" style={labelStyle}>Nome *</label>
-            <input id="name" name="name" type="text" required placeholder="Ex: Instalação de câmera" style={inputStyle} />
+            <input id="name" name="name" type="text" required maxLength={200} placeholder="Ex: Instalação de câmera" style={inputStyle} />
           </div>
 
           {/* Tipo */}
@@ -30,23 +32,18 @@ export default function NovoCatalogoPage(): JSX.Element {
             </select>
           </div>
 
-          {/* Preço */}
-          <div>
-            <label htmlFor="unit_price" style={labelStyle}>Preço unitário *</label>
-            <input id="unit_price" name="unit_price" type="text" required placeholder="0,00" pattern="^\d+([.,]\d{1,2})?$" style={inputStyle} />
-            <p style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Use vírgula ou ponto como separador decimal.</p>
-          </div>
+          <InventoryFields />
 
           {/* Unidade */}
           <div>
             <label htmlFor="unit" style={labelStyle}>Unidade (opcional)</label>
-            <input id="unit" name="unit" type="text" placeholder="hr, un, m²" style={inputStyle} />
+            <input id="unit" name="unit" type="text" maxLength={20} placeholder="hr, un, m²" style={inputStyle} />
           </div>
 
           {/* Descrição */}
           <div>
             <label htmlFor="description" style={labelStyle}>Descrição (opcional)</label>
-            <textarea id="description" name="description" placeholder="Detalhe o serviço ou produto..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            <textarea id="description" name="description" maxLength={1000} placeholder="Detalhe o serviço ou produto..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
           </div>
 
           {/* Ativo */}
@@ -60,7 +57,7 @@ export default function NovoCatalogoPage(): JSX.Element {
             <button type="submit" style={btnPrimary}>Salvar</button>
             <Link href="/catalogo" style={btnSecondary}>Cancelar</Link>
           </div>
-        </form>
+        </CatalogForm>
       </div>
     </div>
   );
