@@ -58,6 +58,37 @@ const PIX_KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: 'PHONE', label: 'Telefone' },
   { value: 'RANDOM', label: 'Aleatória' },
 ];
+const PIX_KEY_PLACEHOLDERS: Record<PixKeyType, string> = {
+  CNPJ: 'Ex.: 12.345.678/0001-90',
+  CPF: 'Ex.: 123.456.789-00',
+  EMAIL: 'Ex.: financeiro@empresa.com',
+  PHONE: 'Ex.: (11) 91234-5678',
+  RANDOM: 'Ex.: 123e4567-e89b-12d3-a456-426614174000',
+};
+function maskPixKey(type: PixKeyType, raw: string): string {
+  if (type === 'CNPJ') {
+    const digits = raw.replace(/\D/g, '').slice(0, 14);
+    return digits
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2');
+  }
+  if (type === 'CPF') {
+    const digits = raw.replace(/\D/g, '').slice(0, 11);
+    return digits
+      .replace(/^(\d{3})(\d)/, '$1.$2')
+      .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1-$2');
+  }
+  if (type === 'PHONE') {
+    const digits = raw.replace(/\D/g, '').slice(0, 11);
+    return digits
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{5})(\d)/, '$1-$2');
+  }
+  return raw;
+}
 
 const METHOD_LABELS: Record<Method, { label: string; desc: string }> = {
   APPROVE_BUTTON: {
@@ -360,8 +391,9 @@ export default function ConfiguracoesPage(): JSX.Element {
                       className="ov-input"
                       value={pix.pix_key_type}
                       onChange={(e) => {
+                        const nextType = e.target.value as PixKeyType;
                         setPixSaved(false);
-                        setPix({ ...pix, pix_key_type: e.target.value as PixKeyType });
+                        setPix({ ...pix, pix_key_type: nextType, pix_key: maskPixKey(nextType, pix.pix_key) });
                       }}
                     >
                       {PIX_KEY_TYPES.map(({ value, label }) => (
@@ -375,11 +407,11 @@ export default function ConfiguracoesPage(): JSX.Element {
                     <label className="ov-label">Chave</label>
                     <input
                       className="ov-input"
-                      placeholder="Ex.: 12.345.678/0001-90"
+                      placeholder={PIX_KEY_PLACEHOLDERS[pix.pix_key_type]}
                       value={pix.pix_key}
                       onChange={(e) => {
                         setPixSaved(false);
-                        setPix({ ...pix, pix_key: e.target.value });
+                        setPix({ ...pix, pix_key: maskPixKey(pix.pix_key_type, e.target.value) });
                       }}
                     />
                   </div>
