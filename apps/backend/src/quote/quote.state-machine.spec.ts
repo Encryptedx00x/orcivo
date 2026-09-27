@@ -21,6 +21,7 @@ import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 
 // PB1-P01 — Quote domain-action state machine (unit, mocked Prisma/Audit).
@@ -158,6 +159,10 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
           },
         },
         { provide: AuditService, useValue: mockAudit },
+        {
+          provide: UsersService,
+          useValue: { resolveSignatureUrl: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);

@@ -25,6 +25,7 @@ import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
 
 const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
@@ -42,6 +43,7 @@ export class QuoteService {
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
     private readonly auditService: AuditService,
+    private readonly usersService: UsersService,
   ) {}
 
   private computeTotals(
@@ -228,12 +230,33 @@ export class QuoteService {
     return trimmed;
   }
 
-  async send(id: string, companyId: string, userId: string) {
+  /**
+   * PB1-P10/AC2: quando o técnico opta por aplicar a assinatura reutilizável
+   * no envio, resolve a assinatura privada (P03 storage, tenant-scoped por
+   * company_id+user_id) para uma signed URL de uso único pelo renderer do
+   * PDF. Sem assinatura salva ou sem opt-in, retorna null.
+   */
+  private async resolveTechnicianSignatureUrl(
+    companyId: string,
+    userId: string,
+    applySignature: boolean,
+  ): Promise<string | null> {
+    if (!applySignature) return null;
+    return this.usersService.resolveSignatureUrl(companyId, userId);
+  }
+
+  async send(id: string, companyId: string, userId: string, applySignature = false) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
     const spec = this.assertAction('enviar', fromStatus);
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
+
+    const technicianSignatureUrl = await this.resolveTechnicianSignatureUrl(
+      companyId,
+      userId,
+      applySignature,
+    );
 
     // Gerar PDF e salvar no MinIO. PB1-P12/AC2: o PDF anexado ao envio carimba
     // o destino da ação (`enviar` → SENT) — o estado que se torna verdadeiro
@@ -244,6 +267,7 @@ export class QuoteService {
         ...quote,
         status: spec.to,
         customer_name: quote.customer?.name ?? null,
+        technician_signature_url: technicianSignatureUrl,
       },
       company,
     );
@@ -273,7 +297,9 @@ export class QuoteService {
         entityId: id,
         from: fromStatus,
         to: 'SENT',
-        humanText: `Orçamento #${q.number} (${customerName}) enviado para aprovação`,
+        humanText:
+          `Orçamento #${q.number} (${customerName}) enviado para aprovação` +
+          (technicianSignatureUrl ? ' com assinatura do técnico aplicada' : ''),
       });
       return q;
     });

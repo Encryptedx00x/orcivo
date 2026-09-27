@@ -18,6 +18,7 @@ import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
 
 const mockTx = {
   quote: { updateMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
@@ -91,6 +92,10 @@ const mockPdfService = {
   generate: jest.fn().mockResolvedValue(Buffer.from('PDF')),
 };
 
+const mockUsersService = {
+  resolveSignatureUrl: jest.fn().mockResolvedValue(null),
+};
+
 describe('QuoteService', () => {
   let service: QuoteService;
 
@@ -118,6 +123,7 @@ describe('QuoteService', () => {
           },
         },
         { provide: AuditService, useValue: mockAudit },
+        { provide: UsersService, useValue: mockUsersService },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);
@@ -231,6 +237,68 @@ describe('QuoteService', () => {
       expect(mockPdfService.generate).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'SENT' }),
         expect.objectContaining({ trade_name: 'Empresa' }),
+      );
+    });
+
+    it('Test PB1-P10/AC2: send() com apply_signature=true resolve a signature key do técnico (tenant-scoped) e a injeta no PDF', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'DRAFT',
+        number: 7,
+        valid_until: null,
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockRedis.set.mockResolvedValue(undefined);
+      mockTx.quote.update.mockResolvedValue({
+        id: 'q1',
+        number: 7,
+        status: 'SENT',
+        approval_token: 'tok',
+        valid_until: null,
+      });
+      mockUsersService.resolveSignatureUrl.mockResolvedValue(
+        'https://minio.example.com/signed/comp-1/signatures/technicians/user-1?X-Amz-Signature=x',
+      );
+
+      await service.send('q1', 'comp-1', 'user-1', true);
+
+      expect(mockUsersService.resolveSignatureUrl).toHaveBeenCalledWith('comp-1', 'user-1');
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          technician_signature_url: expect.stringContaining('comp-1/signatures/technicians/user-1'),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('Test PB1-P10/AC2: send() sem apply_signature não consulta a assinatura do técnico', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'DRAFT',
+        number: 7,
+        valid_until: null,
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+      });
+      mockRedis.set.mockResolvedValue(undefined);
+      mockTx.quote.update.mockResolvedValue({
+        id: 'q1',
+        number: 7,
+        status: 'SENT',
+        approval_token: 'tok',
+        valid_until: null,
+      });
+      await service.send('q1', 'comp-1', 'user-1');
+
+      expect(mockUsersService.resolveSignatureUrl).not.toHaveBeenCalled();
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ technician_signature_url: null }),
+        expect.anything(),
       );
     });
   });
