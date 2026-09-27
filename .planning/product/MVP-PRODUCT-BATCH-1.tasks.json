@@ -395,7 +395,7 @@
       "title": "Product Completeness Audit pass (web) — objective functional findings",
       "type": "TECH_DEBT",
       "source": "P-13 / D-1b / D-3b / P-23",
-      "description": "Run the Product Completeness Audit over the web surface (SCREEN -> CTA -> handler -> API -> persistence -> tenant/RBAC -> audit -> loading/error/empty -> domain-state -> responsiveness -> mock/dead element). The audit DISCOVERs/TRIAGEs/PROPOSEs; objective functional findings auto-generate candidate tasks; business/commercial/product decisions require a future owner batch.",
+      "description": "Run the Product Completeness Audit over the web surface (SCREEN -> CTA -> handler -> API -> persistence -> tenant/RBAC -> audit -> loading/error/empty -> domain-state -> responsiveness -> mock/dead element). The audit DISCOVERs/TRIAGEs/PROPOSEs; objective functional findings auto-generate candidate tasks; business/commercial/product decisions require a future owner batch. (Retry: prior attempt hit AGENT_FAILURE with a stale retry-baseline mismatch.)",
       "acceptance": "AC1: an audit report lists every dead CTA / missing endpoint / mock / form-without-persistence with evidence; AC2: candidate tasks are generated only for OBJECTIVE functional findings; AC3: no business/commercial change is auto-scheduled.",
       "dependencies": ["PB1-P03-sidebar-real-identity", "PB1-P05-payment-registration", "PB1-P14-customer-edit-delete"],
       "scope": [".planning/product", "apps/web"],
