@@ -336,6 +336,8 @@ interface QuoteData {
     total: DecimalLike;
   }>;
   customer_name?: string | null;
+  /** PB1-P10/AC2: signed URL of the technician's reusable signature, resolved by the caller for this render only. */
+  technician_signature_url?: string | null;
   approval?: {
     approval_method: string;
     typed_name?: string | null;
@@ -538,7 +540,11 @@ export class QuotePdfService {
           {/* ── Assinaturas ── */}
           <View style={styles.signSection} wrap={false}>
             <View style={styles.signBox}>
-              <View style={styles.signLine} />
+              {q.technician_signature_url ? (
+                <Image style={styles.signImage} src={q.technician_signature_url} />
+              ) : (
+                <View style={styles.signLine} />
+              )}
               <Text style={styles.signLabel}>{company.trade_name}</Text>
               <Text style={styles.signSub}>Responsável</Text>
             </View>

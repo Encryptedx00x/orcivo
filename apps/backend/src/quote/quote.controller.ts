@@ -52,8 +52,12 @@ export class QuoteController {
 
   @Post(':id/send')
   @HttpCode(200)
-  send(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.quoteService.send(id, req.companyId, req.user.userId);
+  send(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Body('apply_signature') applySignature?: boolean,
+  ) {
+    return this.quoteService.send(id, req.companyId, req.user.userId, applySignature === true);
   }
 
   @Patch(':id/cancel')
