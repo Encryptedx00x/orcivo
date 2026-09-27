@@ -7,12 +7,54 @@
   "source": ".planning/product/MVP-PRODUCT-BATCH-1.md",
   "notes": "Machine-readable form for the supervisor. GENERATING/APPROVING THIS IS NOT EXECUTING IT. Every task is blockedByGates until the P02 human gates + P03 are satisfied. Level C items still stop for the owner. No task runs in this session.",
   "gates": {
-    "P02-T12": { "kind": "HUMAN_APPROVAL", "state": "PASS", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md", "desc": "apply pending tenant migrations to the persistent DB with backup + pre-checks", "resolvedAt": "2026-09-03" },
-    "P02-T13": { "kind": "MANUAL_UAT", "state": "PASS", "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md", "desc": "manual A/B two-tenant UAT (API / web / mobile)", "resolvedAt": "2026-09-03" },
-    "P02-PASS": { "kind": "DERIVED", "state": "PASS", "requires": ["P02-T12", "P02-T13"], "desc": "P02 = PASS once both human gates clear" },
-    "P03": { "kind": "GSD_PHASE", "state": "PASS", "requires": ["P02-PASS"], "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md", "desc": "storage privado — T10 (private policy applied+verified) + T13 (automated UAT) PASS", "resolvedAt": "2026-09-04" }
+    "P02-T12": {
+      "kind": "HUMAN_APPROVAL",
+      "state": "PASS",
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md",
+      "desc": "apply pending tenant migrations to the persistent DB with backup + pre-checks",
+      "resolvedAt": "2026-09-03"
+    },
+    "P02-T13": {
+      "kind": "MANUAL_UAT",
+      "state": "PASS",
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md",
+      "desc": "manual A/B two-tenant UAT (API / web / mobile)",
+      "resolvedAt": "2026-09-03"
+    },
+    "P02-PASS": {
+      "kind": "DERIVED",
+      "state": "PASS",
+      "requires": [
+        "P02-T12",
+        "P02-T13"
+      ],
+      "desc": "P02 = PASS once both human gates clear"
+    },
+    "P03": {
+      "kind": "GSD_PHASE",
+      "state": "PASS",
+      "requires": [
+        "P02-PASS"
+      ],
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md",
+      "desc": "storage privado — T10 (private policy applied+verified) + T13 (automated UAT) PASS",
+      "resolvedAt": "2026-09-04"
+    }
   },
-  "phaseOrder": ["P03", "P04", "P05", "P06", "P07", "P07.5", "P17-wave", "P08", "P09", "P10", "F3.2", "F4"],
+  "phaseOrder": [
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P07.5",
+    "P17-wave",
+    "P08",
+    "P09",
+    "P10",
+    "F3.2",
+    "F4"
+  ],
   "ownerDecisions": {
     "P-01": "APPROVED. reopen/correct = @AdminOnly. cancel/reject preserve reason+history. never overwrite notes as audit.",
     "P-02": "APPROVED — MVP core audit coverage. quote send/approve/reject/cancel/correct/reopen; OS important status; payment create/settle/change; customer important; company/profile important; appointment create/edit/delete where relevant. Human-readable contextual activity. NOT exhaustive enterprise field-level audit yet.",
@@ -77,11 +119,17 @@
         "prisma/migrations",
         "packages/shared-types/src/audit"
       ],
-      "protectedPathGrants": ["prisma/schema.prisma"],
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-persistent-migration",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {
         "additiveMigrationOnly": true,
         "noProductionDbTouch": true,
@@ -96,7 +144,9 @@
           "atomic quote reject and reopenOrCorrect transitions with audit only for the winning conditional update",
           "expired quote reopening renews valid_until and approval token/link transactionally"
         ],
-        "excludedReviewSeverity": ["info"],
+        "excludedReviewSeverity": [
+          "info"
+        ],
         "recoveryInstruction": "Reuse only exact candidate fb2093860d30fc24836ae20c136ef0d38da830c6 from exact predecessor 9072101439aa09bbb494e28b3e2c8e985dcb91d0235d68ff7f7164b2ada65798 without any new implementation. The successor review must run on GLM zai-coding-plan/glm-5.3 at profile REASONING (pinned route); DeepSeek V4 Pro remains the reviewer for future GLM implementations. Re-run deterministic verification and secret scans, then obtain the fresh opposite-provider review before integration. Do not reuse the prior version approval."
       },
       "verificationProfile": "C",
@@ -111,12 +161,23 @@
       "source": "P-02 / D-5",
       "description": "GET /audit-logs?entity_type=&entity_id= (@AdminOnly, tenant-scoped) + replace the static 'Historico' placeholders in customer / quote / OS detail with the real feed.",
       "acceptance": "AC1: endpoint returns tenant-scoped audit rows for an entity, @AdminOnly enforced; AC2: web Historico tab renders the human-readable feed for customer, quote and OS; AC3: empty/loading/error states present.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/audit", "apps/web/app/(app)/clientes", "apps/web/app/(app)/orcamentos", "apps/web/app/(app)/ordens-de-servico"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/audit",
+        "apps/web/app/(app)/clientes",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/(app)/ordens-de-servico"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P07.5",
@@ -129,12 +190,21 @@
       "source": "P-01 / D-4 / ADR-016",
       "description": "Replace forward-only quote transitions with domain actions (enviar, aprovar, recusar, cancelar, reabrir, corrigir, expirar). Mandatory reason on recusar/cancelar/reabrir/corrigir. reabrir/corrigir are @AdminOnly. Terminal states get controlled reopen/correct. quote.service.cancel stops overwriting notes; the reason goes to the audit trail. Every transition calls AuditService.record.",
       "acceptance": "AC1: each domain action validates the source state and writes an audit row with from/to/reason; AC2: reabrir and corrigir require @AdminOnly; AC3: notes is never overwritten by a cancel/reject reason; AC4: history is never deleted; AC5: invalid transitions are rejected with a clear error.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/quote", "packages/shared-types/src/quote"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "packages/shared-types/src/quote"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-business-rule",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "C",
       "phaseGate": "P04",
@@ -147,12 +217,21 @@
       "source": "P-01 / D-4 / ADR-016",
       "description": "WorkOrder domain actions (iniciar, concluir, cancelar, reabrir, corrigir). Mandatory reason on cancelar/reabrir/corrigir. reabrir/corrigir @AdminOnly. Terminal states (DONE/CANCELLED) get controlled reopen/correct. Every transition calls AuditService.record.",
       "acceptance": "AC1: each domain action validates state + writes audit with from/to/reason; AC2: reabrir/corrigir @AdminOnly; AC3: history preserved; AC4: web action buttons match the allowed actions per state.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/work-order", "apps/web/app/(app)/ordens-de-servico"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-business-rule",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "C",
       "phaseGate": "P04",
@@ -165,12 +244,21 @@
       "source": "P-12",
       "description": "Define and fix the state semantics so a generated/sent PDF stamps the state that was true at the moment it was generated/sent, and the label matches. Ties into the quote state machine.",
       "acceptance": "AC1: state semantics documented (draft/sent/approved/rejected/expired); AC2: a sent PDF never shows 'Rascunho'; AC3: the PDF label reflects the state at generation time.",
-      "dependencies": ["PB1-P01-quote-state-machine"],
-      "scope": ["apps/backend/src/quote", "apps/backend/src/storage"],
+      "dependencies": [
+        "PB1-P01-quote-state-machine"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/backend/src/storage"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P04",
@@ -193,7 +281,11 @@
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {
         "resumeFromTaskVersionId": "f03912f79adf1aa20db31e1b99e1bf75049fa8ac0904e69daeaa755f00768c50",
         "resumeFromCandidateCommit": "4187d8e442f994962b5aafd84a7b16d9060919b1",
@@ -210,13 +302,25 @@
       "source": "P-10",
       "description": "A reusable technician signature stored on the user (or company), applied when the technician sends the quote. Simple and secure. Do not build unrelated signature infrastructure.",
       "acceptance": "AC1: a technician can save one reusable signature; AC2: on quote send the technician can apply it; AC3: the signature is stored privately (P03 storage) and tenant-scoped; AC4: no generic signature framework added.",
-      "dependencies": ["PB1-P03-sidebar-real-identity"],
-      "scope": ["apps/backend/src/quote", "apps/backend/src/users", "apps/web/app/(app)/orcamentos"],
+      "dependencies": [
+        "PB1-P03-sidebar-real-identity"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/backend/src/users",
+        "apps/web/app/(app)/orcamentos"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "privateStorageOnly": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "privateStorageOnly": true
+      },
       "verificationProfile": "B",
       "phaseGate": "P04",
       "status": "SCHEDULED"
@@ -229,12 +333,22 @@
       "description": "Change the plan-limits config + the copy on /plano and the paywall + the limit tests so Orcivo Livre allows at least 15 OS/month, replacing the current 5.",
       "acceptance": "AC1: plan-limits config returns 15 OS/month for Orcivo Livre; AC2: /plano and paywall copy say 15; AC3: limit tests updated; AC4: limits still come from GET /me/plan-limits, never hardcoded in the app.",
       "dependencies": [],
-      "scope": ["apps/backend/src/billing", "apps/backend/src/plan-limits", "apps/web/app/(app)/plano"],
+      "scope": [
+        "apps/backend/src/billing",
+        "apps/backend/src/plan-limits",
+        "apps/web/app/(app)/plano"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "noBillingProviderActivation": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "noBillingProviderActivation": true
+      },
       "verificationProfile": "B",
       "phaseGate": "P06",
       "status": "SCHEDULED"
@@ -247,11 +361,18 @@
       "description": "Introduce a PaymentProvider/BillingProvider interface; refactor the Asaas placeholders behind it; MercadoPagoProvider designed but NOT implemented. No account, no credentials, no production. Real provider activation stays Level C.",
       "acceptance": "AC1: the domain does not import a billing SDK directly; AC2: a PaymentProvider interface exists with the Asaas placeholder behind it; AC3: no Mercado Pago credentials/account/activation code; AC4: WebhookEvent idempotency preserved.",
       "dependencies": [],
-      "scope": ["apps/backend/src/billing", "packages/shared-types/src/billing"],
+      "scope": [
+        "apps/backend/src/billing",
+        "packages/shared-types/src/billing"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-external-service-arch",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {
         "noBillingProviderActivation": true,
         "noCredentials": true,
@@ -271,11 +392,18 @@
       "description": "AppSidebar footer consumes useAuth() -> {user.name, company.trade_name, plan_code}; initials from the real name. Topbar search + bell: bell wired to P-17 in-app notifications; search either wired or hidden/disabled. Remove the 'Ribeiro' placeholders.",
       "acceptance": "AC1: sidebar/topbar show the real session user + company; AC2: no hardcoded 'Joao Ribeiro' / 'Ribeiro Eletrica'; AC3: search and bell are functional or explicitly disabled/hidden — no dead active-looking CTA.",
       "dependencies": [],
-      "scope": ["apps/web/components", "apps/web/app/(app)"],
+      "scope": [
+        "apps/web/components",
+        "apps/web/app/(app)"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P07",
@@ -288,12 +416,22 @@
       "source": "P-04 / D-2",
       "description": "PATCH /company/me (@AdminOnly) validating profile fields + pix_key by key type (CPF/CNPJ/email/phone/random). shared-types DTO. Wire the 'empresa' and 'pix' tabs (state + handlers). Audit via AuditService. Logo upload stays POST-MVP. (Retry: prior attempt's review output failed schema validation, unrelated to task scope.)",
       "acceptance": "AC1: PATCH /company/me persists profile + pix_key, @AdminOnly, tenant-scoped; AC2: pix_key validated by type; AC3: the two config tabs save and reload real values; AC4: change writes an audit row; AC5: logo upload not included.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/company", "packages/shared-types/src/company", "apps/web/app/(app)/configuracoes"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/company",
+        "packages/shared-types/src/company",
+        "apps/web/app/(app)/configuracoes"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P07",
@@ -306,13 +444,27 @@
       "source": "P-05 / D-3",
       "description": "A 'Registrar recebimento' modal (Decimal amount, method, date, status) on the OS detail + finance page calling POST /payments; the OS finance panel sums real linked payments; audit via AuditService. A stale secret-scan false positive in apps/web/lib/work-order.service.ts (pre-existing doc comment, unrelated to this task) was fixed on main; this version restarts the implementation on that base.",
       "acceptance": "AC1: the modal creates a payment via POST /payments with a Decimal amount; AC2: the OS finance panel reflects real linked payments (recebido/pendente); AC3: creation writes an audit row; AC4: no float money anywhere in the flow.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/web/app/(app)/ordens-de-servico", "apps/web/app/(app)/financeiro", "apps/web/lib/work-order.service.ts", "apps/backend/src/payment", "packages/shared-types/src/helpers/money.ts"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/lib/work-order.service.ts",
+        "apps/backend/src/payment",
+        "packages/shared-types/src/helpers/money.ts"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-money",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "moneyDecimalOnly": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "moneyDecimalOnly": true
+      },
       "verificationProfile": "C",
       "phaseGate": "P07",
       "status": "SCHEDULED"
@@ -325,11 +477,18 @@
       "description": "WhatsApp / phone buttons on WorkOrderDetail wired to tel: / wa.me using the customer phone, or hidden when absent. Sweep OS/customer screens for the same.",
       "acceptance": "AC1: contact buttons open the correct tel:/wa.me link; AC2: absent-phone buttons are hidden or disabled; AC3: no visually-active CTA without an action on OS/customer screens.",
       "dependencies": [],
-      "scope": ["apps/web/app/(app)/ordens-de-servico", "apps/web/app/(app)/clientes"],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/(app)/clientes"
+      ],
       "risk": "A",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "A",
       "phaseGate": "P07",
@@ -342,14 +501,29 @@
       "source": "P-14 / D-9",
       "description": "Backend PATCH /customers/:id and DELETE /customers/:id (soft delete), tenant-scoped + ownership, audit via AuditService; reuse the existing DTO; the web edit page already calls PATCH. Soft delete requires an additive nullable deleted_at column on Customer via a new Prisma migration; all reads of Customer must exclude soft-deleted rows.",
       "acceptance": "AC1: PATCH updates a tenant-scoped customer with ownership check; AC2: DELETE performs a soft delete (not a hard delete); AC3: both write an audit row; AC4: web 'editar cliente' saves without the 'Erro ao salvar' failure.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/customer", "apps/web/app/(app)/clientes", "prisma/schema.prisma", "prisma/migrations"],
-      "protectedPathGrants": ["prisma/schema.prisma"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/customer",
+        "apps/web/app/(app)/clientes",
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ],
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-persistent-migration",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "softDeleteOnly": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "softDeleteOnly": true
+      },
       "verificationProfile": "B",
       "phaseGate": "P07",
       "status": "SCHEDULED"
@@ -361,12 +535,20 @@
       "source": "P-07",
       "description": "A quick-create modal in the quote client selector that creates the customer in place and preserves the current quote draft/context. (Owner decision: modal, not navigation.)",
       "acceptance": "AC1: the client selector has a '+ cadastrar novo cliente' that opens a modal; AC2: creating the customer returns to the wizard with the draft intact and the new customer selected; AC3: no navigation away from the draft.",
-      "dependencies": ["PB1-P14-customer-edit-delete"],
-      "scope": ["apps/web/app/(app)/orcamentos"],
+      "dependencies": [
+        "PB1-P14-customer-edit-delete"
+      ],
+      "scope": [
+        "apps/web/app/(app)/orcamentos"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P07",
@@ -379,12 +561,21 @@
       "source": "P-09 / D-6",
       "description": "MVP-lite only: PATCH /appointments/:id + an edit form + confirm-delete in the web agenda. Full month/day/list views stay for Fase 4.",
       "acceptance": "AC1: PATCH /appointments/:id updates a tenant-scoped appointment; AC2: the web agenda can edit and delete an event; AC3: month/day/list views are NOT part of this task; AC4: change writes an audit row where relevant.",
-      "dependencies": ["PB1-P02-audit-service"],
-      "scope": ["apps/backend/src/appointment", "apps/web/app/(app)/agenda"],
+      "dependencies": [
+        "PB1-P02-audit-service"
+      ],
+      "scope": [
+        "apps/backend/src/appointment",
+        "apps/web/app/(app)/agenda"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P07",
@@ -397,14 +588,29 @@
       "source": "P-13 / D-1b / D-3b / P-23",
       "description": "Run the Product Completeness Audit over the web surface (SCREEN -> CTA -> handler -> API -> persistence -> tenant/RBAC -> audit -> loading/error/empty -> domain-state -> responsiveness -> mock/dead element). The audit DISCOVERs/TRIAGEs/PROPOSEs; objective functional findings auto-generate candidate tasks; business/commercial/product decisions require a future owner batch. Write the audit report and any generated artifacts under .planning/reviews/ (not .planning/product/) - that is the only protected .planning/ subpath this task is granted.",
       "acceptance": "AC1: an audit report lists every dead CTA / missing endpoint / mock / form-without-persistence with evidence; AC2: candidate tasks are generated only for OBJECTIVE functional findings; AC3: no business/commercial change is auto-scheduled.",
-      "dependencies": ["PB1-P03-sidebar-real-identity", "PB1-P05-payment-registration", "PB1-P14-customer-edit-delete"],
-      "scope": [".planning/product", "apps/web"],
-      "protectedPathGrants": [".planning/reviews/"],
+      "dependencies": [
+        "PB1-P03-sidebar-real-identity",
+        "PB1-P05-payment-registration",
+        "PB1-P14-customer-edit-delete"
+      ],
+      "scope": [
+        ".planning/product",
+        "apps/web"
+      ],
+      "protectedPathGrants": [
+        ".planning/reviews/"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-protected-path-audit-report",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "discoverTriageProposeOnly": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "discoverTriageProposeOnly": true
+      },
       "verificationProfile": "B",
       "phaseGate": "P07",
       "status": "SCHEDULED"
@@ -416,12 +622,23 @@
       "source": "P-17 / D-6",
       "description": "MVP subset: an in-app notification / activity feed backed by the audit trail (correct contextual text); the topbar bell shows unread in-app items and opens the feed. Push / email stay a separate later scope (Fase 7).",
       "acceptance": "AC1: relevant business events produce an in-app notification with human-readable contextual text; AC2: the bell shows an unread count and opens the feed; AC3: mark-as-read works; AC4: no push/email code added.",
-      "dependencies": ["PB1-P02-audit-service", "PB1-P03-sidebar-real-identity"],
-      "scope": ["apps/backend/src/notifications", "apps/web/components", "packages/shared-types/src/notification"],
+      "dependencies": [
+        "PB1-P02-audit-service",
+        "PB1-P03-sidebar-real-identity"
+      ],
+      "scope": [
+        "apps/backend/src/notifications",
+        "apps/web/components",
+        "packages/shared-types/src/notification"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P17-wave",
@@ -434,12 +651,20 @@
       "source": "P-08 / D-7b",
       "description": "Fix the weekly calendar layout (grid overflow, card clamping, button sizing) within the approved design system; feed the systematic responsiveness pass (P-20).",
       "acceptance": "AC1: agenda cards are not cut off; AC2: no horizontal overflow at supported breakpoints; AC3: buttons are correctly sized; AC4: no design-system deviation.",
-      "dependencies": ["PB1-P09-agenda-edit-delete"],
-      "scope": ["apps/web/app/(app)/agenda"],
+      "dependencies": [
+        "PB1-P09-agenda-edit-delete"
+      ],
+      "scope": [
+        "apps/web/app/(app)/agenda"
+      ],
       "risk": "A",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "A",
       "phaseGate": "P10",
@@ -452,12 +677,20 @@
       "source": "P-20 / D-7b",
       "description": "A systematic pass on loading/error/empty states, skeletons, error.tsx / not-found.tsx, breakpoint discipline, overflow, and disabled/action feedback across the web app, within the approved design system.",
       "acceptance": "AC1: every list/detail screen has loading + empty + error states; AC2: error.tsx and not-found.tsx exist; AC3: no horizontal body overflow at mobile/tablet/desktop breakpoints; AC4: disabled controls give feedback; AC5: no design-system deviation.",
-      "dependencies": ["PB1-P08-agenda-layout-bugs"],
-      "scope": ["apps/web"],
+      "dependencies": [
+        "PB1-P08-agenda-layout-bugs"
+      ],
+      "scope": [
+        "apps/web"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "P10",
@@ -471,12 +704,25 @@
       "description": "Catalogue items gain quantity/stock, cost_price (Decimal), sale_price (Decimal). CSV/JSON catalogue import. Simple low-stock indicator. NOT NOW: distributor API (FUTURE), advanced barcode, advanced photos.",
       "acceptance": "AC1: catalogue item has quantity, cost_price (Decimal), sale_price (Decimal); AC2: CSV/JSON import creates/updates catalogue items with validation; AC3: a low-stock indicator is shown; AC4: no distributor API / barcode / advanced photo code; AC5: money is Decimal end to end.",
       "dependencies": [],
-      "scope": ["apps/backend/src/catalog", "packages/shared-types/src/catalog", "prisma/schema.prisma", "prisma/migrations"],
+      "scope": [
+        "apps/backend/src/catalog",
+        "packages/shared-types/src/catalog",
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ],
       "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "level-c-persistent-migration",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "additiveMigrationOnly": true, "moneyDecimalOnly": true, "distributorApiForbidden": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "additiveMigrationOnly": true,
+        "moneyDecimalOnly": true,
+        "distributorApiForbidden": true
+      },
       "verificationProfile": "C",
       "phaseGate": "F3.2",
       "status": "SCHEDULED"
@@ -488,12 +734,20 @@
       "source": "P-15 (PROMOTED_TO_MVP)",
       "description": "Web catalogue: fields for quantity, cost price, sale price; CSV/JSON import UI; low-stock indicator in the list.",
       "acceptance": "AC1: catalogue create/edit shows quantity + cost price + sale price; AC2: an import screen accepts CSV/JSON and shows a validation preview; AC3: low-stock items are visually flagged in the list.",
-      "dependencies": ["PB1-P15-inventory-lite-backend"],
-      "scope": ["apps/web/app/(app)/catalogo"],
+      "dependencies": [
+        "PB1-P15-inventory-lite-backend"
+      ],
+      "scope": [
+        "apps/web/app/(app)/catalogo"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
       "candidateConstraints": {},
       "verificationProfile": "B",
       "phaseGate": "F3.2",
@@ -507,24 +761,362 @@
       "description": "Mobile InicioScreen becomes a useful Home (day KPIs + day agenda + quick actions); add a customer detail screen. Agenda/finance/config/team/plan stay out of the mobile surface scope. NOT a web-MVP blocker.",
       "acceptance": "AC1: mobile Home shows day KPIs + day agenda + quick actions (no stub); AC2: a customer detail screen exists on mobile; AC3: no mobile agenda/finance/config/team/plan screens added; AC4: this does not gate the web MVP.",
       "dependencies": [],
-      "scope": ["apps/mobile/src"],
+      "scope": [
+        "apps/mobile/src"
+      ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
-      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
-      "candidateConstraints": { "webMvpNonBlocking": true },
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "webMvpNonBlocking": true
+      },
       "verificationProfile": "B",
       "phaseGate": "F4",
       "status": "SCHEDULED"
+    },
+    {
+      "taskId": "PB1-P24-customer-name-stale-refresh",
+      "title": "Fix stale customer name on detail page after edit",
+      "type": "BUG",
+      "source": "UAT-20260927",
+      "description": "After PATCH /customers/:id, the customer detail page still shows the old name until a manual refresh (F5) - missing revalidation/refetch after the edit redirect.",
+      "acceptance": "AC1: after saving a customer edit, the detail page shows the updated name immediately, no manual refresh needed; AC2: other edited fields (phone, etc) refresh the same way.",
+      "dependencies": [],
+      "scope": [
+        "apps/web/app/(app)/clientes"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P25-client-selector-padding",
+      "title": "Increase padding in the Nova OS client selector rows",
+      "type": "BUG",
+      "source": "UAT-20260927",
+      "description": "In 'Nova OS' -> client selector, the customer name/phone/city text sits too close to the purple selected-row border. Increase inner padding.",
+      "acceptance": "AC1: selected/hoverable client rows in the OS client selector have visible padding between the text and the row border; AC2: no functional change, CSS/layout only.",
+      "dependencies": [],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P26-status-history-ui-audit",
+      "title": "Surface action history (with justification) at actionable UI points",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "UAT-20260927",
+      "description": "Two related UX gaps: (1) OS reopen already asks for a justification and records it via AuditService, but the justification does not render correctly in the front-end history; (2) more generally, actionable screens (OS, quote, payment, customer, appointment) need a lightweight way to see that item's own history. History display convention: a small button near the actionable item opens a compact history modal (or a small section at the bottom of the page, matching the pattern already used elsewhere) showing exact date/time, user, and action for each change. Fix OS reopen history first, then apply the same pattern to OS/quote/payment detail screens that already have an audit trail on the backend (AuditService) but no way to view it in the UI.",
+      "acceptance": "AC1: OS reopen justification renders correctly in that OS's history; AC2: OS detail, quote detail, and payment/finance panel each expose a small 'historico' button/section showing date/time, user, and action per audit row for that entity; AC3: no new audit-writing logic - this only surfaces existing AuditService data; AC4: no business decision auto-scheduled.",
+      "dependencies": [],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/lib"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {
+        "readOnlyOfExistingAuditData": true
+      },
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P27-os-status-manual-override",
+      "title": "Manual OS status override from the management panel, with justification",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "Allow changing an OS status directly from the work-order management panel (to speed up or revert state manually), instead of only the guided per-action buttons. Must stay within the existing valid OS state machine (ADR-016) - no arbitrary/invalid transitions. For any status change that requires a justification (e.g. reopening/correcting an OS or quote), clicking the action opens a small modal asking for the justification before applying it; the justification is recorded and shown in that item's history. Reuses PB1-P26's history surfacing for the new entries.",
+      "acceptance": "AC1: the OS management panel lets an admin/technician pick a new (valid) status directly; AC2: invalid transitions per the existing state machine are rejected with a clear message; AC3: changing status through this path asks for a justification via a small modal and writes an audit row identical in shape to the guided actions; AC4: the change is visible in that OS's history (PB1-P26).",
+      "dependencies": [
+        "PB1-P26-status-history-ui-audit"
+      ],
+      "scope": [
+        "apps/backend/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {
+        "preserveExistingStateMachine": true
+      },
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P28-payment-chart-hover-tooltip",
+      "title": "Hover tooltip with amount on the 'recebido por dia' chart",
+      "type": "BUG",
+      "source": "UAT-20260927",
+      "description": "The 'recebido por dia' finance chart should show a small tooltip with the exact value when hovering over a bar/point.",
+      "acceptance": "AC1: hovering a bar/point on the finance daily-received chart shows a tooltip with the exact Decimal amount and date; AC2: no data/aggregation logic change, display only.",
+      "dependencies": [],
+      "scope": [
+        "apps/web/app/(app)/financeiro"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P29-payment-edit-delete",
+      "title": "Allow editing or deleting an already-registered payment",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "Today a payment can only be created, never edited or deleted. Add PATCH/DELETE for a registered payment (Decimal amount, method, date, status), reachable from the OS where it was registered for traceability. For any status change that requires a justification (e.g. reopening/correcting an OS or quote), clicking the action opens a small modal asking for the justification before applying it; the justification is recorded and shown in that item's history. Reuses PB1-P26's history surfacing.",
+      "acceptance": "AC1: PATCH /payments/:id updates a tenant-scoped payment (Decimal amount, no float); AC2: DELETE performs a soft delete of the payment, never a hard delete; AC3: both actions ask for a justification via modal and write an audit row; AC4: the OS finance panel reflects the edit/delete immediately; AC5: the change is visible in that OS's history (PB1-P26).",
+      "dependencies": [
+        "PB1-P26-status-history-ui-audit",
+        "PB1-P05-payment-registration"
+      ],
+      "scope": [
+        "apps/backend/src/payment",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/lib/work-order.service.ts"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {
+        "moneyDecimalOnly": true
+      },
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P30-catalog-item-photo",
+      "title": "Optional photo for catalog items",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "Add an optional photo field to catalog products/services, reusing the existing private storage (signed URLs) already used for OS photos.",
+      "acceptance": "AC1: a catalog item can optionally have one photo, uploaded via the existing private storage flow; AC2: the catalog list/detail shows the photo when present; AC3: no photo is required to create/edit a catalog item.",
+      "dependencies": [],
+      "scope": [
+        "apps/backend/src/catalog",
+        "apps/web/app/(app)/estoque"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P31-audit-feed-friendly-context",
+      "title": "Make the 'ultimas atividades' feed friendlier with action context",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "UAT-20260927",
+      "description": "The dashboard 'ultimas atividades' feed shows raw event names (appointment.created, work_order.reopened) instead of a human-friendly description with where the action happened, e.g. 'Agenda -> Novo compromisso -> Criou X'. Rewrite the feed's label rendering to be friendly and show a short path/context per entity type, reusing existing AuditService data (no new events).",
+      "acceptance": "AC1: every activity feed entry renders a human-readable description including a short context/path, not the raw event key; AC2: no change to what gets audited, only to how it's displayed; AC3: covers at least appointment, customer, work_order, and payment event types.",
+      "dependencies": [],
+      "scope": [
+        "apps/web"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {
+        "readOnlyOfExistingAuditData": true
+      },
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P32-pix-key-mask-by-type",
+      "title": "Fix PIX key mask always rendering as CNPJ",
+      "type": "BUG",
+      "source": "UAT-20260927",
+      "description": "Regression of PB1-P04 AC2 ('pix_key validated by type'): the PIX key input/display masks every key type (CPF, email, phone, random) as if it were CNPJ.",
+      "acceptance": "AC1: the PIX key field masks/formats CPF, CNPJ, email, phone, and random-key values according to their own type, not always CNPJ; AC2: existing PIX validation-by-type logic (PB1-P04) is preserved.",
+      "dependencies": [
+        "PB1-P04-company-profile-pix"
+      ],
+      "scope": [
+        "apps/web/app/(app)/configuracoes"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P33-account-settings-screen",
+      "title": "Account settings: change username, e-mail, and password",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "No screen exists today for a user to change their own account name, e-mail, or password. Add one, following existing auth/session patterns (JWT identifies only, current password re-entry required to change credentials).",
+      "acceptance": "AC1: an authenticated user can change their display name; AC2: changing e-mail or password requires re-entering the current password; AC3: password change invalidates other active sessions/refresh tokens for that user; AC4: the change writes an audit row; AC5: no new auth provider/flow introduced.",
+      "dependencies": [],
+      "scope": [
+        "apps/backend/src/auth",
+        "apps/web/app/(app)/configuracoes"
+      ],
+      "risk": "C",
+      "ownerGate": "level-c-auth-credentials",
+      "candidateConstraints": {
+        "noNewAuthProvider": true
+      },
+      "verificationProfile": "C",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P34-signature-methods-standardization",
+      "title": "Standardize signature methods across technician and client flows",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "The technician's reusable signature (PB1-P10) uses a different pattern than the rest of the system. Unify to the same 3 methods (draw, typed name, simple) for both flows, and add a photo-signature option for the client (today photo signature only exists for the technician).",
+      "acceptance": "AC1: technician and client signature flows offer the same 3 methods (draw/typed/simple); AC2: client signature also supports the photo method already available to the technician; AC3: existing PB1-P10 reusable-signature behavior for the technician is preserved; AC4: no unrelated signature infrastructure added.",
+      "dependencies": [
+        "PB1-P10-technician-signature"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-P35-quote-edit-and-status-override",
+      "title": "Allow editing quotes and changing their status directly",
+      "type": "FEATURE",
+      "source": "UAT-20260927",
+      "description": "Same flexibility requested for OS (PB1-P27): allow editing a quote's content and changing its status directly, not only via the guided flow, while staying within the existing quote state machine (ADR-016). For any status change that requires a justification (e.g. reopening/correcting an OS or quote), clicking the action opens a small modal asking for the justification before applying it; the justification is recorded and shown in that item's history. Reuses PB1-P26's history surfacing.",
+      "acceptance": "AC1: a quote's editable fields can be updated directly (not only through the guided wizard); AC2: status can be changed directly to any valid next state per the existing state machine, invalid transitions rejected; AC3: a justification modal is required for status changes and an audit row is written; AC4: visible in that quote's history (PB1-P26).",
+      "dependencies": [
+        "PB1-P26-status-history-ui-audit"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos"
+      ],
+      "risk": "B",
+      "ownerGate": "none",
+      "candidateConstraints": {
+        "preserveExistingStateMachine": true
+      },
+      "verificationProfile": "B",
+      "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "UAT-20260927"
     }
   ],
   "recurringProcesses": [
     {
       "id": "PROC-product-completeness-audit",
       "source": "P-23",
-      "trigger": ["after-meaningful-batch", "before-release", "after-phase-completion", "after-important-new-screens"],
+      "trigger": [
+        "after-meaningful-batch",
+        "before-release",
+        "after-phase-completion",
+        "after-important-new-screens"
+      ],
       "permission": "DISCOVER_TRIAGE_PROPOSE_ONLY",
-      "mayNot": ["auto-approve-business-requirements", "auto-schedule-commercial-change"]
+      "mayNot": [
+        "auto-approve-business-requirements",
+        "auto-schedule-commercial-change"
+      ]
     }
   ],
   "strategy": {
