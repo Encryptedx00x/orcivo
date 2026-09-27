@@ -10,7 +10,11 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { CatalogItemCreateSchema, CatalogItemUpdateSchema } from '@orcivo/shared-types';
+import {
+  CatalogImportRequestSchema,
+  CatalogItemCreateSchema,
+  CatalogItemUpdateSchema,
+} from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CatalogService } from './catalog.service';
 
@@ -28,6 +32,11 @@ export class CatalogController {
     return this.catalogService.findAll(req.companyId, all !== 'true');
   }
 
+  @Get('low-stock')
+  findLowStock(@Req() req: TenantRequest) {
+    return this.catalogService.findLowStock(req.companyId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.catalogService.findOne(id, req.companyId);
@@ -40,6 +49,16 @@ export class CatalogController {
     @Req() req: TenantRequest,
   ) {
     return this.catalogService.create(body as never, req.companyId);
+  }
+
+  /** Accepts either `{ items: [...] }` (JSON) or `{ csv: "header,..." }`. */
+  @Post('import')
+  @HttpCode(200)
+  import(
+    @Body(new ZodValidationPipe(CatalogImportRequestSchema)) body: unknown,
+    @Req() req: TenantRequest,
+  ) {
+    return this.catalogService.import(body as never, req.companyId);
   }
 
   @Patch(':id')
