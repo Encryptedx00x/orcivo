@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
+import { CompanyProfileUpdateSchema } from './company-profile-update.schema';
 import { CompanyService } from './company.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { SubscriptionService } from '../billing/subscription.service';
 import { AllowPastDue } from '../billing/allow-past-due.decorator';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
@@ -22,6 +24,15 @@ export class CompanyController {
   @Get('me')
   getMe(@Req() req: TenantRequest) {
     return this.companyService.findCurrent(req.companyId);
+  }
+
+  @AdminOnly()
+  @Patch('me')
+  updateMe(
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(CompanyProfileUpdateSchema)) body: unknown,
+  ) {
+    return this.companyService.updateProfile(req.companyId, body as never, req.user.userId);
   }
 
   @AdminOnly()

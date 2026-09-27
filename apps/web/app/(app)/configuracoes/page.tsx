@@ -1,27 +1,90 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Building2, Image, QrCode, Users, CreditCard, CheckSquare, Shield, Bell, FileOutput } from 'lucide-react';
+import {
+  Building2,
+  Image,
+  QrCode,
+  Users,
+  CreditCard,
+  CheckSquare,
+  Shield,
+  Bell,
+  FileOutput,
+} from 'lucide-react';
+import { updateCompanyProfile, updateCompanyPix } from './actions';
 
 type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
+type PixKeyType = 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
+
+interface EmpresaForm {
+  trade_name: string;
+  document: string;
+  phone: string;
+  city: string;
+  state: string;
+}
+
+interface PixForm {
+  pix_key_type: PixKeyType;
+  pix_key: string;
+}
+
+interface CompanyMeResponse {
+  trade_name?: string;
+  document?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pix_key?: string | null;
+  allowed_approval_methods?: Method[];
+}
+
+const EMPTY_EMPRESA: EmpresaForm = { trade_name: '', document: '', phone: '', city: '', state: '' };
+const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
+/** Sem coluna dedicada para o tipo — inferido do formato da chave já salva. */
+function inferPixKeyType(key: string): PixKeyType {
+  const digits = key.replace(/\D/g, '');
+  if (/^[^@]+@[^@]+\.[^@]+$/.test(key)) return 'EMAIL';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) return 'RANDOM';
+  if (digits.length === 11) return 'CPF';
+  if (digits.length === 14) return 'CNPJ';
+  return 'PHONE';
+}
+const PIX_KEY_TYPES: { value: PixKeyType; label: string }[] = [
+  { value: 'CNPJ', label: 'CNPJ' },
+  { value: 'CPF', label: 'CPF' },
+  { value: 'EMAIL', label: 'Email' },
+  { value: 'PHONE', label: 'Telefone' },
+  { value: 'RANDOM', label: 'Aleatória' },
+];
 
 const METHOD_LABELS: Record<Method, { label: string; desc: string }> = {
-  APPROVE_BUTTON:  { label: 'Aprovação simples',   desc: 'Cliente confirma com um clique, sem identificação.' },
-  TYPED_NAME:      { label: 'Assinar com nome',    desc: 'Cliente digita o nome completo como assinatura.' },
-  DRAWN_SIGNATURE: { label: 'Assinar com desenho', desc: 'Cliente desenha a assinatura com o dedo ou mouse.' },
+  APPROVE_BUTTON: {
+    label: 'Aprovação simples',
+    desc: 'Cliente confirma com um clique, sem identificação.',
+  },
+  TYPED_NAME: {
+    label: 'Assinar com nome',
+    desc: 'Cliente digita o nome completo como assinatura.',
+  },
+  DRAWN_SIGNATURE: {
+    label: 'Assinar com desenho',
+    desc: 'Cliente desenha a assinatura com o dedo ou mouse.',
+  },
 };
 const ALL_METHODS: Method[] = ['APPROVE_BUTTON', 'TYPED_NAME', 'DRAWN_SIGNATURE'];
 
 const TABS = [
-  { id: 'empresa',   label: 'Empresa',           icon: Building2 },
-  { id: 'visual',    label: 'Identidade visual',  icon: Image },
-  { id: 'pix',       label: 'Chave Pix',          icon: QrCode },
-  { id: 'users',     label: 'Usuários',            icon: Users },
-  { id: 'plano',     label: 'Plano e assinatura',  icon: CreditCard },
-  { id: 'aprovacao', label: 'Aprovação',           icon: CheckSquare },
-  { id: 'seg',       label: 'Segurança',           icon: Shield },
-  { id: 'notif',     label: 'Notificações',        icon: Bell },
-  { id: 'exp',       label: 'Exportação',          icon: FileOutput },
+  { id: 'empresa', label: 'Empresa', icon: Building2 },
+  { id: 'visual', label: 'Identidade visual', icon: Image },
+  { id: 'pix', label: 'Chave Pix', icon: QrCode },
+  { id: 'users', label: 'Usuários', icon: Users },
+  { id: 'plano', label: 'Plano e assinatura', icon: CreditCard },
+  { id: 'aprovacao', label: 'Aprovação', icon: CheckSquare },
+  { id: 'seg', label: 'Segurança', icon: Shield },
+  { id: 'notif', label: 'Notificações', icon: Bell },
+  { id: 'exp', label: 'Exportação', icon: FileOutput },
 ];
 
 export default function ConfiguracoesPage(): JSX.Element {
@@ -32,19 +95,96 @@ export default function ConfiguracoesPage(): JSX.Element {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
+  const [empresa, setEmpresa] = useState<EmpresaForm>(EMPTY_EMPRESA);
+  const [empresaSaving, setEmpresaSaving] = useState(false);
+  const [empresaSaved, setEmpresaSaved] = useState(false);
+  const [empresaError, setEmpresaError] = useState('');
+
+  const [pix, setPix] = useState<PixForm>(EMPTY_PIX);
+  const [pixSaving, setPixSaving] = useState(false);
+  const [pixSaved, setPixSaved] = useState(false);
+  const [pixError, setPixError] = useState('');
+
   useEffect(() => {
     fetch('/api/company/me')
-      .then(r => r.json())
-      .then((d: { allowed_approval_methods?: Method[] }) => {
+      .then((r) => r.json())
+      .then((d: CompanyMeResponse) => {
         if (d.allowed_approval_methods?.length) setMethods(d.allowed_approval_methods);
+        setEmpresa({
+          trade_name: d.trade_name ?? '',
+          document: d.document ?? '',
+          phone: d.phone ?? '',
+          city: d.city ?? '',
+          state: d.state ?? '',
+        });
+        if (d.pix_key) {
+          setPix({
+            pix_key_type: inferPixKeyType(d.pix_key),
+            pix_key: d.pix_key,
+          });
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
+  async function saveEmpresa() {
+    setEmpresaSaving(true);
+    setEmpresaError('');
+    setEmpresaSaved(false);
+    try {
+      const result = await updateCompanyProfile({
+        trade_name: empresa.trade_name,
+        document: empresa.document || null,
+        phone: empresa.phone || null,
+        city: empresa.city || null,
+        state: empresa.state || null,
+      });
+      if (!result.ok) {
+        setEmpresaError(result.message);
+        return;
+      }
+      setEmpresaSaved(true);
+    } catch {
+      setEmpresaError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setEmpresaSaving(false);
+    }
+  }
+
+  async function savePix() {
+    if (!pix.pix_key.trim()) {
+      setPixError('Informe a chave Pix.');
+      return;
+    }
+    setPixSaving(true);
+    setPixError('');
+    setPixSaved(false);
+    try {
+      const result = await updateCompanyPix({
+        pix_key_type: pix.pix_key_type,
+        pix_key: pix.pix_key,
+      });
+      if (!result.ok) {
+        setPixError(result.message);
+        return;
+      }
+      setPixSaved(true);
+    } catch {
+      setPixError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setPixSaving(false);
+    }
+  }
+
   async function save() {
-    if (methods.length === 0) { setError('Habilite pelo menos um método.'); return; }
-    setSaving(true); setError(''); setSaved(false);
+    if (methods.length === 0) {
+      setError('Habilite pelo menos um método.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setSaved(false);
     try {
       const res = await fetch('/api/company/approval-methods', {
         method: 'PATCH',
@@ -64,8 +204,20 @@ export default function ConfiguracoesPage(): JSX.Element {
     <div>
       <div className="ov-page-header">
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.015em', color: '#0A0A0F', margin: 0 }}>Configurações</h1>
-          <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>Empresa, identidade e preferências</div>
+          <h1
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: '-0.015em',
+              color: '#0A0A0F',
+              margin: 0,
+            }}
+          >
+            Configurações
+          </h1>
+          <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
+            Empresa, identidade e preferências
+          </div>
         </div>
       </div>
 
@@ -77,9 +229,15 @@ export default function ConfiguracoesPage(): JSX.Element {
               key={id}
               onClick={() => setTab(id)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 12px', borderRadius: 9, marginBottom: 2,
-                fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '9px 12px',
+                borderRadius: 9,
+                marginBottom: 2,
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
                 color: tab === id ? '#4C1D95' : '#334155',
                 background: tab === id ? '#F5F3FF' : 'transparent',
                 transition: 'background 0.12s',
@@ -96,18 +254,92 @@ export default function ConfiguracoesPage(): JSX.Element {
           {tab === 'empresa' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Dados da empresa</h3>
-              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>Aparecem no topo de orçamentos, OS e recibos.</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                {(['Nome fantasia', 'Razão social', 'CNPJ', 'Telefone', 'Email', 'Endereço'] as const).map((l, i) => (
-                  <div key={i} style={{ gridColumn: i === 5 ? 'span 2' : 'auto' }}>
-                    <label className="ov-label">{l}</label>
-                    <input className="ov-input" placeholder={l} />
-                  </div>
-                ))}
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+                Aparecem no topo de orçamentos, OS e recibos.
               </div>
+              {loading ? (
+                <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando…</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label className="ov-label">Nome fantasia</label>
+                    <input
+                      className="ov-input"
+                      placeholder="Nome fantasia"
+                      value={empresa.trade_name}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, trade_name: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label">CNPJ</label>
+                    <input
+                      className="ov-input"
+                      placeholder="CNPJ"
+                      value={empresa.document}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, document: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label">Telefone</label>
+                    <input
+                      className="ov-input"
+                      placeholder="Telefone"
+                      value={empresa.phone}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, phone: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label">Cidade</label>
+                    <input
+                      className="ov-input"
+                      placeholder="Cidade"
+                      value={empresa.city}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, city: e.target.value });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label">Estado</label>
+                    <input
+                      className="ov-input"
+                      placeholder="UF"
+                      maxLength={2}
+                      value={empresa.state}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, state: e.target.value.toUpperCase() });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {empresaError && (
+                <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{empresaError}</p>
+              )}
+              {empresaSaved && (
+                <p style={{ color: '#16A34A', fontSize: 13, marginTop: 12 }}>Salvo com sucesso.</p>
+              )}
+
               <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button className="ov-btn ov-btn-outline">Cancelar</button>
-                <button className="ov-btn ov-btn-primary">Salvar alterações</button>
+                <button
+                  className="ov-btn ov-btn-primary"
+                  onClick={saveEmpresa}
+                  disabled={empresaSaving || loading}
+                >
+                  {empresaSaving ? 'Salvando…' : 'Salvar alterações'}
+                </button>
               </div>
             </div>
           )}
@@ -115,38 +347,77 @@ export default function ConfiguracoesPage(): JSX.Element {
           {tab === 'pix' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Chave Pix</h3>
-              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>Inserida automaticamente nos recibos enviados ao cliente.</div>
-              <div style={{ display: 'grid', gap: 16, maxWidth: 520 }}>
-                <div>
-                  <label className="ov-label">Tipo de chave</label>
-                  <select className="ov-input">
-                    <option>CNPJ</option>
-                    <option>CPF</option>
-                    <option>Email</option>
-                    <option>Telefone</option>
-                    <option>Aleatória</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="ov-label">Chave</label>
-                  <input className="ov-input" placeholder="Ex.: 12.345.678/0001-90" />
-                </div>
-                <div>
-                  <label className="ov-label">Nome do recebedor</label>
-                  <input className="ov-input" placeholder="Ex.: Ribeiro Serviços LTDA" />
-                </div>
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+                Inserida automaticamente nos recibos enviados ao cliente.
               </div>
+              {loading ? (
+                <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando…</p>
+              ) : (
+                <div style={{ display: 'grid', gap: 16, maxWidth: 520 }}>
+                  <div>
+                    <label className="ov-label">Tipo de chave</label>
+                    <select
+                      className="ov-input"
+                      value={pix.pix_key_type}
+                      onChange={(e) => {
+                        setPixSaved(false);
+                        setPix({ ...pix, pix_key_type: e.target.value as PixKeyType });
+                      }}
+                    >
+                      {PIX_KEY_TYPES.map(({ value, label }) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="ov-label">Chave</label>
+                    <input
+                      className="ov-input"
+                      placeholder="Ex.: 12.345.678/0001-90"
+                      value={pix.pix_key}
+                      onChange={(e) => {
+                        setPixSaved(false);
+                        setPix({ ...pix, pix_key: e.target.value });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {pixError && (
+                <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{pixError}</p>
+              )}
+              {pixSaved && (
+                <p style={{ color: '#16A34A', fontSize: 13, marginTop: 12 }}>Salvo com sucesso.</p>
+              )}
+
               <div style={{ marginTop: 24 }}>
-                <button className="ov-btn ov-btn-primary">Salvar chave</button>
+                <button
+                  className="ov-btn ov-btn-primary"
+                  onClick={savePix}
+                  disabled={pixSaving || loading}
+                >
+                  {pixSaving ? 'Salvando…' : 'Salvar chave'}
+                </button>
               </div>
             </div>
           )}
 
           {tab === 'users' && (
             <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>Usuários e permissões</div>
-              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Gerencie usuários, funções e permissões da sua equipe.</div>
-              <Link href="/equipe" className="ov-btn ov-btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>
+                Usuários e permissões
+              </div>
+              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+                Gerencie usuários, funções e permissões da sua equipe.
+              </div>
+              <Link
+                href="/equipe"
+                className="ov-btn ov-btn-primary"
+                style={{ textDecoration: 'none', display: 'inline-flex' }}
+              >
                 Ir para Equipe →
               </Link>
             </div>
@@ -154,9 +425,17 @@ export default function ConfiguracoesPage(): JSX.Element {
 
           {tab === 'plano' && (
             <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>Plano e assinatura</div>
-              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Gerencie seu plano, pagamentos e uso da plataforma.</div>
-              <Link href="/plano" className="ov-btn ov-btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>
+                Plano e assinatura
+              </div>
+              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+                Gerencie seu plano, pagamentos e uso da plataforma.
+              </div>
+              <Link
+                href="/plano"
+                className="ov-btn ov-btn-primary"
+                style={{ textDecoration: 'none', display: 'inline-flex' }}
+              >
                 Gerenciar assinatura →
               </Link>
             </div>
@@ -164,7 +443,9 @@ export default function ConfiguracoesPage(): JSX.Element {
 
           {tab === 'aprovacao' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>
-              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Métodos de aprovação</h3>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>
+                Métodos de aprovação
+              </h3>
               <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
                 Defina quais métodos o cliente pode usar para aprovar pelo link público.
               </div>
@@ -173,14 +454,17 @@ export default function ConfiguracoesPage(): JSX.Element {
                 <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando…</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {ALL_METHODS.map(m => (
+                  {ALL_METHODS.map((m) => (
                     <label
                       key={m}
                       style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 12,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 12,
                         padding: '12px 14px',
                         border: `1.5px solid ${methods.includes(m) ? '#6D28D9' : '#E2E8F0'}`,
-                        borderRadius: 10, cursor: 'pointer',
+                        borderRadius: 10,
+                        cursor: 'pointer',
                         backgroundColor: methods.includes(m) ? '#F5F3FF' : '#fff',
                         transition: 'border-color 0.12s',
                       }}
@@ -190,13 +474,19 @@ export default function ConfiguracoesPage(): JSX.Element {
                         checked={methods.includes(m)}
                         onChange={() => {
                           setSaved(false);
-                          setMethods(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+                          setMethods((prev) =>
+                            prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
+                          );
                         }}
                         style={{ marginTop: 2, accentColor: '#6D28D9', width: 16, height: 16 }}
                       />
                       <div>
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: '#0A0A0F' }}>{METHOD_LABELS[m].label}</p>
-                        <p style={{ margin: 0, fontSize: 12, color: '#64748B' }}>{METHOD_LABELS[m].desc}</p>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: '#0A0A0F' }}>
+                          {METHOD_LABELS[m].label}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 12, color: '#64748B' }}>
+                          {METHOD_LABELS[m].desc}
+                        </p>
                       </div>
                     </label>
                   ))}
@@ -204,7 +494,9 @@ export default function ConfiguracoesPage(): JSX.Element {
               )}
 
               {error && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
-              {saved && <p style={{ color: '#16A34A', fontSize: 13, marginTop: 12 }}>Salvo com sucesso.</p>}
+              {saved && (
+                <p style={{ color: '#16A34A', fontSize: 13, marginTop: 12 }}>Salvo com sucesso.</p>
+              )}
 
               <button
                 onClick={save}
@@ -219,19 +511,53 @@ export default function ConfiguracoesPage(): JSX.Element {
 
           {tab === 'visual' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>
-              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Identidade visual</h3>
-              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>Logo e cor usados nos PDFs e link público.</div>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>
+                Identidade visual
+              </h3>
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+                Logo e cor usados nos PDFs e link público.
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 24 }}>
-                <div style={{ width: 80, height: 80, borderRadius: 14, background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6D28D9', fontWeight: 700, fontSize: 24 }}>OR</div>
+                <div
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 14,
+                    background: '#F5F3FF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#6D28D9',
+                    fontWeight: 700,
+                    fontSize: 24,
+                  }}
+                >
+                  OR
+                </div>
                 <div>
                   <button className="ov-btn ov-btn-primary">Trocar logo</button>
-                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8 }}>PNG ou SVG, recomendado 512×512px.</div>
+                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8 }}>
+                    PNG ou SVG, recomendado 512×512px.
+                  </div>
                 </div>
               </div>
               <label className="ov-label">Cor principal</label>
               <div style={{ display: 'flex', gap: 12 }}>
                 {['#6D28D9', '#0F172A', '#16A34A', '#DC2626', '#0891B2', '#EA580C'].map((c, i) => (
-                  <div key={c} style={{ width: 44, height: 44, borderRadius: 10, background: c, cursor: 'pointer', boxShadow: i === 0 ? '0 0 0 3px #fff, 0 0 0 5px #6D28D9' : 'inset 0 0 0 1px rgba(0,0,0,.08)' }} />
+                  <div
+                    key={c}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
+                      background: c,
+                      cursor: 'pointer',
+                      boxShadow:
+                        i === 0
+                          ? '0 0 0 3px #fff, 0 0 0 5px #6D28D9'
+                          : 'inset 0 0 0 1px rgba(0,0,0,.08)',
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -240,9 +566,11 @@ export default function ConfiguracoesPage(): JSX.Element {
           {['seg', 'notif', 'exp'].includes(tab) && (
             <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
               <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>
-                {TABS.find(t => t.id === tab)?.label}
+                {TABS.find((t) => t.id === tab)?.label}
               </div>
-              <div style={{ fontSize: 13, color: '#64748B' }}>Em breve — funcionalidade disponível em uma próxima atualização.</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>
+                Em breve — funcionalidade disponível em uma próxima atualização.
+              </div>
             </div>
           )}
         </div>

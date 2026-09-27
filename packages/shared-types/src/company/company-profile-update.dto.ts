@@ -1,0 +1,72 @@
+import { z } from 'zod';
+
+export const PixKeyTypeEnum = z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']);
+export type PixKeyType = z.infer<typeof PixKeyTypeEnum>;
+
+const onlyDigits = (value: string) => value.replace(/\D/g, '');
+
+/**
+ * Formato esperado de cada tipo de chave Pix (BACEN). Validação de formato,
+ * não de dígito verificador — suficiente para impedir chave/tipo incompatíveis
+ * (ex.: e-mail marcado como CPF) sem reimplementar validador de CPF/CNPJ.
+ */
+export function isValidPixKey(type: PixKeyType, key: string): boolean {
+  switch (type) {
+    case 'CPF':
+      return onlyDigits(key).length === 11;
+    case 'CNPJ':
+      return onlyDigits(key).length === 14;
+    case 'EMAIL':
+      return z.string().email().safeParse(key).success;
+    case 'PHONE':
+      return /^\d{10,11}$/.test(onlyDigits(key));
+    case 'RANDOM':
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+  }
+}
+
+export const CompanyProfileUpdateSchema = z
+  .object({
+    trade_name: z.string().min(2).max(150).optional(),
+    document_type: z.enum(['CPF', 'CNPJ']).nullable().optional(),
+    document: z.string().max(20).nullable().optional(),
+    phone: z.string().max(20).nullable().optional(),
+    city: z.string().max(100).nullable().optional(),
+    state: z.string().max(2).nullable().optional(),
+    pix_key_type: PixKeyTypeEnum.nullable().optional(),
+    pix_key: z.string().max(140).nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasType = data.pix_key_type != null;
+    const hasKey = data.pix_key != null && data.pix_key !== '';
+
+    if (hasKey && !hasType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pix_key_type'],
+        message: 'Informe o tipo da chave Pix.',
+      });
+      return;
+    }
+    if (hasType && !hasKey) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pix_key'],
+        message: 'Informe a chave Pix.',
+      });
+      return;
+    }
+    if (
+      hasType &&
+      hasKey &&
+      !isValidPixKey(data.pix_key_type as PixKeyType, data.pix_key as string)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pix_key'],
+        message: `Chave Pix inválida para o tipo ${data.pix_key_type}.`,
+      });
+    }
+  });
+
+export type CompanyProfileUpdateDto = z.infer<typeof CompanyProfileUpdateSchema>;

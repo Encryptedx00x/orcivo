@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { CompanyProfileUpdateDto } from './company-profile-update.schema';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import type { AuditJsonValue } from '../audit/audit.types';
 
 type ApprovalMethod = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
 
@@ -18,6 +20,21 @@ const COMPANY_SELECT = {
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
+
+// pix_key_type is validation-only input (see company-profile-update.schema.ts) —
+// there is no matching Company column, so it is stripped before persistence/audit.
+const PROFILE_FIELD_LABELS: Record<
+  'trade_name' | 'document_type' | 'document' | 'phone' | 'city' | 'state' | 'pix_key',
+  string
+> = {
+  trade_name: 'nome fantasia',
+  document_type: 'tipo de documento',
+  document: 'documento',
+  phone: 'telefone',
+  city: 'cidade',
+  state: 'estado',
+  pix_key: 'chave Pix',
+};
 
 @Injectable()
 export class CompanyService {
@@ -102,6 +119,53 @@ export class CompanyService {
         humanText:
           `Métodos de aprovação de "${before.trade_name}" alterados para ` +
           `${methods.join(', ') || '(nenhum)'}`,
+      });
+      return updated;
+    });
+  }
+
+  async updateProfile(companyId: string, dto: CompanyProfileUpdateDto, userId: string) {
+    const before = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: COMPANY_SELECT,
+    });
+    if (!before) throw new NotFoundException();
+
+    // pix_key_type only selects which format `pix_key` is validated against; it has no column.
+    const persistable: Record<string, AuditJsonValue | undefined> = { ...dto };
+    delete persistable['pix_key_type'];
+
+    const changedKeys = (Object.keys(persistable) as (keyof typeof PROFILE_FIELD_LABELS)[]).filter(
+      (key) => persistable[key] !== undefined,
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: persistable as never,
+        select: COMPANY_SELECT,
+      });
+
+      const from: Record<string, AuditJsonValue> = {};
+      const to: Record<string, AuditJsonValue> = {};
+      for (const key of changedKeys) {
+        from[key] = before[key] ?? null;
+        to[key] = updated[key] ?? null;
+      }
+      const changedLabels = changedKeys.map((key) => PROFILE_FIELD_LABELS[key]);
+
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.profile_updated',
+        entityType: 'company',
+        entityId: companyId,
+        from,
+        to,
+        humanText:
+          `Dados de "${before.trade_name}" atualizados` +
+          (changedLabels.length ? ` (${changedLabels.join(', ')})` : ''),
       });
       return updated;
     });
