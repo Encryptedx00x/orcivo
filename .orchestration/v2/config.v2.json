@@ -79,7 +79,13 @@
         "workingDirPolicy": "worktree-root",
         "environmentPolicy": "inherit-minus-secrets",
         "timeoutSec": 300,
-        "checks": [{ "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" }]
+        "checks": [
+          {
+            "id": "no-merge-markers",
+            "kind": "builtin",
+            "builtin": "no-merge-markers"
+          }
+        ]
       },
       "B": {
         "profileId": "B",
@@ -89,8 +95,16 @@
         "environmentPolicy": "inherit-minus-secrets",
         "timeoutSec": 900,
         "checks": [
-          { "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" },
-          { "id": "no-large-binary", "kind": "builtin", "builtin": "no-large-binary" }
+          {
+            "id": "no-merge-markers",
+            "kind": "builtin",
+            "builtin": "no-merge-markers"
+          },
+          {
+            "id": "no-large-binary",
+            "kind": "builtin",
+            "builtin": "no-large-binary"
+          }
         ]
       },
       "C": {
@@ -101,8 +115,16 @@
         "environmentPolicy": "inherit-minus-secrets",
         "timeoutSec": 1800,
         "checks": [
-          { "id": "no-merge-markers", "kind": "builtin", "builtin": "no-merge-markers" },
-          { "id": "no-large-binary", "kind": "builtin", "builtin": "no-large-binary" }
+          {
+            "id": "no-merge-markers",
+            "kind": "builtin",
+            "builtin": "no-merge-markers"
+          },
+          {
+            "id": "no-large-binary",
+            "kind": "builtin",
+            "builtin": "no-large-binary"
+          }
         ]
       }
     }
@@ -149,11 +171,17 @@
     "hashVersion": "orcivo.orchestration.v2.gate/2"
   },
   "providers": {
-    "primary": "claude",
-    "fallback": "codex",
-    "claude": { "bin": "claude" },
-    "codex": { "bin": "codex" },
-    "glm": { "bin": "opencode" }
+    "primary": "codex",
+    "fallback": "claude",
+    "claude": {
+      "bin": "claude"
+    },
+    "codex": {
+      "bin": "codex"
+    },
+    "glm": {
+      "bin": "opencode"
+    }
   },
   "threatModel": {
     "$comment": "PRAGMATIC V2.1 - OWNER DECISION (2026-09-03). The owner's local Windows host and Windows user account are TRUSTED. The harness defends against what the LLM agents and candidate-controlled code do wrong, NOT against an attacker who already holds the owner's access. This is a knob only in the sense that code reads `id` and `outOfScope`; the authoritative narrative lives in docs/agents/ORCHESTRATION-THREAT-MODEL.md and .planning/reviews/PRAGMATIC-V2.1-CLOSEOUT.md.",
@@ -285,9 +313,18 @@
         "minComplexity": "CRITICAL",
         "minReview": "CROSS_PROVIDER_REQUIRED"
       },
-      { "when": "persistentDbMigration", "minComplexity": "LEVEL_C" },
-      { "when": "production", "minComplexity": "LEVEL_C" },
-      { "when": "forcePush", "verdict": "PROHIBITED" }
+      {
+        "when": "persistentDbMigration",
+        "minComplexity": "LEVEL_C"
+      },
+      {
+        "when": "production",
+        "minComplexity": "LEVEL_C"
+      },
+      {
+        "when": "forcePush",
+        "verdict": "PROHIBITED"
+      }
     ],
     "signalKeywords": {
       "tenant": [
@@ -362,10 +399,22 @@
     "$comment": "PARTE 12. Abstract profiles resolve at RUNTIME against the actually-installed CLIs. NO permanent hardcoded model version. Discovered capabilities cache in state/cli-capabilities.json, refreshed when the CLI --version string changes. If a CLI cannot select reasoning/effort explicitly, use the best supported mechanism and record the limitation.",
     "profiles": ["FAST", "BALANCED", "REASONING", "CRITICAL"],
     "profileIntent": {
-      "FAST": { "reasoning": "min", "preferProvider": "EITHER" },
-      "BALANCED": { "reasoning": "normal", "preferProvider": "EITHER" },
-      "REASONING": { "reasoning": "high", "preferProvider": "EITHER" },
-      "CRITICAL": { "reasoning": "max", "preferProvider": "EITHER" }
+      "FAST": {
+        "reasoning": "min",
+        "preferProvider": "EITHER"
+      },
+      "BALANCED": {
+        "reasoning": "normal",
+        "preferProvider": "EITHER"
+      },
+      "REASONING": {
+        "reasoning": "high",
+        "preferProvider": "EITHER"
+      },
+      "CRITICAL": {
+        "reasoning": "max",
+        "preferProvider": "EITHER"
+      }
     },
     "complexityToProfile": {
       "TRIVIAL": "FAST",
@@ -375,7 +424,11 @@
       "LEVEL_C": "CRITICAL"
     },
     "capabilityProbe": {
-      "claude": { "versionArgs": ["--version"], "helpArgs": ["--help"], "subHelpArgs": [] },
+      "claude": {
+        "versionArgs": ["--version"],
+        "helpArgs": ["--help"],
+        "subHelpArgs": []
+      },
       "codex": {
         "versionArgs": ["--version"],
         "helpArgs": ["--help"],
