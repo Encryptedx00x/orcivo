@@ -344,3 +344,127 @@ in-app) — hoje o ícone de sino no TopBar é placeholder (D-1b).
 *Atualizado: 2026-05-22 — Fase 2A planejada (12 plans, 7 waves)*
 *Atualizado: 2026-07-23 — Fase 03.1 em andamento; P00 concluída*
 *Atualizado: 2026-09-01 — Discovery de produto incorporado; P02 aguardando gates humanos; wave P07.5 (audit trail) adicionada; ADRs 015/016/017*
+
+## Backlog
+
+_Achados de UAT visual do owner em 2026-09-27, testando as 9 features publicadas pelo autopilot (PB1-P06,P14,P07,P05,P09,P04,P10,P03,P22). Achados objetivos de bug/UX, não decisões de arquitetura._
+
+### Phase 999.1: Bug: nome do cliente não atualiza na página de detalhe após editar (precisa F5) (BACKLOG)
+
+**Goal:** Após PATCH /customers/:id, a página de detalhe do cliente continua mostrando o nome antigo até o usuário dar F5 — falta revalidação/refetch pós-edição no front (PB1-P14).
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.2: UI: padding no seletor de cliente da Nova OS (BACKLOG)
+
+**Goal:** Na tela "Nova OS" → "Selecionar cliente", nome/telefone/cidade do cliente ficam colados à borda roxa da linha selecionada; aumentar o padding.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.3: Bug: justificativa de reabertura de OS não aparece no histórico (BACKLOG)
+
+**Goal:** Ao reabrir uma OS o sistema pede justificativa e informa que ela entra no histórico/auditoria, mas a justificativa não aparece corretamente no histórico exibido no front.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.4: Feature: alterar status da OS direto no painel de gerenciamento (BACKLOG)
+
+**Goal:** Permitir mudar o status da OS diretamente no painel de gerenciamento de ordens de serviço (agilizar ou reverter estado manualmente), além das transições guiadas atuais.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.5: UI: hover com valor no gráfico de recebido por dia (BACKLOG)
+
+**Goal:** O gráfico de "recebido por dia" no financeiro deveria mostrar um tooltip/hover com o valor ao passar o mouse sobre a barra.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.6: Feature: editar ou excluir recebimento (pagamento) já registrado (BACKLOG)
+
+**Goal:** Hoje só é possível criar um recebimento; falta poder editar ou excluir um pagamento já registrado, com rastreabilidade completa no histórico/auditoria da alteração (pode redirecionar para editar na OS de origem).
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.7: Feature (opcional): foto do produto no catálogo (BACKLOG)
+
+**Goal:** Adicionar campo de foto para itens do catálogo de produtos/serviços.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.8: UX: feed de últimas atividades mais legível com caminho da ação (BACKLOG)
+
+**Goal:** O feed de "Últimas atividades" (audit log) mostra nomes técnicos de evento (ex: appointment.created, work_order.reopened); deveria ser mais amigável e mostrar o caminho/contexto de onde a ação ocorreu (ex: "Agenda -> Novo compromisso -> Criou X").
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.9: Bug: máscara de chave PIX sempre formata como CNPJ (BACKLOG)
+
+**Goal:** Regressão de PB1-P04 AC2 ("pix_key validated by type"): todos os tipos de chave PIX (CPF, email, telefone, aleatória) estão sendo mascarados/formatados como se fossem CNPJ.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.10: Feature: tela de conta do usuário (nome, e-mail, senha) (BACKLOG)
+
+**Goal:** Não existe hoje uma tela para o usuário alterar o próprio nome de usuário, e-mail e senha da conta; precisa existir.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.11: Feature: padronizar métodos de assinatura + foto para o cliente (BACKLOG)
+
+**Goal:** A assinatura do técnico (PB1-P10) usa um padrão diferente do resto do sistema. Unificar as mesmas 3 opções (desenho, nome digitado, simples) nos dois fluxos, e adicionar também assinatura por foto para o cliente (hoje só existe para o técnico).
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.12: Feature: editar orçamentos e alterar status diretamente (BACKLOG)
+
+**Goal:** Mesma flexibilidade pedida para OS (item 999.4): permitir editar orçamentos e alterar seus status diretamente, não só pelo fluxo guiado atual.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
