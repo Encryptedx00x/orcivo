@@ -119,7 +119,7 @@ export default function AgendaPage(): JSX.Element {
 
   return (
     <div>
-      <div className="ov-page-header">
+      <div className="ov-page-header" style={{ flexWrap: 'wrap' }}>
         <div>
           <h1
             style={{
@@ -134,7 +134,7 @@ export default function AgendaPage(): JSX.Element {
           </h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{weekLabel}</div>
         </div>
-        <div className="row-flex" style={{ display: 'flex', gap: 8 }}>
+        <div className="row-flex" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button aria-label="Semana anterior" className="ov-btn ov-btn-outline" onClick={prevWeek}>
             <ChevronLeft size={16} />
           </button>
@@ -146,7 +146,6 @@ export default function AgendaPage(): JSX.Element {
           </button>
           <button
             className="ov-btn ov-btn-primary"
-            style={{ gap: 8 }}
             onClick={() => {
               setSelected(null);
               setShowModal(true);
@@ -166,63 +165,70 @@ export default function AgendaPage(): JSX.Element {
           </button>
         </p>
       )}
-      <div className="ov-card" style={{ overflow: 'hidden' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '60px repeat(7, 1fr)',
-            borderBottom: '1px solid #E2E8F0',
-            background: '#F8FAFC',
-          }}
-        >
-          <div />
-          {days.map((d, i) => {
-            const isToday = d.toDateString() === new Date().toDateString();
-            return (
-              <div
-                key={i}
-                style={{
-                  padding: '10px 12px',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: isToday ? '#6D28D9' : '#64748B',
-                  textTransform: 'uppercase',
-                  letterSpacing: '.04em',
-                }}
-              >
-                {DAY_SHORT[i]} {d.getDate()}
-              </div>
-            );
-          })}
-        </div>
-        {hours.map((h, hi) => (
+      <div className="ov-card" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+        <div style={{ minWidth: 720 }}>
           <div
-            key={hi}
             style={{
               display: 'grid',
-              gridTemplateColumns: '60px repeat(7, 1fr)',
-              borderBottom: '1px solid #F1F5F9',
-              minHeight: 48,
+              gridTemplateColumns: '60px repeat(7, minmax(0, 1fr))',
+              borderBottom: '1px solid #E2E8F0',
+              background: '#F8FAFC',
             }}
           >
-            <div
-              style={{
-                padding: '6px 8px',
-                fontSize: 11,
-                color: '#94A3B8',
-                fontFamily: 'JetBrains Mono, monospace',
-              }}
-            >
-              {h}
-            </div>
-            {days.map((_, di) => {
-              const events = eventsFor(di, Number(h.slice(0, 2)));
+            <div />
+            {days.map((d, i) => {
+              const isToday = d.toDateString() === new Date().toDateString();
               return (
                 <div
-                  key={di}
-                  style={{ borderLeft: '1px solid #F1F5F9', padding: 4, position: 'relative' }}
+                  key={i}
+                  style={{
+                    padding: '10px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: isToday ? '#6D28D9' : '#64748B',
+                    textTransform: 'uppercase',
+                    letterSpacing: '.04em',
+                    minWidth: 0,
+                  }}
                 >
-                  {events.map((evt) => (
+                  {DAY_SHORT[i]} {d.getDate()}
+                </div>
+              );
+            })}
+          </div>
+          {hours.map((h, hi) => (
+            <div
+              key={hi}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '60px repeat(7, minmax(0, 1fr))',
+                borderBottom: '1px solid #F1F5F9',
+                minHeight: 48,
+              }}
+            >
+              <div
+                style={{
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  color: '#94A3B8',
+                  fontFamily: 'JetBrains Mono, monospace',
+                }}
+              >
+                {h}
+              </div>
+              {days.map((_, di) => {
+                const events = eventsFor(di, Number(h.slice(0, 2)));
+                return (
+                  <div
+                    key={di}
+                    style={{
+                      borderLeft: '1px solid #F1F5F9',
+                      padding: 4,
+                      position: 'relative',
+                      minWidth: 0,
+                    }}
+                  >
+                    {events.map((evt) => (
                     <button
                       key={evt.id}
                       type="button"
@@ -261,12 +267,13 @@ export default function AgendaPage(): JSX.Element {
                         {evt.customer?.name ?? evt.type.charAt(0) + evt.type.slice(1).toLowerCase()}
                       </div>
                     </button>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
       {showModal && (
