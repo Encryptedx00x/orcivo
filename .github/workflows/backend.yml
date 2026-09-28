@@ -86,16 +86,6 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio-ci -p 9002:9000 \
-            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio server /data
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:9002/minio/health/live && break
-            sleep 1
-          done
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
