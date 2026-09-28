@@ -17,8 +17,10 @@ import {
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { MailService } from '../mail/mail.service';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import type { AccountUpdateDto } from './account-update.schema';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly mail: MailService,
+    private readonly audit: AuditService,
   ) {}
 
   async signupUser(dto: SignupStep1Dto) {
@@ -194,6 +197,86 @@ export class AuthService {
     });
     await this.redis.del(`membership:${userId}`);
     await this.redis.del(`tenant:${userId}`);
+  }
+
+  async getAccount(userId: string) {
+    return this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+  }
+
+  async updateAccount(companyId: string, userId: string, dto: AccountUpdateDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, password_hash: true },
+    });
+
+    const changingCredentials = dto.email !== undefined || dto.new_password !== undefined;
+    if (changingCredentials) {
+      const passwordMatches = await argon2.verify(user.password_hash, dto.current_password!);
+      if (!passwordMatches) throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    if (dto.email !== undefined && dto.email !== user.email) {
+      const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (existing) throw new ConflictException('E-mail já cadastrado');
+    }
+
+    const data: { name?: string; email?: string; password_hash?: string } = {};
+    const changedFields: string[] = [];
+    if (dto.name !== undefined && dto.name !== user.name) {
+      data.name = dto.name;
+      changedFields.push('nome');
+    }
+    if (dto.email !== undefined && dto.email !== user.email) {
+      data.email = dto.email;
+      changedFields.push('e-mail');
+    }
+    if (dto.new_password !== undefined) {
+      data.password_hash = await argon2.hash(dto.new_password);
+      changedFields.push('senha');
+    }
+
+    if (changedFields.length === 0) {
+      return { account: { id: user.id, name: user.name, email: user.email } };
+    }
+
+    const passwordChanged = dto.new_password !== undefined;
+    const account = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data,
+        select: { id: true, name: true, email: true },
+      });
+
+      if (passwordChanged) {
+        await tx.refreshToken.updateMany({
+          where: { user_id: userId, revoked: false },
+          data: { revoked: true },
+        });
+      }
+
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: passwordChanged ? 'account.password_changed' : 'account.updated',
+        entityType: 'user',
+        entityId: userId,
+        from: { fields: changedFields },
+        to: { fields: changedFields },
+        humanText: `Dados da conta atualizados (${changedFields.join(', ')})`,
+      });
+      return updated;
+    });
+
+    if (!passwordChanged) return { account };
+
+    // A fresh pair keeps the initiating session active. All pre-existing
+    // refresh tokens were revoked in the transaction above.
+    const tokens = await this.issueTokens(userId, account.email);
+    return { account, ...tokens };
   }
 
   private async issueTokens(userId: string, email: string) {

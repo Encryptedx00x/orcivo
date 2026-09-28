@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -6,15 +6,25 @@ import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AuthService } from './auth.service';
+import { AuditService } from '../audit/audit.service';
+import * as argon2 from 'argon2';
 
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
     update: jest.fn(),
   },
   refreshToken: {
     updateMany: jest.fn(),
+    create: jest.fn(),
   },
+  $transaction: jest.fn(),
+};
+
+const mockTransaction = {
+  user: { update: jest.fn() },
+  refreshToken: { updateMany: jest.fn() },
 };
 
 const mockRedis = {
@@ -26,6 +36,8 @@ const mockRedis = {
 const mockMail = {
   send: jest.fn(),
 };
+
+const mockAudit = { record: jest.fn() };
 
 const mockJwt = {
   sign: jest.fn().mockReturnValue('mock-token'),
@@ -41,6 +53,9 @@ describe('AuthService — forgotPassword / resetPassword', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(
+      async (callback: (tx: typeof mockTransaction) => unknown) => callback(mockTransaction),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,6 +65,7 @@ describe('AuthService — forgotPassword / resetPassword', () => {
         { provide: MailService, useValue: mockMail },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -111,6 +127,128 @@ describe('AuthService — forgotPassword / resetPassword', () => {
       ).rejects.toThrow(BadRequestException);
 
       expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateAccount', () => {
+    it('updates only the display name and writes an audit row without asking for the password', async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome antigo',
+        email: 'user@exemplo.com',
+        password_hash: 'hash',
+      });
+      mockTransaction.user.update.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome novo',
+        email: 'user@exemplo.com',
+      });
+
+      await expect(
+        service.updateAccount('company-123', 'user-123', { name: 'Nome novo' }),
+      ).resolves.toEqual({
+        account: { id: 'user-123', name: 'Nome novo', email: 'user@exemplo.com' },
+      });
+
+      expect(mockTransaction.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-123' },
+          data: { name: 'Nome novo' },
+        }),
+      );
+      expect(mockTransaction.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTransaction,
+        expect.objectContaining({
+          companyId: 'company-123',
+          actorUserId: 'user-123',
+          action: 'account.updated',
+          entityType: 'user',
+        }),
+      );
+    });
+
+    it('rejects an e-mail change when the current password is incorrect', async () => {
+      const passwordHash = await argon2.hash('SenhaAtual123');
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome',
+        email: 'user@exemplo.com',
+        password_hash: passwordHash,
+      });
+
+      await expect(
+        service.updateAccount('company-123', 'user-123', {
+          email: 'novo@exemplo.com',
+          current_password: 'senha-incorreta',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an e-mail that belongs to another user after validating the current password', async () => {
+      const passwordHash = await argon2.hash('SenhaAtual123');
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome',
+        email: 'user@exemplo.com',
+        password_hash: passwordHash,
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'other-user' });
+
+      await expect(
+        service.updateAccount('company-123', 'user-123', {
+          email: 'ocupado@exemplo.com',
+          current_password: 'SenhaAtual123',
+        }),
+      ).rejects.toThrow('E-mail já cadastrado');
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('revokes every active refresh token, records the audit, and issues replacement tokens for a password change', async () => {
+      const passwordHash = await argon2.hash('SenhaAtual123');
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome',
+        email: 'user@exemplo.com',
+        password_hash: passwordHash,
+      });
+      mockTransaction.user.update.mockResolvedValue({
+        id: 'user-123',
+        name: 'Nome',
+        email: 'user@exemplo.com',
+      });
+      mockPrisma.refreshToken.create.mockResolvedValue({ id: 'new-session' });
+
+      const result = await service.updateAccount('company-123', 'user-123', {
+        current_password: 'SenhaAtual123',
+        new_password: 'SenhaNova456',
+      });
+
+      expect(mockTransaction.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { user_id: 'user-123', revoked: false },
+        data: { revoked: true },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTransaction,
+        expect.objectContaining({
+          action: 'account.password_changed',
+        }),
+      );
+      expect(mockPrisma.refreshToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ user_id: 'user-123' }),
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          account: { id: 'user-123', name: 'Nome', email: 'user@exemplo.com' },
+          access_token: 'mock-token',
+          refresh_token: 'mock-token',
+        }),
+      );
     });
   });
 });
