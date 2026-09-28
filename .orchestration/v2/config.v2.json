@@ -171,8 +171,8 @@
     "hashVersion": "orcivo.orchestration.v2.gate/2"
   },
   "providers": {
-    "primary": "codex",
-    "fallback": "claude",
+    "primary": "claude",
+    "fallback": "codex",
     "claude": {
       "bin": "claude"
     },
