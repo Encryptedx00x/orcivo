@@ -347,6 +347,17 @@ function ConvertTo-DispatcherNormalizedReviewResult {
             if($null -eq $finding.line){$finding.Remove('line')}
         }
     }
+    # A verbose reviewer can otherwise blow reviewerMeta's schema maxLength
+    # (metadata only, no bearing on the verdict/findings/criteria that
+    # actually carry review substance) and get a real, correct review
+    # discarded as HUMAN_REVIEW_REQUIRED over a cosmetic field length.
+    if($normalized.reviewerMeta -is [System.Collections.IDictionary]){
+        $capLen=@{provider=64;model=128;effort=32;toolPolicy=512;promptTemplateVersion=64}
+        foreach($key in $capLen.Keys){
+            $val=$normalized.reviewerMeta[$key]
+            if($val -is [string] -and $val.Length -gt $capLen[$key]){$normalized.reviewerMeta[$key]=$val.Substring(0,$capLen[$key])}
+        }
+    }
     return $normalized
 }
 
