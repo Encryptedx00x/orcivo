@@ -1112,6 +1112,210 @@
       ],
       "status": "SCHEDULED",
       "phaseGate": "UAT-20260927"
+    },
+    {
+      "taskId": "PB1-M01-agenda-mobile-parity",
+      "title": "Agenda real no app mobile (hoje e placeholder Em breve)",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "A aba Agenda do app mobile (apps/mobile/src/navigation/AppTabs.tsx) hoje renderiza EmBreveScreen. O web ja tem agenda completa (apps/web/app/(app)/agenda/page.tsx) consumindo o backend de appointments (apps/backend/src/appointment). Owner determinou que app e site devem evoluir juntos - esta e a lacuna de maior impacto (aba principal do tecnico em campo).",
+      "acceptance": "AC1: a aba Agenda lista os compromissos do tecnico (hoje/proximos dias) consumindo o mesmo endpoint de appointments que o web usa; AC2: e possivel criar um novo compromisso vinculado a um cliente (e opcionalmente uma OS); AC3: toque em um compromisso mostra os detalhes; AC4: segue o design system mobile ja estabelecido (roxo #6D28D9, Lucide icons via lucide-react-native, mesmos padroes de outras telas como ClientesScreen).",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/agenda",
+        "apps/mobile/src/services/appointment.service.ts",
+        "apps/mobile/src/navigation/AppTabs.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M02-financeiro-mobile-parity",
+      "title": "Financeiro real no app mobile (hoje e placeholder Em breve)",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Financeiro no menu Mais do app mobile (apps/mobile/src/navigation/MaisStack.tsx) hoje e EmBreveScreen. O web ja tem financeiro completo com registro de recebimentos e grafico (apps/web/app/(app)/financeiro). Owner quer paridade entre app e site.",
+      "acceptance": "AC1: a tela Financeiro do app mostra os recebimentos (pendente/recebido) usando o mesmo endpoint que o web (/payments); AC2: e possivel registrar um novo recebimento (Decimal amount, method, date, status) vinculado a uma OS; AC3: nenhum valor monetario usa number/float (Decimal.js no app, igual ao resto do projeto); AC4: segue o design system mobile ja estabelecido.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/financeiro",
+        "apps/mobile/src/services/payment.service.ts",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M03-conta-mobile-parity",
+      "title": "Tela Conta real no app mobile (hoje e placeholder Em breve)",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Conta no menu Mais do app mobile hoje e EmBreveScreen. O web acabou de ganhar uma tela de conta (PB1-P33-account-settings-screen) para trocar nome/e-mail/senha via /auth/account. Owner quer a mesma paridade no app.",
+      "acceptance": "AC1: a tela Conta do app permite ver e editar nome e e-mail do usuario logado; AC2: permite trocar a senha exigindo a senha atual; AC3: usa o mesmo endpoint /auth/account que o web ja usa (apps/web/app/(app)/configuracoes referencia PB1-P33); AC4: mensagens de erro em pt-BR, sem vazar detalhe tecnico.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/conta",
+        "apps/mobile/src/services/auth.service.ts",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M04-configuracoes-empresa-mobile-parity",
+      "title": "Tela Configuracoes (perfil da empresa + PIX) real no app mobile",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Configuracoes no menu Mais do app mobile hoje e EmBreveScreen. O web tem uma tela completa (apps/web/app/(app)/configuracoes/page.tsx) com perfil da empresa e chave PIX mascarada por tipo. Owner quer a mesma paridade no app.",
+      "acceptance": "AC1: a tela mostra e permite editar o perfil da empresa (razao social/nome, documento, telefone, cidade, UF); AC2: permite configurar a chave PIX com mascara correta por tipo (CPF/CNPJ/email/telefone/aleatoria, mesma logica de PB1-P32 no web); AC3: usa os mesmos endpoints que o web (/company/me); AC4: segue o design system mobile.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/configuracoes",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M05-equipe-mobile-parity",
+      "title": "Tela Usuarios e permissoes (equipe) real no app mobile",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Usuarios e permissoes no menu Mais do app mobile hoje e EmBreveScreen. O web tem gestao de equipe completa (apps/web/app/(app)/equipe/page.tsx). Owner quer paridade no app, ao menos leitura + convite.",
+      "acceptance": "AC1: a tela lista os membros da equipe da empresa com papel (role); AC2: permite convidar um novo membro por e-mail; AC3: admin pode mudar o papel de um membro ou desativa-lo, usando os mesmos endpoints do web; AC4: segue o design system mobile.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/equipe",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M06-documentos-mobile-parity",
+      "title": "Tela Documentos (PDFs de orcamento/OS) real no app mobile",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Documentos no menu Mais do app mobile hoje e EmBreveScreen. O web ja baixa PDF de orcamento e OS (apps/web/app/(app)/documentos, PB1-P11/PB1-P12). Owner quer paridade no app - o tecnico em campo precisa poder baixar/compartilhar esses PDFs pelo celular.",
+      "acceptance": "AC1: a tela lista os documentos (orcamentos e OS) com PDF disponivel; AC2: toque em um item baixa e/ou compartilha o PDF usando o endpoint ja existente no backend; AC3: mostra claramente o status (ex: pendente/emitido) igual a semantica ja definida em PB1-P12; AC4: segue o design system mobile.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/documentos",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M07-plano-mobile-parity",
+      "title": "Tela Plano e assinatura real no app mobile",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O item Plano e assinatura no menu Mais do app mobile hoje e EmBreveScreen. O web ja mostra o plano atual e uso (apps/web/app/(app)/plano/page.tsx). Owner quer paridade no app. Linguagem de produto obrigatoria: uso justo, uso ampliado, Ver planos, Gerenciar assinatura - nunca pague fora do app nem falar em taxa da Apple/Google, dado que a Apple/Google exigem in-app purchase para conteudo digital em apps nativos.",
+      "acceptance": "AC1: a tela mostra o plano atual (Orcivo Livre/Solo/Mais/Equipe) e o uso do mes (ex.: X/15 OS no Livre); AC2: botao Ver planos e Gerenciar assinatura presentes, linkando para o fluxo apropriado (web/checkout ou app store conforme a politica da loja - NAO implementar cobranca nova nesta task, e decisao de billing/Nivel C separada); AC3: nomenclatura de planos e linguagem seguem exatamente o CLAUDE.md do projeto (Orcivo Livre/Solo/Mais/Equipe; nunca FREE/POP/PRO/TOP).",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/plano",
+        "apps/mobile/src/navigation/MaisStack.tsx"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
+    },
+    {
+      "taskId": "PB1-M08-historico-audit-mobile-parity",
+      "title": "Historico de acoes (audit) nas telas de OS e orcamento do app mobile",
+      "type": "FEATURE_INCOMPLETE",
+      "source": "OWNER-MOBILE-PARITY-20260928",
+      "description": "O web acabou de ganhar um historico de acoes legivel (data/hora, usuario, acao) nas telas de OS/orcamento/financeiro via GET /audit-logs (PB1-P26). O app mobile ja tem WorkOrderDetailScreen e QuoteDetailScreen mas sem historico. Owner quer a mesma paridade no app.",
+      "acceptance": "AC1: a tela de detalhes da OS (WorkOrderDetailScreen) tem um botao/secao mostrando o historico de acoes daquela OS (data/hora exata, usuario, acao), consumindo o mesmo GET /audit-logs que o web (PB1-P26); AC2: a tela de detalhes do orcamento (QuoteDetailScreen) tem a mesma secao de historico; AC3: leitura apenas - nenhuma logica nova de escrita de auditoria; AC4: segue o design system mobile.",
+      "dependencies": [],
+      "scope": [
+        "apps/mobile/src/screens/WorkOrderDetailScreen.tsx",
+        "apps/mobile/src/screens/QuoteDetailScreen.tsx",
+        "apps/mobile/src/services/audit.service.ts"
+      ],
+      "risk": "A",
+      "ownerGate": "none",
+      "candidateConstraints": {},
+      "verificationProfile": "A",
+      "productBatch": "MVP-PRODUCT-BATCH-1-MOBILE-PARITY",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "status": "SCHEDULED",
+      "phaseGate": "MOBILE-PARITY-20260928"
     }
   ],
   "recurringProcesses": [
