@@ -9,7 +9,10 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   CatalogImportRequestSchema,
   CatalogItemCreateSchema,
@@ -40,6 +43,23 @@ export class CatalogController {
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.catalogService.findOne(id, req.companyId);
+  }
+
+  @Post(':id/photo')
+  @HttpCode(201)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadPhoto(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.catalogService.uploadPhoto(id, req.companyId, file);
+  }
+
+  @Delete(':id/photo')
+  @HttpCode(200)
+  deletePhoto(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.catalogService.deletePhoto(id, req.companyId);
   }
 
   @Post()

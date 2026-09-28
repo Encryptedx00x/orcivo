@@ -8,19 +8,23 @@ export interface InventoryItem extends CatalogItem {
   low_stock_threshold?: number;
   cost_price?: string;
   sale_price?: string;
+  photo_url?: string | null;
   is_low_stock?: boolean;
 }
 
 export function isLowStock(item: InventoryItem): boolean {
-  return item.type === 'PRODUCT' && (item.is_low_stock ?? (
-    item.quantity !== undefined && item.low_stock_threshold !== undefined &&
-    item.quantity <= item.low_stock_threshold
-  ));
+  return (
+    item.type === 'PRODUCT' &&
+    (item.is_low_stock ??
+      (item.quantity !== undefined &&
+        item.low_stock_threshold !== undefined &&
+        item.quantity <= item.low_stock_threshold))
+  );
 }
 
 export function parseCatalogForm(formData: FormData) {
   const text = (key: string) => String(formData.get(key) ?? '').trim();
-  const count = (key: string) => /^\d+$/.test(text(key)) ? Number(text(key)) : NaN;
+  const count = (key: string) => (/^\d+$/.test(text(key)) ? Number(text(key)) : NaN);
   const item = CatalogItemCreateSchema.parse({
     name: text('name'),
     description: text('description'),

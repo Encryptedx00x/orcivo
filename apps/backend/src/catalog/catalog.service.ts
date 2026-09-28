@@ -9,6 +9,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
 
 type CatalogItemRow = {
   id: string;
@@ -22,6 +23,7 @@ type CatalogItemRow = {
   cost_price: Prisma.Decimal;
   sale_price: Prisma.Decimal;
   unit: string | null;
+  photo_url: string | null;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -37,6 +39,7 @@ type CatalogWriteData = {
   cost_price: string;
   sale_price: string;
   unit: string | null;
+  photo_url?: string | null;
   is_active: boolean;
 };
 
@@ -45,12 +48,18 @@ type Queryable = Pick<PrismaService, '$queryRaw'>;
 const inventoryColumns = Prisma.sql`
   "id", "company_id", "name", "description", "type", "unit_price",
   "quantity", "low_stock_threshold", "cost_price", "sale_price", "unit",
-  "is_active", "created_at", "updated_at"
+  "photo_url", "is_active", "created_at", "updated_at"
 `;
+
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async findAll(companyId: string, onlyActive = true) {
     const items = await this.prisma.$queryRaw<CatalogItemRow[]>`
@@ -59,7 +68,7 @@ export class CatalogService {
         AND (${onlyActive} = false OR "is_active" = true)
       ORDER BY "type" ASC, "name" ASC
     `;
-    return items.map((item) => this.withLowStock(item));
+    return Promise.all(items.map((item) => this.withLowStock(item)));
   }
 
   async findLowStock(companyId: string) {
@@ -71,7 +80,7 @@ export class CatalogService {
         AND "quantity" <= "low_stock_threshold"
       ORDER BY "quantity" ASC, "name" ASC
     `;
-    return items.map((item) => this.withLowStock(item));
+    return Promise.all(items.map((item) => this.withLowStock(item)));
   }
 
   async findOne(id: string, companyId: string) {
@@ -124,8 +133,60 @@ export class CatalogService {
       created,
       updated,
       total: items.length,
-      items: items.map((item) => this.withLowStock(item)),
+      items: await Promise.all(items.map((item) => this.withLowStock(item))),
     };
+  }
+
+  async uploadPhoto(id: string, companyId: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Envie uma foto do item.');
+    const item = await this.findOneRow(this.prisma, id, companyId);
+    if (!item) throw new NotFoundException();
+
+    this.storage.assertUploadable(
+      file.buffer,
+      file.mimetype,
+      MAX_PHOTO_SIZE,
+      ALLOWED_PHOTO_MIME_TYPES,
+    );
+
+    const extension = file.mimetype.split('/')[1] || 'jpg';
+    const objectKey = `${companyId}/catalog/${id}/${randomUUID()}.${extension}`;
+    const uploadedKey = await this.storage.uploadBuffer(
+      PHOTO_BUCKET,
+      objectKey,
+      file.buffer,
+      file.mimetype,
+    );
+
+    let updated: CatalogItemRow | undefined;
+    try {
+      updated = await this.updateRow(this.prisma, id, companyId, { photo_url: uploadedKey });
+    } catch (error) {
+      await this.storage.deleteObject(PHOTO_BUCKET, uploadedKey).catch(() => null);
+      throw error;
+    }
+    if (!updated) {
+      await this.storage.deleteObject(PHOTO_BUCKET, uploadedKey).catch(() => null);
+      throw new NotFoundException();
+    }
+
+    const previousKey = this.storage.extractKey(PHOTO_BUCKET, item.photo_url);
+    if (previousKey && previousKey !== uploadedKey) {
+      await this.storage.deleteObject(PHOTO_BUCKET, previousKey).catch(() => null);
+    }
+    return this.withLowStock(updated);
+  }
+
+  async deletePhoto(id: string, companyId: string) {
+    const item = await this.findOneRow(this.prisma, id, companyId);
+    if (!item) throw new NotFoundException();
+
+    const updated = await this.updateRow(this.prisma, id, companyId, { photo_url: null });
+    if (!updated) throw new NotFoundException();
+
+    const objectKey = this.storage.extractKey(PHOTO_BUCKET, item.photo_url);
+    if (objectKey) await this.storage.deleteObject(PHOTO_BUCKET, objectKey).catch(() => null);
+    return this.withLowStock(updated);
   }
 
   private async findOneRow(queryable: Queryable, id: string, companyId: string) {
@@ -203,6 +264,7 @@ export class CatalogService {
     if (data.sale_price !== undefined)
       assignments.push(Prisma.sql`"sale_price" = ${data.sale_price}::DECIMAL(12,2)`);
     if (data.unit !== undefined) assignments.push(Prisma.sql`"unit" = ${data.unit}`);
+    if (data.photo_url !== undefined) assignments.push(Prisma.sql`"photo_url" = ${data.photo_url}`);
     if (data.is_active !== undefined) assignments.push(Prisma.sql`"is_active" = ${data.is_active}`);
     return assignments;
   }
@@ -230,9 +292,10 @@ export class CatalogService {
     return price === undefined ? data : { ...data, unit_price: price, sale_price: price };
   }
 
-  private withLowStock(item: CatalogItemRow) {
+  private async withLowStock(item: CatalogItemRow) {
     return {
       ...item,
+      photo_url: await this.storage.resolveUrl(PHOTO_BUCKET, item.photo_url),
       is_low_stock: item.type === 'PRODUCT' && item.quantity <= item.low_stock_threshold,
     };
   }
