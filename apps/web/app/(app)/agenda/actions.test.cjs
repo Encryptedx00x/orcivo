@@ -8,15 +8,15 @@ const { transformSync } = require('esbuild');
 const id = '11111111-1111-4111-8111-111111111111';
 function setup({ token = 'session-token', status = 200, networkError = false } = {}) {
   const calls = [];
-  const module = { exports: {} };
+  const fakeModule = { exports: {} };
   const code = transformSync(fs.readFileSync(path.join(__dirname, 'actions.ts'), 'utf8'), {
     loader: 'ts',
     format: 'cjs',
     target: 'es2022',
   }).code;
   vm.runInNewContext(code, {
-    module,
-    exports: module.exports,
+    module: fakeModule,
+    exports: fakeModule.exports,
     process: { env: { API_URL: 'http://backend.test' } },
     require: (name) => {
       assert.equal(name, 'next/headers');
@@ -28,7 +28,7 @@ function setup({ token = 'session-token', status = 200, networkError = false } =
       return { ok: status >= 200 && status < 300, status };
     },
   });
-  return { actions: module.exports, calls };
+  return { actions: fakeModule.exports, calls };
 }
 
 test('server actions forward PATCH and DELETE using only the server session', async () => {
