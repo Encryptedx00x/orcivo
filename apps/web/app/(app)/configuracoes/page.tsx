@@ -11,8 +11,14 @@ import {
   Shield,
   Bell,
   FileOutput,
+  UserRound,
 } from 'lucide-react';
-import { updateCompanyProfile, updateCompanyPix } from './actions';
+import {
+  getAccountSettings,
+  updateAccountSettings,
+  updateCompanyProfile,
+  updateCompanyPix,
+} from './actions';
 
 type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
 type PixKeyType = 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
@@ -30,6 +36,14 @@ interface PixForm {
   pix_key: string;
 }
 
+interface AccountForm {
+  name: string;
+  email: string;
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 interface CompanyMeResponse {
   trade_name?: string;
   document?: string | null;
@@ -42,6 +56,13 @@ interface CompanyMeResponse {
 
 const EMPTY_EMPRESA: EmpresaForm = { trade_name: '', document: '', phone: '', city: '', state: '' };
 const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
+const EMPTY_ACCOUNT: AccountForm = {
+  name: '',
+  email: '',
+  current_password: '',
+  new_password: '',
+  confirm_password: '',
+};
 /** Sem coluna dedicada para o tipo — inferido do formato da chave já salva. */
 function inferPixKeyType(key: string): PixKeyType {
   const digits = key.replace(/\D/g, '');
@@ -83,9 +104,7 @@ function maskPixKey(type: PixKeyType, raw: string): string {
   }
   if (type === 'PHONE') {
     const digits = raw.replace(/\D/g, '').slice(0, 11);
-    return digits
-      .replace(/^(\d{2})(\d)/, '($1) $2')
-      .replace(/(\d{5})(\d)/, '$1-$2');
+    return digits.replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
   }
   return raw;
 }
@@ -107,6 +126,7 @@ const METHOD_LABELS: Record<Method, { label: string; desc: string }> = {
 const ALL_METHODS: Method[] = ['APPROVE_BUTTON', 'TYPED_NAME', 'DRAWN_SIGNATURE'];
 
 const TABS = [
+  { id: 'conta', label: 'Minha conta', icon: UserRound },
   { id: 'empresa', label: 'Empresa', icon: Building2 },
   { id: 'visual', label: 'Identidade visual', icon: Image },
   { id: 'pix', label: 'Chave Pix', icon: QrCode },
@@ -136,6 +156,15 @@ export default function ConfiguracoesPage(): JSX.Element {
   const [pixSaved, setPixSaved] = useState(false);
   const [pixError, setPixError] = useState('');
 
+  const [account, setAccount] = useState<AccountForm>(EMPTY_ACCOUNT);
+  const [accountOriginal, setAccountOriginal] = useState<{ name: string; email: string } | null>(
+    null,
+  );
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const [accountSaved, setAccountSaved] = useState('');
+
   useEffect(() => {
     fetch('/api/company/me')
       .then((r) => r.json())
@@ -157,6 +186,22 @@ export default function ConfiguracoesPage(): JSX.Element {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    void getAccountSettings().then((result) => {
+      if (result.ok) {
+        setAccount((previous) => ({
+          ...previous,
+          name: result.account.name,
+          email: result.account.email,
+        }));
+        setAccountOriginal({ name: result.account.name, email: result.account.email });
+      } else {
+        setAccountError(result.message);
+      }
+      setAccountLoading(false);
+    });
   }, []);
 
   async function saveEmpresa() {
@@ -231,6 +276,65 @@ export default function ConfiguracoesPage(): JSX.Element {
     }
   }
 
+  async function saveAccount() {
+    const name = account.name.trim();
+    const email = account.email.trim().toLowerCase();
+    const changingPassword = Boolean(account.new_password);
+    const nameChanged = name !== accountOriginal?.name;
+    const emailChanged = email !== accountOriginal?.email;
+    const credentialsChanged = emailChanged || changingPassword;
+
+    if (!name) {
+      setAccountError('Informe seu nome.');
+      return;
+    }
+    if (!nameChanged && !credentialsChanged) {
+      setAccountSaved('Nenhuma alteraÃ§Ã£o para salvar.');
+      return;
+    }
+    if (changingPassword && account.new_password !== account.confirm_password) {
+      setAccountError('A confirmaÃ§Ã£o da nova senha nÃ£o confere.');
+      return;
+    }
+    if (credentialsChanged && !account.current_password) {
+      setAccountError('Informe sua senha atual para alterar e-mail ou senha.');
+      return;
+    }
+
+    setAccountSaving(true);
+    setAccountError('');
+    setAccountSaved('');
+    try {
+      const result = await updateAccountSettings({
+        ...(nameChanged ? { name } : {}),
+        ...(emailChanged ? { email } : {}),
+        ...(credentialsChanged ? { current_password: account.current_password } : {}),
+        ...(changingPassword ? { new_password: account.new_password } : {}),
+      });
+      if (!result.ok) {
+        setAccountError(result.message);
+        return;
+      }
+      setAccount({
+        name: result.account.name,
+        email: result.account.email,
+        current_password: '',
+        new_password: '',
+        confirm_password: '',
+      });
+      setAccountOriginal({ name: result.account.name, email: result.account.email });
+      setAccountSaved(
+        result.passwordChanged
+          ? 'Senha atualizada. As outras sessÃµes foram encerradas.'
+          : 'Dados da conta atualizados.',
+      );
+    } catch {
+      setAccountError('Erro ao salvar. Tente novamente.');
+    } finally {
+      setAccountSaving(false);
+    }
+  }
+
   return (
     <div>
       <div className="ov-page-header">
@@ -282,6 +386,141 @@ export default function ConfiguracoesPage(): JSX.Element {
 
         {/* Content */}
         <div>
+          {tab === 'conta' && (
+            <section
+              className="ov-card ov-card-body"
+              style={{ padding: 24, maxWidth: 680 }}
+              aria-labelledby="account-heading"
+            >
+              <h3 id="account-heading" style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>
+                Minha conta
+              </h3>
+              <p style={{ color: '#64748B', fontSize: 13, margin: '0 0 20px' }}>
+                Atualize como seu nome aparece no Orcivo ou proteja suas credenciais.
+              </p>
+              {accountLoading ? (
+                <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregandoâ€¦</p>
+              ) : (
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <label className="ov-label" htmlFor="account-name">
+                      Nome de exibiÃ§Ã£o
+                    </label>
+                    <input
+                      id="account-name"
+                      className="ov-input"
+                      value={account.name}
+                      onChange={(event) => {
+                        setAccountSaved('');
+                        setAccount({ ...account, name: event.target.value });
+                      }}
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label" htmlFor="account-email">
+                      E-mail
+                    </label>
+                    <input
+                      id="account-email"
+                      className="ov-input"
+                      type="email"
+                      value={account.email}
+                      onChange={(event) => {
+                        setAccountSaved('');
+                        setAccount({ ...account, email: event.target.value });
+                      }}
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div
+                    style={{
+                      borderTop: '1px solid #E2E8F0',
+                      paddingTop: 20,
+                      display: 'grid',
+                      gap: 16,
+                    }}
+                  >
+                    <div>
+                      <label className="ov-label" htmlFor="current-password">
+                        Senha atual
+                      </label>
+                      <input
+                        id="current-password"
+                        className="ov-input"
+                        type="password"
+                        value={account.current_password}
+                        onChange={(event) => {
+                          setAccountSaved('');
+                          setAccount({ ...account, current_password: event.target.value });
+                        }}
+                        autoComplete="current-password"
+                      />
+                      <p style={{ color: '#64748B', fontSize: 12, margin: '6px 0 0' }}>
+                        ObrigatÃ³ria para alterar e-mail ou senha.
+                      </p>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div>
+                        <label className="ov-label" htmlFor="new-password">
+                          Nova senha
+                        </label>
+                        <input
+                          id="new-password"
+                          className="ov-input"
+                          type="password"
+                          minLength={8}
+                          value={account.new_password}
+                          onChange={(event) => {
+                            setAccountSaved('');
+                            setAccount({ ...account, new_password: event.target.value });
+                          }}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <div>
+                        <label className="ov-label" htmlFor="confirm-password">
+                          Confirmar nova senha
+                        </label>
+                        <input
+                          id="confirm-password"
+                          className="ov-input"
+                          type="password"
+                          minLength={8}
+                          value={account.confirm_password}
+                          onChange={(event) => {
+                            setAccountSaved('');
+                            setAccount({ ...account, confirm_password: event.target.value });
+                          }}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {accountError && (
+                <p role="alert" style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>
+                  {accountError}
+                </p>
+              )}
+              {accountSaved && (
+                <p role="status" style={{ color: '#16A34A', fontSize: 13, marginTop: 12 }}>
+                  {accountSaved}
+                </p>
+              )}
+              <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="ov-btn ov-btn-primary"
+                  onClick={saveAccount}
+                  disabled={accountSaving || accountLoading}
+                >
+                  {accountSaving ? 'Salvandoâ€¦' : 'Salvar dados da conta'}
+                </button>
+              </div>
+            </section>
+          )}
+
           {tab === 'empresa' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>
               <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Dados da empresa</h3>
@@ -393,7 +632,11 @@ export default function ConfiguracoesPage(): JSX.Element {
                       onChange={(e) => {
                         const nextType = e.target.value as PixKeyType;
                         setPixSaved(false);
-                        setPix({ ...pix, pix_key_type: nextType, pix_key: maskPixKey(nextType, pix.pix_key) });
+                        setPix({
+                          ...pix,
+                          pix_key_type: nextType,
+                          pix_key: maskPixKey(nextType, pix.pix_key),
+                        });
                       }}
                     >
                       {PIX_KEY_TYPES.map(({ value, label }) => (

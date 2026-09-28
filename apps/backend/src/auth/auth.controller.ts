@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -19,6 +21,7 @@ import {
 } from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
+import { AccountUpdateSchema } from './account-update.schema';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -79,5 +82,21 @@ export class AuthController {
   @Post('logout')
   logout(@CurrentUser() user: { userId: string }) {
     return this.authService.logout(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('account')
+  getAccount(@CurrentUser() user: { userId: string }) {
+    return this.authService.getAccount(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Patch('account')
+  updateAccount(
+    @Req() req: { companyId: string },
+    @CurrentUser() user: { userId: string },
+    @Body(new ZodValidationPipe(AccountUpdateSchema)) body: unknown,
+  ) {
+    return this.authService.updateAccount(req.companyId, user.userId, body as never);
   }
 }
