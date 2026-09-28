@@ -137,11 +137,40 @@ function Get-GlmFencedBlocks {
 # order, from (1) whole-text JSON, (2) the last parseable ```json fenced
 # block, (3) the last parseable generic fenced block - accepted only when it
 # contains the expected structured-result field marker.
+function Get-GlmBalancedJsonBlocks {
+    # GLM sometimes writes prose followed by a bare JSON object with no
+    # markdown code fence at all. This scans for top-level {...} spans by
+    # brace-depth (respecting quoted strings/escapes), independent of fences.
+    param([string]$Text)
+    $blocks = @()
+    $depth = 0; $inString = $false; $escape = $false; $start = -1
+    for ($i = 0; $i -lt $Text.Length; $i++) {
+        $c = $Text[$i]
+        if ($inString) {
+            if ($escape) { $escape = $false }
+            elseif ($c -eq '\') { $escape = $true }
+            elseif ($c -eq '"') { $inString = $false }
+            continue
+        }
+        if ($c -eq '"') { $inString = $true; continue }
+        if ($c -eq '{') { if ($depth -eq 0) { $start = $i }; $depth++; continue }
+        if ($c -eq '}') {
+            if ($depth -gt 0) {
+                $depth--
+                if ($depth -eq 0 -and $start -ge 0) { $blocks += $Text.Substring($start, $i - $start + 1); $start = -1 }
+            }
+            continue
+        }
+    }
+    return @($blocks)
+}
+
 function Get-GlmStructuredPayload {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
     $parsed = $null
     try { $parsed = ([string]$Text.Trim() | ConvertFrom-Json) } catch { $parsed = $null }
+    $blocks = @()
     if (-not $parsed) {
         $blocks = @(Get-GlmFencedBlocks -Text $Text)
         $tagged = @($blocks | Where-Object { "$($_.tag)" -match '^(?i)jsonc?$' })
@@ -155,6 +184,14 @@ function Get-GlmStructuredPayload {
         for ($i = $generic.Count - 1; $i -ge 0; $i--) {
             $candidate = $null
             try { $candidate = ([string]$generic[$i].body.Trim() | ConvertFrom-Json) } catch { $candidate = $null }
+            if ($candidate -and ($candidate.PSObject.Properties.Name -contains 'resultClass' -or $candidate.PSObject.Properties.Name -contains 'verdict')) { $parsed = $candidate; break }
+        }
+    }
+    if (-not $parsed) {
+        $bare = @(Get-GlmBalancedJsonBlocks -Text $Text)
+        for ($i = $bare.Count - 1; $i -ge 0; $i--) {
+            $candidate = $null
+            try { $candidate = ([string]$bare[$i] | ConvertFrom-Json) } catch { $candidate = $null }
             if ($candidate -and ($candidate.PSObject.Properties.Name -contains 'resultClass' -or $candidate.PSObject.Properties.Name -contains 'verdict')) { $parsed = $candidate; break }
         }
     }
