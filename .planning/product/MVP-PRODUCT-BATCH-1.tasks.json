@@ -1221,8 +1221,8 @@
       "title": "Tela Usuarios e permissoes (equipe) real no app mobile",
       "type": "FEATURE_INCOMPLETE",
       "source": "OWNER-MOBILE-PARITY-20260928",
-      "description": "O item Usuarios e permissoes no menu Mais do app mobile hoje e EmBreveScreen. O web tem gestao de equipe completa (apps/web/app/(app)/equipe/page.tsx). Owner quer paridade no app, ao menos leitura + convite.",
-      "acceptance": "AC1: a tela lista os membros da equipe da empresa com papel (role); AC2: permite convidar um novo membro por e-mail; AC3: admin pode mudar o papel de um membro ou desativa-lo, usando os mesmos endpoints do web; AC4: segue o design system mobile.",
+      "description": "O item Usuarios e permissoes no menu Mais do app mobile hoje e EmBreveScreen. O web tem gestao de equipe completa (apps/web/app/(app)/equipe/page.tsx). Owner quer paridade no app, ao menos leitura + convite. Correcao de escopo: o AC original pedia mudar papel/desativar membro, mas isso nao existe nem no backend nem no web ainda (so GET /company/members + convite). Reduzido para paridade real com o que o web ja tem.",
+      "acceptance": "AC1: a tela lista os membros da equipe da empresa com papel (role); AC2: permite convidar um novo membro por e-mail, usando o mesmo endpoint do web; AC3: segue o design system mobile. Mudar papel/desativar membro fica fora desta task - o backend ainda nao expoe esse endpoint nem no web (comentario future: remove member em CompanyController).",
       "dependencies": [],
       "scope": [
         "apps/mobile/src/screens/equipe",
