@@ -113,6 +113,12 @@ export default async function FinanceiroPage(): Promise<JSX.Element> {
   const bars: ChartBar[] = buckets.map((value, i) => ({
     percent: decimalPercentage(value, chartMaximum),
     highlight: i >= DAYS - 5,
+    amount: formatMoney(value),
+    date: new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() - (DAYS - 1 - i),
+    ).toLocaleDateString('pt-BR'),
   }));
 
   return (

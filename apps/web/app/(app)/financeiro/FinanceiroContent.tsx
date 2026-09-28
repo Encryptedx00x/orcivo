@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Inbox, Plus } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
@@ -35,6 +35,8 @@ export interface FinanceKpi {
 export interface ChartBar {
   percent: string;
   highlight: boolean;
+  amount: string;
+  date: string;
 }
 export interface CustomerOption {
   id: string;
@@ -97,6 +99,9 @@ export function FinanceiroContent({
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showModal, setShowModal] = useState(false);
+  const [activeBar, setActiveBar] = useState<number | null>(null);
+  const tooltipId = useId();
+  const tooltipBar = activeBar === null ? undefined : bars[activeBar];
   const hasData = entries.length > 0;
   const filtered = entries.filter(
     (entry) => statusFilter === 'todos' || entry.status === statusFilter,
@@ -187,18 +192,73 @@ export function FinanceiroContent({
           </div>
         </div>
         {hasData ? (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100 }}>
+          <div
+            style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 3,
+              height: 100,
+            }}
+            onMouseLeave={() => setActiveBar(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setActiveBar(null);
+            }}
+          >
             {bars.map((bar, index) => (
               <div
                 key={index}
+                tabIndex={0}
+                role="img"
+                aria-label={`Recebido em ${bar.date}: ${bar.amount}`}
+                aria-describedby={activeBar === index ? tooltipId : undefined}
+                onMouseEnter={() => setActiveBar(index)}
+                onFocus={() => setActiveBar(index)}
+                onBlur={() => setActiveBar(null)}
                 style={{
                   flex: 1,
-                  height: `max(2%, ${bar.percent}%)`,
-                  background: bar.highlight ? T.purple600 : T.purple200,
-                  borderRadius: '3px 3px 0 0',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'flex-end',
                 }}
-              />
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: `max(2%, ${bar.percent}%)`,
+                    background: bar.highlight ? T.purple600 : T.purple200,
+                    borderRadius: '3px 3px 0 0',
+                  }}
+                />
+              </div>
             ))}
+            {tooltipBar && activeBar !== null ? (
+              <div
+                id={tooltipId}
+                role="tooltip"
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 8px)',
+                  left: `clamp(0px, calc(${((activeBar + 0.5) / bars.length) * 100}% - 90px), calc(100% - 180px))`,
+                  width: 180,
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  background: T.ink,
+                  color: '#fff',
+                  fontSize: 12,
+                  lineHeight: '18px',
+                  fontVariantNumeric: 'tabular-nums',
+                  boxShadow: '0 4px 12px #0A0A0F26',
+                  pointerEvents: 'none',
+                  zIndex: 1,
+                }}
+              >
+                <div>{tooltipBar.date}</div>
+                <div style={{ fontWeight: 600 }}>{tooltipBar.amount}</div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div
