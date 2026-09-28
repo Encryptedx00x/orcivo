@@ -102,6 +102,7 @@ test('daily chart shows exact Decimal totals and dates on hover and keyboard foc
         if (name === 'next/navigation') return { useRouter: () => ({ refresh() {} }) };
         if (name === 'lucide-react') return { Check: () => null, Inbox: () => null, Plus: () => null };
         if (name === './PaymentRegistrationModal') return { PaymentRegistrationModal: () => null };
+        if (name === '../../../lib/EntityHistory') return { EntityHistory: () => null };
         throw new Error(name);
       };
       ${compile(path.join(__dirname, 'FinanceiroContent.tsx'))}
