@@ -183,6 +183,62 @@ test('entity history renders reasons, actors and exact time; paginates, retries,
     await dialog.getByText('Histórico restrito a administradores da empresa.').waitFor();
     await dialog.getByRole('button', { name: 'Fechar histórico' }).click();
 
+    // Full pages must remain reachable even when there is no next-page button.
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1366, height: 768 },
+    ]) {
+      await page.setViewportSize(viewport);
+      for (const hasNextPage of [false, true]) {
+        const fullPage = Array.from({ length: 20 }, (_, index) => ({
+          ...row,
+          id: `full-${index}`,
+          metadata: { reason: `Justificativa ${index + 1}` },
+        }));
+        await enqueue(200, fullPage, hasNextPage ? 'full-19' : null);
+        await trigger.click();
+        await dialog.locator('li').nth(19).waitFor();
+        const dimensions = await dialog.evaluate((element) => ({
+          height: element.getBoundingClientRect().height,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+        }));
+        assert.ok(dimensions.height <= viewport.height * 0.8 + 1);
+        assert.ok(dimensions.scrollHeight > dimensions.clientHeight);
+        await dialog.hover();
+        await page.mouse.wheel(0, dimensions.scrollHeight);
+        await page.waitForFunction(() => document.querySelector('dialog').scrollTop > 0);
+        await dialog.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        assert.ok(
+          await dialog
+            .locator('li')
+            .last()
+            .evaluate((element) => {
+              const rowBox = element.getBoundingClientRect();
+              const dialogBox = element.closest('dialog').getBoundingClientRect();
+              return rowBox.top >= dialogBox.top && rowBox.bottom <= dialogBox.bottom;
+            }),
+        );
+        const loadMore = dialog.getByRole('button', { name: 'Carregar mais' });
+        if (hasNextPage) {
+          await enqueue(200, [
+            { ...row, id: 'older-row', metadata: { reason: 'Registro anterior' } },
+          ]);
+          await loadMore.click();
+          await dialog.getByText('Registro anterior', { exact: false }).waitFor();
+          assert.equal(await dialog.locator('li').count(), 21);
+          assert.match(await page.evaluate(() => historyRequests.at(-1).url), /cursor=full-19/);
+        } else {
+          assert.equal(await loadMore.count(), 0);
+        }
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'hidden' });
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+
     for (const entityType of ['quote', 'payment']) {
       await page.evaluate((data) => window.renderHistory(data), {
         entityType,

@@ -214,6 +214,7 @@ export function EntityHistory({
           width: 520,
           maxWidth: 'calc(100vw - 32px)',
           maxHeight: '80vh',
+          overflowY: 'auto',
           boxSizing: 'border-box',
           padding: 20,
           border: '1px solid #E2E8F0',
