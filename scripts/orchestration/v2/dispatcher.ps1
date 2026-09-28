@@ -2413,12 +2413,16 @@ function Resume-DispatcherProviderWait {
         # Opposite-provider review (owner decision 2026-09-14): deepseek <-> glm,
         # codex -> deepseek, claude -> codex.  For the current PB1-P02 candidate
         # (DeepSeek implementer, Codex quota-blocked reviewer) this selects GLM.
-        $requiredReviewer = Get-OrcivoOppositeProvider -Provider ([string]$State.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($State.unavailableProviders) -notcontains $_ })
+        # When every opposite candidate is genuinely unavailable, self-review
+        # fallback applies (owner decision 2026-09-28) instead of blocking forever.
+        $reviewChoice = Get-OrcivoReviewProviderWithSelfFallback -Provider ([string]$State.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($State.unavailableProviders) -notcontains $_ })
+        $requiredReviewer = [string]$reviewChoice.provider
         if (@($ready.healthy) -notcontains $requiredReviewer) {
             Update-ProviderWaitBackoff -TaskVersionId $State.taskVersionId
             return $false
         }
         $selected = $requiredReviewer
+        if ($reviewChoice.selfReview) { $State.selfReviewFallback = $true }
     }
     Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'provider-resume' -ToState 'DISPATCHED' -RunId $State.runId -Note "resume stage $($State.stage)" | Out-Null
     if ($State.stage -eq 'IMPLEMENT') { Add-LedgerEvent -TaskVersionId $State.taskVersionId -Event 'running' -ToState 'RUNNING' -RunId $State.runId | Out-Null }
@@ -5001,7 +5005,9 @@ if($needsFreshDispatch){
                 $state.Remove('authorizedReviewRoute')|Out-Null
                 Write-DispatcherState $state|Out-Null
             }
-            $reviewer=$(if($state.authorizedReviewRoute){[string]$state.authorizedReviewRoute.provider}else{Get-OrcivoOppositeProvider -Provider ([string]$state.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($state.unavailableProviders) -notcontains $_ })});$state.reviewerProvider=$reviewer
+            # When every opposite candidate is genuinely unavailable, self-review
+            # fallback applies (owner decision 2026-09-28) instead of blocking forever.
+            $reviewer=$(if($state.authorizedReviewRoute){[string]$state.authorizedReviewRoute.provider}else{$rc=Get-OrcivoReviewProviderWithSelfFallback -Provider ([string]$state.provider) -Candidates @(Get-OrcivoEnabledProviders | Where-Object { @($state.unavailableProviders) -notcontains $_ });if($rc.selfReview){$state.selfReviewFallback=$true};[string]$rc.provider});$state.reviewerProvider=$reviewer
             # Closed pin for the authorized review succession: the review must
             # launch on exactly glm/nvidia/z-ai/glm-5.3/REASONING; any other
             # reviewer, profile, or model fails closed here.

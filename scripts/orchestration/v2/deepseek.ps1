@@ -169,6 +169,21 @@ function Get-OrcivoOppositeProvider {
     return $null
 }
 
+# Owner decision 2026-09-28: when every opposite-provider candidate is
+# genuinely unavailable (quota/budget exhausted, not installed), the
+# implementer reviews its own candidate rather than block the task forever.
+# This is a last resort: it only triggers when Get-OrcivoOppositeProvider
+# finds zero opposite candidates.
+function Get-OrcivoReviewProviderWithSelfFallback {
+    param(
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'deepseek', 'glm')][string]$Provider,
+        [string[]]$Candidates = @()
+    )
+    $opposite = Get-OrcivoOppositeProvider -Provider $Provider -Candidates $Candidates
+    if ($opposite) { return [ordered]@{ provider = $opposite; selfReview = $false } }
+    return [ordered]@{ provider = $Provider; selfReview = $true }
+}
+
 function Get-DeepSeekCodexHome {
     $cfg=Get-DeepSeekRuntimeConfig
     if(-not $cfg.enabled){throw "DeepSeek runtime is disabled: $($cfg.reason)"}
