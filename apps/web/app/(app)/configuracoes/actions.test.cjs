@@ -76,7 +76,10 @@ test('missing authentication never reaches the backend', async () => {
 });
 
 test('a 400 response surfaces the backend validation errors', async () => {
-  const s = setup({ status: 400, body: { message: 'Dados inválidos', errors: ['pix_key: Chave Pix inválida para o tipo CPF.'] } });
+  const s = setup({
+    status: 400,
+    body: { message: 'Dados inválidos', errors: ['pix_key: Chave Pix inválida para o tipo CPF.'] },
+  });
   const result = await s.actions.updateCompanyPix({ pix_key_type: 'CPF', pix_key: 'abc' });
   assert.equal(result.ok, false);
   assert.match(result.message, /Chave Pix inválida/);
@@ -104,12 +107,27 @@ test('HTTP failures and network errors return safe actionable messages', async (
 test('account updates are sent to the authenticated auth endpoint', async () => {
   const s = setup({ body: { account: { id: 'user-1', name: 'Nome', email: 'novo@exemplo.com' } } });
   const result = await s.actions.updateAccountSettings({
-    email: 'novo@exemplo.com', current_password: 'SenhaAtual123',
+    email: 'novo@exemplo.com',
+    current_password: 'SenhaAtual123',
   });
   assert.equal(result.ok, true);
   assert.equal(result.account.email, 'novo@exemplo.com');
   assert.equal(s.calls[0][0], 'http://backend.test/auth/account');
   assert.equal(s.calls[0][1].method, 'PATCH');
   assert.equal(s.calls[0][1].headers.Authorization, 'Bearer session-token');
-  assert.equal(s.calls[0][1].body, JSON.stringify({ email: 'novo@exemplo.com', current_password: 'SenhaAtual123' }));
+  assert.equal(
+    s.calls[0][1].body,
+    JSON.stringify({ email: 'novo@exemplo.com', current_password: 'SenhaAtual123' }),
+  );
+});
+
+test('account update errors keep Portuguese accents intact', async () => {
+  const s = setup({ status: 401 });
+  const result = await s.actions.updateAccountSettings({
+    email: 'novo@exemplo.com',
+    current_password: 'SenhaAtual123',
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.message, 'Sua senha atual está incorreta ou sua sessão expirou.');
 });

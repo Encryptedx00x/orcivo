@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -202,7 +202,7 @@ describe('AuthService — forgotPassword / resetPassword', () => {
           email: 'ocupado@exemplo.com',
           current_password: 'SenhaAtual123',
         }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow('E-mail já cadastrado');
 
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });

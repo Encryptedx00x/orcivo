@@ -65,7 +65,7 @@ export async function updateCompanyPix(body: {
 
 export async function getAccountSettings(): Promise<AccountResult> {
   const token = cookies().get('access_token')?.value;
-  if (!token) return { ok: false, message: 'Sua sessÃ£o expirou. Entre novamente.' };
+  if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
   try {
     const response = await fetch(
@@ -76,12 +76,12 @@ export async function getAccountSettings(): Promise<AccountResult> {
       },
     );
     if (!response.ok) {
-      return { ok: false, message: 'NÃ£o foi possÃ­vel carregar seus dados. Atualize a pÃ¡gina.' };
+      return { ok: false, message: 'Não foi possível carregar seus dados. Atualize a página.' };
     }
     const account = (await response.json()) as Account;
     return { ok: true, account, passwordChanged: false };
   } catch {
-    return { ok: false, message: 'NÃ£o foi possÃ­vel conectar. Tente novamente.' };
+    return { ok: false, message: 'Não foi possível conectar. Tente novamente.' };
   }
 }
 
@@ -93,7 +93,7 @@ export async function updateAccountSettings(body: {
 }): Promise<AccountResult> {
   const cookieStore = cookies();
   const token = cookieStore.get('access_token')?.value;
-  if (!token) return { ok: false, message: 'Sua sessÃ£o expirou. Entre novamente.' };
+  if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
   try {
     const response = await fetch(
@@ -114,12 +114,12 @@ export async function updateAccountSettings(body: {
         };
       }
       const messages: Record<number, string> = {
-        401: 'Sua senha atual estÃ¡ incorreta ou sua sessÃ£o expirou.',
-        409: 'Este e-mail jÃ¡ estÃ¡ cadastrado.',
+        401: 'Sua senha atual está incorreta ou sua sessão expirou.',
+        409: 'Este e-mail já está cadastrado.',
       };
       return {
         ok: false,
-        message: messages[response.status] ?? 'NÃ£o foi possÃ­vel salvar. Tente novamente.',
+        message: messages[response.status] ?? 'Não foi possível salvar. Tente novamente.',
       };
     }
 
@@ -141,6 +141,6 @@ export async function updateAccountSettings(body: {
     }
     return { ok: true, account: data.account, passwordChanged };
   } catch {
-    return { ok: false, message: 'NÃ£o foi possÃ­vel conectar. Tente novamente.' };
+    return { ok: false, message: 'Não foi possível conectar. Tente novamente.' };
   }
 }

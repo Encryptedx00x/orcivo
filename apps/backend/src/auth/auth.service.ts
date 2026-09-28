@@ -220,7 +220,7 @@ export class AuthService {
 
     if (dto.email !== undefined && dto.email !== user.email) {
       const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-      if (existing) throw new ConflictException('E-mail jÃ¡ cadastrado');
+      if (existing) throw new ConflictException('E-mail já cadastrado');
     }
 
     const data: { name?: string; email?: string; password_hash?: string } = {};

@@ -289,11 +289,11 @@ export default function ConfiguracoesPage(): JSX.Element {
       return;
     }
     if (!nameChanged && !credentialsChanged) {
-      setAccountSaved('Nenhuma alteraÃ§Ã£o para salvar.');
+      setAccountSaved('Nenhuma alteração para salvar.');
       return;
     }
     if (changingPassword && account.new_password !== account.confirm_password) {
-      setAccountError('A confirmaÃ§Ã£o da nova senha nÃ£o confere.');
+      setAccountError('A confirmação da nova senha não confere.');
       return;
     }
     if (credentialsChanged && !account.current_password) {
@@ -325,7 +325,7 @@ export default function ConfiguracoesPage(): JSX.Element {
       setAccountOriginal({ name: result.account.name, email: result.account.email });
       setAccountSaved(
         result.passwordChanged
-          ? 'Senha atualizada. As outras sessÃµes foram encerradas.'
+          ? 'Senha atualizada. As outras sessões foram encerradas.'
           : 'Dados da conta atualizados.',
       );
     } catch {
@@ -399,12 +399,12 @@ export default function ConfiguracoesPage(): JSX.Element {
                 Atualize como seu nome aparece no Orcivo ou proteja suas credenciais.
               </p>
               {accountLoading ? (
-                <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregandoâ€¦</p>
+                <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando…</p>
               ) : (
                 <div style={{ display: 'grid', gap: 16 }}>
                   <div>
                     <label className="ov-label" htmlFor="account-name">
-                      Nome de exibiÃ§Ã£o
+                      Nome de exibição
                     </label>
                     <input
                       id="account-name"
@@ -457,7 +457,7 @@ export default function ConfiguracoesPage(): JSX.Element {
                         autoComplete="current-password"
                       />
                       <p style={{ color: '#64748B', fontSize: 12, margin: '6px 0 0' }}>
-                        ObrigatÃ³ria para alterar e-mail ou senha.
+                        Obrigatória para alterar e-mail ou senha.
                       </p>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -515,7 +515,7 @@ export default function ConfiguracoesPage(): JSX.Element {
                   onClick={saveAccount}
                   disabled={accountSaving || accountLoading}
                 >
-                  {accountSaving ? 'Salvandoâ€¦' : 'Salvar dados da conta'}
+                  {accountSaving ? 'Salvando…' : 'Salvar dados da conta'}
                 </button>
               </div>
             </section>
