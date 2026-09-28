@@ -254,6 +254,16 @@ function New-DispatcherWorkspace {
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('remote','remove','origin') -LogLabel 'dispatcher-remove-origin') 'dispatcher remove candidate origin' | Out-Null
     $branch = "orch-v2/$WorkspaceId"
     Assert-GitSucceededV2 (Invoke-GitV2 -Dir $workspace -Arguments @('checkout','-b',$branch,$BaseSha,'--quiet') -LogLabel 'dispatcher-checkout') 'dispatcher candidate branch creation' | Out-Null
+    # git clone only copies tracked files, so the gitignored local test env
+    # (pointing at the already-running infra/docker-compose.test.yml stack)
+    # never reaches the isolated workspace and any jest run there fails
+    # closed on ephemeral-db-guard with an empty DATABASE_URL. Carry it over;
+    # it stays gitignored in the clone too, so it never becomes a tracked
+    # diff or a secret-scan target.
+    $envTestSource = Join-Path $source 'apps\backend\.env.test'
+    if (Test-Path -LiteralPath $envTestSource) {
+        Copy-Item -LiteralPath $envTestSource -Destination (Join-Path $workspace 'apps\backend\.env.test') -Force
+    }
     return @{ workspace=$workspace; branch=$branch }
 }
 

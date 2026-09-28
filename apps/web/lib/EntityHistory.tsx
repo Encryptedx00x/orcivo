@@ -187,7 +187,7 @@ export function EntityHistory({
   entityId: string;
   label: string;
   revision?: string | number;
-}) {
+}): JSX.Element {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [open, setOpen] = useState(false);
