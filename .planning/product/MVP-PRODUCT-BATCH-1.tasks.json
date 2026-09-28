@@ -895,7 +895,7 @@
       "title": "Hover tooltip with amount on the 'recebido por dia' chart",
       "type": "BUG",
       "source": "UAT-20260927",
-      "description": "The 'recebido por dia' finance chart should show a small tooltip with the exact value when hovering over a bar/point.",
+      "description": "The 'recebido por dia' finance chart should show a small tooltip with the exact value when hovering over a bar/point. A GLM review of this task was silently discarded by a JSON-parsing bug (GLM answered with prose + a bare JSON object, no markdown fence) that is now fixed on main; this version restarts on that fix.",
       "acceptance": "AC1: hovering a bar/point on the finance daily-received chart shows a tooltip with the exact Decimal amount and date; AC2: no data/aggregation logic change, display only.",
       "dependencies": [],
       "scope": [
