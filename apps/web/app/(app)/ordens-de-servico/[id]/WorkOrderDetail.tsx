@@ -26,6 +26,7 @@ import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from '../actions';
 import { contactLinks } from '../../clientes/contact-links';
 import { PaymentRegistrationModal } from '../../financeiro/PaymentRegistrationModal';
+import { EntityHistory } from '../../../../lib/EntityHistory';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
@@ -125,6 +126,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const fileInputRefs = useRef<Partial<Record<PhotoStage, HTMLInputElement | null>>>({});
 
   // AC4: os botões vêm direto da lista de ações permitidas calculada pelo
@@ -144,6 +146,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
         setStatusError(result.error);
       } else if (result.order) {
         setOrder(result.order);
+        setHistoryRevision((value) => value + 1);
         setPendingAction(null);
         setReason('');
         router.refresh();
@@ -289,6 +292,12 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 justifyContent: 'flex-end',
               }}
             >
+              <EntityHistory
+                entityType="work_order"
+                entityId={order.id}
+                label={`OS #${order.number}`}
+                revision={historyRevision}
+              />
               {allowedActions.includes('iniciar') && !pendingAction && (
                 <button
                   onClick={() => {

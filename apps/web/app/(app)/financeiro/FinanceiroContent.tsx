@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Inbox, Plus } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
+import { EntityHistory } from '../../../lib/EntityHistory';
 
 const T = {
   ink: '#0A0A0F',
@@ -428,6 +429,12 @@ export function FinanceiroContent({
                         {row.paidAt}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', borderBottom }}>
+                        <EntityHistory
+                          entityType="payment"
+                          entityId={row.id}
+                          label={`${row.customer} · ${row.description || 'Recebimento'} · ${row.amount}`}
+                          revision={row.status}
+                        />
                         {row.status !== 'PAID' && row.status !== 'CANCELLED' ? (
                           <button
                             onClick={() => void settle(row.id)}

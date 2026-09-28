@@ -6,6 +6,7 @@ import { MessageCircle, Download, X, Send } from 'lucide-react';
 import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
 import type { Quote } from '../../../../lib/quote.service';
+import { EntityHistory } from '../../../../lib/EntityHistory';
 import {
   getTechnicianSignature,
   saveTechnicianSignature,
@@ -157,6 +158,12 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <EntityHistory
+            entityType="quote"
+            entityId={quote.id}
+            label={`Orçamento #${quote.number}`}
+            revision={quote.status}
+          />
           <button
             onClick={() =>
               window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')

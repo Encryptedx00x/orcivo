@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AuditService } from './audit.service';
+import { AuditReadService } from './audit-read.service';
+import { AuditController } from './audit.controller';
 
 // @Global(): the audit trail (ADR-015) is cross-cutting — quote, work-order,
 // payment, customer, company, invite and appointment services all inject
@@ -7,7 +9,8 @@ import { AuditService } from './audit.service';
 // AppModule. PrismaService is already global (PrismaModule).
 @Global()
 @Module({
-  providers: [AuditService],
+  controllers: [AuditController],
+  providers: [AuditService, AuditReadService],
   exports: [AuditService],
 })
 export class AuditModule {}
