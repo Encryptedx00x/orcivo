@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { EmBreveScreen } from '../screens/placeholders/EmBreveScreen';
+import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScreen';
 import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
@@ -14,6 +15,7 @@ export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
 export type MaisStackParamList = {
   MaisMenu: undefined;
+  Configuracoes: undefined;
   EmBreve: { title: string };
   Catalog: undefined;
   CatalogItemForm: { item?: CatalogItem } | undefined;
@@ -29,7 +31,7 @@ export type MaisStackParamList = {
 const Stack = createNativeStackNavigator<MaisStackParamList>();
 
 type MaisMenuItem =
-  | { label: string; screen: 'WorkOrderList' | 'Catalog' }
+  | { label: string; screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' }
   | { label: string; screen: 'EmBreve' };
 
 const MAIS_ITEMS: MaisMenuItem[] = [
@@ -38,7 +40,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Financeiro', screen: 'EmBreve' },
   { label: 'Documentos', screen: 'EmBreve' },
   { label: 'Conta', screen: 'EmBreve' },
-  { label: 'Configurações', screen: 'EmBreve' },
+  { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'EmBreve' },
   { label: 'Plano e assinatura', screen: 'EmBreve' },
   { label: 'Ajuda', screen: 'EmBreve' },
@@ -73,6 +75,7 @@ export function MaisStack() {
   return (
     <Stack.Navigator screenOptions={{ headerTintColor: '#6D28D9' }}>
       <Stack.Screen name="MaisMenu" component={MaisMenuScreen} options={{ title: 'Mais' }} />
+      <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
       <Stack.Screen name="EmBreve" component={EmBreveScreen} options={({ route }) => ({ title: route.params.title ?? 'Em breve' })} />
 
       {/* Catálogo */}
