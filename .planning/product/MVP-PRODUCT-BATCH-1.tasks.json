@@ -951,15 +951,17 @@
       "title": "Optional photo for catalog items",
       "type": "FEATURE",
       "source": "UAT-20260927",
-      "description": "Add an optional photo field to catalog products/services, reusing the existing private storage (signed URLs) already used for OS photos.",
+      "description": "Add an optional photo field to catalog products/services, reusing the existing private storage (signed URLs) already used for OS photos. Web catalog UI actually lives at apps/web/app/(app)/catalogo (not estoque). Needs an additive nullable photo_url column via a new Prisma migration.",
       "acceptance": "AC1: a catalog item can optionally have one photo, uploaded via the existing private storage flow; AC2: the catalog list/detail shows the photo when present; AC3: no photo is required to create/edit a catalog item.",
       "dependencies": [],
       "scope": [
         "apps/backend/src/catalog",
-        "apps/web/app/(app)/estoque"
+        "apps/web/app/(app)/catalogo",
+        "prisma/schema.prisma",
+        "prisma/migrations"
       ],
-      "risk": "B",
-      "ownerGate": "none",
+      "risk": "C",
+      "ownerGate": "level-c-persistent-migration",
       "candidateConstraints": {},
       "verificationProfile": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
@@ -969,7 +971,10 @@
         "P03"
       ],
       "status": "SCHEDULED",
-      "phaseGate": "UAT-20260927"
+      "phaseGate": "UAT-20260927",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
     },
     {
       "taskId": "PB1-P31-audit-feed-friendly-context",
