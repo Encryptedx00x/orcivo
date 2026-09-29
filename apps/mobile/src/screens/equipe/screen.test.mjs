@@ -289,6 +289,7 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
   }
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };
   modules['../screens/configuracoes/ConfiguracoesScreen'] = { ConfiguracoesScreen: () => null };
+  modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Equipe').props.component, EquipeScreen);

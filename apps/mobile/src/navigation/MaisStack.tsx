@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { EmBreveScreen } from '../screens/placeholders/EmBreveScreen';
 import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScreen';
+import { ContaScreen } from '../screens/conta/ContaScreen';
 import { EquipeScreen } from '../screens/equipe/EquipeScreen';
 import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
@@ -17,6 +18,7 @@ export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 export type MaisStackParamList = {
   MaisMenu: undefined;
   Configuracoes: undefined;
+  Conta: undefined;
   Equipe: undefined;
   EmBreve: { title: string };
   Catalog: undefined;
@@ -33,7 +35,7 @@ export type MaisStackParamList = {
 const Stack = createNativeStackNavigator<MaisStackParamList>();
 
 type MaisMenuItem =
-  | { label: string; screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' | 'Equipe' }
+  | { label: string; screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' | 'Conta' | 'Equipe' }
   | { label: string; screen: 'EmBreve' };
 
 const MAIS_ITEMS: MaisMenuItem[] = [
@@ -41,7 +43,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'EmBreve' },
   { label: 'Documentos', screen: 'EmBreve' },
-  { label: 'Conta', screen: 'EmBreve' },
+  { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'Equipe' },
   { label: 'Plano e assinatura', screen: 'EmBreve' },
@@ -82,6 +84,7 @@ export function MaisStack() {
         component={ConfiguracoesScreen}
         options={{ title: 'Configurações' }}
       />
+      <Stack.Screen name="Conta" component={ContaScreen} options={{ title: 'Conta' }} />
       <Stack.Screen
         name="Equipe"
         component={EquipeScreen}
