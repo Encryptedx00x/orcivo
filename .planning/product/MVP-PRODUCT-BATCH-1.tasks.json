@@ -1089,7 +1089,7 @@
       "title": "Allow editing quotes and changing their status directly",
       "type": "FEATURE",
       "source": "UAT-20260927",
-      "description": "Same flexibility requested for OS (PB1-P27): allow editing a quote's content and changing its status directly, not only via the guided flow, while staying within the existing quote state machine (ADR-016). For any status change that requires a justification (e.g. reopening/correcting an OS or quote), clicking the action opens a small modal asking for the justification before applying it; the justification is recorded and shown in that item's history. Reuses PB1-P26's history surfacing.",
+      "description": "Same flexibility requested for OS (PB1-P27): allow editing a quote's content and changing its status directly, not only via the guided flow, while staying within the existing quote state machine (ADR-016). For any status change that requires a justification (e.g. reopening/correcting an OS or quote), clicking the action opens a small modal asking for the justification before applying it; the justification is recorded and shown in that item's history. Reuses PB1-P26's history surfacing. Reiniciado apos workspace sujo (package-lock.json criado por engano, projeto usa pnpm).",
       "acceptance": "AC1: a quote's editable fields can be updated directly (not only through the guided wizard); AC2: status can be changed directly to any valid next state per the existing state machine, invalid transitions rejected; AC3: a justification modal is required for status changes and an audit row is written; AC4: visible in that quote's history (PB1-P26).",
       "dependencies": [
         "PB1-P26-status-history-ui-audit"
