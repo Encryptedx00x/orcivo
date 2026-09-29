@@ -161,6 +161,84 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('update()', () => {
+    const baseDraft = {
+      id: 'q1',
+      company_id: 'comp-1',
+      number: 7,
+      status: 'DRAFT',
+      title: 'Original',
+      notes: 'obs original',
+      discount_type: 'PERCENT',
+      discount_value: { toString: () => '0' },
+      items: [
+        {
+          id: 'item-1',
+          description: 'Item A',
+          quantity: { toString: () => '1' },
+          unit_price: { toString: () => '10.00' },
+        },
+      ],
+    };
+
+    it('PB1-P35/AC1: edita campos diretamente quando status é DRAFT e grava auditoria', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue(baseDraft);
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 7,
+        customer: { name: 'Maria' },
+        items: [],
+      });
+
+      await service.update(
+        'q1',
+        {
+          title: 'Novo título',
+          items: [{ description: 'Item B', quantity: '2', unit_price: '5.00' }],
+        },
+        'comp-1',
+        'user-1',
+      );
+
+      expect(mockTx.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1' },
+          data: expect.objectContaining({
+            title: 'Novo título',
+            subtotal: '10.00',
+            total: '10.00',
+          }),
+        }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'quote.updated',
+          entityType: 'quote',
+          entityId: 'q1',
+        }),
+      );
+    });
+
+    it('PB1-P35/AC1: rejeita edição direta fora de DRAFT (mantém a máquina de estados)', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({ ...baseDraft, status: 'SENT' });
+
+      await expect(
+        service.update('q1', { title: 'Novo título' }, 'comp-1', 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('PB1-P35: 404 quando o orçamento não existe no tenant', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue(null);
+
+      await expect(service.update('q1', { title: 'x' }, 'comp-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('send()', () => {
     it('Test 2: send() com DRAFT gera approval_token UUID e salva no Redis TTL 604800', async () => {
       mockPrisma.quote.findFirst.mockResolvedValue({

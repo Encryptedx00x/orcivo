@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import type { MemberRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import Decimal from 'decimal.js';
 import {
@@ -14,7 +15,9 @@ import {
   QuoteActionSpec,
   QuoteCreateDto,
   QuoteStatus,
+  QuoteUpdateDto,
   assertValidQuoteAction,
+  quoteAllowedActions,
 } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -121,7 +124,7 @@ export class QuoteService {
     });
   }
 
-  async findAll(companyId: string, page = 1, limit = 20) {
+  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole) {
     const where = { company_id: companyId };
     const data = await this.prisma.quote.findMany({
       where,
@@ -133,16 +136,38 @@ export class QuoteService {
         items: true,
       },
     });
-    return { data: await Promise.all(data.map((q) => this.withSignedUrls(q))), page, limit };
+    return {
+      data: await Promise.all(
+        data.map(async (q) => this.withAllowedActions(await this.withSignedUrls(q), role)),
+      ),
+      page,
+      limit,
+    };
   }
 
-  async findOne(id: string, companyId: string) {
+  async findOne(id: string, companyId: string, role?: MemberRole) {
     const quote = await this.prisma.quote.findFirst({
       where: { id, company_id: companyId },
       include: { items: true, customer: true, approval: true },
     });
     if (!quote) throw new NotFoundException();
-    return this.withSignedUrls(quote);
+    return this.withAllowedActions(await this.withSignedUrls(quote), role);
+  }
+
+  /**
+   * PB1-P35/AC2: anexa as ações de domínio válidas para o estado atual + papel
+   * do chamador — a UI renderiza botões só a partir desta lista, mas o backend
+   * continua sendo a autoridade (cada ação revalida a origem antes de escrever).
+   */
+  private withAllowedActions<T extends { status: string }>(
+    quote: T,
+    role?: MemberRole,
+  ): T & { allowed_actions: QuoteAction[] } {
+    const isAdmin = role === 'OWNER' || role === 'ADMIN';
+    return {
+      ...quote,
+      allowed_actions: quoteAllowedActions(quote.status as QuoteStatus, isAdmin),
+    };
   }
 
   /**
@@ -187,6 +212,103 @@ export class QuoteService {
       },
       company,
     );
+  }
+
+  /**
+   * PB1-P35/AC1: edição direta dos campos do orçamento — sem passar pelo
+   * assistente guiado de criação. Só é permitida em DRAFT: um orçamento já
+   * enviado/aprovado tem um PDF e (possivelmente) uma assinatura do cliente
+   * vinculados a um conteúdo específico — editar o conteúdo por baixo
+   * quebraria essa garantia (ADR-016). Para editar um orçamento em estado
+   * terminal, use a ação `corrigir` para trazê-lo de volta a DRAFT primeiro.
+   */
+  async update(
+    id: string,
+    dto: QuoteUpdateDto,
+    companyId: string,
+    userId: string,
+    role?: MemberRole,
+  ) {
+    const quote = await this.prisma.quote.findFirst({
+      where: { id, company_id: companyId },
+      include: { items: true },
+    });
+    if (!quote) throw new NotFoundException();
+    if (quote.status !== 'DRAFT') {
+      throw new BadRequestException(
+        `Edição direta só é permitida em orçamentos em rascunho (status atual: ${quote.status}). ` +
+          `Use a ação "corrigir" para trazer o orçamento de volta a rascunho antes de editar.`,
+      );
+    }
+
+    if (dto.customer_id) {
+      await this.ownership.assertCustomer(dto.customer_id, companyId);
+    }
+    if (dto.items) {
+      await this.ownership.assertCatalogItems(
+        dto.items.map((i) => i.catalog_item_id),
+        companyId,
+      );
+    }
+
+    const discountType = dto.discount_type ?? (quote.discount_type as 'PERCENT' | 'FIXED');
+    const discountValue = dto.discount_value ?? quote.discount_value.toString();
+    const items = dto.items ?? quote.items;
+    const { itemTotals, subtotal, total } = this.computeTotals(
+      items.map((i) => ({ quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })),
+      discountType,
+      discountValue.toString(),
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.quote.update({
+        where: { id },
+        data: {
+          customer_id: dto.customer_id,
+          title: dto.title,
+          notes: dto.notes,
+          valid_until: dto.valid_until ? new Date(dto.valid_until) : undefined,
+          discount_type: discountType,
+          discount_value: discountValue,
+          subtotal,
+          total,
+          ...(dto.items
+            ? {
+                items: {
+                  deleteMany: {},
+                  create: dto.items.map((item, i) => ({
+                    company_id: companyId,
+                    catalog_item_id: item.catalog_item_id,
+                    description: item.description,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    total: itemTotals[i],
+                  })),
+                },
+              }
+            : {}),
+        },
+      });
+      const persisted = await tx.quote.findUnique({
+        where: { id },
+        include: { items: true, customer: true, approval: true },
+      });
+      if (!persisted) throw new ConflictException('Orcamento nao encontrado apos atualizacao');
+      await this.auditService.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'quote.updated',
+        entityType: 'quote',
+        entityId: id,
+        from: 'DRAFT',
+        to: 'DRAFT',
+        humanText: `Orçamento #${persisted.number} (${persisted.customer.name}) editado diretamente`,
+      });
+      return persisted;
+    });
+
+    return this.withAllowedActions(await this.withSignedUrls(updated), role);
   }
 
   // ── Máquina de ações de domínio (PB1-P01 / ADR-016) ────────────────────────
@@ -245,7 +367,13 @@ export class QuoteService {
     return this.usersService.resolveSignatureUrl(companyId, userId);
   }
 
-  async send(id: string, companyId: string, userId: string, applySignature = false) {
+  async send(
+    id: string,
+    companyId: string,
+    userId: string,
+    applySignature = false,
+    role?: MemberRole,
+  ) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
     const spec = this.assertAction('enviar', fromStatus);
@@ -313,7 +441,10 @@ export class QuoteService {
     }
 
     const approvalUrl = `${this.config.get('APP_WEB_URL', 'http://localhost:3000')}/approve/${token}`;
-    return { ...(await this.withSignedUrls(updated)), approvalUrl };
+    return {
+      ...this.withAllowedActions(await this.withSignedUrls(updated), role),
+      approvalUrl,
+    };
   }
 
   async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
@@ -429,7 +560,7 @@ export class QuoteService {
    * condicional ao estado de origem, então a auditoria é gravada apenas
    * para a transição vencedora.
    */
-  async cancel(id: string, companyId: string, userId: string, reason?: string) {
+  async cancel(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
     this.assertAction('cancelar', fromStatus);
@@ -464,7 +595,7 @@ export class QuoteService {
         reason: trimmedReason,
         humanText: `Orçamento #${persisted.number} (${customerName}) cancelado: ${trimmedReason}`,
       });
-      return persisted;
+      return this.withAllowedActions(persisted, role);
     });
   }
 
@@ -473,7 +604,7 @@ export class QuoteService {
    * como no cancelamento — nunca sobrescreve `notes`; o motivo vive só na
    * trilha de auditoria. Exatamente uma linha de auditoria com from/to/reason.
    */
-  async reject(id: string, companyId: string, userId: string, reason?: string) {
+  async reject(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
     this.assertAction('recusar', fromStatus);
@@ -509,7 +640,7 @@ export class QuoteService {
         reason: trimmedReason,
         humanText: `Orçamento #${updated.number} (${customerName}) recusado: ${trimmedReason}`,
       });
-      return updated;
+      return this.withAllowedActions(updated, role);
     });
   }
 
@@ -520,8 +651,8 @@ export class QuoteService {
    * A origem é validada contra QUOTE_ACTIONS (a máquina compartilhada) — sem
    * bypass local. O histórico anterior é preservado (AC4).
    */
-  async reopen(id: string, companyId: string, userId: string, reason?: string) {
-    return this.reopenOrCorrect(id, companyId, userId, reason, 'reabrir');
+  async reopen(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, 'reabrir', role);
   }
 
   /**
@@ -530,8 +661,8 @@ export class QuoteService {
    * itens/valores antes de reenviar. Motivo obrigatório; uma linha de
    * auditoria com from/to/reason.
    */
-  async correct(id: string, companyId: string, userId: string, reason?: string) {
-    return this.reopenOrCorrect(id, companyId, userId, reason, 'corrigir');
+  async correct(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
+    return this.reopenOrCorrect(id, companyId, userId, reason, 'corrigir', role);
   }
 
   private async reopenOrCorrect(
@@ -540,6 +671,7 @@ export class QuoteService {
     userId: string,
     reason: string | undefined,
     action: 'reabrir' | 'corrigir',
+    role?: MemberRole,
   ) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
@@ -609,7 +741,7 @@ export class QuoteService {
       }
     }
 
-    const signed = await this.withSignedUrls(updated);
+    const signed = this.withAllowedActions(await this.withSignedUrls(updated), role);
     if (to === 'SENT' && newApprovalToken) {
       return {
         ...signed,

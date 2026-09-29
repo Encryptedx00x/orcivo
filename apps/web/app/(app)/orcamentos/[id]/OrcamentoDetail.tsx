@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageCircle, Download, X, Send } from 'lucide-react';
+import { MessageCircle, Download, X, Send, Pencil, Undo2, Wrench, XCircle } from 'lucide-react';
 import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
-import type { Quote } from '../../../../lib/quote.service';
+import type { Quote, QuoteItem } from '../../../../lib/quote.service';
 import { EntityHistory } from '../../../../lib/EntityHistory';
+import {
+  quoteAction,
+  updateQuote,
+  type DirectQuoteAction,
+  type QuoteWithActions,
+} from '../actions';
 import {
   getTechnicianSignature,
   saveTechnicianSignature,
@@ -32,21 +38,165 @@ const STATUS_STYLE: Record<Quote['status'], React.CSSProperties> = {
 };
 
 interface Props {
-  quote: Quote;
+  quote: QuoteWithActions;
 }
+
+/** Fallback caso a resposta não traga allowed_actions: sem saber o papel, só ações não-admin. */
+const FALLBACK_ACTIONS: Record<Quote['status'], DirectQuoteAction[]> = {
+  DRAFT: ['cancelar'],
+  SENT: ['recusar', 'cancelar'],
+  APPROVED: [],
+  REJECTED: [],
+  CANCELLED: [],
+  EXPIRED: [],
+};
+
+const REASON_REQUIRED: DirectQuoteAction[] = ['cancelar', 'recusar', 'reabrir', 'corrigir'];
+
+const ACTION_LABEL: Record<DirectQuoteAction, string> = {
+  cancelar: 'Cancelar orçamento',
+  recusar: 'Recusar orçamento',
+  reabrir: 'Reabrir orçamento',
+  corrigir: 'Corrigir orçamento',
+};
 
 export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Element {
   const router = useRouter();
-  const [quote, setQuote] = useState<Quote>(initialQuote);
+  const [quote, setQuote] = useState<QuoteWithActions>(initialQuote);
   const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [applySignature, setApplySignature] = useState(false);
   const [signatureUploading, setSignatureUploading] = useState(false);
   const [signatureError, setSignatureError] = useState('');
+  const [historyRevision, setHistoryRevision] = useState(0);
+
+  // PB1-P35/AC2: os botões vêm direto da lista de ações permitidas calculada
+  // pelo backend para o estado atual + papel do usuário logado.
+  const allowedActions: DirectQuoteAction[] =
+    quote.allowed_actions?.filter(
+      (a): a is DirectQuoteAction =>
+        a === 'cancelar' || a === 'recusar' || a === 'reabrir' || a === 'corrigir',
+    ) ??
+    FALLBACK_ACTIONS[quote.status] ??
+    [];
+
+  // Justificativa obrigatória (AC3): abre um modal pedindo o motivo antes de aplicar a ação.
+  const [pendingAction, setPendingAction] = useState<DirectQuoteAction | null>(null);
+  const [reason, setReason] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  function openAction(action: DirectQuoteAction): void {
+    setActionError('');
+    setReason('');
+    setPendingAction(action);
+  }
+
+  async function submitPendingAction(): Promise<void> {
+    if (!pendingAction) return;
+    if (REASON_REQUIRED.includes(pendingAction) && !reason.trim()) {
+      setActionError('Informe o motivo para continuar.');
+      return;
+    }
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const result = await quoteAction(quote.id, { action: pendingAction, reason: reason.trim() });
+      if (result.error) {
+        setActionError(result.error);
+      } else if (result.quote) {
+        setQuote(result.quote);
+        setHistoryRevision((v) => v + 1);
+        setPendingAction(null);
+        setReason('');
+        router.refresh();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // PB1-P35/AC1: edição direta dos campos do orçamento fora do assistente guiado.
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editValidUntil, setEditValidUntil] = useState('');
+  const [editDiscountType, setEditDiscountType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
+  const [editDiscountValue, setEditDiscountValue] = useState('0');
+  const [editItems, setEditItems] = useState<QuoteItem[]>([]);
+  const [editError, setEditError] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  function openEdit(): void {
+    setEditError('');
+    setEditTitle(quote.title ?? '');
+    setEditNotes(quote.notes ?? '');
+    setEditValidUntil(quote.valid_until ? quote.valid_until.slice(0, 10) : '');
+    setEditDiscountType(quote.discount_type);
+    setEditDiscountValue(quote.discount_value);
+    setEditItems(quote.items.map((i) => ({ ...i })));
+    setShowEditModal(true);
+  }
+
+  function updateEditItem(
+    idx: number,
+    field: 'description' | 'quantity' | 'unit_price',
+    val: string,
+  ) {
+    setEditItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: val } : it)));
+  }
+  function addEditItem() {
+    setEditItems((prev) => [
+      ...prev,
+      {
+        id: `new-${prev.length}`,
+        description: '',
+        quantity: '1',
+        unit_price: '0.00',
+        total: '0.00',
+      },
+    ]);
+  }
+  function removeEditItem(idx: number) {
+    setEditItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function submitEdit(): Promise<void> {
+    const validItems = editItems.filter((i) => i.description.trim() && Number(i.quantity) > 0);
+    if (validItems.length === 0) {
+      setEditError('Adicione pelo menos um item com descrição e quantidade.');
+      return;
+    }
+    setEditLoading(true);
+    setEditError('');
+    try {
+      const result = await updateQuote(quote.id, {
+        title: editTitle || undefined,
+        notes: editNotes || undefined,
+        valid_until: editValidUntil ? new Date(editValidUntil).toISOString() : undefined,
+        discount_type: editDiscountType,
+        discount_value: editDiscountValue || '0',
+        items: validItems.map((i) => ({
+          catalog_item_id: i.catalog_item_id,
+          description: i.description,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+        })),
+      });
+      if (result.error) {
+        setEditError(result.error);
+      } else if (result.quote) {
+        setQuote(result.quote);
+        setHistoryRevision((v) => v + 1);
+        setShowEditModal(false);
+        router.refresh();
+      }
+    } finally {
+      setEditLoading(false);
+    }
+  }
 
   const webUrl = process.env['NEXT_PUBLIC_WEB_URL'] ?? '';
 
@@ -101,29 +251,6 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
     }
   }
 
-  async function handleCancel() {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/quotes/${quote.id}/cancel`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: cancelReason || undefined }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Erro ao cancelar orçamento.' }));
-        throw new Error(err.message ?? 'Erro ao cancelar orçamento.');
-      }
-      const data = (await res.json()) as Quote;
-      setQuote(data);
-      setShowCancelDialog(false);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao cancelar orçamento.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const currentApprovalUrl = getApprovalUrl(quote);
 
   return (
@@ -162,8 +289,27 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             entityType="quote"
             entityId={quote.id}
             label={`Orçamento #${quote.number}`}
-            revision={quote.status}
+            revision={`${quote.status}-${historyRevision}`}
           />
+          {quote.status === 'DRAFT' && (
+            <button
+              onClick={openEdit}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'none',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                padding: '6px 14px',
+                cursor: 'pointer',
+                fontSize: 13,
+                color: '#334155',
+              }}
+            >
+              <Pencil size={15} /> Editar
+            </button>
+          )}
           <button
             onClick={() =>
               window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')
@@ -440,13 +586,15 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               >
                 <Send size={16} /> {loading ? 'Enviando...' : 'Enviar orçamento'}
               </button>
-              <button
-                onClick={() => setShowCancelDialog(true)}
-                disabled={loading}
-                style={btnDanger}
-              >
-                <X size={16} /> Cancelar orçamento
-              </button>
+              {allowedActions.includes('cancelar') && (
+                <button
+                  onClick={() => openAction('cancelar')}
+                  disabled={loading || !!pendingAction}
+                  style={btnDanger}
+                >
+                  <X size={16} /> Cancelar orçamento
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -496,6 +644,24 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                   style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   <Download size={16} /> Baixar PDF
+                </button>
+              )}
+              {allowedActions.includes('recusar') && (
+                <button
+                  onClick={() => openAction('recusar')}
+                  disabled={loading || !!pendingAction}
+                  style={btnDanger}
+                >
+                  <XCircle size={16} /> Recusar orçamento
+                </button>
+              )}
+              {allowedActions.includes('cancelar') && (
+                <button
+                  onClick={() => openAction('cancelar')}
+                  disabled={loading || !!pendingAction}
+                  style={btnDanger}
+                >
+                  <X size={16} /> Cancelar orçamento
                 </button>
               )}
             </div>
@@ -580,6 +746,34 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             Este orçamento está {STATUS_LABEL[quote.status].toLowerCase()}.
           </p>
         )}
+
+        {/* PB1-P35/AC2: saídas admin-controladas de estados terminais (reabrir/corrigir). */}
+        {(allowedActions.includes('reabrir') || allowedActions.includes('corrigir')) && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {allowedActions.includes('reabrir') && (
+              <button
+                onClick={() => openAction('reabrir')}
+                disabled={loading || !!pendingAction}
+                style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Undo2 size={16} /> Reabrir orçamento
+              </button>
+            )}
+            {allowedActions.includes('corrigir') && (
+              <button
+                onClick={() => openAction('corrigir')}
+                disabled={loading || !!pendingAction}
+                style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Wrench size={16} /> Corrigir orçamento
+              </button>
+            )}
+          </div>
+        )}
+
+        {actionError && (
+          <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{actionError}</p>
+        )}
       </div>
 
       {/* Meta info */}
@@ -604,8 +798,8 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         </div>
       </div>
 
-      {/* Cancel dialog */}
-      {showCancelDialog && (
+      {/* PB1-P35/AC3: modal de justificativa — obrigatório antes de aplicar a ação de status. */}
+      {pendingAction && (
         <div
           style={{
             position: 'fixed',
@@ -626,9 +820,11 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               maxWidth: '90vw',
             }}
           >
-            <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Cancelar orçamento</h3>
+            <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>
+              {ACTION_LABEL[pendingAction]}
+            </h3>
             <p style={{ color: '#64748B', fontSize: 14, marginBottom: 16 }}>
-              Tem certeza que deseja cancelar este orçamento? Esta ação não pode ser desfeita.
+              O motivo é obrigatório e fica registrado no histórico do orçamento.
             </p>
             <div style={{ marginBottom: 16 }}>
               <label
@@ -640,13 +836,12 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                   marginBottom: 4,
                 }}
               >
-                Motivo (opcional)
+                Motivo
               </label>
-              <input
-                type="text"
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Motivo do cancelamento"
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Descreva o motivo"
                 style={{
                   width: '100%',
                   border: '1px solid #E2E8F0',
@@ -654,19 +849,184 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                   padding: '8px 10px',
                   fontSize: 14,
                   boxSizing: 'border-box',
+                  minHeight: 72,
+                  resize: 'vertical',
                 }}
               />
             </div>
+            {actionError && (
+              <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>{actionError}</p>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowCancelDialog(false)} style={btnSecondary}>
+              <button
+                onClick={() => {
+                  setPendingAction(null);
+                  setActionError('');
+                }}
+                style={btnSecondary}
+              >
                 Voltar
               </button>
               <button
-                onClick={handleCancel}
-                disabled={loading}
-                style={{ ...btnDanger, opacity: loading ? 0.6 : 1 }}
+                onClick={() => void submitPendingAction()}
+                disabled={actionLoading}
+                style={{ ...btnDanger, opacity: actionLoading ? 0.6 : 1 }}
               >
-                {loading ? 'Cancelando...' : 'Confirmar cancelamento'}
+                {actionLoading ? 'Salvando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PB1-P35/AC1: edição direta dos campos do orçamento (fora do assistente guiado). */}
+      {showEditModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(10,10,15,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 12,
+              padding: 24,
+              width: 560,
+              maxWidth: '95vw',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Editar orçamento</h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <div>
+                <label style={editLabel}>Título</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  style={editInput}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={editLabel}>Tipo de desconto</label>
+                  <select
+                    value={editDiscountType}
+                    onChange={(e) => setEditDiscountType(e.target.value as 'PERCENT' | 'FIXED')}
+                    style={editInput}
+                  >
+                    <option value="PERCENT">Percentual (%)</option>
+                    <option value="FIXED">Valor fixo (R$)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={editLabel}>Desconto</label>
+                  <input
+                    value={editDiscountValue}
+                    onChange={(e) => setEditDiscountValue(e.target.value.replace(',', '.'))}
+                    style={editInput}
+                  />
+                </div>
+                <div>
+                  <label style={editLabel}>Válido até</label>
+                  <input
+                    type="date"
+                    value={editValidUntil}
+                    onChange={(e) => setEditValidUntil(e.target.value)}
+                    style={editInput}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={editLabel}>Observações</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  style={{ ...editInput, minHeight: 64, resize: 'vertical' }}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginBottom: 8,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <label style={{ ...editLabel, marginBottom: 0 }}>Itens</label>
+              <button
+                type="button"
+                onClick={addEditItem}
+                style={{ ...btnSecondary, padding: '4px 10px', fontSize: 12 }}
+              >
+                Adicionar item
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              {editItems.map((item, idx) => (
+                <div key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    value={item.description}
+                    onChange={(e) => updateEditItem(idx, 'description', e.target.value)}
+                    placeholder="Descrição"
+                    style={{ ...editInput, flex: 1 }}
+                  />
+                  <input
+                    value={item.quantity}
+                    onChange={(e) =>
+                      updateEditItem(idx, 'quantity', e.target.value.replace(',', '.'))
+                    }
+                    placeholder="Qtd"
+                    style={{ ...editInput, width: 64 }}
+                  />
+                  <input
+                    value={item.unit_price}
+                    onChange={(e) =>
+                      updateEditItem(idx, 'unit_price', e.target.value.replace(',', '.'))
+                    }
+                    placeholder="Preço"
+                    style={{ ...editInput, width: 90 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeEditItem(idx)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94A3B8',
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {editError && (
+              <p style={{ color: '#DC2626', fontSize: 13, marginBottom: 12 }}>{editError}</p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowEditModal(false)} style={btnSecondary}>
+                Voltar
+              </button>
+              <button
+                onClick={() => void submitEdit()}
+                disabled={editLoading}
+                style={{ ...btnPrimary, opacity: editLoading ? 0.6 : 1 }}
+              >
+                {editLoading ? 'Salvando...' : 'Salvar alterações'}
               </button>
             </div>
           </div>
@@ -738,4 +1098,19 @@ const btnGreen: React.CSSProperties = {
   fontSize: 14,
   border: 'none',
   cursor: 'pointer',
+};
+const editLabel: React.CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#334155',
+  marginBottom: 4,
+};
+const editInput: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid #E2E8F0',
+  borderRadius: 8,
+  padding: '8px 10px',
+  fontSize: 14,
+  boxSizing: 'border-box',
 };

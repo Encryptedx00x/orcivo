@@ -11,8 +11,9 @@ import {
   Req,
   StreamableFile,
 } from '@nestjs/common';
+import type { MemberRole } from '@prisma/client';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { QuoteCreateSchema } from '@orcivo/shared-types';
+import { QuoteCreateSchema, QuoteUpdateSchema } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 
@@ -20,6 +21,8 @@ import { AdminOnly } from '../auth/decorators/roles.decorator';
 interface TenantRequest {
   companyId: string;
   user: { userId: string };
+  /** Papel da membership ativa (set by TenantGuard) — usado para calcular allowed_actions. */
+  role?: MemberRole;
 }
 
 @Controller('quotes')
@@ -28,12 +31,17 @@ export class QuoteController {
 
   @Get()
   findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.quoteService.findAll(req.companyId, Number(page) || 1, Number(limit) || 20);
+    return this.quoteService.findAll(
+      req.companyId,
+      Number(page) || 1,
+      Number(limit) || 20,
+      req.role,
+    );
   }
 
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.quoteService.findOne(id, req.companyId);
+    return this.quoteService.findOne(id, req.companyId, req.role);
   }
 
   @Get(':id/pdf')
@@ -50,6 +58,16 @@ export class QuoteController {
     return this.quoteService.create(body as never, req.companyId, req.user.userId);
   }
 
+  // PB1-P35/AC1: edição direta dos campos do orçamento fora do assistente guiado.
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(QuoteUpdateSchema)) body: unknown,
+    @Req() req: TenantRequest,
+  ) {
+    return this.quoteService.update(id, body as never, req.companyId, req.user.userId, req.role);
+  }
+
   @Post(':id/send')
   @HttpCode(200)
   send(
@@ -57,19 +75,25 @@ export class QuoteController {
     @Req() req: TenantRequest,
     @Body('apply_signature') applySignature?: boolean,
   ) {
-    return this.quoteService.send(id, req.companyId, req.user.userId, applySignature === true);
+    return this.quoteService.send(
+      id,
+      req.companyId,
+      req.user.userId,
+      applySignature === true,
+      req.role,
+    );
   }
 
   @Patch(':id/cancel')
   @HttpCode(200)
   cancel(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
-    return this.quoteService.cancel(id, req.companyId, req.user.userId, reason);
+    return this.quoteService.cancel(id, req.companyId, req.user.userId, reason, req.role);
   }
 
   @Patch(':id/reject')
   @HttpCode(200)
   reject(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
-    return this.quoteService.reject(id, req.companyId, req.user.userId, reason);
+    return this.quoteService.reject(id, req.companyId, req.user.userId, reason, req.role);
   }
 
   // reabrir/corrigir são ações de correção sobre estados terminais — @AdminOnly (P-01).
@@ -77,13 +101,13 @@ export class QuoteController {
   @AdminOnly()
   @HttpCode(200)
   reopen(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
-    return this.quoteService.reopen(id, req.companyId, req.user.userId, reason);
+    return this.quoteService.reopen(id, req.companyId, req.user.userId, reason, req.role);
   }
 
   @Patch(':id/correct')
   @AdminOnly()
   @HttpCode(200)
   correct(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
-    return this.quoteService.correct(id, req.companyId, req.user.userId, reason);
+    return this.quoteService.correct(id, req.companyId, req.user.userId, reason, req.role);
   }
 }
