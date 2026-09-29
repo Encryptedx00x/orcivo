@@ -1170,13 +1170,14 @@
       "title": "Tela Conta real no app mobile (hoje e placeholder Em breve)",
       "type": "FEATURE_INCOMPLETE",
       "source": "OWNER-MOBILE-PARITY-20260928",
-      "description": "O item Conta no menu Mais do app mobile hoje e EmBreveScreen. O web acabou de ganhar uma tela de conta (PB1-P33-account-settings-screen) para trocar nome/e-mail/senha via /auth/account. Owner quer a mesma paridade no app.",
+      "description": "O item Conta no menu Mais do app mobile hoje e EmBreveScreen. O web acabou de ganhar uma tela de conta (PB1-P33-account-settings-screen) para trocar nome/e-mail/senha via /auth/account. Owner quer a mesma paridade no app. Scope fix: equipe/screen.test.mjs precisa de 1 linha (allowlist de import) pois MaisStack.tsx ganha novo import estatico de ContaScreen.",
       "acceptance": "AC1: a tela Conta do app permite ver e editar nome e e-mail do usuario logado; AC2: permite trocar a senha exigindo a senha atual; AC3: usa o mesmo endpoint /auth/account que o web ja usa (apps/web/app/(app)/configuracoes referencia PB1-P33); AC4: mensagens de erro em pt-BR, sem vazar detalhe tecnico.",
       "dependencies": [],
       "scope": [
         "apps/mobile/src/screens/conta",
         "apps/mobile/src/services/auth.service.ts",
-        "apps/mobile/src/navigation/MaisStack.tsx"
+        "apps/mobile/src/navigation/MaisStack.tsx",
+        "apps/mobile/src/screens/equipe/screen.test.mjs"
       ],
       "risk": "A",
       "ownerGate": "none",
