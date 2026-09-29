@@ -1252,7 +1252,8 @@
       "dependencies": [],
       "scope": [
         "apps/mobile/src/screens/documentos",
-        "apps/mobile/src/navigation/MaisStack.tsx"
+        "apps/mobile/src/navigation/MaisStack.tsx",
+        "apps/mobile/package.json"
       ],
       "risk": "A",
       "ownerGate": "none",
