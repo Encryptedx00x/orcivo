@@ -1247,8 +1247,8 @@
       "title": "Tela Documentos (PDFs de orcamento/OS) real no app mobile",
       "type": "FEATURE_INCOMPLETE",
       "source": "OWNER-MOBILE-PARITY-20260928",
-      "description": "O item Documentos no menu Mais do app mobile hoje e EmBreveScreen. O web ja baixa PDF de orcamento e OS (apps/web/app/(app)/documentos, PB1-P11/PB1-P12). Owner quer paridade no app - o tecnico em campo precisa poder baixar/compartilhar esses PDFs pelo celular. Contrato reiniciado apos troca de provider primario (codex) 2026-09-29.",
-      "acceptance": "AC1: a tela lista os documentos (orcamentos e OS) com PDF disponivel; AC2: toque em um item baixa e/ou compartilha o PDF usando o endpoint ja existente no backend; AC3: mostra claramente o status (ex: pendente/emitido) igual a semantica ja definida em PB1-P12; AC4: segue o design system mobile.",
+      "description": "O item Documentos no menu Mais do app mobile hoje e EmBreveScreen. O web ja baixa PDF de orcamento e OS (apps/web/app/(app)/documentos, PB1-P11/PB1-P12). Owner quer paridade no app - o tecnico em campo precisa poder baixar/compartilhar esses PDFs pelo celular. Contrato reiniciado apos troca de provider primario (codex) 2026-09-29. Scope fix: so orcamento tem endpoint de PDF no backend; OS ainda nao tem (nem no web). AC reduzida para bater com a realidade.",
+      "acceptance": "AC1: a tela lista os orcamentos com PDF disponivel e permite baixar/compartilhar via endpoint ja existente (quote PDF); AC2: a tela tambem lista as OS, mas sem botao de PDF ainda (backend nao expoe PDF de OS, nem no web - mesma limitacao); AC3: mostra status igual a semantica de PB1-P12; AC4: segue o design system mobile.",
       "dependencies": [],
       "scope": [
         "apps/mobile/src/screens/documentos",
