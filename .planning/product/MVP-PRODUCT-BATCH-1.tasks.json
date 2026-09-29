@@ -1263,7 +1263,8 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03"
+        "P03",
+        "OWNER-DEFER-20260929-preexisting-typecheck"
       ],
       "status": "SCHEDULED",
       "phaseGate": "MOBILE-PARITY-20260928"
