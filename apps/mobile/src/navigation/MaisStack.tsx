@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { EmBreveScreen } from '../screens/placeholders/EmBreveScreen';
 import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScreen';
+import { EquipeScreen } from '../screens/equipe/EquipeScreen';
 import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
@@ -16,6 +17,7 @@ export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 export type MaisStackParamList = {
   MaisMenu: undefined;
   Configuracoes: undefined;
+  Equipe: undefined;
   EmBreve: { title: string };
   Catalog: undefined;
   CatalogItemForm: { item?: CatalogItem } | undefined;
@@ -31,7 +33,7 @@ export type MaisStackParamList = {
 const Stack = createNativeStackNavigator<MaisStackParamList>();
 
 type MaisMenuItem =
-  | { label: string; screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' }
+  | { label: string; screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' | 'Equipe' }
   | { label: string; screen: 'EmBreve' };
 
 const MAIS_ITEMS: MaisMenuItem[] = [
@@ -41,7 +43,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Documentos', screen: 'EmBreve' },
   { label: 'Conta', screen: 'EmBreve' },
   { label: 'Configurações', screen: 'Configuracoes' },
-  { label: 'Usuários e permissões', screen: 'EmBreve' },
+  { label: 'Usuários e permissões', screen: 'Equipe' },
   { label: 'Plano e assinatura', screen: 'EmBreve' },
   { label: 'Ajuda', screen: 'EmBreve' },
 ];
@@ -51,7 +53,7 @@ type MaisMenuProps = NativeStackScreenProps<MaisStackParamList, 'MaisMenu'>;
 function MaisMenuScreen({ navigation }: MaisMenuProps) {
   return (
     <View style={styles.container}>
-      {MAIS_ITEMS.map(item => (
+      {MAIS_ITEMS.map((item) => (
         <TouchableOpacity
           key={item.label}
           style={styles.row}
@@ -75,8 +77,21 @@ export function MaisStack() {
   return (
     <Stack.Navigator screenOptions={{ headerTintColor: '#6D28D9' }}>
       <Stack.Screen name="MaisMenu" component={MaisMenuScreen} options={{ title: 'Mais' }} />
-      <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
-      <Stack.Screen name="EmBreve" component={EmBreveScreen} options={({ route }) => ({ title: route.params.title ?? 'Em breve' })} />
+      <Stack.Screen
+        name="Configuracoes"
+        component={ConfiguracoesScreen}
+        options={{ title: 'Configurações' }}
+      />
+      <Stack.Screen
+        name="Equipe"
+        component={EquipeScreen}
+        options={{ title: 'Usuários e permissões' }}
+      />
+      <Stack.Screen
+        name="EmBreve"
+        component={EmBreveScreen}
+        options={({ route }) => ({ title: route.params.title ?? 'Em breve' })}
+      />
 
       {/* Catálogo */}
       <Stack.Screen name="Catalog" component={CatalogScreen} options={{ title: 'Catálogo' }} />
@@ -87,16 +102,35 @@ export function MaisStack() {
       />
 
       {/* Ordens de Serviço */}
-      <Stack.Screen name="WorkOrderList" component={WorkOrderListScreen} options={{ title: 'Ordens de Serviço' }} />
-      <Stack.Screen name="WorkOrderDetail" component={WorkOrderDetailScreen} options={{ title: 'Detalhes da OS' }} />
-      <Stack.Screen name="WorkOrderPhoto" component={WorkOrderPhotoScreen} options={{ title: 'Adicionar foto' }} />
+      <Stack.Screen
+        name="WorkOrderList"
+        component={WorkOrderListScreen}
+        options={{ title: 'Ordens de Serviço' }}
+      />
+      <Stack.Screen
+        name="WorkOrderDetail"
+        component={WorkOrderDetailScreen}
+        options={{ title: 'Detalhes da OS' }}
+      />
+      <Stack.Screen
+        name="WorkOrderPhoto"
+        component={WorkOrderPhotoScreen}
+        options={{ title: 'Adicionar foto' }}
+      />
     </Stack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderColor: '#E5E7EB' },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   label: { fontSize: 16, color: '#0A0A0F' },
   arrow: { fontSize: 20, color: '#6B7280' },
 });
