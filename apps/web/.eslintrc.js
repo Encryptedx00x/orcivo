@@ -7,4 +7,8 @@ module.exports = {
     project: path.join(__dirname, 'tsconfig.json'),
     tsconfigRootDir: __dirname,
   },
+  // Standalone node:test scripts, not Next.js app code - their sandboxed
+  // `const module = { exports: {} }` isn't the webpack module Next.js's
+  // no-assign-module-variable rule protects.
+  ignorePatterns: ['**/*.browser.test.cjs'],
 };
