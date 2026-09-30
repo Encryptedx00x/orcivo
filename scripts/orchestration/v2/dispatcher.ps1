@@ -513,6 +513,15 @@ function Resume-DispatcherReviewInfrastructureBlock {
         Write-Host "review infrastructure recovery not eligible: $($result.reason)" -ForegroundColor Yellow
         return $result
     }
+    # The shared REVIEW-stage dispatch code below (Invoke-RealDispatcherTask)
+    # always expects the ledger to already be at REVIEWING - the normal
+    # IMPLEMENT->CHECK path puts it there before ever reaching that code. Walk
+    # the same RUNNING->CHECKING->REVIEWING steps here so a REQUEST_CHANGES/
+    # non-APPROVE verdict's own ToState transitions (e.g. REVIEWING->RUNNING)
+    # aren't attempted from RUNNING itself, which the ledger rejects as a
+    # same-state transition.
+    Enter-DispatcherLedgerPhase -TaskVersionId $State.taskVersionId -RunId $State.runId -Phase CHECKING
+    Enter-DispatcherLedgerPhase -TaskVersionId $State.taskVersionId -RunId $State.runId -Phase REVIEWING
     $history=@($State.reviewInfrastructureRecoveryHistory|Where-Object{$_})
     if(-not @($history|Where-Object{[string]$_.proofHash -eq [string]$proof.proofHash}).Count){$history+=,$proof}
     $State.reviewInfrastructureRecoveryHistory=$history
