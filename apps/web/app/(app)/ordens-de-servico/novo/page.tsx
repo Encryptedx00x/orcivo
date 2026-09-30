@@ -156,8 +156,8 @@ function NovaOSContent(): JSX.Element {
                 <div
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    height: 40, border: `1.5px solid ${form.customer_id ? '#6D28D9' : '#E2E8F0'}`,
-                    borderRadius: 8, padding: '0 12px', cursor: 'pointer',
+                    minHeight: 40, border: `1.5px solid ${form.customer_id ? '#6D28D9' : '#E2E8F0'}`,
+                    borderRadius: 8, padding: '12px 16px', cursor: 'pointer',
                     background: '#fff', position: 'relative',
                   }}
                   onClick={() => { setDropdownOpen(p => !p); setCustomerQuery(''); }}
@@ -212,7 +212,7 @@ function NovaOSContent(): JSX.Element {
                             key={c.id}
                             onClick={() => selectCustomer(c)}
                             style={{
-                              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                              display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
                               cursor: 'pointer', borderBottom: '1px solid #F8FAFC',
                               background: form.customer_id === c.id ? '#F5F3FF' : 'transparent',
                             }}
