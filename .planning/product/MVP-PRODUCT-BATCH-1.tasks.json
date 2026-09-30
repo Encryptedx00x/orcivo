@@ -1281,7 +1281,8 @@
       "dependencies": [],
       "scope": [
         "apps/mobile/src/screens/plano",
-        "apps/mobile/src/navigation/MaisStack.tsx"
+        "apps/mobile/src/navigation/MaisStack.tsx",
+        "apps/mobile/src/screens/financeiro/screen.test.mjs"
       ],
       "risk": "A",
       "ownerGate": "none",
