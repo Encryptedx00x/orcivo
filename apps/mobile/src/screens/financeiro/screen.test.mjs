@@ -352,6 +352,7 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
     react: { createElement }, 'react-native': native,
     '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
     '../screens/financeiro/FinanceiroScreen': { FinanceiroScreen },
+    '../screens/documentos/DocumentosScreen': { DocumentosScreen: () => null },
     '../screens/plano/PlanoScreen': { PlanoScreen },
   };
   for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen']) {
