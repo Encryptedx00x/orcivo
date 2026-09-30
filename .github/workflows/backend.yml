@@ -63,6 +63,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # StorageService connects to MinIO on module init — mirrors
+      # infra/docker-compose.test.yml (minio-test). bitnami/minio starts the
+      # server from env vars alone, unlike the official image which needs a
+      # `command` override that GitHub Actions service containers don't support.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: orcivo-test
+        ports:
+          - 9002:9000
+
     env:
       DATABASE_URL_TEST: postgresql://orcivo:orcivo@localhost:5432/orcivo_test
       DATABASE_URL: postgresql://orcivo:orcivo@localhost:5432/orcivo_test
