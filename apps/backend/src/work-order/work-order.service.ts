@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -84,6 +85,35 @@ export class WorkOrderService {
     const actions = WO_ACTIONS[status] ?? [];
     if (role === 'OWNER' || role === 'ADMIN') return [...actions];
     return actions.filter((action) => !ADMIN_ONLY_ACTIONS.includes(action));
+  }
+
+  async changeStatus(
+    id: string,
+    companyId: string,
+    userId: string,
+    status: WorkOrderStatus,
+    reason: string,
+    role?: MemberRole,
+  ) {
+    const wo = await this.findOne(id, companyId);
+    const action = (Object.keys(STATUS_ACTION_SPECS) as StatusAction[]).find((candidate) => {
+      const spec = STATUS_ACTION_SPECS[candidate];
+      return spec.to === status && spec.allowedFrom.includes(wo.status as WorkOrderStatus);
+    });
+    if (!action) {
+      throw new BadRequestException(`Transição inválida: ${wo.status} → ${status}`);
+    }
+    if (!this.allowedActions(wo.status as WorkOrderStatus, role).includes(action)) {
+      throw new ForbiddenException('Apenas administradores podem reabrir uma OS encerrada.');
+    }
+    return this.applyStatusAction(
+      id,
+      companyId,
+      userId,
+      action,
+      this.requireReason(reason, action),
+      role,
+    );
   }
 
   /** iniciar: PENDING → IN_PROGRESS (qualquer membro ativo). */
@@ -219,7 +249,7 @@ export class WorkOrderService {
   }
 
   private requireReason(reason: string | undefined, action: WorkOrderAction): string {
-    const trimmed = reason?.trim();
+    const trimmed = typeof reason === 'string' ? reason.trim() : '';
     if (!trimmed) {
       throw new BadRequestException(`Motivo é obrigatório para ${action} uma OS`);
     }

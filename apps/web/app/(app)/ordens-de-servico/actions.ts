@@ -38,6 +38,8 @@ export interface WorkOrderActionInput {
   /** Campos operacionais opcionais — apenas para corrigir. */
   title?: string;
   notes?: string;
+  /** A seleção manual usa a mesma máquina de ações no backend. */
+  status?: WorkOrder['status'];
 }
 
 export type WorkOrderActionResult = { error?: string; order?: WorkOrderWithActions };
@@ -46,7 +48,7 @@ export async function workOrderAction(
   id: string,
   input: WorkOrderActionInput,
 ): Promise<WorkOrderActionResult> {
-  const route = ACTION_ROUTES[input.action];
+  const route = input.status ? 'status' : ACTION_ROUTES[input.action];
   if (!route) return { error: `Ação inválida: ${input.action}` };
 
   const cookieStore = cookies();
@@ -54,6 +56,7 @@ export async function workOrderAction(
   if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
 
   const body: Record<string, string> = {};
+  if (input.status !== undefined) body['status'] = input.status;
   if (input.reason !== undefined) body['reason'] = input.reason;
   if (input.title !== undefined) body['title'] = input.title;
   if (input.notes !== undefined) body['notes'] = input.notes;

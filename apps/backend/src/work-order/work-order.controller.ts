@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import type { MemberRole } from '@prisma/client';
+import { z } from 'zod';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { WorkOrderCreateSchema, WorkOrderUpdateSchema } from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -30,6 +31,10 @@ interface TenantRequest {
 }
 
 const VALID_STAGES = ['BEFORE', 'DURING', 'AFTER'] as const;
+const ManualStatusSchema = z.object({
+  status: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'CANCELLED']),
+  reason: z.string().trim().min(1, 'Informe o motivo para alterar o status.'),
+});
 type PhotoStage = (typeof VALID_STAGES)[number];
 
 @Controller('work-orders')
@@ -70,6 +75,22 @@ export class WorkOrderController {
     @Req() req: TenantRequest,
   ) {
     return this.workOrderService.update(id, body as never, req.companyId, req.user.userId);
+  }
+
+  @Patch(':id/status')
+  changeStatus(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(ManualStatusSchema)) body: z.infer<typeof ManualStatusSchema>,
+    @Req() req: TenantRequest,
+  ) {
+    return this.workOrderService.changeStatus(
+      id,
+      req.companyId,
+      req.user.userId,
+      body.status,
+      body.reason,
+      req.role,
+    );
   }
 
   // ── Ações de domínio (P-01 / ADR-016): transições explícitas, não select livre ──
