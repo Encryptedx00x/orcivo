@@ -6,6 +6,7 @@ import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScree
 import { ContaScreen } from '../screens/conta/ContaScreen';
 import { EquipeScreen } from '../screens/equipe/EquipeScreen';
 import { FinanceiroScreen } from '../screens/financeiro/FinanceiroScreen';
+import { DocumentosScreen } from '../screens/documentos/DocumentosScreen';
 import { PlanoScreen } from '../screens/plano/PlanoScreen';
 import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
@@ -23,6 +24,7 @@ export type MaisStackParamList = {
   Conta: undefined;
   Equipe: undefined;
   Financeiro: undefined;
+  Documentos: undefined;
   Plano: undefined;
   EmBreve: { title: string };
   Catalog: undefined;
@@ -48,6 +50,7 @@ type MaisMenuItem =
         | 'Conta'
         | 'Equipe'
         | 'Financeiro'
+        | 'Documentos'
         | 'Plano';
     }
   | { label: string; screen: 'EmBreve' };
@@ -56,7 +59,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Ordens de Serviço', screen: 'WorkOrderList' },
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'Financeiro' },
-  { label: 'Documentos', screen: 'EmBreve' },
+  { label: 'Documentos', screen: 'Documentos' },
   { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'Equipe' },
@@ -108,6 +111,11 @@ export function MaisStack() {
         name="Financeiro"
         component={FinanceiroScreen}
         options={{ title: 'Financeiro' }}
+      />
+      <Stack.Screen
+        name="Documentos"
+        component={DocumentosScreen}
+        options={{ title: 'Documentos' }}
       />
       <Stack.Screen
         name="Plano"
