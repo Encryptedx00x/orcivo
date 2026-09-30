@@ -47,12 +47,6 @@ export class StorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // MinIO's registries (Docker Hub and quay.io) stopped anonymous image
-    // pulls in Sept 2026, so CI/test envs have no MinIO to connect to.
-    // Skip provisioning here; storage.*.spec.ts are excluded from CI until
-    // a storage backend decision is made.
-    if (process.env['NODE_ENV'] === 'test') return;
-
     // P03-T03: domain buckets are private. Create if missing and, either way,
     // drop any bucket policy (a stale public "s3:GetObject / Principal *" from an
     // earlier build). Idempotent, touches no object, so it is SAFE_AUTO.

@@ -63,12 +63,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # StorageService connects to MinIO on module init — mirrors
-      # infra/docker-compose.test.yml (minio-test). bitnami/minio starts the
-      # server from env vars alone, unlike the official image which needs a
-      # `command` override that GitHub Actions service containers don't support.
+      # StorageService connects to MinIO on module init (quotes send, photo
+      # uploads, signed URLs). quay.io/minio/minio (what
+      # infra/docker-compose.test.yml uses locally) now requires auth to pull
+      # and the official image needs a `command` override GitHub Actions
+      # `services:` containers can't pass — bitnamilegacy's frozen, pre-paywall
+      # tags stay publicly pullable and start the server from env vars alone.
       minio:
-        image: bitnami/minio:latest
+        image: bitnamilegacy/minio:2025.7.23
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
