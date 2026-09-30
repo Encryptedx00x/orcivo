@@ -59,7 +59,7 @@ maybe('AuditService (integration)', () => {
   it('persists a structured row with the standardised {from,to,reason,humanText} envelope', async () => {
     await prisma.$transaction(async (tx) => {
       await audit.record(tx, {
-        companyId,
+        companyId: companyId!,
         actorType: 'USER',
         actorUserId: userId,
         action: 'quote.approved',
@@ -87,7 +87,7 @@ maybe('AuditService (integration)', () => {
   it('writes NULL actor_user_id for SYSTEM actors', async () => {
     await prisma.$transaction(async (tx) => {
       await audit.record(tx, {
-        companyId,
+        companyId: companyId!,
         actorType: 'SYSTEM',
         action: 'quote.expired',
         entityType: 'quote',
@@ -107,7 +107,7 @@ maybe('AuditService (integration)', () => {
     await expect(
       prisma.$transaction(async (tx) => {
         await audit.record(tx, {
-          companyId,
+          companyId: companyId!,
           actorType: 'USER',
           actorUserId: userId,
           action: 'quote.cancelled',
