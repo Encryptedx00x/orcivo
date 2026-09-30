@@ -1079,7 +1079,8 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03"
+        "P03",
+        "OWNER-DEFER-20260930-needs-migration-scope-review"
       ],
       "status": "SCHEDULED",
       "phaseGate": "UAT-20260927"
