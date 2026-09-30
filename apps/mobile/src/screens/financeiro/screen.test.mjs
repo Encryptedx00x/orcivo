@@ -345,12 +345,14 @@ test('failed settle surfaces an alert and keeps the payment pending', async () =
   assert.ok(screen.button('Marcar como recebido'));
 });
 
-test('Mais menu route wires FinanceiroScreen (no longer EmBreve)', () => {
+test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)', () => {
   const FinanceiroScreen = () => null;
+  const PlanoScreen = () => null;
   const modules = {
     react: { createElement }, 'react-native': native,
     '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
     '../screens/financeiro/FinanceiroScreen': { FinanceiroScreen },
+    '../screens/plano/PlanoScreen': { PlanoScreen },
   };
   for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };
@@ -362,4 +364,5 @@ test('Mais menu route wires FinanceiroScreen (no longer EmBreve)', () => {
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Financeiro').props.component, FinanceiroScreen);
+  assert.equal(registered.find((node) => node.props.name === 'Plano').props.component, PlanoScreen);
 });
