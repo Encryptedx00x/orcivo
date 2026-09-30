@@ -1281,7 +1281,7 @@
       "title": "Tela Plano e assinatura real no app mobile",
       "type": "FEATURE_INCOMPLETE",
       "source": "OWNER-MOBILE-PARITY-20260928",
-      "description": "O item Plano e assinatura no menu Mais do app mobile hoje e EmBreveScreen. O web ja mostra o plano atual e uso (apps/web/app/(app)/plano/page.tsx). Owner quer paridade no app. Linguagem de produto obrigatoria: uso justo, uso ampliado, Ver planos, Gerenciar assinatura - nunca pague fora do app nem falar em taxa da Apple/Google, dado que a Apple/Google exigem in-app purchase para conteudo digital em apps nativos.",
+      "description": "O item Plano e assinatura no menu Mais do app mobile hoje e EmBreveScreen. O web ja mostra o plano atual e uso (apps/web/app/(app)/plano/page.tsx). Owner quer paridade no app. Linguagem de produto obrigatoria: uso justo, uso ampliado, Ver planos, Gerenciar assinatura - nunca pague fora do app nem falar em taxa da Apple/Google, dado que a Apple/Google exigem in-app purchase para conteudo digital em apps nativos. Reiniciado apos GLM reviewer falhar com 403 Forbidden na NVIDIA API (falha externa de credencial, nao recuperavel automaticamente).",
       "acceptance": "AC1: a tela mostra o plano atual (Orcivo Livre/Solo/Mais/Equipe) e o uso do mes (ex.: X/15 OS no Livre); AC2: botao Ver planos e Gerenciar assinatura presentes, linkando para o fluxo apropriado (web/checkout ou app store conforme a politica da loja - NAO implementar cobranca nova nesta task, e decisao de billing/Nivel C separada); AC3: nomenclatura de planos e linguagem seguem exatamente o CLAUDE.md do projeto (Orcivo Livre/Solo/Mais/Equipe; nunca FREE/POP/PRO/TOP).",
       "dependencies": [],
       "scope": [
