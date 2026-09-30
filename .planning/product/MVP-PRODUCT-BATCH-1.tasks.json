@@ -943,8 +943,7 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03",
-        "OWNER-DEFER-20260930-needs-migration-scope-review"
+        "P03"
       ],
       "status": "SCHEDULED",
       "phaseGate": "UAT-20260927"
@@ -1272,8 +1271,7 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03",
-        "OWNER-DEFER-20260929-preexisting-typecheck"
+        "P03"
       ],
       "status": "SCHEDULED",
       "phaseGate": "MOBILE-PARITY-20260928"
@@ -1299,8 +1297,7 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03",
-        "OWNER-DEFER-20260930-preexisting-typecheck"
+        "P03"
       ],
       "status": "SCHEDULED",
       "phaseGate": "MOBILE-PARITY-20260928"
