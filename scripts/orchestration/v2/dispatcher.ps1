@@ -4800,7 +4800,13 @@ function Invoke-RealDispatcherTask {
     if(Test-DispatcherCandidateResumeEligible -State $state -Task $Task -TaskSource $TaskSource){
         if(-not(Resume-DispatcherCandidate -State $state -Task $Task -TaskSource $TaskSource)){throw 'dispatcher: candidate resume eligibility changed before durable transition'}
     }
-    if(Test-DispatcherReviewInfrastructureResumeState -State $state){
+    # Only take the narrow same-candidate recovery path while the parked state
+    # is still bound to the exact contract in hand. Once a new taskVersionId has
+    # been frozen (task source changed, e.g. a version-bump to mint a fresh
+    # attempt after this recovery path's own one-shot budget was spent), this
+    # state is stale history, not the live checkpoint - fall through to the
+    # normal supersession/fresh-dispatch logic below instead of returning early.
+    if([string]$state.taskVersionId -eq [string]$contract.taskVersionId -and (Test-DispatcherReviewInfrastructureResumeState -State $state)){
         $reviewRecovery=Resume-DispatcherReviewInfrastructureBlock -State $state -Task $Task -TaskSource $TaskSource -Contract $contract
         if(-not $reviewRecovery.eligible){return $state}
     }
