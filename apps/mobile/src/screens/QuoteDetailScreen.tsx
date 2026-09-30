@@ -16,6 +16,8 @@ import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 import { newIdempotencyKey } from '../services/api';
 
+import { AuditHistorySection } from './WorkOrderDetailScreen';
+
 type Props = NativeStackScreenProps<QuotesStackParamList, 'QuoteDetail'>;
 
 const STATUS_LABEL: Record<QuoteStatus, string> = {
@@ -250,6 +252,7 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
           <Text style={styles.approvedText}>Aprovado — OS criada</Text>
         </View>
       )}
+      <AuditHistorySection key={`${id}:${quote.status}`} entityType="quote" entityId={id} />
     </ScrollView>
   );
 }

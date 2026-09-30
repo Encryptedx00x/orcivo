@@ -9,11 +9,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Camera, CheckCircle, XCircle } from 'lucide-react-native';
+import { Camera, CheckCircle, History, XCircle } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder, WorkOrderPhoto } from '../services/work-order.service';
 import { newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+
+import {
+  auditService,
+  auditActionLabel,
+  auditActorLabel,
+  auditDateLabel,
+  auditReason,
+  auditErrorMessage,
+  type AuditEntityType,
+  type AuditRow,
+} from '../services/audit.service';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderDetail'>;
 
@@ -73,6 +84,92 @@ function PhotoGrid({
     </View>
   );
 }
+
+// Both detail screens share the same read-only history presentation.
+export function AuditHistorySection({ entityType, entityId }: {
+  entityType: AuditEntityType;
+  entityId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={historyStyles.section}>
+      <TouchableOpacity
+        style={historyStyles.button}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+      >
+        <History size={18} color="#6D28D9" />
+        <Text style={historyStyles.buttonText}>{open ? 'Ocultar histórico de ações' : 'Histórico de ações'}</Text>
+      </TouchableOpacity>
+      {open && <AuditHistoryRows key={`${entityType}:${entityId}`} entityType={entityType} entityId={entityId} />}
+    </View>
+  );
+}
+
+function AuditHistoryRows({ entityType, entityId }: { entityType: AuditEntityType; entityId: string }) {
+  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [request, setRequest] = useState<{ cursor?: string; attempt: number }>({ attempt: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    void auditService.fetchHistory(entityType, entityId, request.cursor).then((page) => {
+      if (!active) return;
+      setRows((previous) => request.cursor ? [...previous, ...page.data] : page.data);
+      setNextCursor(page.next_cursor);
+    }).catch((err: unknown) => {
+      if (active) setError(auditErrorMessage(err));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [entityType, entityId, request]);
+
+  return (
+    <View accessibilityState={{ busy: loading }}>
+      {rows.map((row) => (
+        <View key={row.id} style={historyStyles.row}>
+          <Text style={historyStyles.action}>{auditActionLabel(row)}</Text>
+          <Text style={historyStyles.meta}>{auditDateLabel(row.created_at)}</Text>
+          <Text style={historyStyles.meta}>{auditActorLabel(row)}</Text>
+          {auditReason(row) && <Text style={historyStyles.meta}>Justificativa: {auditReason(row)}</Text>}
+        </View>
+      ))}
+      {loading && <ActivityIndicator accessibilityLabel="Carregando histórico" color="#6D28D9" />}
+      {!!error && <Text accessibilityRole="alert" style={historyStyles.error}>{error}</Text>}
+      {!loading && !error && rows.length === 0 && <Text style={historyStyles.meta}>Nenhuma alteração registrada.</Text>}
+      {!loading && (!!error || !!nextCursor) && (
+        <TouchableOpacity
+          accessibilityRole="button"
+          style={historyStyles.button}
+          onPress={() => {
+            setLoading(true);
+            setRequest((previous) => error
+              ? { ...previous, attempt: previous.attempt + 1 }
+              : { cursor: nextCursor ?? undefined, attempt: 0 });
+          }}
+        >
+          <Text style={historyStyles.buttonText}>{error ? 'Tentar novamente' : 'Carregar mais'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const historyStyles = StyleSheet.create({
+  section: { padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8 },
+  button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
+  buttonText: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: '#6D28D9' },
+  row: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F3F4F6' },
+  action: { fontSize: 14, fontWeight: '600', color: '#0A0A0F' },
+  meta: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+  error: { fontSize: 14, color: '#DC2626', marginTop: 8 },
+});
 
 export function WorkOrderDetailScreen({ navigation, route }: Props) {
   const { id } = route.params;
@@ -214,6 +311,7 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
           />
         ))}
       </View>
+      <AuditHistorySection key={`${id}:${order.status}`} entityType="work_order" entityId={id} />
     </ScrollView>
   );
 }
