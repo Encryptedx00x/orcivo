@@ -100,7 +100,11 @@ export default function EditarClientePage(): JSX.Element {
       }
 
       setSaved(true);
-      setTimeout(() => router.push(`/clientes/${id}`), 800);
+      setTimeout(() => {
+        router.push(`/clientes/${id}`);
+        // Refetch server props instead of reusing the cached customer detail.
+        router.refresh();
+      }, 800);
     } finally {
       setLoading(false);
     }
