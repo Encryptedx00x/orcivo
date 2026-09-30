@@ -482,8 +482,17 @@ function Invoke-RealAgent {
                     }
                 }
             })
-            $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--safe-mode','--no-chrome','--strict-mcp-config','--mcp-config',$mcpConfig,'--permission-prompts','none')
-            $args += @('--restricted','--permission-mode','plan','--tools','mcp__review_reader__read_review_artifact')
+            # --safe-mode silently drops every --mcp-config server ("server
+            # ignored (safe mode)" per --debug-file), so it cannot be used here.
+            # --strict-mcp-config already scopes MCP to exactly this server,
+            # which covers the isolation --safe-mode would otherwise add.
+            $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--no-chrome','--strict-mcp-config','--mcp-config',$mcpConfig,'--permission-prompts','none')
+            # --tools only names built-in tools; it cannot grant an MCP tool,
+            # which instead needs --allowedTools. And --permission-mode plan
+            # refuses to execute ANY tool call (built-in Read is a special
+            # exception) even when allowlisted, so an MCP tool can never run
+            # under plan - dontAsk auto-approves without prompting instead.
+            $args += @('--restricted','--permission-mode','dontAsk','--tools','Read','--allowedTools','mcp__review_reader__read_review_artifact')
         } else {
             $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--safe-mode','--no-chrome','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--permission-prompts','none')
             if ($Role -eq 'classifier') {
