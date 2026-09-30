@@ -1088,7 +1088,10 @@
         "P03"
       ],
       "status": "SCHEDULED",
-      "phaseGate": "UAT-20260927"
+      "phaseGate": "UAT-20260927",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
     },
     {
       "taskId": "PB1-P35-quote-edit-and-status-override",
