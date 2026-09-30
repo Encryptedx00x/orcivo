@@ -63,19 +63,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # StorageService connects to MinIO on module init — mirrors
-      # infra/docker-compose.test.yml (minio-test). bitnami/minio starts the
-      # server from env vars alone, unlike the official image which needs a
-      # `command` override that GitHub Actions service containers don't support.
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: orcivo-test
-        ports:
-          - 9002:9000
-
     env:
       DATABASE_URL_TEST: postgresql://orcivo:orcivo@localhost:5432/orcivo_test
       DATABASE_URL: postgresql://orcivo:orcivo@localhost:5432/orcivo_test
@@ -112,6 +99,25 @@ jobs:
       - name: Push schema to test database
         run: DATABASE_URL=$DATABASE_URL_TEST npx prisma db push --force-reset
         working-directory: .
+
+      # StorageService connects to MinIO on module init (quotes send, photo
+      # uploads, signed URLs). Mirrors infra/docker-compose.test.yml
+      # (minio-test): same image, same `server /data` command, same port.
+      # GitHub Actions `services:` containers can't take a command override,
+      # so it's started as a plain docker run step instead.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9002:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            quay.io/minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9002/minio/health/live && exit 0
+            sleep 2
+          done
+          echo "MinIO did not become ready in time" >&2
+          exit 1
 
       - name: Run backend tests (including tenant isolation)
         run: pnpm --filter @orcivo/backend test:ci
