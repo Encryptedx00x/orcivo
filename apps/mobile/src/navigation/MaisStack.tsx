@@ -6,6 +6,7 @@ import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScree
 import { ContaScreen } from '../screens/conta/ContaScreen';
 import { EquipeScreen } from '../screens/equipe/EquipeScreen';
 import { FinanceiroScreen } from '../screens/financeiro/FinanceiroScreen';
+import { PlanoScreen } from '../screens/plano/PlanoScreen';
 import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
@@ -22,6 +23,7 @@ export type MaisStackParamList = {
   Conta: undefined;
   Equipe: undefined;
   Financeiro: undefined;
+  Plano: undefined;
   EmBreve: { title: string };
   Catalog: undefined;
   CatalogItemForm: { item?: CatalogItem } | undefined;
@@ -39,7 +41,14 @@ const Stack = createNativeStackNavigator<MaisStackParamList>();
 type MaisMenuItem =
   | {
       label: string;
-      screen: 'WorkOrderList' | 'Catalog' | 'Configuracoes' | 'Conta' | 'Equipe' | 'Financeiro';
+      screen:
+        | 'WorkOrderList'
+        | 'Catalog'
+        | 'Configuracoes'
+        | 'Conta'
+        | 'Equipe'
+        | 'Financeiro'
+        | 'Plano';
     }
   | { label: string; screen: 'EmBreve' };
 
@@ -51,7 +60,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'Equipe' },
-  { label: 'Plano e assinatura', screen: 'EmBreve' },
+  { label: 'Plano e assinatura', screen: 'Plano' },
   { label: 'Ajuda', screen: 'EmBreve' },
 ];
 
@@ -99,6 +108,11 @@ export function MaisStack() {
         name="Financeiro"
         component={FinanceiroScreen}
         options={{ title: 'Financeiro' }}
+      />
+      <Stack.Screen
+        name="Plano"
+        component={PlanoScreen}
+        options={{ title: 'Plano e assinatura' }}
       />
       <Stack.Screen
         name="EmBreve"
