@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { MessageCircle, Download, X, Send, Pencil, Undo2, Wrench, XCircle } from 'lucide-react';
 import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
+import { SignatureCanvas } from '../../../approve/[token]/SignatureCanvas';
 import type { Quote, QuoteItem } from '../../../../lib/quote.service';
 import { EntityHistory } from '../../../../lib/EntityHistory';
 import {
@@ -60,6 +61,19 @@ const ACTION_LABEL: Record<DirectQuoteAction, string> = {
   corrigir: 'Corrigir orçamento',
 };
 
+type TechnicianSignatureMethod =
+  | 'APPROVE_BUTTON'
+  | 'TYPED_NAME'
+  | 'DRAWN_SIGNATURE'
+  | 'PHOTO_SIGNATURE';
+
+const TECHNICIAN_SIGNATURE_METHODS: Array<{ key: TechnicianSignatureMethod; label: string }> = [
+  { key: 'APPROVE_BUTTON', label: 'Simples' },
+  { key: 'TYPED_NAME', label: 'Nome digitado' },
+  { key: 'DRAWN_SIGNATURE', label: 'Desenhar' },
+  { key: 'PHOTO_SIGNATURE', label: 'Foto' },
+];
+
 export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Element {
   const router = useRouter();
   const [quote, setQuote] = useState<QuoteWithActions>(initialQuote);
@@ -70,6 +84,10 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
   const [applySignature, setApplySignature] = useState(false);
   const [signatureUploading, setSignatureUploading] = useState(false);
   const [signatureError, setSignatureError] = useState('');
+  const [technicianSignatureMethod, setTechnicianSignatureMethod] =
+    useState<TechnicianSignatureMethod>('PHOTO_SIGNATURE');
+  const [drawnSignature, setDrawnSignature] = useState('');
+  const [typedSignatureName, setTypedSignatureName] = useState('');
   const [historyRevision, setHistoryRevision] = useState(0);
 
   // PB1-P35/AC2: os botões vêm direto da lista de ações permitidas calculada
@@ -227,6 +245,52 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
     } finally {
       setSignatureUploading(false);
     }
+  }
+
+  async function saveDrawnSignature(): Promise<void> {
+    if (!drawnSignature) {
+      setSignatureError('Desenhe sua assinatura antes de salvar.');
+      return;
+    }
+    const response = await fetch(drawnSignature);
+    const blob = await response.blob();
+    await handleSignatureUpload(
+      new File([blob], 'assinatura-desenhada.png', { type: 'image/png' }),
+    );
+  }
+
+  async function saveTypedSignature(): Promise<void> {
+    const name = typedSignatureName.trim();
+    if (!name) {
+      setSignatureError('Informe o nome que deve aparecer na assinatura.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 720;
+    canvas.height = 180;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setSignatureError('Não foi possível preparar a assinatura digitada.');
+      return;
+    }
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#0A0A0F';
+    context.font = 'italic 52px cursive';
+    context.textBaseline = 'middle';
+    context.fillText(name, 28, canvas.height / 2);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) {
+      setSignatureError('Não foi possível preparar a assinatura digitada.');
+      return;
+    }
+    await handleSignatureUpload(new File([blob], 'assinatura-digitada.png', { type: 'image/png' }));
+  }
+
+  function chooseTechnicianSignatureMethod(method: TechnicianSignatureMethod): void {
+    setTechnicianSignatureMethod(method);
+    setSignatureError('');
+    if (method === 'APPROVE_BUTTON') setApplySignature(false);
   }
 
   function getApprovalUrl(q: Quote): string {
@@ -510,6 +574,88 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               {signatureError && (
                 <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>{signatureError}</p>
               )}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {TECHNICIAN_SIGNATURE_METHODS.map((method) => (
+                  <button
+                    key={method.key}
+                    type="button"
+                    onClick={() => chooseTechnicianSignatureMethod(method.key)}
+                    style={{
+                      border:
+                        technicianSignatureMethod === method.key
+                          ? '1px solid #6D28D9'
+                          : '1px solid #E2E8F0',
+                      background: technicianSignatureMethod === method.key ? '#F5F3FF' : '#FFFFFF',
+                      color: technicianSignatureMethod === method.key ? '#5B21B6' : '#334155',
+                      borderRadius: 6,
+                      padding: '6px 10px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {method.label}
+                  </button>
+                ))}
+              </div>
+              {technicianSignatureMethod === 'APPROVE_BUTTON' && (
+                <p style={{ color: '#64748B', fontSize: 13, margin: 0 }}>
+                  Envie este orçamento sem aplicar uma assinatura. Sua assinatura reutilizável atual
+                  permanece salva para uso futuro.
+                </p>
+              )}
+              {technicianSignatureMethod === 'TYPED_NAME' && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    value={typedSignatureName}
+                    onChange={(event) => setTypedSignatureName(event.target.value)}
+                    placeholder="Nome para a assinatura"
+                    style={{
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 6,
+                      padding: '7px 10px',
+                      fontSize: 13,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveTypedSignature()}
+                    disabled={signatureUploading || !typedSignatureName.trim()}
+                    style={{
+                      border: '1px solid #6D28D9',
+                      background: '#FFFFFF',
+                      color: '#5B21B6',
+                      borderRadius: 6,
+                      padding: '7px 10px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Salvar assinatura digitada
+                  </button>
+                </div>
+              )}
+              {technicianSignatureMethod === 'DRAWN_SIGNATURE' && (
+                <div>
+                  <SignatureCanvas onSign={setDrawnSignature} />
+                  <button
+                    type="button"
+                    onClick={() => void saveDrawnSignature()}
+                    disabled={signatureUploading || !drawnSignature}
+                    style={{
+                      marginTop: 8,
+                      border: '1px solid #6D28D9',
+                      background: '#FFFFFF',
+                      color: '#5B21B6',
+                      borderRadius: 6,
+                      padding: '7px 10px',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Salvar assinatura desenhada
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 {signatureUrl && (
                   <img
@@ -525,34 +671,36 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                     }}
                   />
                 )}
-                <label
-                  style={{
-                    fontSize: 13,
-                    color: '#334155',
-                    cursor: 'pointer',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: 6,
-                    padding: '6px 10px',
-                  }}
-                >
-                  {signatureUploading
-                    ? 'Enviando...'
-                    : signatureUrl
-                      ? 'Substituir assinatura'
-                      : 'Salvar assinatura'}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    style={{ display: 'none' }}
-                    disabled={signatureUploading}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void handleSignatureUpload(file);
-                      e.target.value = '';
+                {technicianSignatureMethod === 'PHOTO_SIGNATURE' && (
+                  <label
+                    style={{
+                      fontSize: 13,
+                      color: '#334155',
+                      cursor: 'pointer',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 6,
+                      padding: '6px 10px',
                     }}
-                  />
-                </label>
-                {signatureUrl && (
+                  >
+                    {signatureUploading
+                      ? 'Enviando...'
+                      : signatureUrl
+                        ? 'Substituir assinatura'
+                        : 'Salvar assinatura'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      style={{ display: 'none' }}
+                      disabled={signatureUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleSignatureUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {signatureUrl && technicianSignatureMethod !== 'APPROVE_BUTTON' && (
                   <label
                     style={{
                       display: 'flex',

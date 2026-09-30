@@ -550,8 +550,9 @@ export class QuotePdfService {
             </View>
             {q.customer_name ? (
               <View style={styles.signBox}>
-                {q.approval?.approval_method === 'DRAWN_SIGNATURE' &&
-                q.approval.signature_image_url ? (
+                {['DRAWN_SIGNATURE', 'PHOTO_SIGNATURE'].includes(
+                  q.approval?.approval_method ?? '',
+                ) && q.approval?.signature_image_url ? (
                   <Image style={styles.signImage} src={q.approval.signature_image_url} />
                 ) : (
                   <View style={styles.signLine} />

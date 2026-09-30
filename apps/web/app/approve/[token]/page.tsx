@@ -15,7 +15,9 @@ import { formatMoney } from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
 
 type PageState = 'loading' | 'show_quote' | 'show_form' | 'approved' | 'rejected' | 'error';
-type ApproveTab = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
+type ApproveTab = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
+
+const PHOTO_MAX_SIZE = 1_500_000;
 
 export default function ApprovePage(): JSX.Element {
   const params = useParams();
@@ -56,15 +58,22 @@ export default function ApprovePage(): JSX.Element {
         setSubmitting(false);
         return;
       }
-      if (activeTab === 'DRAWN_SIGNATURE' && !signature) {
-        setSubmitError('Por favor, desenhe sua assinatura.');
+      if ((activeTab === 'DRAWN_SIGNATURE' || activeTab === 'PHOTO_SIGNATURE') && !signature) {
+        setSubmitError(
+          activeTab === 'DRAWN_SIGNATURE'
+            ? 'Por favor, desenhe sua assinatura.'
+            : 'Por favor, selecione uma foto da assinatura.',
+        );
         setSubmitting(false);
         return;
       }
       await approvalService.approveQuote(token, {
         approval_method: activeTab,
         typed_name: activeTab === 'TYPED_NAME' ? typedName.trim() : undefined,
-        signature: activeTab === 'DRAWN_SIGNATURE' ? signature : undefined,
+        signature:
+          activeTab === 'DRAWN_SIGNATURE' || activeTab === 'PHOTO_SIGNATURE'
+            ? signature
+            : undefined,
       });
       setPageState('approved');
     } catch (e: unknown) {
@@ -73,6 +82,25 @@ export default function ApprovePage(): JSX.Element {
       setSubmitting(false);
     }
   };
+
+  function handlePhotoSignature(file: File | undefined): void {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setSubmitError('Envie uma imagem PNG, JPG ou WEBP.');
+      return;
+    }
+    if (file.size > PHOTO_MAX_SIZE) {
+      setSubmitError('A foto da assinatura deve ter no máximo 1,5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSignature(typeof reader.result === 'string' ? reader.result : '');
+      setSubmitError('');
+    };
+    reader.onerror = () => setSubmitError('Não foi possível ler a foto da assinatura.');
+    reader.readAsDataURL(file);
+  }
 
   // ─── Company initials from name ───
   const companyInitials =
@@ -363,13 +391,24 @@ export default function ApprovePage(): JSX.Element {
                   { key: 'APPROVE_BUTTON', label: 'Aprovação simples' },
                   { key: 'TYPED_NAME', label: 'Assinar com nome' },
                   { key: 'DRAWN_SIGNATURE', label: 'Assinar com desenho' },
+                  { key: 'PHOTO_SIGNATURE', label: 'Foto da assinatura' },
                 ] as const
               )
-                .filter((t) => quote?.company.allowed_approval_methods.includes(t.key))
+                .filter(
+                  (t) =>
+                    t.key === 'PHOTO_SIGNATURE' ||
+                    quote?.company.allowed_approval_methods.includes(t.key),
+                )
                 .map((t) => (
                   <button
                     key={t.key}
-                    onClick={() => setActiveTab(t.key)}
+                    onClick={() => {
+                      setActiveTab(t.key);
+                      if (t.key === 'DRAWN_SIGNATURE' || t.key === 'PHOTO_SIGNATURE') {
+                        setSignature('');
+                      }
+                      setSubmitError('');
+                    }}
                     style={{
                       padding: '10px 16px',
                       fontSize: 13,
@@ -494,6 +533,52 @@ export default function ApprovePage(): JSX.Element {
                   }}
                 >
                   {submitting ? 'Processando...' : 'Aprovar com assinatura'}
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'PHOTO_SIGNATURE' && (
+              <div>
+                <p style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
+                  Envie uma foto nítida da sua assinatura (PNG, JPG ou WEBP, até 1,5 MB).
+                </p>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => handlePhotoSignature(event.target.files?.[0])}
+                  style={{ marginBottom: 16 }}
+                />
+                {signature && (
+                  <img
+                    src={signature}
+                    alt="Prévia da foto da assinatura"
+                    style={{
+                      display: 'block',
+                      maxWidth: 240,
+                      maxHeight: 120,
+                      objectFit: 'contain',
+                      marginBottom: 16,
+                    }}
+                  />
+                )}
+                <button
+                  onClick={handleApprove}
+                  disabled={submitting || !signature}
+                  style={{
+                    width: '100%',
+                    height: 52,
+                    borderRadius: 14,
+                    background: '#6D28D9',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    opacity: submitting || !signature ? 0.6 : 1,
+                  }}
+                >
+                  {submitting ? 'Processando...' : 'Aprovar com foto da assinatura'}
                 </button>
               </div>
             )}

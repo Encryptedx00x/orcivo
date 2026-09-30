@@ -965,6 +965,30 @@ describe('QuoteService', () => {
       );
     });
 
+    it('aceita PHOTO_SIGNATURE e preserva o tipo de imagem enviado pelo cliente', async () => {
+      const photo =
+        'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AR//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AR//2Q==';
+
+      await service.approve(
+        quoteToken,
+        { approval_method: 'PHOTO_SIGNATURE' as const, signature: photo },
+        '127.0.0.1',
+        'ua',
+      );
+
+      expect(mockStorage.uploadBuffer).toHaveBeenCalledWith(
+        'orcivo-photos',
+        expect.stringMatching(/signatures\/.*\.jpg$/),
+        expect.any(Buffer),
+        'image/jpeg',
+      );
+      expect(mockPrisma.quoteApproval.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ approval_method: 'PHOTO_SIGNATURE' }),
+        }),
+      );
+    });
+
     it('Test A5: AuditLog criado com actor_type CUSTOMER dentro do $transaction', async () => {
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
       await service.approve(quoteToken, dto, '10.0.0.1', 'TestAgent');

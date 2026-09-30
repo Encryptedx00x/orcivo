@@ -208,6 +208,7 @@ enum ApprovalMethod {
   APPROVE_BUTTON
   TYPED_NAME
   DRAWN_SIGNATURE
+  PHOTO_SIGNATURE
 }
 
 model Quote {
