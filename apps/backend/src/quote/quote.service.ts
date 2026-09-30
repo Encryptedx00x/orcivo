@@ -487,14 +487,27 @@ export class QuoteService {
 
     if (!result) throw new ConflictException('Orcamento ja foi processado');
 
-    // Processar assinatura se DRAWN_SIGNATURE
+    // Processar imagens de assinatura (desenhada ou foto) no mesmo storage privado.
     let signatureKey: string | undefined;
-    if (dto.approval_method === 'DRAWN_SIGNATURE' && dto.signature) {
-      const base64 = (dto.signature as string).replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64, 'base64');
-      this.storage.assertUploadable(buffer, 'image/png', 5 * 1024 * 1024, ['image/png']);
-      const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.png`;
-      signatureKey = await this.storage.uploadBuffer(PHOTO_BUCKET, objectName, buffer, 'image/png');
+    if (
+      (dto.approval_method === 'DRAWN_SIGNATURE' || dto.approval_method === 'PHOTO_SIGNATURE') &&
+      dto.signature
+    ) {
+      const dataUrl = dto.signature.match(
+        /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/,
+      );
+      if (!dataUrl) throw new BadRequestException('Imagem de assinatura invÃ¡lida.');
+
+      const mimetype = dataUrl[1];
+      const buffer = Buffer.from(dataUrl[2].replace(/\s/g, ''), 'base64');
+      const allowedMimeTypes =
+        dto.approval_method === 'DRAWN_SIGNATURE'
+          ? ['image/png']
+          : ['image/png', 'image/jpeg', 'image/webp'];
+      this.storage.assertUploadable(buffer, mimetype, 2 * 1024 * 1024, allowedMimeTypes);
+      const extension = mimetype === 'image/jpeg' ? 'jpg' : mimetype.replace('image/', '');
+      const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.${extension}`;
+      signatureKey = await this.storage.uploadBuffer(PHOTO_BUCKET, objectName, buffer, mimetype);
     }
 
     // Registrar QuoteApproval

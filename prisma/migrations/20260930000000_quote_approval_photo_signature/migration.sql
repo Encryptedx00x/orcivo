@@ -1,0 +1,1 @@
+ALTER TYPE "ApprovalMethod" ADD VALUE 'PHOTO_SIGNATURE';

@@ -27,9 +27,9 @@ export interface PublicQuote {
 }
 
 export interface ApproveDto {
-  approval_method: 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
+  approval_method: 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
   typed_name?: string;
-  signature?: string; // base64 PNG
+  signature?: string; // imagem base64 para desenho ou foto
 }
 
 export const approvalService = {
