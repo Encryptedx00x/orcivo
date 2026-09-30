@@ -1063,7 +1063,7 @@
       "title": "Standardize signature methods across technician and client flows",
       "type": "FEATURE",
       "source": "UAT-20260927",
-      "description": "The technician's reusable signature (PB1-P10) uses a different pattern than the rest of the system. Unify to the same 3 methods (draw, typed name, simple) for both flows, and add a photo-signature option for the client (today photo signature only exists for the technician). Reiniciado apos loop de ARTIFACT_READ_FAILURE (read_review_artifact indisponivel na sessao do reviewer).",
+      "description": "The technician's reusable signature (PB1-P10) uses a different pattern than the rest of the system. Unify to the same 3 methods (draw, typed name, simple) for both flows, and add a photo-signature option for the client (today photo signature only exists for the technician). Reiniciado apos fix do bug real (review_reader MCP nao era wireado para o provider claude em real-agent.ps1; corrigido).",
       "acceptance": "AC1: technician and client signature flows offer the same 3 methods (draw/typed/simple); AC2: client signature also supports the photo method already available to the technician; AC3: existing PB1-P10 reusable-signature behavior for the technician is preserved; AC4: no unrelated signature infrastructure added.",
       "dependencies": [
         "PB1-P10-technician-signature"
