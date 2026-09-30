@@ -1070,18 +1070,22 @@
       ],
       "scope": [
         "apps/backend/src/quote",
-        "apps/web/app/(app)/orcamentos"
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/approve/[token]/page.tsx",
+        "apps/web/lib/approval.service.ts",
+        "packages/shared-types/src/quote/quote-approval.dto.ts",
+        "prisma/schema.prisma",
+        "prisma/migrations"
       ],
-      "risk": "B",
-      "ownerGate": "none",
+      "risk": "C",
+      "ownerGate": "level-c-persistent-migration",
       "candidateConstraints": {},
       "verificationProfile": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1-UAT-20260927",
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03",
-        "OWNER-DEFER-20260930-needs-migration-scope-review"
+        "P03"
       ],
       "status": "SCHEDULED",
       "phaseGate": "UAT-20260927"
