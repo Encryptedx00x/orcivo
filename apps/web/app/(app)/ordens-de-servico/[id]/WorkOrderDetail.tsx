@@ -13,6 +13,7 @@ import {
   Phone,
   MessageCircle,
   Plus,
+  Pencil,
   Undo2,
   Wrench,
 } from 'lucide-react';
@@ -26,6 +27,11 @@ import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from '../actions';
 import { contactLinks } from '../../clientes/contact-links';
 import { PaymentRegistrationModal } from '../../financeiro/PaymentRegistrationModal';
+import {
+  PaymentDeleteModal,
+  PaymentEditModal,
+  type EditablePayment,
+} from '../../financeiro/PaymentEditModal';
 import { EntityHistory } from '../../../../lib/EntityHistory';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
@@ -162,6 +168,8 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState<EditablePayment | null>(null);
   const [historyRevision, setHistoryRevision] = useState(0);
   const fileInputRefs = useRef<Partial<Record<PhotoStage, HTMLInputElement | null>>>({});
 
@@ -259,6 +267,22 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
 
   const photosByStage = (stage: PhotoStage): WorkOrderPhoto[] =>
     order.photos.filter((p) => p.photo_stage === stage);
+
+  function editablePayment(payment: WorkOrderPayment): EditablePayment {
+    return {
+      id: payment.id,
+      customer: order.customer.name,
+      amount: payment.amount,
+      method: payment.method,
+      status: payment.status,
+      dueDate: payment.due_date,
+      paidAt: payment.paid_at,
+    };
+  }
+
+  function paymentChanged(): void {
+    setHistoryRevision((value) => value + 1);
+  }
 
   const received = sumDecimal(
     payments.filter((payment) => payment.status === 'PAID').map((payment) => payment.amount),
@@ -923,6 +947,37 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                     {formatMoney(pending)}
                   </span>
                 </div>
+                {payments.length ? (
+                  <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 12, paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+                      Recebimentos registrados
+                    </div>
+                    {payments.map((payment) => (
+                      <div key={payment.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}>
+                        <span style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
+                          {formatMoney(payment.amount)}
+                        </span>
+                        <span style={{ color: '#64748B', fontSize: 12 }}>{payment.status}</span>
+                        <button
+                          type="button"
+                          aria-label="Editar recebimento"
+                          onClick={() => setEditingPayment(editablePayment(payment))}
+                          style={{ ...btnOutline, height: 28, padding: '0 7px' }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Excluir recebimento"
+                          onClick={() => setDeletingPayment(editablePayment(payment))}
+                          style={{ ...btnOutline, height: 28, padding: '0 7px', color: '#DC2626' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <button
                   onClick={() => setShowPaymentModal(true)}
                   style={{
@@ -1000,6 +1055,20 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
           customers={[order.customer]}
           workOrder={{ id: order.id, number: order.number, title: order.title }}
           onClose={() => setShowPaymentModal(false)}
+        />
+      ) : null}
+      {editingPayment ? (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onChanged={paymentChanged}
+        />
+      ) : null}
+      {deletingPayment ? (
+        <PaymentDeleteModal
+          payment={deletingPayment}
+          onClose={() => setDeletingPayment(null)}
+          onChanged={paymentChanged}
         />
       ) : null}
     </>

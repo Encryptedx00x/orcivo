@@ -1,9 +1,13 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Check, Inbox, Plus } from 'lucide-react';
+import { Inbox, Pencil, Plus, Trash2 } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
+import {
+  PaymentDeleteModal,
+  PaymentEditModal,
+  type EditablePayment,
+} from './PaymentEditModal';
 import { EntityHistory } from '../../../lib/EntityHistory';
 
 const T = {
@@ -22,10 +26,15 @@ export interface PaymentRow {
   customer: string;
   description: string;
   amount: string;
+  amountDecimal: string;
   method: string;
+  rawMethod: EditablePayment['method'];
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
   due: string;
+  dueDate: string | null;
   paidAt: string;
+  paidAtDate: string | null;
+  revision: string;
 }
 export interface FinanceKpi {
   label: string;
@@ -97,9 +106,11 @@ export function FinanceiroContent({
   monthLabel,
   customers,
 }: Props): JSX.Element {
-  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState('todos');
   const [showModal, setShowModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState<EditablePayment | null>(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [activeBar, setActiveBar] = useState<number | null>(null);
   const tooltipId = useId();
   const tooltipBar = activeBar === null ? undefined : bars[activeBar];
@@ -108,13 +119,20 @@ export function FinanceiroContent({
     (entry) => statusFilter === 'todos' || entry.status === statusFilter,
   );
 
-  async function settle(id: string): Promise<void> {
-    await fetch(`/api/payments/${id}/settle`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-    router.refresh();
+  function editablePayment(row: PaymentRow): EditablePayment {
+    return {
+      id: row.id,
+      customer: row.customer,
+      amount: row.amountDecimal,
+      method: row.rawMethod,
+      status: row.status,
+      dueDate: row.dueDate,
+      paidAt: row.paidAtDate,
+    };
+  }
+
+  function paymentChanged(): void {
+    setHistoryRevision((value) => value + 1);
   }
 
   return (
@@ -433,18 +451,24 @@ export function FinanceiroContent({
                           entityType="payment"
                           entityId={row.id}
                           label={`${row.customer} · ${row.description || 'Recebimento'} · ${row.amount}`}
-                          revision={row.status}
+                          revision={`${row.revision}:${historyRevision}`}
                         />
-                        {row.status !== 'PAID' && row.status !== 'CANCELLED' ? (
-                          <button
-                            onClick={() => void settle(row.id)}
-                            className="ov-btn ov-btn-outline"
-                            style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px' }}
-                          >
-                            <Check size={13} />
-                            Receber
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setEditingPayment(editablePayment(row))}
+                          className="ov-btn ov-btn-outline"
+                          style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px', marginLeft: 6 }}
+                        >
+                          <Pencil size={13} /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingPayment(editablePayment(row))}
+                          className="ov-btn ov-btn-outline"
+                          style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px', marginLeft: 6, color: T.danger }}
+                        >
+                          <Trash2 size={13} /> Excluir
+                        </button>
                       </td>
                     </tr>
                   );
@@ -456,6 +480,20 @@ export function FinanceiroContent({
       </div>
       {showModal ? (
         <PaymentRegistrationModal customers={customers} onClose={() => setShowModal(false)} />
+      ) : null}
+      {editingPayment ? (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onChanged={paymentChanged}
+        />
+      ) : null}
+      {deletingPayment ? (
+        <PaymentDeleteModal
+          payment={deletingPayment}
+          onClose={() => setDeletingPayment(null)}
+          onChanged={paymentChanged}
+        />
       ) : null}
     </div>
   );
