@@ -1261,7 +1261,8 @@
       "scope": [
         "apps/mobile/src/screens/documentos",
         "apps/mobile/src/navigation/MaisStack.tsx",
-        "apps/mobile/package.json"
+        "apps/mobile/package.json",
+        "apps/mobile/src/screens/financeiro/screen.test.mjs"
       ],
       "risk": "A",
       "ownerGate": "none",
