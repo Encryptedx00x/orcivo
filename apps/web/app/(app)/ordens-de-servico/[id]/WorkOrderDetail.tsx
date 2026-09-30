@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -54,7 +54,42 @@ const FALLBACK_ACTIONS: Record<WorkOrder['status'], WorkOrderAction[]> = {
   CANCELLED: [],
 };
 
+const ACTION_STATUS: Partial<Record<WorkOrderAction, WorkOrder['status']>> = {
+  iniciar: 'IN_PROGRESS',
+  concluir: 'DONE',
+  cancelar: 'CANCELLED',
+  reabrir: 'IN_PROGRESS',
+};
+
 const REASON_REQUIRED: WorkOrderAction[] = ['cancelar', 'reabrir', 'corrigir'];
+
+function ReasonModal({
+  children,
+  onClose,
+  busy,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  busy: boolean;
+}): JSX.Element {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      aria-label="Justificativa da alteração"
+      style={{ ...reasonDialog, width: 420, maxWidth: '90vw', margin: 'auto' }}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>
+  );
+}
 
 function Pill({ status }: { status: WorkOrder['status'] }) {
   const s = STATUS_MAP[status];
@@ -117,6 +152,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
   const contact = contactLinks(order.customer.phone);
   const [pendingAction, setPendingAction] = useState<WorkOrderAction | null>(null);
+  const [manualStatus, setManualStatus] = useState<WorkOrder['status'] | null>(null);
   const [reason, setReason] = useState('');
   const [correctTitle, setCorrectTitle] = useState(initial.title ?? '');
   const [correctNotes, setCorrectNotes] = useState(initial.notes ?? '');
@@ -136,7 +172,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
 
   async function handleAction(
     action: WorkOrderAction,
-    input?: { reason?: string; title?: string; notes?: string },
+    input?: { reason?: string; title?: string; notes?: string; status?: WorkOrder['status'] },
   ): Promise<void> {
     setStatusError(null);
     setStatusLoading(true);
@@ -148,6 +184,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
         setOrder(result.order);
         setHistoryRevision((value) => value + 1);
         setPendingAction(null);
+        setManualStatus(null);
         setReason('');
         router.refresh();
       }
@@ -157,6 +194,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
   }
 
   function openAction(action: WorkOrderAction): void {
+    setManualStatus(null);
     setStatusError(null);
     setReason('');
     setCorrectTitle(order.title ?? '');
@@ -166,11 +204,16 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
 
   function submitPendingAction(): void {
     if (!pendingAction) return;
-    if (REASON_REQUIRED.includes(pendingAction) && !reason.trim()) {
+    if ((manualStatus || REASON_REQUIRED.includes(pendingAction)) && !reason.trim()) {
       setStatusError('Informe o motivo para continuar.');
       return;
     }
-    const input: { reason?: string; title?: string; notes?: string } = {};
+    const input: { reason?: string; title?: string; notes?: string; status?: WorkOrder['status'] } =
+      {};
+    if (manualStatus) {
+      input.status = manualStatus;
+      input.reason = reason.trim();
+    }
     if (REASON_REQUIRED.includes(pendingAction)) input.reason = reason.trim();
     if (pendingAction === 'corrigir') {
       input.title = correctTitle.trim();
@@ -298,6 +341,73 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 label={`OS #${order.number}`}
                 revision={historyRevision}
               />
+              <label style={{ fontSize: 13 }}>
+                Alterar status
+                <select
+                  aria-label="Alterar status"
+                  value=""
+                  disabled={statusLoading || !!pendingAction}
+                  style={btnOutline}
+                  onChange={(event) => {
+                    const action = event.target.value as WorkOrderAction;
+                    const target = ACTION_STATUS[action];
+                    if (target) {
+                      openAction(action);
+                      setManualStatus(target);
+                    }
+                  }}
+                >
+                  <option value="">Selecione um status</option>
+                  {(order.allowed_actions ?? [])
+                    .filter((action) => ACTION_STATUS[action])
+                    .map((action) => (
+                      <option key={action} value={action}>
+                        {STATUS_MAP[ACTION_STATUS[action]!].label}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {manualStatus && pendingAction && (
+                <ReasonModal
+                  busy={statusLoading}
+                  onClose={() => {
+                    setPendingAction(null);
+                    setManualStatus(null);
+                  }}
+                >
+                  <strong>Alterar status para {STATUS_MAP[manualStatus].label}?</strong>
+                  <label htmlFor="manual-status-reason">
+                    Justificativa obrigatória — registrada no histórico
+                  </label>
+                  <textarea
+                    id="manual-status-reason"
+                    autoFocus
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    style={reasonInput}
+                  />
+                  {statusError && <p role="alert">{statusError}</p>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={submitPendingAction}
+                      disabled={statusLoading || !reason.trim()}
+                      style={btnPrimary}
+                    >
+                      {statusLoading ? 'Salvando…' : 'Confirmar alteração'}
+                    </button>
+                    <button
+                      disabled={statusLoading}
+                      onClick={() => {
+                        setPendingAction(null);
+                        setManualStatus(null);
+                      }}
+                      style={btnOutline}
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </ReasonModal>
+              )}
               {allowedActions.includes('iniciar') && !pendingAction && (
                 <button
                   onClick={() => {
@@ -342,7 +452,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 </button>
               )}
 
-              {pendingAction === 'concluir' && (
+              {pendingAction === 'concluir' && !manualStatus && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{ fontSize: 13, color: '#334155' }}>Confirmar conclusão?</span>
                   <button
@@ -368,8 +478,8 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 </div>
               )}
 
-              {pendingAction === 'cancelar' && (
-                <div style={reasonDialog}>
+              {pendingAction === 'cancelar' && !manualStatus && (
+                <ReasonModal busy={statusLoading} onClose={() => setPendingAction(null)}>
                   <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>
                     Cancelar a OS #{order.number}?
                   </span>
@@ -377,11 +487,14 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                     O motivo é obrigatório e fica registrado no histórico.
                   </span>
                   <textarea
+                    aria-label="Justificativa"
+                    autoFocus
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Motivo do cancelamento (obrigatório)"
                     style={reasonInput}
                   />
+                  {statusError && <p role="alert">{statusError}</p>}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={submitPendingAction}
@@ -391,6 +504,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       {statusLoading ? 'Cancelando…' : 'Sim, cancelar'}
                     </button>
                     <button
+                      disabled={statusLoading}
                       onClick={() => setPendingAction(null)}
                       style={{
                         ...btnSmall,
@@ -402,11 +516,11 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       Voltar
                     </button>
                   </div>
-                </div>
+                </ReasonModal>
               )}
 
-              {pendingAction === 'reabrir' && (
-                <div style={reasonDialog}>
+              {pendingAction === 'reabrir' && !manualStatus && (
+                <ReasonModal busy={statusLoading} onClose={() => setPendingAction(null)}>
                   <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>
                     Reabrir a OS #{order.number}?
                   </span>
@@ -414,11 +528,14 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                     A OS volta para execução. O motivo é obrigatório e fica registrado no histórico.
                   </span>
                   <textarea
+                    aria-label="Justificativa"
+                    autoFocus
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Motivo da reabertura (obrigatório)"
                     style={reasonInput}
                   />
+                  {statusError && <p role="alert">{statusError}</p>}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={submitPendingAction}
@@ -428,6 +545,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       {statusLoading ? 'Reabrindo…' : 'Sim, reabrir'}
                     </button>
                     <button
+                      disabled={statusLoading}
                       onClick={() => setPendingAction(null)}
                       style={{
                         ...btnSmall,
@@ -439,11 +557,11 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       Voltar
                     </button>
                   </div>
-                </div>
+                </ReasonModal>
               )}
 
-              {pendingAction === 'corrigir' && (
-                <div style={reasonDialog}>
+              {pendingAction === 'corrigir' && !manualStatus && (
+                <ReasonModal busy={statusLoading} onClose={() => setPendingAction(null)}>
                   <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>
                     Corrigir a OS #{order.number}
                   </span>
@@ -452,6 +570,8 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                     histórico.
                   </span>
                   <textarea
+                    aria-label="Justificativa"
+                    autoFocus
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     placeholder="Motivo da correção (obrigatório)"
@@ -469,6 +589,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                     placeholder="Observações"
                     style={reasonInput}
                   />
+                  {statusError && <p role="alert">{statusError}</p>}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={submitPendingAction}
@@ -478,6 +599,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       {statusLoading ? 'Salvando…' : 'Salvar correção'}
                     </button>
                     <button
+                      disabled={statusLoading}
                       onClick={() => setPendingAction(null)}
                       style={{
                         ...btnSmall,
@@ -489,7 +611,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                       Voltar
                     </button>
                   </div>
-                </div>
+                </ReasonModal>
               )}
             </div>
           </div>

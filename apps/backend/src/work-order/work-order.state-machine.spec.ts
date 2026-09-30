@@ -91,6 +91,108 @@ describe('WorkOrderService — state machine (P-01)', () => {
 
   // ── allowedActions ────────────────────────────────────────────────────────
 
+  describe('manual status changes', () => {
+    it.each([
+      ['PENDING', 'IN_PROGRESS', 'work_order.started'],
+      ['PENDING', 'CANCELLED', 'work_order.cancelled'],
+      ['IN_PROGRESS', 'DONE', 'work_order.completed'],
+      ['IN_PROGRESS', 'CANCELLED', 'work_order.cancelled'],
+      ['DONE', 'IN_PROGRESS', 'work_order.reopened'],
+      ['CANCELLED', 'IN_PROGRESS', 'work_order.reopened'],
+    ] as const)('audits %s ? %s with justification', async (from, to, action) => {
+      mockCurrentWo({ status: from });
+      mockUpdatedWo(to);
+      await service.changeStatus('wo-1', 'comp-1', 'user-1', to, '  Ajuste operacional  ', 'ADMIN');
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          companyId: 'comp-1',
+          actorType: 'USER',
+          actorUserId: 'user-1',
+          entityType: 'work_order',
+          entityId: 'wo-1',
+          from,
+          to,
+          action,
+          reason: 'Ajuste operacional',
+        }),
+      );
+    });
+
+    it.each([
+      ['PENDING', 'PENDING'],
+      ['PENDING', 'DONE'],
+      ['IN_PROGRESS', 'PENDING'],
+      ['IN_PROGRESS', 'IN_PROGRESS'],
+      ['DONE', 'PENDING'],
+      ['DONE', 'DONE'],
+      ['DONE', 'CANCELLED'],
+      ['CANCELLED', 'PENDING'],
+      ['CANCELLED', 'DONE'],
+      ['CANCELLED', 'CANCELLED'],
+    ] as const)('rejects %s to %s without mutation', async (from, to) => {
+      mockCurrentWo({ status: from });
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', to, 'Ajuste', 'ADMIN'),
+      ).rejects.toThrow('Transição inválida');
+      expect(mockTx.workOrder.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('allows technicians to start with justification and returns updated actions', async () => {
+      mockCurrentWo();
+      mockUpdatedWo('IN_PROGRESS');
+      const result = await service.changeStatus(
+        'wo-1',
+        'comp-1',
+        'user-1',
+        'IN_PROGRESS',
+        'Ajuste',
+        'TECNICO',
+      );
+      expect(result.allowed_actions).toEqual(['concluir', 'cancelar']);
+      expect(mockAudit.record).toHaveBeenCalledTimes(1);
+    });
+
+    it('requires justification even for starting', async () => {
+      mockCurrentWo();
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', 'IN_PROGRESS', '  ', 'TECNICO'),
+      ).rejects.toThrow('Motivo é obrigatório');
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('does not allow technicians to reopen', async () => {
+      mockCurrentWo({ status: 'DONE' });
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', 'IN_PROGRESS', 'Ajuste', 'TECNICO'),
+      ).rejects.toThrow('Apenas administradores');
+      expect(mockTx.workOrder.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps tenant isolation', async () => {
+      mockPrisma.workOrder.findFirst.mockResolvedValue(null);
+      await expect(
+        service.changeStatus('wo-1', 'other-company', 'user-1', 'IN_PROGRESS', 'Ajuste', 'ADMIN'),
+      ).rejects.toThrow();
+      expect(mockPrisma.workOrder.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'wo-1', company_id: 'other-company' },
+        }),
+      );
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('rejects concurrent changes without auditing', async () => {
+      mockCurrentWo();
+      mockTx.workOrder.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', 'IN_PROGRESS', 'Ajuste', 'TECNICO'),
+      ).rejects.toThrow('Transição inválida');
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+  });
+
   describe('allowedActions()', () => {
     it('AC4: PENDING lista iniciar/cancelar para qualquer papel', () => {
       expect(service.allowedActions('PENDING', 'TECNICO')).toEqual(['iniciar', 'cancelar']);
