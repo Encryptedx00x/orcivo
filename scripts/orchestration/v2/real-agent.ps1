@@ -466,11 +466,31 @@ function Invoke-RealAgent {
     $args = @($route.invocationArgs)
     if ($Provider -eq 'claude') {
         $schemaJson = ConvertTo-CanonicalJson (Get-Content -Raw -LiteralPath $schemaPath | ConvertFrom-Json)
-        $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--safe-mode','--no-chrome','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--permission-prompts','none')
-        if ($Role -eq 'reviewer' -or $Role -eq 'classifier') {
-            $args += @('--restricted','--permission-mode','plan','--tools','Read')
+        if ($Role -eq 'reviewer') {
+            # Reviewer prompts (Build-ReviewPrompt -StructuredOutput) instruct the
+            # model to read frozen review data exclusively via the review_reader
+            # MCP tool. That server must be wired in here or the model is told
+            # about a tool it was never given (ARTIFACT_READ_FAILURE / REVIEW_INFRASTRUCTURE).
+            $nodePath=(Get-Command node.exe -CommandType Application -ErrorAction Stop|Select-Object -First 1).Source
+            $readerPath=Join-Path $PSScriptRoot 'review-reader.mjs'
+            $reviewPath=[System.IO.Path]::GetFullPath($Workspace)
+            $mcpConfig = ConvertTo-Json -Compress -Depth 6 ([ordered]@{
+                mcpServers=[ordered]@{
+                    review_reader=[ordered]@{
+                        command=$nodePath
+                        args=@($readerPath,$reviewPath)
+                    }
+                }
+            })
+            $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--safe-mode','--no-chrome','--strict-mcp-config','--mcp-config',$mcpConfig,'--permission-prompts','none')
+            $args += @('--restricted','--permission-mode','plan','--tools','mcp__review_reader__read_review_artifact')
         } else {
-            $args += @('--permission-mode','bypassPermissions','--tools','default')
+            $args += @('--output-format','json','--json-schema',$schemaJson,'--no-session-persistence','--safe-mode','--no-chrome','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--permission-prompts','none')
+            if ($Role -eq 'classifier') {
+                $args += @('--restricted','--permission-mode','plan','--tools','Read')
+            } else {
+                $args += @('--permission-mode','bypassPermissions','--tools','default')
+            }
         }
     } elseif ($Provider -eq 'glm') {
         # OpenCode `run` reads the prompt from stdin, starts a fresh session
