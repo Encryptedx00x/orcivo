@@ -66,7 +66,7 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
         await catalogService.updateItem(existing.id, dto, { idempotencyKey: submitKey.current });
       } else {
         await catalogService.createItem(
-          { ...dto, is_active: true },
+          { ...dto, is_active: true, cost_price: '0', quantity: 0, low_stock_threshold: 5 },
           { idempotencyKey: submitKey.current },
         );
       }

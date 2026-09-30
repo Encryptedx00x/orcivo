@@ -17,8 +17,13 @@ export interface AuditPage {
 
 export const auditService = {
   fetchHistory(entityType: AuditEntityType, entityId: string, cursor?: string): Promise<AuditPage> {
-    const query = new URLSearchParams({ entity_type: entityType, entity_id: entityId, limit: '20' });
-    if (cursor) query.set('cursor', cursor);
+    const params: Record<string, string> = {
+      entity_type: entityType,
+      entity_id: entityId,
+      limit: '20',
+    };
+    if (cursor) params.cursor = cursor;
+    const query = new URLSearchParams(params);
     return api.get<AuditPage>(`/audit-logs?${query}`);
   },
 };
@@ -68,8 +73,13 @@ export function auditReason(row: AuditRow): string | null {
 
 export function auditDateLabel(value: string): string {
   return new Date(value).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
   });
 }
 
