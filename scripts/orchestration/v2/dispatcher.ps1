@@ -5174,8 +5174,18 @@ function Invoke-DispatcherLoop {
             if($inFlightResume -or $sourceSuccessionRequest){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
             else{
                 $d=Get-NextDispatcherDecision $source
-                if($d.action -eq 'READY'){$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
+                # Get-NextDispatcherDecision only checks planning-level blockedByGates
+                # and completion, not whether this exact taskId already has a live
+                # WAITING_HUMAN dispatcher-state hold for a reason it has no visibility
+                # into (a reviewer-timeout hold, a spent recovery budget, etc). If it
+                # re-picks the SAME still-blocked task as READY, dispatching it would
+                # attempt an illegal ledger transition from WAITING_HUMAN. Surface the
+                # real hold instead of crashing - this only fires when no other task
+                # is dispatchable (gateResume already covers the owner-gate case).
+                $sameTaskStillBlocked=[bool]($d.action -eq 'READY' -and $cur -and $sameSource -and -not $gateResume -and [string]$d.task.taskId -eq [string]$cur.taskId -and "$($cur.status)" -eq 'WAITING_HUMAN')
+                if($d.action -eq 'READY' -and -not $sameTaskStillBlocked){$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
                 elseif($gateResume){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
+                elseif($sameTaskStillBlocked){return @{status=$cur.status;taskId=$cur.taskId;reason=$cur.reason;decisionNeeded=$cur.decisionNeeded;resumes=$cur.resumes}}
                 else{return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}}
             }
             if($RunOnce -or "$($r.status)" -in @(
