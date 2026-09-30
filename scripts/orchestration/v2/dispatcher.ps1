@@ -5139,10 +5139,30 @@ function Invoke-DispatcherLoop {
             $source=Read-DispatcherTaskSource $TaskFile
             $cur=Get-DispatcherState
             $task=$(if($cur){@($source.tasks|Where-Object{$_.taskId -eq $cur.taskId}|Select-Object -First 1)[0]}else{$null})
-            $resumeEligible=Test-DispatcherLoopResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source
+            $sameSource=[bool]($cur -and $cur.taskSourceHash -eq $source.hash)
             $sourceSuccessionRequest=[bool]($cur -and $task -and (Test-DispatcherDisjointSourceSuccessionRequest -State $cur -Task ([hashtable]$task) -TaskSource $source))
-            if($cur -and $task -and (("$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or $resumeEligible) -and $cur.taskSourceHash -eq $source.hash -or $sourceSuccessionRequest)){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
-            else{$d=Get-NextDispatcherDecision $source;if($d.action -ne 'READY'){return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}};$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
+            # In-flight resume states (a live provider call, a candidate awaiting
+            # correction, a policy-correction or review-infrastructure retry) must
+            # always continue the same task - abandoning them loses real progress.
+            # A pending-Level-C-gate park is different: nothing is in flight, so an
+            # unapproved gate must not monopolize the single-task scheduler slot
+            # forever. Give Get-NextDispatcherDecision a chance to pick a different
+            # ready task first, and only fall back to re-checking this task's own
+            # gate when no other task is dispatchable.
+            $inFlightResume=[bool]($cur -and $task -and $sameSource -and (
+                "$($cur.status)" -in @('RUNNING','WAITING_PROVIDER') -or
+                (Test-DispatcherCandidateResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source) -or
+                (Test-DispatcherCandidateImportResumeEligible -State $cur -Task ([hashtable]$task) -TaskSource $source) -or
+                (Test-DispatcherPolicyCorrectionResumeState -State $cur -Task ([hashtable]$task) -TaskSource $source) -or
+                (Test-DispatcherReviewInfrastructureResumeState -State $cur)))
+            $gateResume=[bool]($cur -and $task -and $sameSource -and (Test-DispatcherOwnerGateResumeState -State $cur -Task ([hashtable]$task) -TaskSource $source))
+            if($inFlightResume -or $sourceSuccessionRequest){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
+            else{
+                $d=Get-NextDispatcherDecision $source
+                if($d.action -eq 'READY'){$r=Invoke-RealDispatcherTask -Task ([hashtable]$d.task) -TaskSource $source -ProviderOverride $ProviderOverride}
+                elseif($gateResume){$r=Invoke-RealDispatcherTask -Task ([hashtable]$task) -TaskSource $source -ProviderOverride $ProviderOverride}
+                else{return @{status=$d.action;taskId=$d.taskId;reason=$d.reason;decisionNeeded=$d.decisionNeeded;resumes=$d.resumes}}
+            }
             if($RunOnce -or "$($r.status)" -in @(
                 'WAITING_HUMAN','FAILED','BLOCKED','BLOCK','RESUMABLE','TEST_FAILURE','AGENT_FAILURE','STOPPED',
                 'INTEGRATION_FAILED','SECRET_LEAK_BLOCKED','PUSH_FAILED','REMOTE_DIVERGED',
