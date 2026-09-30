@@ -13,7 +13,13 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { PaymentService } from './payment.service';
-import { PaymentCreateSchema, PaymentListQuerySchema, PaymentSettleSchema } from './payment.dto';
+import {
+  PaymentCreateSchema,
+  PaymentDeleteSchema,
+  PaymentListQuerySchema,
+  PaymentSettleSchema,
+  PaymentUpdateSchema,
+} from './payment.dto';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 // GET is open to any active member; writes are admin-only.
@@ -45,6 +51,17 @@ export class PaymentController {
   }
 
   @AdminOnly()
+  @Patch(':id')
+  @HttpCode(200)
+  update(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(PaymentUpdateSchema)) body: unknown,
+  ) {
+    return this.paymentService.update(id, req.companyId, body as never, req.user.userId);
+  }
+
+  @AdminOnly()
   @Patch(':id/settle')
   @HttpCode(200)
   settle(
@@ -58,7 +75,11 @@ export class PaymentController {
   @AdminOnly()
   @Delete(':id')
   @HttpCode(200)
-  remove(@Param('id') id: string, @Req() req: TenantRequest) {
-    return this.paymentService.remove(id, req.companyId, req.user.userId);
+  remove(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(PaymentDeleteSchema)) body: unknown,
+  ) {
+    return this.paymentService.remove(id, req.companyId, body as never, req.user.userId);
   }
 }

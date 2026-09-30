@@ -44,7 +44,11 @@ export interface WorkOrder {
 export interface WorkOrderPayment {
   id: string;
   amount: string;
+  method: 'PIX' | 'BOLETO' | 'CARTAO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'OUTRO' | null;
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
+  due_date: string | null;
+  paid_at: string | null;
+  updated_at: string;
 }
 
 /** SERVER-ONLY: lista OS com paginação. */

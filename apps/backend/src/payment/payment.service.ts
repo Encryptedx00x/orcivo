@@ -2,7 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
-import type { PaymentCreateDto, PaymentSettleDto, PaymentListQueryDto } from './payment.dto';
+import type {
+  PaymentCreateDto,
+  PaymentDeleteDto,
+  PaymentListQueryDto,
+  PaymentSettleDto,
+  PaymentUpdateDto,
+} from './payment.dto';
 
 const customerSelect = { select: { id: true, name: true } };
 
@@ -58,6 +64,7 @@ export class PaymentService {
   async findAll(companyId: string, query: PaymentListQueryDto) {
     const where = {
       company_id: companyId,
+      deleted_at: null,
       ...(query.status ? { status: query.status } : {}),
       ...(query.method ? { method: query.method } : {}),
       ...(query.work_order_id ? { work_order_id: query.work_order_id } : {}),
@@ -73,7 +80,7 @@ export class PaymentService {
 
   async settle(id: string, companyId: string, dto: PaymentSettleDto, userId: string) {
     const payment = await this.prisma.payment.findFirst({
-      where: { id, company_id: companyId },
+      where: { id, company_id: companyId, deleted_at: null },
       select: { id: true, method: true, status: true, amount: true, customer: customerSelect },
     });
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
@@ -105,14 +112,87 @@ export class PaymentService {
     });
   }
 
-  async remove(id: string, companyId: string, userId: string) {
+  async update(id: string, companyId: string, dto: PaymentUpdateDto, userId: string) {
     const payment = await this.prisma.payment.findFirst({
-      where: { id, company_id: companyId },
-      select: { id: true, status: true, amount: true, customer: customerSelect },
+      where: { id, company_id: companyId, deleted_at: null },
+      select: {
+        id: true,
+        work_order_id: true,
+        status: true,
+        amount: true,
+        customer: customerSelect,
+      },
+    });
+    if (!payment) throw new NotFoundException('Recebimento nao encontrado');
+
+    const nextStatus = dto.status ?? payment.status;
+    const paidAt =
+      dto.paid_at === null
+        ? null
+        : dto.paid_at
+          ? new Date(dto.paid_at)
+          : nextStatus === 'PAID' && payment.status !== 'PAID'
+            ? new Date()
+            : payment.status === 'PAID' && nextStatus !== 'PAID'
+              ? null
+              : undefined;
+    const dueDate = dto.due_date === null ? null : dto.due_date ? new Date(dto.due_date) : undefined;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payment.update({
+        where: { id },
+        data: {
+          ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+          ...(dto.method !== undefined ? { method: dto.method } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+          ...(dueDate !== undefined ? { due_date: dueDate } : {}),
+          ...(paidAt !== undefined ? { paid_at: paidAt } : {}),
+        },
+        include: { customer: customerSelect },
+      });
+      const statusChanged = payment.status !== updated.status;
+      const humanText = statusChanged
+        ? `Recebimento de R$ ${updated.amount.toString()} (${updated.customer.name}) alterado de ${payment.status} para ${updated.status}`
+        : `Recebimento de R$ ${updated.amount.toString()} (${updated.customer.name}) atualizado`;
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: statusChanged ? 'payment.status_updated' : 'payment.updated',
+        entityType: 'payment',
+        entityId: id,
+        from: payment.status,
+        to: updated.status,
+        reason: dto.justification,
+        humanText,
+      });
+      if (payment.work_order_id) {
+        await this.audit.record(tx, {
+          companyId,
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'work_order.payment_updated',
+          entityType: 'work_order',
+          entityId: payment.work_order_id,
+          from: payment.status,
+          to: updated.status,
+          reason: dto.justification,
+          humanText,
+        });
+      }
+      return updated;
+    });
+  }
+
+  async remove(id: string, companyId: string, dto: PaymentDeleteDto, userId: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id, company_id: companyId, deleted_at: null },
+      select: { id: true, work_order_id: true, status: true, amount: true, customer: customerSelect },
     });
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
-    await this.prisma.$transaction(async (tx) => {
-      await tx.payment.delete({ where: { id } });
+    return this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.payment.update({ where: { id }, data: { deleted_at: new Date() } });
+      const humanText = `Recebimento de R$ ${payment.amount.toString()} (${payment.customer.name}) excluido`;
       await this.audit.record(tx, {
         companyId,
         actorType: 'USER',
@@ -121,10 +201,25 @@ export class PaymentService {
         entityType: 'payment',
         entityId: id,
         from: payment.status,
-        to: null,
-        humanText: `Recebimento de R$ ${payment.amount.toString()} (${payment.customer.name}) removido`,
+        to: 'DELETED',
+        reason: dto.justification,
+        humanText,
       });
+      if (payment.work_order_id) {
+        await this.audit.record(tx, {
+          companyId,
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'work_order.payment_deleted',
+          entityType: 'work_order',
+          entityId: payment.work_order_id,
+          from: payment.status,
+          to: 'DELETED',
+          reason: dto.justification,
+          humanText,
+        });
+      }
+      return deleted;
     });
-    return { ok: true };
   }
 }

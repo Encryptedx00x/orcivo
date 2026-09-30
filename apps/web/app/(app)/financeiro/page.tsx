@@ -25,6 +25,7 @@ interface ApiPayment {
   due_date: string | null;
   paid_at: string | null;
   created_at: string;
+  updated_at: string;
   customer: { id: string; name: string };
 }
 
@@ -58,10 +59,15 @@ export default async function FinanceiroPage(): Promise<JSX.Element> {
     customer: p.customer?.name ?? '—',
     description: p.description ?? '',
     amount: formatMoney(p.amount),
+    amountDecimal: p.amount,
     method: p.method ?? '—',
+    rawMethod: p.method as PaymentRow['rawMethod'],
     status: p.status,
     due: ddmm(p.due_date),
+    dueDate: p.due_date,
     paidAt: p.paid_at ? ddmm(p.paid_at) : '—',
+    paidAtDate: p.paid_at,
+    revision: p.updated_at,
   }));
 
   const sumBy = (pred: (p: ApiPayment) => boolean) => {

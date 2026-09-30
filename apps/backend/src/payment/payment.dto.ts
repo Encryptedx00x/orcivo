@@ -34,6 +34,31 @@ export const PaymentSettleSchema = z.object({
 });
 export type PaymentSettleDto = z.infer<typeof PaymentSettleSchema>;
 
+const JUSTIFICATION = z.string().trim().min(3).max(500);
+
+export const PaymentUpdateSchema = z
+  .object({
+    amount: MONEY.optional(),
+    method: PaymentMethodEnum.optional(),
+    status: PaymentStatusEnum.optional(),
+    due_date: z.string().datetime().nullable().optional(),
+    paid_at: z.string().datetime().nullable().optional(),
+    justification: JUSTIFICATION,
+  })
+  .refine(
+    (value) =>
+      value.amount !== undefined ||
+      value.method !== undefined ||
+      value.status !== undefined ||
+      value.due_date !== undefined ||
+      value.paid_at !== undefined,
+    { message: 'Informe ao menos um campo para atualizar o recebimento.' },
+  );
+export type PaymentUpdateDto = z.infer<typeof PaymentUpdateSchema>;
+
+export const PaymentDeleteSchema = z.object({ justification: JUSTIFICATION });
+export type PaymentDeleteDto = z.infer<typeof PaymentDeleteSchema>;
+
 export const PaymentListQuerySchema = z.object({
   status: PaymentStatusEnum.optional(),
   method: PaymentMethodEnum.optional(),
