@@ -1660,7 +1660,7 @@ POST /auth/2fa/disable { password, totp_code }
 ```text
 Login:         5/min por IP
 Signup:        3/hora por IP
-Forgot pwd:    3/hora por email
+Recuperar senha: 3/hora por email
 Refresh:       30/min por user
 Mutations:     100/min por user
 Geral:         200/min por IP
@@ -1854,6 +1854,8 @@ Os nomes POP/PRO/TOP podem aparecer apenas quando o documento estiver comparando
 
 Posicionamento competitivo: **mais barato que Agenda Boa, equivalente em features ou superior em foco no nicho**.
 
+Limites e preços abaixo seguem a decisão oficial do owner[^precos]; a tabela consolidada está ao final desta seção.
+
 ### Orcivo Livre — R$0
 
 Aquisição, teste e viralidade.
@@ -1861,9 +1863,9 @@ Aquisição, teste e viralidade.
 ```text
 1 empresa (CPF ou CNPJ)
 1 usuário
-até 10 clientes
-até 5 orçamentos/mês
-até 3 OS/mês
+até 5 clientes
+até 10 orçamentos/mês
+até 15 OS/mês
 até 1 agendamento/dia
 PDF simples com marca d'água discreta
 sem logo personalizada
@@ -1890,8 +1892,8 @@ Indicado para técnico solo que quer sair do improviso.
 1 empresa
 1 usuário
 até 50 clientes
-até 30 orçamentos/mês
-até 20 OS/mês
+até 50 orçamentos/mês
+até 30 OS/mês
 até 50 agendamentos/mês
 logo nos documentos
 cor personalizada nos documentos
@@ -1923,9 +1925,9 @@ Indicado para técnico com volume que quer aparência profissional.
 ```text
 1 empresa
 até 3 usuários
-até 300 clientes
-até 150 orçamentos/mês
-até 100 OS/mês
+até 200 clientes
+orçamentos com uso justo
+OS com uso justo
 agendamentos com uso justo
 PDF profissional sem marca d'água
 logo + cor personalizada + identidade visual completa
@@ -1961,7 +1963,7 @@ Indicado para pequena empresa com equipe.
 1 empresa
 até 8 usuários
 clientes uso justo
-orçamentos uso justo (soft limit 500/mês)
+orçamentos uso justo
 OS uso justo
 agendamentos uso justo
 todos recursos do Orcivo Mais, além de:
@@ -2002,6 +2004,8 @@ Custo do hub fiscal R$0,40/un × 200 = R$80/mês — estoura a margem do plano. 
 
 ### Cobrança mensal (oferta secundária)
 
+Valores oficiais (não são exemplo; coincidem com `PLAN_PRICING` em `packages/shared-types/src/billing/plans.ts`):
+
 ```text
 Orcivo Solo mensal:  R$9,90/mês
 Orcivo Mais mensal:  R$24,90/mês
@@ -2009,6 +2013,19 @@ Orcivo Equipe mensal:  R$49,90/mês
 ```
 
 Anual com desconto agressivo é a oferta padrão. Mensal existe para quem prefere.
+
+### Tabela oficial de limites e preços
+
+| Plano | Mensal | Anual | Clientes | Orçamentos/mês | OS/mês | Usuários |
+|---|---:|---:|---:|---:|---:|---:|
+| Orcivo Livre | R$0 | R$0 | 5 | 10 | 15 | 1 |
+| Orcivo Solo | R$9,90 | R$79,90 | 50 | 50 | 30 | 1 |
+| Orcivo Mais | R$24,90 | R$199,90 | 200 | uso justo | uso justo | 3 |
+| Orcivo Equipe | R$49,90 | R$389,90 | uso justo | uso justo | uso justo | 8 |
+
+"Uso justo" corresponde a limite nulo no código (`null`); a UI e o marketing nunca usam a palavra "ilimitado".
+
+[^precos]: Decisão do owner em 2026-10-01 (`ownerDecisions.PRICING`, `.planning/product/MVP-LAUNCH-BATCH-2.tasks.json`). Este documento e o código (`packages/shared-types/src/billing/plans.ts`) foram sincronizados com esses valores na task L2-P01-docs-pricing-reconcile.
 
 ---
 
@@ -2068,6 +2085,10 @@ Orcivo Livre sem cobrança via Asaas (não cria Subscription com gateway).
 ---
 
 ## 13. Assinatura SaaS e bloqueio escalonado
+
+### Preço oficial de cobrança
+
+Os preços cobrados nesta assinatura são os da tabela oficial da §11[^precos]: mensal Solo R$9,90, **Mais R$24,90**, **Equipe R$49,90**; anual Solo R$79,90, Mais R$199,90, Equipe R$389,90. Não há outro valor mensal vigente para Mais/Equipe.
 
 ### Regra final
 
@@ -2990,26 +3011,26 @@ HTTPS automático via Let's Encrypt.
 ### .env (não versionado)
 
 ```text
-NODE_ENV=production
-POSTGRES_URL=...
-REDIS_URL=...
-MINIO_ENDPOINT=...
-MINIO_ACCESS_KEY=...
-MINIO_SECRET_KEY=...
-JWT_ACCESS_SECRET=...
-JWT_REFRESH_SECRET=...
-ARGON2_SECRET=...
-ENCRYPTION_KEY=...
-ASAAS_API_KEY=...
-ASAAS_WEBHOOK_SECRET=...
-PLUGNOTAS_API_KEY=...
-RESEND_API_KEY=...
-GLITCHTIP_DSN_BACKEND=...
-GLITCHTIP_DSN_WEB=...
-GLITCHTIP_DSN_MOBILE=...
-EXPO_ACCESS_TOKEN=...
-NEXT_PUBLIC_API_URL=https://api.dominio.com.br
-NEXT_PUBLIC_UMAMI_ID=...
+NODE_ENV (production)
+POSTGRES_URL
+REDIS_URL
+MINIO_ENDPOINT
+MINIO_ACCESS_KEY
+MINIO_SECRET_KEY
+JWT_ACCESS_SECRET
+JWT_REFRESH_SECRET
+ARGON2_SECRET
+ENCRYPTION_KEY
+ASAAS_API_KEY
+ASAAS_WEBHOOK_SECRET
+PLUGNOTAS_API_KEY
+RESEND_API_KEY
+GLITCHTIP_DSN_BACKEND
+GLITCHTIP_DSN_WEB
+GLITCHTIP_DSN_MOBILE
+EXPO_ACCESS_TOKEN
+NEXT_PUBLIC_API_URL (ex.: https://api.dominio.com.br)
+NEXT_PUBLIC_UMAMI_ID
 ```
 
 Backup do `.env` em vault seguro fora da VPS.
