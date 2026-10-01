@@ -26,12 +26,19 @@ export class BillingController {
   @Post('checkout')
   createCheckout(
     @Req() req: TenantRequest,
-    @Body() body: { plan_code: 'SOLO' | 'MAIS' | 'EQUIPE'; billing_cycle: 'MONTHLY' | 'YEARLY' },
+    @Body()
+    body: {
+      plan_code: 'SOLO' | 'MAIS' | 'EQUIPE';
+      billing_cycle: 'MONTHLY' | 'YEARLY';
+      payment_method?: 'CREDIT_CARD' | 'PIX';
+      card_token_id?: string;
+    },
   ) {
     return this.subscriptionService.createCheckout(
       req.companyId,
       body.plan_code,
       body.billing_cycle,
+      { paymentMethod: body.payment_method, cardTokenId: body.card_token_id },
     );
   }
 }

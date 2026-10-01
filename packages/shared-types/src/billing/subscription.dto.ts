@@ -42,6 +42,8 @@ export type SubscriptionStatusResponse = z.infer<typeof SubscriptionStatusRespon
 export const CreateCheckoutSessionSchema = z.object({
   plan_code: z.enum(['SOLO', 'MAIS', 'EQUIPE']),
   billing_cycle: z.enum(['MONTHLY', 'YEARLY']),
+  payment_method: z.enum(['CREDIT_CARD', 'PIX']).optional(),
+  card_token_id: z.string().min(1).optional(),
 });
 export type CreateCheckoutSessionDto = z.infer<typeof CreateCheckoutSessionSchema>;
 export * from './plans';
