@@ -27,6 +27,7 @@ model User {
   work_orders_created  WorkOrder[]      @relation("WorkOrderCreatedBy")
   work_order_photos    WorkOrderPhoto[] @relation("WorkOrderPhotoUploadedBy")
   quotes_created       Quote[]          @relation("QuoteCreatedBy")
+  notification_reads   NotificationRead[]
 
   @@map("users")
 }
@@ -62,6 +63,7 @@ model Company {
   payments         Payment[]
   appointments     Appointment[]
   idempotency_keys RequestIdempotency[]
+  notification_reads NotificationRead[]
 
   @@map("companies")
 }
@@ -508,10 +510,31 @@ model AuditLog {
   metadata      Json?
   created_at    DateTime @default(now())
 
+  notification_reads NotificationRead[]
+
   @@index([company_id])
   @@index([company_id, entity_type, entity_id])
   @@index([company_id, actor_user_id])
   @@map("audit_logs")
+}
+
+// Per-user read state for the in-app activity feed. The notification content
+// itself stays in the append-only audit trail; this table only records a
+// member's acknowledgement of a relevant audit event.
+model NotificationRead {
+  id           String   @id @default(uuid())
+  company_id   String
+  user_id      String
+  audit_log_id String
+  read_at      DateTime @default(now())
+
+  company   Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  audit_log AuditLog @relation(fields: [audit_log_id], references: [id], onDelete: Cascade)
+
+  @@unique([audit_log_id, user_id])
+  @@index([company_id, user_id])
+  @@map("notification_reads")
 }
 
 // ─── Recebimentos (financeiro) ────────────────────────────────────────────────
