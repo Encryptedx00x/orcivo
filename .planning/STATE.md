@@ -22,14 +22,16 @@ privado) = PASS** (T01–T13 completas; T10/T13 autorizados pelo owner e
 executados 2026-09-04 — ver `phases/03.1-.../03.1-P03-T10-T13-RESULT.md`).
 **P04 UNBLOCKED.**
 **Data:** 2026-09-04
-**Próximo:** task graph do MVP Product Batch #1 a partir de P04
-(`MVP-PRODUCT-BATCH-1-EXECUTION.md` / `.plan.json` reconciliado). Dispatchable
-agora (gates satisfeitos, não Level C, sem dependência pendente):
-`PB1-P03-sidebar-real-identity`, `PB1-P19-mobile-home-customer`,
-`PB1-P06-dead-contact-ctas`, `PB1-P16-free-plan-15-os`,
-`PB1-P11-customer-pdf-download`. O lead de P04 (`PB1-P02-audit-service`) é
-Level C e permanece `WAITING_HUMAN` até owner gate próprio. Execução real
-segue pelo autopilot dispatcher, não implementada manualmente nesta sessão.
+**2026-10-01: MVP PRODUCT BATCH #1 = 100% CONCLUÍDO.** Todas as 43 tasks
+`PB1-*`/`PB1-M*` têm commit `feat:` + integração confirmados. Autopilot
+real (`pilot.ps1 run`) retornou `IDLE: no READY tasks; graph complete`
+depois de corrigir 2 bugs reais do dispatcher (`needsFreshDispatch` sem
+`TEST_FAILURE`; scope de `PB1-P13` sem o próprio protected-path grant) e
+destravar 3 defers obsoletos. Ver `AGENT-HANDOFF.md`. **Esteira migrada para
+`MVP-LAUNCH-BATCH-2`** (`config.v2.json` atualizado) — landing/preços,
+Mercado Pago substituindo Asaas, Termos/Privacidade completos, gaps de
+produção. 15 tasks `L2-*`, único gate humano real:
+`L2-P02-mp-production-activation` (credenciais de produção MP).
 
 **P02 gates (2026-09-03):** T12 = PASS (migrations 1–6 confirmadas em `orcivo_dev`
 persistente, backup feito, backfill íntegro 0/0, zero drift, reseed). T13 = PASS

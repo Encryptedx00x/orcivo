@@ -527,8 +527,8 @@
     "idleSleepSec": 15,
     "stopFile": "PILOT_STOP",
     "realExecutionAuthFile": "REAL_EXECUTION_AUTHORIZED",
-    "batchPlanFile": ".planning/product/MVP-PRODUCT-BATCH-1.plan.json",
-    "taskSourceFile": ".planning/product/MVP-PRODUCT-BATCH-1.tasks.json",
+    "batchPlanFile": ".planning/product/MVP-LAUNCH-BATCH-2.plan.json",
+    "taskSourceFile": ".planning/product/MVP-LAUNCH-BATCH-2.tasks.json",
     "realAgentTimeoutSec": 1800,
     "docker": {
       "image": "orcivo-agent-runner:v1",

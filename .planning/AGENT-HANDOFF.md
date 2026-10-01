@@ -35,12 +35,32 @@ Resend, infra). `batch-reconcile.ps1` rodou OK; `dispatchableNow`:
 **Sequenciamento decidido:** o Batch 1 (`PB1-*`) já tinha 23 tasks
 `WAITING_PROVIDER` e um checkpoint `AGENT_FAILURE` em
 `PB1-P13-dead-cta-audit-pass` quando esta sessão começou — nenhuma lease
-`scheduler/main` ativa (todas órfãs/liberadas). `config.v2.json` só suporta
-um `batchPlanFile`/`taskSourceFile` por vez. Decisão: **deixar o Batch 1
-terminar primeiro** (`pilot.ps1 run` resumido nesta sessão), e só então trocar
-`batchPlanFile`/`taskSourceFile` para `MVP-LAUNCH-BATCH-2` e continuar o
-loop. Não interromper nem reordenar o Batch 1 para "furar a fila" com o
-Batch 2 — ele já estava em execução real.
+`scheduler/main` ativa (todas órfãs/liberadas). Decisão: **deixar o Batch 1
+terminar primeiro** antes de trocar para o Batch 2.
+
+**BATCH 1 = 100% CONCLUÍDO (2026-10-01).** Depois de corrigir dois bugs reais
+(ver abaixo) e destravar 3 defers obsoletos (`PB1-P17`, `PB1-P13`,
+`PB1-P02-audit-read-and-ui`), o `pilot.ps1 run` retornou
+`IDLE: no READY tasks; graph complete`. Verificação cruzada: **todas as 43
+tasks `PB1-*`/`PB1-M*` têm commit `feat: <taskid>` correspondente** (70
+commits `feat: pb1*` no histórico, incluindo retries) — confirmado também
+por existência real de código (ex. `apps/backend/src/audit/` já tem
+`audit.service.ts`, `audit-read.service.ts`, etc., apesar de
+`batch-reconcile.ps1` listar essas tasks como "Level C pendente" — essa
+lista é só análise estática do `tasks.json`, não olha ledger/git, então não
+é confiável para saber o que já foi feito). `config.v2.json` atualizado:
+`batchPlanFile`/`taskSourceFile` agora apontam para `MVP-LAUNCH-BATCH-2`.
+
+**Dois bugs reais do dispatcher corrigidos nesta sessão** (test-first,
+commits no histórico):
+1. `needsFreshDispatch` não incluía `TEST_FAILURE` — resumir uma task nesse
+   status crashava em vez de começar uma tentativa limpa (reproduzido em
+   `PB1-P19-mobile-home-customer`). Regressão `RD-226`.
+2. `PB1-P13-dead-cta-audit-pass` tinha `protectedPathGrants: [".planning/reviews/"]`
+   mas `scope` nunca incluía esse caminho (listava `.planning/product`, o
+   caminho que a própria task dizia NÃO usar) — toda escrita do relatório
+   era rejeitada como "out-of-scope". Esse era o motivo real dos
+   `AGENT_FAILURE` repetidos há várias sessões, não falta de investigação.
 
 **O que NÃO fazer (reforçado pela autonomia total):** autonomia total não
 significa pular os "Não fazer" estruturais abaixo (editar ledger/approvals/
