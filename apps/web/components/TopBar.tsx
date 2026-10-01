@@ -1,17 +1,107 @@
 'use client';
+
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Bell, LogOut, ChevronDown } from 'lucide-react';
+import { Bell, Check, ChevronDown, LogOut, Search } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+
+interface NotificationItem {
+  id: string;
+  human_text: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+interface NotificationPage {
+  data: NotificationItem[];
+  unread_count: number;
+}
+
+function notificationTime(value: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
 
 export function TopBar(): JSX.Element {
   const router = useRouter();
   const { company } = useAuth();
   const companyName = company?.trade_name;
+  const feedId = useId();
+  const feed = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadNotifications = async () => {
+    try {
+      const response = await fetch('/api/notifications?limit=12', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Não foi possível carregar as notificações.');
+      const page = (await response.json()) as NotificationPage;
+      setNotifications(page.data);
+      setUnreadCount(page.unread_count);
+      setError('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Notificações indisponíveis.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+    const poll = window.setInterval(() => void loadNotifications(), 60_000);
+    return () => window.clearInterval(poll);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (feed.current && !feed.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const markRead = async (id: string) => {
+    const item = notifications.find((notification) => notification.id === id);
+    if (!item || item.read_at) return;
+    try {
+      const response = await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+      if (!response.ok) throw new Error('Não foi possível marcar a notificação como lida.');
+      const result = (await response.json()) as { read_at: string };
+      setNotifications((current) =>
+        current.map((notification) =>
+          notification.id === id ? { ...notification, read_at: result.read_at } : notification,
+        ),
+      );
+      setUnreadCount((current) => Math.max(0, current - 1));
+      setError('');
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'Não foi possível atualizar a notificação.',
+      );
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
     router.refresh();
   };
+
   return (
     <header
       style={{
@@ -26,7 +116,6 @@ export function TopBar(): JSX.Element {
         gap: 16,
       }}
     >
-      {/* Search — disabled: no cross-entity search backend yet */}
       <div style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
         <Search
           size={16}
@@ -61,27 +150,194 @@ export function TopBar(): JSX.Element {
         />
       </div>
 
-      {/* Right actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          disabled
-          aria-disabled="true"
-          title="Notificações em breve"
-          style={{
-            background: 'none',
-            border: 'none',
-            borderRadius: 10,
-            width: 40,
-            height: 40,
-            cursor: 'not-allowed',
-            color: '#CBD5E1',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Bell size={18} />
-        </button>
+        <div ref={feed} style={{ position: 'relative' }}>
+          <button
+            type="button"
+            aria-label={unreadCount ? `${unreadCount} notificações não lidas` : 'Notificações'}
+            aria-expanded={open}
+            aria-controls={feedId}
+            title="Notificações"
+            onClick={() => setOpen((current) => !current)}
+            style={{
+              position: 'relative',
+              background: open ? '#F5F3FF' : 'none',
+              border: 'none',
+              borderRadius: 10,
+              width: 40,
+              height: 40,
+              cursor: 'pointer',
+              color: open ? '#6D28D9' : '#64748B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Bell size={18} aria-hidden="true" />
+            {unreadCount > 0 && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 3,
+                  minWidth: 16,
+                  height: 16,
+                  padding: '0 4px',
+                  borderRadius: 999,
+                  background: '#6D28D9',
+                  border: '2px solid #fff',
+                  color: '#fff',
+                  fontSize: 9,
+                  lineHeight: '12px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {open && (
+            <section
+              id={feedId}
+              aria-label="Notificações"
+              aria-live="polite"
+              style={{
+                position: 'absolute',
+                zIndex: 20,
+                top: 48,
+                right: 0,
+                width: 384,
+                maxWidth: 'calc(100vw - 24px)',
+                background: '#fff',
+                border: '1px solid #E2E8F0',
+                borderRadius: 12,
+                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.14)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  padding: '14px 16px',
+                  borderBottom: '1px solid #E2E8F0',
+                }}
+              >
+                <strong style={{ fontSize: 14, color: '#0A0A0F' }}>Atividades</strong>
+                <span style={{ fontSize: 12, color: '#64748B' }}>
+                  {unreadCount
+                    ? `${unreadCount} não lida${unreadCount === 1 ? '' : 's'}`
+                    : 'Tudo em dia'}
+                </span>
+              </div>
+              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                {loading && (
+                  <p style={{ padding: '18px 16px', margin: 0, fontSize: 13, color: '#64748B' }}>
+                    Carregando atividades…
+                  </p>
+                )}
+                {error && (
+                  <div
+                    role="alert"
+                    style={{ padding: '14px 16px', fontSize: 13, color: '#B91C1C' }}
+                  >
+                    <p style={{ margin: '0 0 8px' }}>{error}</p>
+                    <button
+                      type="button"
+                      className="ov-btn ov-btn-outline"
+                      style={{ height: 32, fontSize: 12 }}
+                      onClick={() => void loadNotifications()}
+                    >
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+                {!loading && !error && notifications.length === 0 && (
+                  <p style={{ padding: '18px 16px', margin: 0, fontSize: 13, color: '#64748B' }}>
+                    Nenhuma atividade recente.
+                  </p>
+                )}
+                {!loading &&
+                  !error &&
+                  notifications.map((notification) => (
+                    <article
+                      key={notification.id}
+                      style={{
+                        padding: '13px 16px',
+                        borderBottom: '1px solid #F1F5F9',
+                        background: notification.read_at ? '#fff' : '#FAF8FF',
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                        <span
+                          aria-label={notification.read_at ? 'Lida' : 'Não lida'}
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: notification.read_at ? '#CBD5E1' : '#6D28D9',
+                            marginTop: 6,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p
+                            style={{
+                              margin: 0,
+                              color: '#0A0A0F',
+                              fontSize: 13,
+                              lineHeight: '19px',
+                              fontWeight: notification.read_at ? 400 : 600,
+                            }}
+                          >
+                            {notification.human_text}
+                          </p>
+                          <time
+                            dateTime={notification.created_at}
+                            style={{
+                              display: 'block',
+                              marginTop: 4,
+                              color: '#64748B',
+                              fontSize: 11,
+                            }}
+                          >
+                            {notificationTime(notification.created_at)}
+                          </time>
+                          {!notification.read_at && (
+                            <button
+                              type="button"
+                              onClick={() => void markRead(notification.id)}
+                              style={{
+                                display: 'inline-flex',
+                                gap: 4,
+                                alignItems: 'center',
+                                marginTop: 8,
+                                padding: 0,
+                                border: 0,
+                                background: 'transparent',
+                                color: '#5B21B6',
+                                cursor: 'pointer',
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              <Check size={13} aria-hidden="true" /> Marcar como lida
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+              </div>
+            </section>
+          )}
+        </div>
 
         <div
           style={{
