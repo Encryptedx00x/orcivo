@@ -1,0 +1,177 @@
+# Orcivo on the shared VPS (/srv/orcivo). Public traffic enters through the
+# existing Caddy of the `stack` project via the external network stack_default.
+# Only HTTP services join that network; data services stay on orcivo_internal.
+# Source lives in ./source (git archive of main); secrets in ./.env (never committed).
+name: orcivo
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@orcivo-db:5432/${POSTGRES_DB}?schema=public
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: orcivo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - orcivo_db_data:/var/lib/postgresql/data
+    networks: [orcivo_internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # No password: the backend/BullMQ clients do not send one, and this network is internal-only.
+  redis:
+    image: redis:7-alpine
+    container_name: orcivo-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - orcivo_redis_data:/data
+    networks: [orcivo_internal]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: orcivo-minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - orcivo_minio_data:/data
+    # On the caddy network so s3.<domain> can serve presigned URLs.
+    networks: [orcivo_internal, caddy]
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # One-shot: `docker compose run --rm migrate`. Uses the backend build stage (has prisma CLI + migrations).
+  migrate:
+    build:
+      context: ./source
+      dockerfile: apps/backend/Dockerfile
+      target: build
+    image: orcivo-backend-build
+    profiles: [tools]
+    environment: *backend-env
+    command:
+      [
+        'pnpm',
+        '--filter',
+        '@orcivo/backend',
+        'exec',
+        'prisma',
+        'migrate',
+        'deploy',
+        '--schema',
+        '../../prisma/schema.prisma',
+      ]
+    networks: [orcivo_internal]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./source
+      dockerfile: apps/backend/Dockerfile
+    image: orcivo-backend
+    container_name: orcivo-backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      PORT: 3000
+      ALLOWED_ORIGINS: https://app.${DOMAIN},https://${DOMAIN}
+      APP_WEB_URL: https://app.${DOMAIN}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      REDIS_HOST: orcivo-redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_PORT: ${MINIO_PORT}
+      MINIO_USE_SSL: ${MINIO_USE_SSL}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STORAGE_SIGNED_URL_TTL: 300
+      MAIL_PROVIDER: console
+      ASAAS_ENV: sandbox
+      ASAAS_API_KEY: ''
+      ASAAS_WEBHOOK_TOKEN: ''
+    networks: [orcivo_internal, caddy]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  web:
+    build:
+      context: ./source
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+        NEXT_PUBLIC_WEB_URL: https://app.${DOMAIN}
+    image: orcivo-web
+    container_name: orcivo-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_URL: http://orcivo-backend:3000
+      BACKEND_URL: http://orcivo-backend:3000
+    networks: [orcivo_internal, caddy]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3001/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  site:
+    build:
+      context: ./source
+      dockerfile: apps/site/Dockerfile
+    image: orcivo-site
+    container_name: orcivo-site
+    restart: unless-stopped
+    networks: [caddy]
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3002/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  orcivo_internal:
+    internal: true
+  caddy:
+    external: true
+    name: stack_default
+
+volumes:
+  orcivo_db_data:
+  orcivo_redis_data:
+  orcivo_minio_data:
