@@ -2790,6 +2790,21 @@ try{
             $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
             Assert-True ($m.Success -and $m.Value -notmatch "'SECRET_LEAK_BLOCKED'") 'needsFreshDispatch must never include SECRET_LEAK_BLOCKED - the ledger only allows it to transition to QUARANTINED, never directly to READY'
         }
+        Check 'RD-229' {
+            # Fourth occurrence of the same bug class (2026-10-01,
+            # l2-p02-checkout-flow): a candidate git-commit failure (exit
+            # code != 0, e.g. the repo's own lint-staged/eslint pre-commit
+            # hook failing) sets dispatch-state status=RESUMABLE, but with
+            # ledger ToState='FAILED' (the normal, always-retryable bucket
+            # - unlike SECRET_LEAK_BLOCKED, nothing restricts FAILED ->
+            # READY). RESUMABLE was missing from needsFreshDispatch, so
+            # resuming reused the stale broken $state and retried the
+            # identical failing commit forever instead of starting a clean
+            # attempt.
+            $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
+            Assert-True ($m.Success -and $m.Value -match "'RESUMABLE'") 'a terminal RESUMABLE dispatch-state (ledger FAILED) is not in the needsFreshDispatch set, so resuming it retries the identical broken state forever'
+        }
         Check 'RD-228' {
             # Third occurrence of the same bug class (2026-10-01,
             # l2-p02-fix-fake-token-landmine): BLOCK (singular - the

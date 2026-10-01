@@ -4848,6 +4848,7 @@ function Invoke-RealDispatcherTask {
         'TEST_FAILURE',
         'BLOCKED',
         'BLOCK',
+        'RESUMABLE',
         'WAITING_HUMAN'
     )
 )
