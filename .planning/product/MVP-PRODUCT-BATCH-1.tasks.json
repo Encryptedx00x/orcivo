@@ -647,7 +647,8 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03"
+        "P03",
+        "OWNER-DEFER-20261001-correction-loop-reverts-expanded-scope"
       ],
       "candidateConstraints": {},
       "verificationProfile": "B",
