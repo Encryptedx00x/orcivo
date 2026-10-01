@@ -1,0 +1,33 @@
+
+# --- Orcivo (/srv/orcivo, compose project "orcivo") ---
+orcivo.com.br {
+    encode zstd gzip
+    reverse_proxy orcivo-site:3002
+}
+
+app.orcivo.com.br {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    reverse_proxy orcivo-web:3001
+}
+
+api.orcivo.com.br {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    reverse_proxy orcivo-backend:3000
+}
+
+s3.orcivo.com.br {
+    reverse_proxy orcivo-minio:9000
+}
+# --- /Orcivo ---
