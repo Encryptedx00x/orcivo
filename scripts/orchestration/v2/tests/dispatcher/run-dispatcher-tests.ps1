@@ -2769,19 +2769,26 @@ try{
             Assert-True ($m.Success -and $m.Value -match "'TEST_FAILURE'") 'a terminal TEST_FAILURE dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
         }
         Check 'RD-227' {
-            # Reproduces a real launch-batch-2 incident (2026-10-01):
-            # SECRET_LEAK_BLOCKED is one of Invoke-DispatcherLoop's own
-            # documented normal terminal exits (same bucket as FAILED and
-            # TEST_FAILURE), but like TEST_FAILURE it was missing from
-            # needsFreshDispatch. Resuming L2-P02-checkout-flow after a
-            # SECRET_LEAK_BLOCKED result reused the stale ledger-terminal
-            # state and tried an illegal SECRET_LEAK_BLOCKED -> INTEGRATING
-            # transition instead of starting a clean attempt, crashing the
-            # whole run loop (ledger.ps1: "illegal transition ... for
-            # integrate-start").
+            # Corrected understanding (2026-10-01): a first attempt added
+            # SECRET_LEAK_BLOCKED to needsFreshDispatch to fix the exact
+            # same "dispatcher is not at the exact pre-launch implementation
+            # state" crash TEST_FAILURE/BLOCK hit on resume. That was WRONG:
+            # ledger.ps1's own transition table deliberately makes
+            # SECRET_LEAK_BLOCKED -> QUARANTINED the ONLY legal move
+            # ("fail-closed by default; only evidence-bound owner
+            # false-positive reconciliation may enter READY" - see
+            # Get-DispatcherDisjointTargetAdvanceRecoveryProof /
+            # pilot.ps1 recover-disjoint-target-advance). Putting it in
+            # needsFreshDispatch bypasses that intentional security gate
+            # and instead crashes one step later with "illegal transition
+            # SECRET_LEAK_BLOCKED -> READY". This test locks in the
+            # correct, narrower fix: needsFreshDispatch covers BLOCK/
+            # BLOCKED/TEST_FAILURE/FAILED/WAITING_HUMAN (all map to a
+            # ledger state that legally allows -> READY) but never
+            # SECRET_LEAK_BLOCKED.
             $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
             $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
-            Assert-True ($m.Success -and $m.Value -match "'SECRET_LEAK_BLOCKED'") 'a terminal SECRET_LEAK_BLOCKED dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
+            Assert-True ($m.Success -and $m.Value -notmatch "'SECRET_LEAK_BLOCKED'") 'needsFreshDispatch must never include SECRET_LEAK_BLOCKED - the ledger only allows it to transition to QUARANTINED, never directly to READY'
         }
         Check 'RD-228' {
             # Third occurrence of the same bug class (2026-10-01,

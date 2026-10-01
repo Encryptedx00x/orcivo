@@ -4848,8 +4848,7 @@ function Invoke-RealDispatcherTask {
         'TEST_FAILURE',
         'BLOCKED',
         'BLOCK',
-        'WAITING_HUMAN',
-        'SECRET_LEAK_BLOCKED'
+        'WAITING_HUMAN'
     )
 )
 
