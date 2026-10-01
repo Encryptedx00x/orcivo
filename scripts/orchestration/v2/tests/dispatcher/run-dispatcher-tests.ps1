@@ -2765,7 +2765,7 @@ try{
             # ('dispatcher is not at the exact pre-launch implementation
             # state') threw on every retry and the whole run loop crashed.
             $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
-            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?'WAITING_HUMAN'\s*\)")
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
             Assert-True ($m.Success -and $m.Value -match "'TEST_FAILURE'") 'a terminal TEST_FAILURE dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
         }
         Check 'RD-227' {
@@ -2780,8 +2780,22 @@ try{
             # whole run loop (ledger.ps1: "illegal transition ... for
             # integrate-start").
             $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
-            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?'WAITING_HUMAN'\s*\)")
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
             Assert-True ($m.Success -and $m.Value -match "'SECRET_LEAK_BLOCKED'") 'a terminal SECRET_LEAK_BLOCKED dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
+        }
+        Check 'RD-228' {
+            # Third occurrence of the same bug class (2026-10-01,
+            # l2-p02-fix-fake-token-landmine): BLOCK (singular - the
+            # implementer's own "this can't be done inside scope/policy"
+            # verdict) is one of Invoke-DispatcherLoop's documented normal
+            # terminal exits, distinct from BLOCKED, and was ALSO missing
+            # from needsFreshDispatch. Resuming after a BLOCK result hit
+            # the exact same "dispatcher is not at the exact pre-launch
+            # implementation state" crash as the TEST_FAILURE and
+            # SECRET_LEAK_BLOCKED cases.
+            $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?\)")
+            Assert-True ($m.Success -and $m.Value -match "'BLOCK'(?!ED)") 'a terminal BLOCK (singular) dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
         }
     } finally {Pop-Location}
 
