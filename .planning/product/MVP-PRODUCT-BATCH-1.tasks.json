@@ -622,7 +622,7 @@
       "title": "In-app notifications / activity feed + functional bell",
       "type": "FEATURE",
       "source": "P-17 / D-6",
-      "description": "MVP subset: an in-app notification / activity feed backed by the audit trail (correct contextual text); the topbar bell shows unread in-app items and opens the feed. Push / email stay a separate later scope (Fase 7).",
+      "description": "MVP subset: an in-app notification / activity feed backed by the audit trail (correct contextual text); the topbar bell shows unread in-app items and opens the feed. Push / email stay a separate later scope (Fase 7). Escopo expandido para cobrir app.module.ts, shared-types index, prisma migration.",
       "acceptance": "AC1: relevant business events produce an in-app notification with human-readable contextual text; AC2: the bell shows an unread count and opens the feed; AC3: mark-as-read works; AC4: no push/email code added.",
       "dependencies": [
         "PB1-P02-audit-service",
