@@ -155,7 +155,7 @@
   "budgets": {
     "runTimeoutSec": 900,
     "checkTimeoutSec": 1200,
-    "reviewTimeoutSec": 600,
+    "reviewTimeoutSec": 1500,
     "totalWallTimeSec": 5400,
     "maxReviewCycles": 2,
     "killSwitchFile": "KILL_SWITCH"
