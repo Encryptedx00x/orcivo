@@ -630,12 +630,20 @@
       ],
       "scope": [
         "apps/backend/src/notifications",
+        "apps/backend/src/app.module.ts",
         "apps/web/components",
-        "packages/shared-types/src/notification"
+        "apps/web/app/api/notifications",
+        "packages/shared-types/src/notification",
+        "packages/shared-types/src/index.ts",
+        "prisma/schema.prisma",
+        "prisma/migrations"
       ],
       "risk": "B",
       "productBatch": "MVP-PRODUCT-BATCH-1",
       "ownerGate": "none",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ],
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
