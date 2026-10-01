@@ -114,7 +114,7 @@ describe('Audit read endpoint', () => {
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(['quote', 'payment'] as const)(
+  it.each(['customer', 'quote', 'payment'] as const)(
     'supports %s with only the authenticated tenant',
     async (entityType) => {
       await request(app.getHttpServer())

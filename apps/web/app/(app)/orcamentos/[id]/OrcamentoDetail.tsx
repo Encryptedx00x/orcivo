@@ -7,6 +7,7 @@ import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
 import { SignatureCanvas } from '../../../approve/[token]/SignatureCanvas';
 import type { Quote, QuoteItem } from '../../../../lib/quote.service';
+import { AuditHistoryFeed } from '../../clientes/AuditHistoryFeed';
 import { EntityHistory } from '../../../../lib/EntityHistory';
 import {
   quoteAction,
@@ -507,6 +508,15 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
           </div>
         </div>
       </div>
+
+      <section style={{ ...card, marginTop: 16 }} aria-label="Histórico">
+        <h2 style={sectionTitle}>Histórico</h2>
+        <AuditHistoryFeed
+          entityType="quote"
+          entityId={quote.id}
+          revision={`${quote.status}-${historyRevision}`}
+        />
+      </section>
 
       {/* Actions by status */}
       <div style={{ ...card, marginTop: 16 }}>

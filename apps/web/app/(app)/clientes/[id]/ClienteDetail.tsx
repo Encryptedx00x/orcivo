@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, ChevronRight, Pencil } from 'lucide-react';
+import { AuditHistoryFeed } from '../AuditHistoryFeed';
 import { contactLinks } from '../contact-links';
 
 interface Customer {
@@ -414,7 +415,8 @@ export function ClienteDetail({
           )}
 
           {/* Other tabs: placeholder */}
-          {activeTab >= 2 && (
+          {activeTab === 5 && <AuditHistoryFeed entityType="customer" entityId={customer.id} />}
+          {activeTab >= 2 && activeTab < 5 && (
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#94A3B8', fontSize: 14 }}>
               Nenhum dado disponível ainda.
             </div>
