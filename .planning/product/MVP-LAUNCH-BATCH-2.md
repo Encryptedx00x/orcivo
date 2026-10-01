@@ -32,6 +32,27 @@ Fonte única de verdade: `packages/shared-types/src/billing/plans.ts`
 (L2-P01-plan-source-of-truth). Doc mestre e código sincronizados nos dois
 sentidos (L2-P01-docs-pricing-reconcile).
 
+## Paridade mobile/web (owner, 2026-10-01: "ambos devem crescer juntos")
+
+Auditoria encontrou 3 gaps reais entre mobile e o que o Batch 2 estava
+construindo só para web/site — corrigidos nas tasks correspondentes:
+
+- **L2-P03-mobile-plan-pricing-sync** (nova task): `apps/mobile/src/screens/plano/plans.ts`
+  tinha preços hardcoded já desatualizados (Mais R$19,90, Equipe R$39,90) —
+  passa a consumir a mesma fonte única de `L2-P01-plan-source-of-truth`.
+- **L2-P04-legal-docs** (escopo ampliado): checkbox de aceite de termos com
+  versão+data agora cobre o signup mobile também (mesmo endpoint/schema que
+  o web já usa), + link "Ver termos de uso" na tela de signup do mobile.
+- **L2-P05-password-reset-invite-ui** (escopo ampliado): mobile não tinha
+  NENHUMA tela de recuperação de senha nem de aceite de convite — adiciona
+  `ForgotPasswordScreen` e `AcceptInviteScreen` nativas no `AuthStack`,
+  reaproveitando os mesmos endpoints do backend.
+
+Não precisa de paridade (decisão deliberada, não gap): checkout/Mercado Pago
+(`L2-P02-*`) e SEO/sitemap do site (`L2-P03-site-seo-metadata`) — mobile não
+faz cobrança própria por política de loja (`PlanoScreen` já só linka para o
+site) e SEO não se aplica a app nativo.
+
 ## Autonomia desta sessão (owner, 2026-10-01)
 
 O owner concedeu autonomia total para este batch: toda decisão que normalmente
