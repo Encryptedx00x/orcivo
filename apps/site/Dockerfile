@@ -13,6 +13,7 @@ COPY apps/site/package.json ./apps/site/package.json
 RUN pnpm install --frozen-lockfile --filter @orcivo/site...
 
 COPY apps/site ./apps/site
+COPY apps/backend/src/quote/fonts ./apps/backend/src/quote/fonts
 RUN mkdir -p apps/site/public
 
 ENV NEXT_TELEMETRY_DISABLED=1

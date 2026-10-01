@@ -42,7 +42,10 @@ services:
       retries: 5
 
   minio:
-    image: quay.io/minio/minio:latest
+    build:
+      context: ./source/infra/vps
+      dockerfile: minio.Dockerfile
+    image: orcivo-minio
     container_name: orcivo-minio
     restart: unless-stopped
     command: server /data
@@ -54,7 +57,7 @@ services:
     # On the caddy network so s3.<domain> can serve presigned URLs.
     networks: [orcivo_internal, caddy]
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:9000/minio/health/live']
       interval: 30s
       timeout: 10s
       retries: 3
