@@ -3,32 +3,28 @@ import { fetchAllWorkOrders } from '../../../lib/work-order.service';
 import { DocumentosContent, type DocQuote, type DocWorkOrder } from './DocumentosContent';
 
 export default async function DocumentosPage(): Promise<JSX.Element> {
-  let quotes: DocQuote[] = [];
-  let workOrders: DocWorkOrder[] = [];
+  const [quotesRes, workOrdersRes] = await Promise.all([
+    quoteService.fetchQuotes(1),
+    fetchAllWorkOrders(1),
+  ]);
 
-  try {
-    const res = await quoteService.fetchQuotes(1);
-    quotes = res.data.map(q => ({
-      id: q.id,
-      number: q.number,
-      status: q.status,
-      title: q.title,
-      customer: { name: q.customer.name },
-      created_at: q.created_at,
-    }));
-  } catch {}
+  const quotes: DocQuote[] = quotesRes.data.map((q) => ({
+    id: q.id,
+    number: q.number,
+    status: q.status,
+    title: q.title,
+    customer: { name: q.customer.name },
+    created_at: q.created_at,
+  }));
 
-  try {
-    const res = await fetchAllWorkOrders(1);
-    workOrders = res.data.map(w => ({
-      id: w.id,
-      number: w.number,
-      title: w.title,
-      status: w.status,
-      customer: { name: w.customer.name },
-      finished_at: w.finished_at,
-    }));
-  } catch {}
+  const workOrders: DocWorkOrder[] = workOrdersRes.data.map((w) => ({
+    id: w.id,
+    number: w.number,
+    title: w.title,
+    status: w.status,
+    customer: { name: w.customer.name },
+    finished_at: w.finished_at,
+  }));
 
   return <DocumentosContent quotes={quotes} workOrders={workOrders} />;
 }

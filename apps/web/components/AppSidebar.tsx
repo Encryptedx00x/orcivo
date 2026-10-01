@@ -89,6 +89,7 @@ export function AppSidebar(): JSX.Element {
   const companyLine = company ? [company.trade_name, planLabel].filter(Boolean).join(' · ') : '';
   return (
     <aside
+      className="ov-sidebar"
       style={{
         width: 260,
         minHeight: '100vh',

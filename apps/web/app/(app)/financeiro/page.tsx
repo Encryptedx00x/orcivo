@@ -36,18 +36,12 @@ function ddmm(iso?: string | null): string {
 }
 
 export default async function FinanceiroPage(): Promise<JSX.Element> {
-  let payments: ApiPayment[] = [];
-  let customers: CustomerOption[] = [];
-  try {
-    const res = await apiFetch<{ data: ApiPayment[] }>('/payments');
-    payments = res.data;
-  } catch {}
-  try {
-    const res = await apiFetch<{ data: Array<{ id: string; name: string }> }>(
-      '/customers?limit=200',
-    );
-    customers = res.data.map((c) => ({ id: c.id, name: c.name }));
-  } catch {}
+  const [paymentsRes, customersRes] = await Promise.all([
+    apiFetch<{ data: ApiPayment[] }>('/payments'),
+    apiFetch<{ data: Array<{ id: string; name: string }> }>('/customers?limit=200'),
+  ]);
+  const payments: ApiPayment[] = paymentsRes.data;
+  const customers: CustomerOption[] = customersRes.data.map((c) => ({ id: c.id, name: c.name }));
 
   const now = new Date();
   const monthLabel = now

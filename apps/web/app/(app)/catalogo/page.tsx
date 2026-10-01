@@ -1,10 +1,7 @@
-import { catalogService, CatalogItem } from '../../../lib/catalog.service';
+import { catalogService } from '../../../lib/catalog.service';
 import { CatalogoContent } from './CatalogoContent';
 
 export default async function CatalogoPage(): Promise<JSX.Element> {
-  let items: CatalogItem[] = [];
-  try {
-    items = await catalogService.fetchCatalog(false);
-  } catch {}
+  const items = await catalogService.fetchCatalog(false);
   return <CatalogoContent items={items} />;
 }
