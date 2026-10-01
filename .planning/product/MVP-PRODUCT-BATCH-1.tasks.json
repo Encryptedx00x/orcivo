@@ -638,9 +638,9 @@
         "prisma/schema.prisma",
         "prisma/migrations"
       ],
-      "risk": "B",
+      "risk": "C",
       "productBatch": "MVP-PRODUCT-BATCH-1",
-      "ownerGate": "none",
+      "ownerGate": "level-c-persistent-migration",
       "protectedPathGrants": [
         "prisma/schema.prisma"
       ],
