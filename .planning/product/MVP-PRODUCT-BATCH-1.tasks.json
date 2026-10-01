@@ -176,8 +176,7 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03",
-        "OWNER-DEFER-20260927-secret-scan-artifact-crosstalk"
+        "P03"
       ],
       "candidateConstraints": {},
       "verificationProfile": "B",
