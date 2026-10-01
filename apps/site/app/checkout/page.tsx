@@ -4,13 +4,15 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
 
+const CROSS_ORIGIN_CREDENTIALS: RequestCredentials = 'include';
+
 const PLAN_LABELS: Record<string, string> = {
-  SOLO_MONTHLY:   'Orcivo Solo — Mensal — R$9,90/mês',
-  SOLO_YEARLY:    'Orcivo Solo — Anual — R$79,90/ano',
-  MAIS_MONTHLY:   'Orcivo Mais — Mensal — R$19,90/mês',
-  MAIS_YEARLY:    'Orcivo Mais — Anual — R$199,90/ano',
+  SOLO_MONTHLY: 'Orcivo Solo — Mensal — R$9,90/mês',
+  SOLO_YEARLY: 'Orcivo Solo — Anual — R$79,90/ano',
+  MAIS_MONTHLY: 'Orcivo Mais — Mensal — R$19,90/mês',
+  MAIS_YEARLY: 'Orcivo Mais — Anual — R$199,90/ano',
   EQUIPE_MONTHLY: 'Orcivo Equipe — Mensal — R$39,90/mês',
-  EQUIPE_YEARLY:  'Orcivo Equipe — Anual — R$399,90/ano',
+  EQUIPE_YEARLY: 'Orcivo Equipe — Anual — R$399,90/ano',
 };
 
 function CheckoutContent() {
@@ -28,12 +30,15 @@ function CheckoutContent() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'https://api.orcivo.com.br'}/billing/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ plan_code: planKey, payment_method: paymentMethod }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? 'https://api.orcivo.com.br'}/billing/checkout`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: CROSS_ORIGIN_CREDENTIALS,
+          body: JSON.stringify({ plan_code: planKey, payment_method: paymentMethod }),
+        },
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { message?: string }).message ?? 'Erro ao processar pagamento.');
@@ -79,7 +84,9 @@ function CheckoutContent() {
           {loading ? 'Aguarde...' : 'Pagar com Cartão'}
         </button>
       </div>
-      <p className="text-xs text-slate-500 mt-6 text-center">Pagamento processado com segurança via Asaas.</p>
+      <p className="text-xs text-slate-500 mt-6 text-center">
+        Pagamento processado com segurança via Asaas.
+      </p>
     </div>
   );
 }
@@ -89,7 +96,9 @@ export default function CheckoutPage() {
     <div className="min-h-screen bg-white">
       <header className="border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-6 py-4">
-          <Link href="/" className="text-xl font-bold text-primary-600">Orcivo</Link>
+          <Link href="/" className="text-xl font-bold text-primary-600">
+            Orcivo
+          </Link>
         </div>
       </header>
       <Suspense fallback={<div className="py-16 text-center text-slate-500">Carregando...</div>}>
