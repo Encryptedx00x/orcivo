@@ -607,7 +607,8 @@
       "blockedByGates": [
         "P02-T12",
         "P02-T13",
-        "P03"
+        "P03",
+        "OWNER-DEFER-20261001-gate-approved-still-blocked"
       ],
       "candidateConstraints": {
         "discoverTriageProposeOnly": true
