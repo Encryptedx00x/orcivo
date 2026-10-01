@@ -12,10 +12,12 @@ async function main() {
   }));
 
   for (const limit of planLimits) {
+    // Idempotente e corretivo: update com os mesmos campos de create (corrige drift).
+    // Toca apenas a tabela PlanLimit.
     await prisma.planLimit.upsert({
       where: { plan_code: limit.plan_code },
       create: limit,
-      update: {},
+      update: limit,
     });
     console.log(`  ✓ PlanLimit ${limit.plan_code}`);
   }
