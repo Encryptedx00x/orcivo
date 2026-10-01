@@ -32,6 +32,7 @@ import {
   PaymentEditModal,
   type EditablePayment,
 } from '../../financeiro/PaymentEditModal';
+import { AuditHistoryFeed } from '../../clientes/AuditHistoryFeed';
 import { EntityHistory } from '../../../../lib/EntityHistory';
 
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
@@ -1021,44 +1022,11 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 >
                   Histórico
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  {[
-                    order.finished_at && [formatDateShort(order.finished_at), 'OS finalizada'],
-                    order.started_at && [formatDateShort(order.started_at), 'Execução iniciada'],
-                    order.scheduled_at && [formatDateShort(order.scheduled_at), 'Agendada'],
-                    ['—', 'OS criada'],
-                  ]
-                    .filter(Boolean)
-                    .map((entry, i) => {
-                      const [t, e] = entry as [string, string];
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            gap: 10,
-                            padding: '6px 0',
-                            fontSize: 13,
-                            borderBottom: '1px solid #F8FAFC',
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 60,
-                              color: '#94A3B8',
-                              fontFamily: 'JetBrains Mono, monospace',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {t}
-                          </span>
-                          <span style={{ flex: 1, color: '#334155' }}>{e}</span>
-                        </div>
-                      );
-                    })}
-                </div>
+                <AuditHistoryFeed
+                  entityType="work_order"
+                  entityId={order.id}
+                  revision={historyRevision}
+                />
               </div>
             </div>
           </div>
