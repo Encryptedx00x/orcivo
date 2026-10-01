@@ -2768,6 +2768,21 @@ try{
             $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?'WAITING_HUMAN'\s*\)")
             Assert-True ($m.Success -and $m.Value -match "'TEST_FAILURE'") 'a terminal TEST_FAILURE dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
         }
+        Check 'RD-227' {
+            # Reproduces a real launch-batch-2 incident (2026-10-01):
+            # SECRET_LEAK_BLOCKED is one of Invoke-DispatcherLoop's own
+            # documented normal terminal exits (same bucket as FAILED and
+            # TEST_FAILURE), but like TEST_FAILURE it was missing from
+            # needsFreshDispatch. Resuming L2-P02-checkout-flow after a
+            # SECRET_LEAK_BLOCKED result reused the stale ledger-terminal
+            # state and tried an illegal SECRET_LEAK_BLOCKED -> INTEGRATING
+            # transition instead of starting a clean attempt, crashing the
+            # whole run loop (ledger.ps1: "illegal transition ... for
+            # integrate-start").
+            $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?'WAITING_HUMAN'\s*\)")
+            Assert-True ($m.Success -and $m.Value -match "'SECRET_LEAK_BLOCKED'") 'a terminal SECRET_LEAK_BLOCKED dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){
