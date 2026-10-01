@@ -2753,6 +2753,21 @@ try{
             $script:DispatcherRecoveryRunnerProbe=$true;try{$active=Get-DispatcherGlmTerminalSuccessRecoveryProof -State $tampered.state -Task $tampered.task -TaskSource $tampered.source -Contract $tampered.contract -TaskVersionId $tampered.contract.taskVersionId -RunId $tampered.runId -InvocationId $tampered.invocation}finally{$script:DispatcherRecoveryRunnerProbe=$false}
             Assert-True (-not $wrongProof.eligible -and $wrongProof.reason -match 'task/version' -and -not $tamperedProof.eligible -and $tamperedProof.reason -match 'hash' -and -not $active.eligible) 'GLM recovery accepted wrong lineage, tampered stdout, or active execution'
         }
+        Check 'RD-226' {
+            # Reproduces the real PB1-P19-mobile-home-customer incident
+            # (2026-10-01): a durable dispatch-state left at status
+            # TEST_FAILURE (deterministic-verification correction budget
+            # exhausted, see the 'check-failed' -> FAILED ledger event sites)
+            # is a retryable terminal result exactly like FAILED, but was
+            # missing from the needsFreshDispatch set. Resuming it reused the
+            # stale status/attempt instead of starting a clean attempt, so the
+            # pre-launch invariant in New-DispatcherWorkspaceInvocationSnapshot
+            # ('dispatcher is not at the exact pre-launch implementation
+            # state') threw on every retry and the whole run loop crashed.
+            $txt=(Get-Content -Raw (Join-Path $V2 'dispatcher.ps1'))
+            $m=[regex]::Match($txt,"(?s)'PUBLISHED',\s*'NO_CHANGE_ACCEPTED',.*?'WAITING_HUMAN'\s*\)")
+            Assert-True ($m.Success -and $m.Value -match "'TEST_FAILURE'") 'a terminal TEST_FAILURE dispatch-state is not in the needsFreshDispatch set, so resuming it will crash instead of starting a clean attempt'
+        }
     } finally {Pop-Location}
 
     if($IncludeReal){

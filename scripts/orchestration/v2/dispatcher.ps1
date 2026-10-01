@@ -4845,6 +4845,7 @@ function Invoke-RealDispatcherTask {
         'PUBLISHED',
         'NO_CHANGE_ACCEPTED',
         'FAILED',
+        'TEST_FAILURE',
         'BLOCKED',
         'WAITING_HUMAN'
     )
