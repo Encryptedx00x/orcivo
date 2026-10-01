@@ -1,56 +1,15 @@
 import { PrismaClient, PlanCode } from '@prisma/client';
+import { PLAN_LIMITS } from '@orcivo/shared-types';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding PlanLimits...');
 
-  const planLimits = [
-    {
-      plan_code: 'LIVRE' as PlanCode,
-      customers_max: 5,
-      quotes_per_month: 10,
-      work_orders_per_month: 5,
-      members_max: 1,
-      has_logo: false,
-      pdf_watermark: true,
-      has_reports: false,
-      has_contracts: false,
-    },
-    {
-      plan_code: 'SOLO' as PlanCode,
-      customers_max: 50,
-      quotes_per_month: 50,
-      work_orders_per_month: 30,
-      members_max: 1,
-      has_logo: true,
-      pdf_watermark: false,
-      has_reports: false,
-      has_contracts: false,
-    },
-    {
-      plan_code: 'MAIS' as PlanCode,
-      customers_max: 200,
-      quotes_per_month: null,
-      work_orders_per_month: null,
-      members_max: 3,
-      has_logo: true,
-      pdf_watermark: false,
-      has_reports: true,
-      has_contracts: false,
-    },
-    {
-      plan_code: 'EQUIPE' as PlanCode,
-      customers_max: null,
-      quotes_per_month: null,
-      work_orders_per_month: null,
-      members_max: 10,
-      has_logo: true,
-      pdf_watermark: false,
-      has_reports: true,
-      has_contracts: true,
-    },
-  ];
+  const planLimits = (Object.keys(PLAN_LIMITS) as PlanCode[]).map((plan_code) => ({
+    plan_code,
+    ...PLAN_LIMITS[plan_code],
+  }));
 
   for (const limit of planLimits) {
     await prisma.planLimit.upsert({

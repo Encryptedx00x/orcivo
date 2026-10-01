@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
-import { PlanFeature } from '@orcivo/shared-types';
+import { PlanFeature, PLAN_LIMITS } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface PlanCheckResult {
@@ -28,16 +28,7 @@ export class PlanLimitsService {
     });
 
     // Se não há registro de PlanLimit (seed não rodou), usar defaults para LIVRE
-    const l = limits ?? {
-      customers_max: 5,
-      quotes_per_month: 10,
-      work_orders_per_month: 15,
-      members_max: 1,
-      has_logo: false,
-      pdf_watermark: true,
-      has_reports: false,
-      has_contracts: false,
-    };
+    const l = limits ?? PLAN_LIMITS.LIVRE;
 
     const subStatus = company.subscription?.status ?? null;
     const isBlocked = subStatus === 'BLOCKED';
