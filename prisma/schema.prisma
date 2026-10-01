@@ -547,12 +547,14 @@ model Payment {
   paid_at       DateTime?
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
 
   company  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
   customer Customer @relation(fields: [customer_id], references: [id])
 
   @@index([company_id])
   @@index([company_id, status])
+  @@index([company_id, deleted_at])
   @@map("payments")
 }
 
