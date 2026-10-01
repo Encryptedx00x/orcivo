@@ -5,6 +5,8 @@ import { Home, Users, FileText, Calendar, MoreHorizontal } from 'lucide-react-na
 import { InicioScreen } from '../screens/inicio/InicioScreen';
 import { ClientesScreen } from '../screens/clientes/ClientesScreen';
 import { ClienteCreateScreen } from '../screens/clientes/ClienteCreateScreen';
+import { ClienteDetailScreen } from '../screens/clientes/ClienteDetailScreen';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { QuoteListScreen } from '../screens/QuoteListScreen';
 import { QuoteDetailScreen } from '../screens/QuoteDetailScreen';
 import { QuoteCreateScreen } from '../screens/QuoteCreateScreen';
@@ -14,11 +16,20 @@ import { AgendaDetailScreen } from '../screens/agenda/AgendaDetailScreen';
 import type { Appointment } from '../services/appointment.service';
 import { MaisStack } from './MaisStack';
 
-const Tab = createBottomTabNavigator();
+export type AppTabsParamList = {
+  'Início': undefined;
+  Clientes: NavigatorScreenParams<ClientesStackParamList>;
+  'Orçamentos': NavigatorScreenParams<QuotesStackParamList>;
+  Agenda: NavigatorScreenParams<AgendaStackParamList>;
+  Mais: undefined;
+};
+
+const Tab = createBottomTabNavigator<AppTabsParamList>();
 
 export type ClientesStackParamList = {
   ClientesList: undefined;
   ClienteCreate: undefined;
+  ClienteDetail: { id: string };
 };
 
 const ClientesStack = createNativeStackNavigator<ClientesStackParamList>();
@@ -46,6 +57,11 @@ function ClientesNavigator() {
         name="ClientesList"
         component={ClientesScreen}
         options={{ title: 'Clientes' }}
+      />
+      <ClientesStack.Screen
+        name="ClienteDetail"
+        component={ClienteDetailScreen}
+        options={{ title: 'Detalhes do cliente' }}
       />
       <ClientesStack.Screen
         name="ClienteCreate"
