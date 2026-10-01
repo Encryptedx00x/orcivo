@@ -105,3 +105,4 @@ prisma/migrations/*.sql.bak
 !.orchestration/v2/schemas/
 .orchestration/v2/schemas/*
 !.orchestration/v2/schemas/*.json
+.deploy-secrets/

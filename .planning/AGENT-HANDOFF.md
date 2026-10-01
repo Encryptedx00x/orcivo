@@ -10,6 +10,46 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Estado corrente — 2026-10-01 — AUTONOMIA TOTAL CONCEDIDA (overnight)
+
+Owner (sessão de lançamento, 2026-10-01, tarde da noite): "Gere todas as
+tasks para rodar no autopilot ... pode seguir de forma 100% autônoma
+decidindo o que tiver waiting for human por mim ... Até mesmo restrições dos
+planos e valores se quiser alterar você tem permissão ... Você que manda a
+partir de agora, até amanhã. Quero tudo pronto quando acordar." Única
+exceção real: credenciais de produção do Mercado Pago + cadastro do webhook
+no painel MP (`L2-P02-mp-production-activation`) — isso fica esperando o
+owner, todo o resto não.
+
+**Novo batch criado e reconciliado:** `.planning/product/MVP-LAUNCH-BATCH-2`
+(`.md` + `.tasks.json` + `.plan.json`, 15 tasks `L2-*`, 1 Level C). Cobre
+Passo 1 (fonte única de preços/limites — decisão tomada com o owner via
+AskUserQuestion em 2026-10-01, ver `ownerDecisions.PRICING` no
+`.tasks.json`), Passo 2 (Mercado Pago substituindo Asaas), Passo 3 (landing/
+SEO), Passo 4 (Termos/Privacidade completos) e Passo 5 (reset de senha,
+Resend, infra). `batch-reconcile.ps1` rodou OK; `dispatchableNow`:
+`L2-P05-email-resend-setup`, `L2-P02-mercadopago-provider`,
+`L2-P05-password-reset-invite-ui`, `L2-P03-site-seo-metadata`,
+`L2-P01-plan-source-of-truth`.
+
+**Sequenciamento decidido:** o Batch 1 (`PB1-*`) já tinha 23 tasks
+`WAITING_PROVIDER` e um checkpoint `AGENT_FAILURE` em
+`PB1-P13-dead-cta-audit-pass` quando esta sessão começou — nenhuma lease
+`scheduler/main` ativa (todas órfãs/liberadas). `config.v2.json` só suporta
+um `batchPlanFile`/`taskSourceFile` por vez. Decisão: **deixar o Batch 1
+terminar primeiro** (`pilot.ps1 run` resumido nesta sessão), e só então trocar
+`batchPlanFile`/`taskSourceFile` para `MVP-LAUNCH-BATCH-2` e continuar o
+loop. Não interromper nem reordenar o Batch 1 para "furar a fila" com o
+Batch 2 — ele já estava em execução real.
+
+**O que NÃO fazer (reforçado pela autonomia total):** autonomia total não
+significa pular os "Não fazer" estruturais abaixo (editar ledger/approvals/
+checkpoints à mão, usar reset/force-push, simular provider). Significa não
+pausar em `WAITING_HUMAN`/Level C deste batch — decidir e seguir, documentando
+a decisão.
+
+---
+
 ## Estado corrente — 2026-09-25 — AUTOPILOT ATIVO
 
 `main`/`origin/main` continham `b085e83` antes desta atualização documental.
