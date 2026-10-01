@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../../contexts/AuthContext';
+import { useFocusedResource } from '../../hooks/useFocusedResource';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
 import type { ClientesStackParamList } from '../../navigation/AppTabs';
@@ -10,28 +11,31 @@ interface Customer { id: string; name: string; phone: string | null; }
 type Props = NativeStackScreenProps<ClientesStackParamList, 'ClientesList'>;
 
 export function ClientesScreen({ navigation }: Props) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useFocusEffect(useCallback(() => {
-    setLoading(true);
-    api.get<{ data: Customer[] }>('/customers')
-      .then(r => setCustomers(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []));
+  const { company } = useAuth();
+  const load = useCallback(() => api.get<{ data: Customer[] }>('/customers'), [company?.id]);
+  const { data, loading, failed, refresh } = useFocusedResource(load);
 
   return (
     <View style={styles.container}>
-      {loading ? <ActivityIndicator color="#6D28D9" /> : (
+      {loading ? <ActivityIndicator color="#6D28D9" /> : failed ? (
+        <View accessibilityRole="alert">
+          <Text style={styles.empty}>Não foi possível carregar os clientes.</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={refresh} style={styles.item}>
+            <Text style={styles.name}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
         <FlatList
-          data={customers}
+          data={data?.data ?? []}
+          refreshing={loading}
+          onRefresh={refresh}
+          contentContainerStyle={{ paddingBottom: 100 }}
           keyExtractor={c => c.id}
           renderItem={({ item }) => (
-            <View style={styles.item}>
+            <TouchableOpacity style={styles.item} accessibilityRole="button" accessibilityLabel={`Ver cliente ${item.name}`} onPress={() => navigation.navigate('ClienteDetail', { id: item.id })}>
               <Text style={styles.name}>{item.name}</Text>
               {item.phone && <Text style={styles.phone}>{item.phone}</Text>}
-            </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={<Text style={styles.empty}>Nenhum cliente cadastrado ainda.</Text>}
         />
