@@ -678,7 +678,7 @@
       "title": "Systematic loading / error / empty / responsive / disabled states (web)",
       "type": "UX",
       "source": "P-20 / D-7b",
-      "description": "A systematic pass on loading/error/empty states, skeletons, error.tsx / not-found.tsx, breakpoint discipline, overflow, and disabled/action feedback across the web app, within the approved design system.",
+      "description": "A systematic pass on loading/error/empty states, skeletons, error.tsx / not-found.tsx, breakpoint discipline, overflow, and disabled/action feedback across the web app, within the approved design system. Reiniciado apos config.v2.json mudar (reviewTimeoutSec) invalidar o contrato congelado.",
       "acceptance": "AC1: every list/detail screen has loading + empty + error states; AC2: error.tsx and not-found.tsx exist; AC3: no horizontal body overflow at mobile/tablet/desktop breakpoints; AC4: disabled controls give feedback; AC5: no design-system deviation.",
       "dependencies": [
         "PB1-P08-agenda-layout-bugs"
