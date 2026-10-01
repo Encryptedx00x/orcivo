@@ -91,20 +91,13 @@ function ddmmyy(iso?: string | null): string {
 }
 
 export default async function PlanoPage(): Promise<JSX.Element> {
-  let sub: Subscription = { plan_code: 'LIVRE', status: 'ACTIVE' };
-  let payments: SubPayment[] = [];
-  let memberCount = 1;
-  try {
-    sub = await apiFetch<Subscription>('/billing/subscription');
-  } catch {}
-  try {
-    const r = await apiFetch<{ data: SubPayment[] }>('/billing/payments');
-    payments = r.data;
-  } catch {}
-  try {
-    const m = await apiFetch<Array<unknown>>('/company/members');
-    memberCount = Array.isArray(m) ? m.length : 1;
-  } catch {}
+  const [sub, paymentsRes, members] = await Promise.all([
+    apiFetch<Subscription>('/billing/subscription'),
+    apiFetch<{ data: SubPayment[] }>('/billing/payments'),
+    apiFetch<Array<unknown>>('/company/members'),
+  ]);
+  const payments: SubPayment[] = paymentsRes.data;
+  const memberCount = Array.isArray(members) ? members.length : 1;
 
   const current = PLANS.find((p) => p.code === sub.plan_code) ?? PLANS[0];
   const isFree = current.code === 'LIVRE';
@@ -196,7 +189,9 @@ export default async function PlanoPage(): Promise<JSX.Element> {
             </span>
           </div>
           <div style={{ height: 1, background: 'rgba(255,255,255,.2)', margin: '20px 0' }} />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 18 }}
+          >
             <div>
               <div
                 style={{
@@ -308,7 +303,7 @@ export default async function PlanoPage(): Promise<JSX.Element> {
       <h3 style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}>
         Compare os planos
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
         {PLANS.map((p) => {
           const isCurrent = p.code === current.code;
           return (

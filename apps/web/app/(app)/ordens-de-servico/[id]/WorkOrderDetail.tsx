@@ -671,7 +671,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 style={{
                   padding: '14px 18px',
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                   gap: 16,
                 }}
               >
@@ -949,12 +949,26 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 </div>
                 {payments.length ? (
                   <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 12, paddingTop: 10 }}>
-                    <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#64748B',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '.06em',
+                        marginBottom: 6,
+                      }}
+                    >
                       Recebimentos registrados
                     </div>
                     {payments.map((payment) => (
-                      <div key={payment.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}>
-                        <span style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
+                      <div
+                        key={payment.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}
+                      >
+                        <span
+                          style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
+                        >
                           {formatMoney(payment.amount)}
                         </span>
                         <span style={{ color: '#64748B', fontSize: 12 }}>{payment.status}</span>

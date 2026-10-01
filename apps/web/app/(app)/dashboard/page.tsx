@@ -173,10 +173,7 @@ function Pill({ bg, color, children }: { bg: string; color: string; children: Re
 }
 
 export default async function DashboardPage(): Promise<JSX.Element> {
-  let s: Summary | null = null;
-  try {
-    s = await apiFetch<Summary>('/dashboard/summary');
-  } catch {}
+  const s = await apiFetch<Summary>('/dashboard/summary');
 
   const now = new Date();
   const greet = now.getHours() < 12 ? 'Bom dia' : now.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
@@ -267,7 +264,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap: 16,
           marginBottom: 20,
         }}

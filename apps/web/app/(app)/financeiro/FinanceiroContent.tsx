@@ -3,11 +3,7 @@
 import { useId, useState } from 'react';
 import { Inbox, Pencil, Plus, Trash2 } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
-import {
-  PaymentDeleteModal,
-  PaymentEditModal,
-  type EditablePayment,
-} from './PaymentEditModal';
+import { PaymentDeleteModal, PaymentEditModal, type EditablePayment } from './PaymentEditModal';
 import { EntityHistory } from '../../../lib/EntityHistory';
 
 const T = {
@@ -165,7 +161,7 @@ export function FinanceiroContent({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap: 16,
           marginBottom: 20,
         }}
@@ -457,7 +453,13 @@ export function FinanceiroContent({
                           type="button"
                           onClick={() => setEditingPayment(editablePayment(row))}
                           className="ov-btn ov-btn-outline"
-                          style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px', marginLeft: 6 }}
+                          style={{
+                            height: 30,
+                            fontSize: 12,
+                            gap: 6,
+                            padding: '0 10px',
+                            marginLeft: 6,
+                          }}
                         >
                           <Pencil size={13} /> Editar
                         </button>
@@ -465,7 +467,14 @@ export function FinanceiroContent({
                           type="button"
                           onClick={() => setDeletingPayment(editablePayment(row))}
                           className="ov-btn ov-btn-outline"
-                          style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px', marginLeft: 6, color: T.danger }}
+                          style={{
+                            height: 30,
+                            fontSize: 12,
+                            gap: 6,
+                            padding: '0 10px',
+                            marginLeft: 6,
+                            color: T.danger,
+                          }}
                         >
                           <Trash2 size={13} /> Excluir
                         </button>
