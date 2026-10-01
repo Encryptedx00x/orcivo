@@ -1,14 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlanCode, SubscriptionStatus } from '@prisma/client';
+import { PLAN_PRICING } from '@orcivo/shared-types';
 import type { BillingCycle, PaymentProvider } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PAYMENT_PROVIDER } from './payment-provider.token';
 
 const PRICE_MAP: Record<'SOLO' | 'MAIS' | 'EQUIPE', Record<BillingCycle, string>> = {
-  SOLO: { MONTHLY: '9.90', YEARLY: '79.90' },
-  MAIS: { MONTHLY: '19.90', YEARLY: '199.90' },
-  EQUIPE: { MONTHLY: '39.90', YEARLY: '399.90' },
+  SOLO: { MONTHLY: PLAN_PRICING.SOLO.monthly, YEARLY: PLAN_PRICING.SOLO.yearly },
+  MAIS: { MONTHLY: PLAN_PRICING.MAIS.monthly, YEARLY: PLAN_PRICING.MAIS.yearly },
+  EQUIPE: { MONTHLY: PLAN_PRICING.EQUIPE.monthly, YEARLY: PLAN_PRICING.EQUIPE.yearly },
 };
 
 const GRACE_PERIOD_DAYS: Record<PlanCode, number> = {
