@@ -595,7 +595,7 @@
         "PB1-P14-customer-edit-delete"
       ],
       "scope": [
-        ".planning/product",
+        ".planning/reviews",
         "apps/web"
       ],
       "protectedPathGrants": [
