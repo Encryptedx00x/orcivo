@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "orcivo.product-completeness-candidates/v1",
+  "auditId": "PB1-P13-dead-cta-audit-pass",
+  "generatedAt": "2026-10-01",
+  "mode": "discover-triage-propose-only",
+  "scheduling": {
+    "autoScheduled": false,
+    "reason": "Candidate records are proposals only; this audit does not change roadmap, business scope, or orchestration policy."
+  },
+  "triagePolicy": {
+    "generatedOnlyFor": "OBJECTIVE_FUNCTIONAL",
+    "ownerDecisionFindingsAreCandidates": false,
+    "candidateFieldsExcluded": ["assignee", "priority", "milestone", "dueDate", "executionOrder"]
+  },
+  "candidates": [
+    {
+      "id": "CP-WEB-001",
+      "sourceFinding": "O-01",
+      "title": "Align the new-customer form with persisted customer data",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web", "apps/backend", "packages/shared-types", "prisma"],
+      "problem": "The UI accepts customer identity, second contact, address, and tag inputs that the current create payload/schema/model discard.",
+      "acceptance": [
+        "Every retained form field is included in validated create/update DTOs and persists tenant-scoped.",
+        "A reload reproduces each retained submitted value.",
+        "Create/update remain tenant-isolated and write auditable mutations.",
+        "Any field deliberately out of scope is removed or disabled before data entry rather than silently discarded."
+      ]
+    },
+    {
+      "id": "CP-WEB-002",
+      "sourceFinding": "O-02",
+      "title": "Make customer post-save shortcuts execute or remove them",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web", "apps/backend", "packages/shared-types", "prisma"],
+      "problem": "Visit and address shortcuts change local state but have no submit-time effect.",
+      "acceptance": [
+        "Selecting a supported shortcut produces its stated result after customer save.",
+        "Failed downstream creation leaves an actionable error and does not misreport success.",
+        "Unsupported shortcuts are absent or disabled with an explanation before selection.",
+        "Any created appointment/address is tenant-scoped and auditable."
+      ]
+    },
+    {
+      "id": "CP-WEB-003",
+      "sourceFinding": "O-03",
+      "title": "Honor customer preselection in quote creation",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web"],
+      "problem": "Customer-detail and post-create CTAs provide client_id, but the quote editor ignores it.",
+      "acceptance": [
+        "A valid client_id from a customer-origin quote CTA preselects that customer after list load.",
+        "An invalid, inaccessible, or absent client_id leaves selection safe and displays no forged state.",
+        "The final quote retains backend tenant ownership validation."
+      ]
+    },
+    {
+      "id": "CP-WEB-004",
+      "sourceFinding": "O-04",
+      "title": "Remove silent loss of quote internal notes",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web", "apps/backend", "packages/shared-types", "prisma"],
+      "problem": "Quote internal notes are accepted in the editor but omitted from the request and domain schema.",
+      "acceptance": [
+        "The editor either persists internal notes in a private quote field or removes the field from the shipped form.",
+        "Persisted notes round-trip on edit/detail and never render in public approval/PDF output.",
+        "The mutation remains tenant-scoped and auditable."
+      ]
+    },
+    {
+      "id": "CP-WEB-005",
+      "sourceFinding": "O-05",
+      "title": "Replace customer-profile mock tabs with customer-scoped data",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web", "apps/backend", "packages/shared-types"],
+      "problem": "The profile passes an empty quote list, hard-codes identity pills, and renders generic empty content for other entity tabs.",
+      "acceptance": [
+        "Quotes, work orders, appointments, payments, and audit history shown on a profile are filtered by customer and current tenant.",
+        "A profile never exposes another customer or tenant's records.",
+        "Each tab distinguishes loaded-empty, loading, and request-error states.",
+        "Identity labels derive from persisted data rather than literals."
+      ]
+    },
+    {
+      "id": "CP-WEB-006",
+      "sourceFinding": "O-06",
+      "title": "Make company identity controls persist brand color and logo",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web", "apps/backend", "packages/shared-types", "prisma"],
+      "problem": "Identity visual controls are rendered active but have no handler; persistence fields exist but are absent from the profile contract.",
+      "acceptance": [
+        "Logo replacement has validation, loading/error feedback, tenant-bound storage, persistence, and audit evidence.",
+        "Color selection is keyboard-accessible, saves, reloads, and records an audited company mutation.",
+        "Identity values are used only after backend authorization and plan rules allow them."
+      ]
+    },
+    {
+      "id": "CP-WEB-007",
+      "sourceFinding": "O-07",
+      "title": "Implement the new-customer Save and new action",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web"],
+      "problem": "Save and new is a disabled dead CTA beside the working save action.",
+      "acceptance": [
+        "Save and new submits the same validated customer creation request once.",
+        "On success it clears form state for a new customer and confirms success without duplication.",
+        "On failure it preserves entered data and exposes existing error treatment."
+      ]
+    },
+    {
+      "id": "CP-WEB-008",
+      "sourceFinding": "O-08",
+      "title": "Make fixed-grid web forms usable at narrow viewports",
+      "classification": "OBJECTIVE_FUNCTIONAL",
+      "scope": ["apps/web"],
+      "problem": "Several page-local inline grids bypass the shared responsive grid rules; the new-customer address grid alone has 542px of fixed columns before gaps, so fields can overflow their narrower parent.",
+      "acceptance": [
+        "The audited create/detail/settings/dashboard/plan layouts reflow or provide an intentional accessible scroll treatment at narrow widths without clipping a field or primary CTA.",
+        "The customer address form preserves its field order, labels, validation, and submission payload through the reflow.",
+        "Desktop layouts retain their existing information hierarchy and controls.",
+        "Browser coverage verifies a narrow viewport and a desktop viewport for each affected layout family."
+      ]
+    }
+  ],
+  "excludedOwnerBatchFindings": [
+    "D-01 plan changes / billing checkout",
+    "D-02 global search",
+    "D-03 contracts",
+    "D-04 security, notification, and export settings",
+    "D-05 custom permissions and member removal",
+    "D-06 custom tags, address model, and CEP lookup"
+  ]
+}
