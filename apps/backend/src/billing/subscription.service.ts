@@ -2,7 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlanCode, SubscriptionStatus } from '@prisma/client';
 import { PLAN_PRICING } from '@orcivo/shared-types';
-import type { BillingCycle, PaymentProvider } from '@orcivo/shared-types';
+import type {
+  BillingCycle,
+  PaymentProvider,
+  PaymentProviderSubscription,
+} from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PAYMENT_PROVIDER } from './payment-provider.token';
 
@@ -38,7 +42,7 @@ export class SubscriptionService {
       where: { id: companyId },
     });
 
-    // LIVRE: criar registro local sem Asaas
+    // LIVRE: criar registro local sem gateway
     const sub = await this.prisma.subscription.create({
       data: {
         company_id: companyId,
@@ -112,6 +116,7 @@ export class SubscriptionService {
     companyId: string,
     planCode: 'SOLO' | 'MAIS' | 'EQUIPE',
     cycle: 'MONTHLY' | 'YEARLY',
+    options: { paymentMethod?: 'CREDIT_CARD' | 'PIX'; cardTokenId?: string } = {},
   ) {
     const company = await this.prisma.company.findUniqueOrThrow({
       where: {
@@ -148,14 +153,18 @@ export class SubscriptionService {
     const nextDueDate = new Date(Date.now() + 86400000).toISOString().split('T')[0]; // amanhã
 
     let providerSubscriptionId: string | null = null;
+    let providerSubscription: PaymentProviderSubscription | null = null;
     if (providerCustomerId) {
       try {
-        const providerSubscription = await this.paymentProvider.createSubscription({
+        providerSubscription = await this.paymentProvider.createSubscription({
           customerId: providerCustomerId,
-          paymentMethod: 'PIX',
+          paymentMethod: options.paymentMethod ?? 'PIX',
           amount: value,
           nextDueDate,
           billingCycle: cycle,
+          payerEmail: owner?.email,
+          cardTokenId: options.cardTokenId,
+          externalReference: companyId,
           description: `Orcivo ${planCode} — ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
         });
         providerSubscriptionId = providerSubscription.id || null;
@@ -182,7 +191,12 @@ export class SubscriptionService {
       },
     });
 
-    return { subscription: updatedSub, provider_subscription_id: providerSubscriptionId };
+    return {
+      subscription: updatedSub,
+      provider_subscription_id: providerSubscriptionId,
+      checkout_url: providerSubscription?.checkoutUrl ?? null,
+      pix: providerSubscription?.pix ?? null,
+    };
   }
 
   async isBlocked(companyId: string): Promise<boolean> {
