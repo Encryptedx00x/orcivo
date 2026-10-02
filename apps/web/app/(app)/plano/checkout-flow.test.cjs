@@ -83,8 +83,15 @@ test('site CTA params survive signup <-> login and land on the in-app checkout',
   assert.equal(intentLib.postAuthPath(intent), '/plano/checkout?plan=SOLO&cycle=MONTHLY');
 });
 
+test('legacy suffixed plan codes are normalized to plan + cycle', () => {
+  const intent = intentLib.readCheckoutIntent(new URLSearchParams('plan=SOLO_MONTHLY'));
+  assert.deepEqual({ ...intent }, { plan: 'SOLO', cycle: 'MONTHLY' });
+  const explicit = intentLib.readCheckoutIntent(new URLSearchParams('plan=MAIS_YEARLY&cycle=monthly'));
+  assert.deepEqual({ ...explicit }, { plan: 'MAIS', cycle: 'MONTHLY' });
+});
+
 test('invalid or missing plan falls back to the default destination', () => {
-  for (const q of ['', 'plan=LIVRE', 'plan=SOLO_MONTHLY', 'plan=PRO&cycle=YEARLY']) {
+  for (const q of ['', 'plan=LIVRE', 'plan=LEGACY_MONTHLY', 'plan=INVALID&cycle=YEARLY']) {
     const intent = intentLib.readCheckoutIntent(new URLSearchParams(q));
     assert.equal(intent, null, q);
     assert.equal(intentLib.postAuthPath(intent), '/dashboard');

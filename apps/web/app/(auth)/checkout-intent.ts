@@ -17,9 +17,11 @@ type ParamReader = { get(name: string): string | null };
 
 /** Lê plan/cycle da query string; null se não houver plano pago válido. */
 export function readCheckoutIntent(params: ParamReader | null | undefined): CheckoutIntent | null {
-  const plan = params?.get('plan')?.toUpperCase();
+  // Links antigos traziam o ciclo colado ao código (SOLO_MONTHLY); normaliza.
+  const legacy = params?.get('plan')?.toUpperCase().match(/^(.+)_(MONTHLY|YEARLY)$/);
+  const plan = legacy ? legacy[1] : params?.get('plan')?.toUpperCase();
   if (!plan || !(PAID_PLANS as readonly string[]).includes(plan)) return null;
-  const rawCycle = params?.get('cycle')?.toUpperCase();
+  const rawCycle = params?.get('cycle')?.toUpperCase() ?? legacy?.[2];
   const cycle: BillingCycle = rawCycle === 'MONTHLY' ? 'MONTHLY' : 'YEARLY';
   return { plan: plan as PaidPlan, cycle };
 }
