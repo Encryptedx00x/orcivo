@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlanCode, SubscriptionStatus } from '@prisma/client';
 import { PLAN_PRICING } from '@orcivo/shared-types';
@@ -197,6 +197,36 @@ export class SubscriptionService {
       checkout_url: providerSubscription?.checkoutUrl ?? null,
       pix: providerSubscription?.pix ?? null,
     };
+  }
+
+  /**
+   * Cancela a assinatura paga: encerra a cobrança recorrente no provedor e
+   * marca a assinatura local como CANCELLED (mesmo estado do webhook de
+   * cancelamento). Se o provedor falhar, nada é alterado localmente.
+   */
+  async cancelSubscription(companyId: string): Promise<{ status: SubscriptionStatus; plan_code: PlanCode }> {
+    const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
+    if (!sub || sub.plan_code === 'LIVRE') {
+      throw new BadRequestException('Não há assinatura paga para cancelar.');
+    }
+    if (sub.status === 'CANCELLED') {
+      return { status: sub.status, plan_code: sub.plan_code };
+    }
+
+    if (sub.asaas_sub_id) {
+      try {
+        await this.paymentProvider.cancelSubscription(sub.asaas_sub_id);
+      } catch (err) {
+        this.logger.error(`Falha ao cancelar subscription ${this.paymentProvider.provider}: ${err}`);
+        throw new BadGatewayException('Não foi possível cancelar agora. Tente novamente.');
+      }
+    }
+
+    const updated = await this.prisma.subscription.update({
+      where: { company_id: companyId },
+      data: { status: 'CANCELLED', cancelled_at: new Date() },
+    });
+    return { status: updated.status, plan_code: updated.plan_code };
   }
 
   async isBlocked(companyId: string): Promise<boolean> {

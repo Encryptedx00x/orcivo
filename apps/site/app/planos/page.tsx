@@ -3,54 +3,46 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 
+// O checkout roda dentro do app (autenticado): o site só leva ao signup/login
+// com plan/cycle na query string.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.orcivo.com.br';
+
 const plans = [
   {
     name: 'Orcivo Livre',
     code: 'LIVRE',
     monthly: 'Grátis',
     yearly: 'Grátis',
-    monthlyVal: null,
-    yearlyVal: null,
     features: ['5 clientes', '10 orçamentos/mês', 'PDF com marca d\'água', 'Suporte por e-mail'],
     highlight: false,
     cta: 'Criar conta grátis',
-    href: 'https://app.orcivo.com.br/signup',
   },
   {
     name: 'Orcivo Solo',
     code: 'SOLO',
     monthly: 'R$9,90/mês',
     yearly: 'R$79,90/ano',
-    monthlyVal: 'SOLO_MONTHLY',
-    yearlyVal: 'SOLO_YEARLY',
     features: ['50 clientes', '50 orçamentos/mês', 'PDF sem marca d\'água', 'Logo própria no PDF', 'Suporte prioritário'],
     highlight: false,
     cta: 'Assinar agora',
-    href: null,
   },
   {
     name: 'Orcivo Mais',
     code: 'MAIS',
-    monthly: 'R$19,90/mês',
+    monthly: 'R$24,90/mês',
     yearly: 'R$199,90/ano',
-    monthlyVal: 'MAIS_MONTHLY',
-    yearlyVal: 'MAIS_YEARLY',
     features: ['200 clientes', '200 orçamentos/mês', 'Relatórios financeiros', 'Até 3 membros na equipe', 'Suporte prioritário'],
     highlight: true,
     cta: 'Assinar agora',
-    href: null,
   },
   {
     name: 'Orcivo Equipe',
     code: 'EQUIPE',
-    monthly: 'R$39,90/mês',
-    yearly: 'R$399,90/ano',
-    monthlyVal: 'EQUIPE_MONTHLY',
-    yearlyVal: 'EQUIPE_YEARLY',
-    features: ['Uso amplo de clientes', 'Uso amplo de orçamentos', 'Contratos digitais', 'Até 10 membros', 'Suporte VIP'],
+    monthly: 'R$49,90/mês',
+    yearly: 'R$389,90/ano',
+    features: ['Uso ampliado de clientes', 'Uso ampliado de orçamentos', 'Contratos digitais', 'Até 10 membros', 'Suporte VIP'],
     highlight: false,
     cta: 'Assinar agora',
-    href: null,
   },
 ];
 
@@ -92,8 +84,10 @@ export default function PlanosPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {plans.map((plan) => {
             const price = cycle === 'yearly' ? plan.yearly : plan.monthly;
-            const planCode = cycle === 'yearly' ? plan.yearlyVal : plan.monthlyVal;
-            const href = plan.href ?? (planCode ? `/checkout?plan=${planCode}&cycle=${cycle.toUpperCase()}` : '/checkout');
+            const query = `?plan=${plan.code}&cycle=${cycle.toUpperCase()}`;
+            const isPaid = plan.code !== 'LIVRE';
+            const href = isPaid ? `${APP_URL}/signup${query}` : `${APP_URL}/signup`;
+            const loginHref = `${APP_URL}/login${query}`;
 
             return (
               <div
@@ -121,6 +115,11 @@ export default function PlanosPage() {
                 >
                   {plan.cta}
                 </Link>
+                {isPaid && (
+                  <Link href={loginHref} className="block text-center mt-3 text-sm text-slate-500 hover:text-slate-900">
+                    Já tenho conta
+                  </Link>
+                )}
               </div>
             );
           })}

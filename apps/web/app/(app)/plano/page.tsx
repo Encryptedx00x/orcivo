@@ -1,6 +1,9 @@
+import Link from 'next/link';
 import { Check, Inbox } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
+import { CancelButton } from './cancel-button';
+import { PLANS, priceLabel } from './plans';
 
 const T = {
   ink: '#0A0A0F',
@@ -15,56 +18,6 @@ const T = {
   successBg: '#DCFCE7',
 };
 
-interface PlanMeta {
-  code: string;
-  name: string;
-  price: string;
-  period: string;
-  tag: string | null;
-  features: string[];
-}
-
-const PLANS: PlanMeta[] = [
-  {
-    code: 'LIVRE',
-    name: 'Orcivo Livre',
-    price: 'R$ 0',
-    period: '',
-    tag: null,
-    features: ['1 usuário', 'Até 15 OS / mês', 'PDF com marca Orcivo', 'Suporte por e-mail'],
-  },
-  {
-    code: 'SOLO',
-    name: 'Orcivo Solo',
-    price: 'R$ 9,90',
-    period: '/mês',
-    tag: null,
-    features: ['3 usuários', 'OS conforme uso', 'Seu logo no PDF', 'Chave Pix'],
-  },
-  {
-    code: 'MAIS',
-    name: 'Orcivo Mais',
-    price: 'R$ 19,90',
-    period: '/mês',
-    tag: 'Recomendado',
-    features: [
-      'Até 10 usuários',
-      'Tudo do Orcivo Solo',
-      'Catálogo avançado',
-      'Relatórios',
-      'Suporte prioritário',
-    ],
-  },
-  {
-    code: 'EQUIPE',
-    name: 'Orcivo Equipe',
-    price: 'R$ 39,90',
-    period: '/mês',
-    tag: 'Para escala',
-    features: ['Equipe ampliada', 'Tudo do Orcivo Mais', 'Multi-empresa', 'Suporte dedicado'],
-  },
-];
-
 interface Subscription {
   plan_code: string;
   status: string | null;
@@ -76,6 +29,15 @@ interface SubPayment {
   paid_at: string | null;
   created_at: string;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Ativo',
+  TRIALING: 'Aguardando pagamento',
+  PAST_DUE: 'Em atraso',
+  BLOCKED: 'Inativo',
+  CANCELLED: 'Cancelado',
+  EXPIRED: 'Expirado',
+};
 
 const PAY_STATUS: Record<string, string> = {
   RECEIVED: 'Pago',
@@ -90,7 +52,11 @@ function ddmmyy(iso?: string | null): string {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
-export default async function PlanoPage(): Promise<JSX.Element> {
+export default async function PlanoPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}): Promise<JSX.Element> {
   const [sub, paymentsRes, members] = await Promise.all([
     apiFetch<Subscription>('/billing/subscription'),
     apiFetch<{ data: SubPayment[] }>('/billing/payments'),
@@ -100,13 +66,11 @@ export default async function PlanoPage(): Promise<JSX.Element> {
   const memberCount = Array.isArray(members) ? members.length : 1;
 
   const current = PLANS.find((p) => p.code === sub.plan_code) ?? PLANS[0];
-  const isFree = current.code === 'LIVRE';
-  const statusLabel =
-    sub.status === 'ACTIVE'
-      ? 'Ativo'
-      : sub.status === 'PAST_DUE'
-        ? 'Em atraso'
-        : (sub.status ?? '—');
+  const isLivre = current.code === 'LIVRE';
+  const isCancelled = sub.status === 'CANCELLED';
+  const statusLabel = sub.status ? (STATUS_LABEL[sub.status] ?? sub.status) : '—';
+  const justSubscribed = searchParams?.['checkout'] === 'ok';
+  const currentPrice = priceLabel(current.code, 'MONTHLY');
 
   return (
     <div className="ov-page" style={{ maxWidth: 1200 }}>
@@ -121,13 +85,32 @@ export default async function PlanoPage(): Promise<JSX.Element> {
               margin: 0,
             }}
           >
-            Plano e assinatura
+            Gerenciar assinatura
           </h1>
           <div style={{ color: T.fg3, fontSize: 14, marginTop: 4 }}>
-            Gerencie seu plano, pagamentos e uso
+            Veja o status, troque de plano ou cancele quando quiser
           </div>
         </div>
+        <a href="#planos" style={{ color: T.purple600, fontWeight: 600, fontSize: 14 }}>
+          Ver planos
+        </a>
       </div>
+
+      {justSubscribed && (
+        <div
+          role="status"
+          style={{
+            background: T.successBg,
+            color: '#166534',
+            borderRadius: 10,
+            padding: '12px 16px',
+            fontSize: 14,
+            marginBottom: 16,
+          }}
+        >
+          Pagamento em andamento. Sua assinatura é ativada assim que o pagamento for confirmado.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
         {/* Current plan */}
@@ -160,7 +143,7 @@ export default async function PlanoPage(): Promise<JSX.Element> {
                 {current.name}
               </div>
               <div style={{ fontSize: 14, opacity: 0.85, marginTop: 4 }}>
-                {isFree ? 'Gratuito · uso justo' : `${current.price}${current.period}`}
+                {isLivre ? 'Gratuito · uso justo' : currentPrice}
               </div>
             </div>
             <span
@@ -243,7 +226,7 @@ export default async function PlanoPage(): Promise<JSX.Element> {
             >
               <Inbox size={26} strokeWidth={1.5} />
               <p style={{ fontSize: 13, margin: 0, textAlign: 'center' }}>
-                {isFree
+                {isLivre
                   ? 'O plano Livre não gera cobranças.'
                   : 'Nenhum pagamento registrado ainda.'}
               </p>
@@ -299,13 +282,28 @@ export default async function PlanoPage(): Promise<JSX.Element> {
         </div>
       </div>
 
+      {!isLivre && !isCancelled && (
+        <div className="ov-card ov-card-body" style={{ marginBottom: 24 }}>
+          <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600, color: T.ink }}>
+            Cancelar assinatura
+          </h3>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: T.fg3 }}>
+            Encerra a cobrança recorrente do {current.name}.
+          </p>
+          <CancelButton />
+        </div>
+      )}
+
       {/* Plan comparison */}
-      <h3 style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}>
-        Compare os planos
+      <h3
+        id="planos"
+        style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}
+      >
+        Trocar de plano
       </h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
         {PLANS.map((p) => {
-          const isCurrent = p.code === current.code;
+          const isCurrent = p.code === current.code && !isCancelled;
           return (
             <div
               key={p.code}
@@ -347,14 +345,7 @@ export default async function PlanoPage(): Promise<JSX.Element> {
                   letterSpacing: '-0.01em',
                 }}
               >
-                {p.price}
-                {p.period && (
-                  <span
-                    style={{ fontSize: 13, color: T.fg3, fontWeight: 500, fontFamily: 'inherit' }}
-                  >
-                    {p.period}
-                  </span>
-                )}
+                {p.code === 'LIVRE' ? 'R$ 0' : priceLabel(p.code, 'MONTHLY')}
               </div>
               <ul
                 style={{
@@ -378,24 +369,46 @@ export default async function PlanoPage(): Promise<JSX.Element> {
                   </li>
                 ))}
               </ul>
-              <button
-                style={{
-                  width: '100%',
-                  marginTop: 18,
-                  height: 36,
-                  borderRadius: 9,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  fontFamily: 'inherit',
-                  cursor: isCurrent ? 'default' : 'pointer',
-                  background: isCurrent ? 'transparent' : T.purple600,
-                  color: isCurrent ? T.fg3 : '#fff',
-                  border: isCurrent ? `1px solid ${T.border1}` : 'none',
-                }}
-                disabled={isCurrent}
-              >
-                {isCurrent ? 'Plano atual' : `Mudar para ${p.name.replace('Orcivo ', '')}`}
-              </button>
+              {isCurrent || p.code === 'LIVRE' ? (
+                <button
+                  style={{
+                    width: '100%',
+                    marginTop: 18,
+                    height: 36,
+                    borderRadius: 9,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: 'inherit',
+                    cursor: 'default',
+                    background: 'transparent',
+                    color: T.fg3,
+                    border: `1px solid ${T.border1}`,
+                  }}
+                  disabled
+                >
+                  {isCurrent ? 'Plano atual' : (isCancelled ? 'Livre após o cancelamento' : 'Cancele para voltar ao Livre')}
+                </button>
+              ) : (
+                <Link
+                  href={`/plano/checkout?plan=${p.code}&cycle=YEARLY`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '100%',
+                    marginTop: 18,
+                    height: 36,
+                    borderRadius: 9,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: T.purple600,
+                    color: '#fff',
+                    textDecoration: 'none',
+                  }}
+                >
+                  {isLivre ? `Assinar ${p.name.replace('Orcivo ', '')}` : `Mudar para ${p.name.replace('Orcivo ', '')}`}
+                </Link>
+              )}
             </div>
           );
         })}
