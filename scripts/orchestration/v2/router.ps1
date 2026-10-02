@@ -154,10 +154,15 @@ function Resolve-Provider {
         # GLM runs through the OpenCode CLI with a FIXED model contract; the
         # model id is never a knob and an override is never accepted.
         if($ModelOverride -and $ModelOverride -ne (Get-GlmModelId)){return [ordered]@{ok=$false;provider='glm';reason="GLM model override '$ModelOverride' violates the fixed model contract"}}
-        $plan=Get-GlmRuntimePlan -Profile $Profile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
+        if($Profile -eq 'CRITICAL' -and -not $ReviewOnly){return [ordered]@{ok=$false;provider='glm';reason='CRITICAL implementation work is reserved for Codex Plus Terra'}}
+        # A cross-provider review of CRITICAL work uses GLM's strongest
+        # supported review profile without making it eligible to implement
+        # (mirrors the DeepSeek carve-out immediately below).
+        $glmProfile=$(if($Profile -eq 'CRITICAL' -and $ReviewOnly){'REASONING'}else{$Profile})
+        $plan=Get-GlmRuntimePlan -Profile $glmProfile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
         $cfg=Get-V2Config;$bin=$cfg.providers.glm.bin
         if(-not(Get-Command $bin -ErrorAction SilentlyContinue)){return [ordered]@{ok=$false;provider='glm';reason="OpenCode CLI '$bin' not installed"}}
-        $intent=[string]$cfg.router.profileIntent.$Profile.reasoning
+        $intent=[string]$cfg.router.profileIntent.$glmProfile.reasoning
         return [ordered]@{ok=$true;provider='glm';bin=$bin;profile=$Profile;reasoningIntent=$intent;model=(Get-GlmModelId);maxInvocationsPerTask=$null;invocationArgs=(Get-GlmInvocationArgs);environment=@{};outputJson=$true;freshContextFlag='(opencode run starts a fresh session per invocation)';sandboxFlag='(--pure external plugins disabled)';supportsExplicitReasoning=$false;limitations=@("glm model is fixed by contract: $(Get-GlmModelId); no variant/reasoning selector is pinned");capabilityVersion='';estimatedUsd=[decimal]0}
     }
     if($Provider -eq 'deepseek'){
