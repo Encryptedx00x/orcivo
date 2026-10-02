@@ -922,8 +922,59 @@ function Invoke-NativeCaptured {
     [void]$errJob.AddParameters(@{ reader = $proc.StandardError; logPath = $StderrLog; patterns = (Get-AllRedactionPatterns); mlPatterns = @($cfgR.multilinePatterns); repl = $cfgR.replacement; max = 100000 })
     $errHandle = $errJob.BeginInvoke()
 
+    # BUG FIX (observed 2026-10-02): stdout used to be read synchronously to EOF
+    # on this thread BEFORE WaitForExit ever ran. A provider that hangs with its
+    # stdout pipe still open (alive, no more output, no more CPU) therefore
+    # blocked this call forever - TimeoutSec was never evaluated. Stdout now
+    # runs in its own PowerShell-instance job, exactly like stderr already did,
+    # so WaitForExit always gets to enforce the real timeout.
     $stdoutPatterns=$(if($StdoutRedactionMode -eq 'ReviewedSource'){Get-SourceFixtureSecretPatterns}else{Get-AllRedactionPatterns})
-    $stdout = Copy-StreamRedacted -Reader $proc.StandardOutput -LogPath $StdoutLog -Patterns $stdoutPatterns
+    $outJob = [System.Management.Automation.PowerShell]::Create()
+    [void]$outJob.AddScript({
+        param($reader, $logPath, $patterns, $triggers, $bufCap, $mlPats, $repl, $maxRedactLine, $max)
+        $sw = New-Object System.IO.StreamWriter($logPath, $true, (New-Object System.Text.UTF8Encoding($false)))
+        $collected = New-Object System.Text.StringBuilder
+        $buffer = $null
+        $protectLine = {
+            param($line)
+            if ($line.Length -gt $maxRedactLine) { return "[REDACTED: over-long line withheld ($($line.Length) chars > $maxRedactLine)]" }
+            $out = $line
+            foreach ($pat in $patterns) {
+                try { $out = [regex]::Replace($out, $pat, $repl) }
+                catch { return '[REDACTED: line withheld - redaction pattern error, failing closed]' }
+            }
+            return $out
+        }
+        $flushBlock = {
+            param($blockText)
+            $red = $blockText
+            foreach ($p in $mlPats) { try { $red = [regex]::Replace($red, $p, $repl, [System.Text.RegularExpressions.RegexOptions]::Singleline) } catch {} }
+            foreach ($t in $triggers) { $idx = $red.IndexOf($t); if ($idx -ge 0) { $red = $red.Substring(0, $idx) + '[REDACTED: multiline secret block]'; break } }
+            $sw.Write($red); $sw.Flush()
+            if ($collected.Length -lt $max) { [void]$collected.Append($red) }
+        }
+        try {
+            while ($null -ne ($line = $reader.ReadLine())) {
+                $isTrigger = $false
+                foreach ($t in $triggers) { if ($line.Contains($t)) { $isTrigger = $true; break } }
+                if ($null -eq $buffer -and -not $isTrigger) {
+                    $red = & $protectLine $line
+                    $sw.WriteLine($red); $sw.Flush()
+                    if ($collected.Length -lt $max) { [void]$collected.AppendLine($red) }
+                    continue
+                }
+                if ($null -eq $buffer -and $isTrigger) { $buffer = New-Object System.Text.StringBuilder; [void]$buffer.AppendLine($line); continue }
+                [void]$buffer.AppendLine($line)
+                $closed = ($line -match 'END [A-Z0-9 ]*PRIVATE KEY-----')
+                if ($closed -or $buffer.Length -gt ($bufCap * 200)) { & $flushBlock $buffer.ToString(); $buffer = $null }
+            }
+            if ($null -ne $buffer) { & $flushBlock $buffer.ToString() }
+        } finally { $sw.Dispose() }
+        return $collected.ToString()
+    })
+    [void]$outJob.AddParameters(@{ reader = $proc.StandardOutput; logPath = $StdoutLog; patterns = $stdoutPatterns; triggers = @($cfgR.multilineTriggers); bufCap = [int]$cfgR.multilineBufferLines; mlPats = (Get-MultilinePatterns); repl = $cfgR.replacement; maxRedactLine = $script:MaxRedactLine; max = 200000 })
+    $outHandle = $outJob.BeginInvoke()
+
     $timedOut = $false
     if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
         $timedOut = $true
@@ -932,6 +983,12 @@ function Invoke-NativeCaptured {
         try { $proc.Kill() } catch { }
         $proc.WaitForExit(5000) | Out-Null
     }
+    $stdout = ''
+    try {
+        if ($outHandle.AsyncWaitHandle.WaitOne(15000)) { $stdout = $outJob.EndInvoke($outHandle) }
+        else { try { $outJob.Stop() } catch { } }
+    } catch { }
+    try { $outJob.Dispose() } catch { }
     $stderr = ''
     try {
         if ($errHandle.AsyncWaitHandle.WaitOne(15000)) { $stderr = $errJob.EndInvoke($errHandle) }
