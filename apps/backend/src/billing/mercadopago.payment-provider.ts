@@ -32,6 +32,7 @@ interface MercadoPagoPreapprovalResponse {
   payer_id?: number | string;
   init_point?: string;
   next_payment_date?: string | null;
+  external_reference?: string | null;
   auto_recurring?: { transaction_amount?: number };
 }
 
@@ -41,6 +42,8 @@ interface MercadoPagoPaymentResponse {
   status_detail?: string;
   transaction_amount?: number;
   date_of_expiration?: string | null;
+  date_approved?: string | null;
+  external_reference?: string | null;
   payer?: { id?: string | number | null };
   point_of_interaction?: {
     transaction_data?: {
@@ -49,6 +52,19 @@ interface MercadoPagoPaymentResponse {
       ticket_url?: string;
     };
   };
+}
+
+/** Authoritative state of a Mercado Pago resource, as fetched for a webhook notification. */
+export type MercadoPagoResourceKind = 'payment' | 'preapproval';
+
+export interface MercadoPagoResourceSnapshot {
+  kind: MercadoPagoResourceKind;
+  id: string;
+  status: ProviderSubscriptionStatus;
+  externalReference: string | null;
+  amount: string | null;
+  dueDate: string | null;
+  paidAt: string | null;
 }
 
 export class MercadoPagoApiError extends Error {
@@ -290,6 +306,43 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
       `/preapproval/${id}`,
     );
     return this.fromPreapproval(preapproval, String(preapproval.payer_id ?? ''));
+  }
+
+  /**
+   * Consulta o recurso real na API do MP. Webhooks são só um aviso: o estado
+   * persistido deve vir sempre desta resposta, nunca do corpo da notificação.
+   */
+  async fetchResource(
+    kind: MercadoPagoResourceKind,
+    resourceId: string,
+  ): Promise<MercadoPagoResourceSnapshot> {
+    const id = encodeURIComponent(resourceId);
+    if (kind === 'payment') {
+      const payment = await this.request<MercadoPagoPaymentResponse>('GET', `/v1/payments/${id}`);
+      return {
+        kind,
+        id: String(payment.id),
+        status: mapPaymentStatus(payment.status, payment.status_detail),
+        externalReference: payment.external_reference || null,
+        amount: payment.transaction_amount !== undefined ? String(payment.transaction_amount) : null,
+        dueDate: payment.date_of_expiration?.slice(0, 10) ?? null,
+        paidAt: payment.date_approved ?? null,
+      };
+    }
+    const preapproval = await this.request<MercadoPagoPreapprovalResponse>(
+      'GET',
+      `/preapproval/${id}`,
+    );
+    const amount = preapproval.auto_recurring?.transaction_amount;
+    return {
+      kind,
+      id: String(preapproval.id),
+      status: mapPreapprovalStatus(preapproval.status),
+      externalReference: preapproval.external_reference || null,
+      amount: amount !== undefined ? String(amount) : null,
+      dueDate: preapproval.next_payment_date?.slice(0, 10) ?? null,
+      paidAt: null,
+    };
   }
 
   private isPaymentId(id: string): boolean {

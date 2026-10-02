@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bullmq';
-import { WebhookController } from './webhook.controller';
-import { WebhookAsaasProcessor } from './webhook-asaas.processor';
-import { ASAAS_QUEUE } from './webhook-asaas.processor';
+import { BillingModule } from '../billing/billing.module';
+import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
+import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: ASAAS_QUEUE })],
-  controllers: [WebhookController],
-  providers: [WebhookAsaasProcessor],
+  imports: [BillingModule],
+  controllers: [MercadoPagoWebhookController],
+  providers: [MercadoPagoWebhookService],
 })
 export class WebhookModule {}
