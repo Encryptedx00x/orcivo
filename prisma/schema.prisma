@@ -368,6 +368,7 @@ enum SubscriptionStatus {
 
 enum WebhookProvider {
   ASAAS
+  MERCADOPAGO
 }
 
 enum WebhookEventStatus {

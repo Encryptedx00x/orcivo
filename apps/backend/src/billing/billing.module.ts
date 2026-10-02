@@ -6,10 +6,11 @@ import { BillingController } from './billing.controller';
 
 @Module({
   providers: [
-    { provide: PAYMENT_PROVIDER, useClass: MercadoPagoPaymentProvider },
+    MercadoPagoPaymentProvider,
+    { provide: PAYMENT_PROVIDER, useExisting: MercadoPagoPaymentProvider },
     SubscriptionService,
   ],
   controllers: [BillingController],
-  exports: [SubscriptionService],
+  exports: [SubscriptionService, MercadoPagoPaymentProvider],
 })
 export class BillingModule {}
