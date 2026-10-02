@@ -1,13 +1,15 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { User, Mail, Phone, Lock, Eye, EyeOff, Building, MapPin, Shield } from 'lucide-react';
+import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-export default function SignupPage(): JSX.Element {
+function SignupForm(): JSX.Element {
   const router = useRouter();
+  const intent = readCheckoutIntent(useSearchParams());
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +46,7 @@ export default function SignupPage(): JSX.Element {
     });
     const data = await res.json();
     if (!res.ok) { setError(data.message ?? 'Erro ao criar empresa.'); setLoading(false); return; }
-    router.push('/dashboard'); router.refresh();
+    router.push(postAuthPath(intent)); router.refresh();
   };
 
   return (
@@ -52,7 +54,7 @@ export default function SignupPage(): JSX.Element {
       <div style={{ textAlign: 'right', marginBottom: 24 }}>
         <span style={{ fontSize: 13, color: '#64748B' }}>
           Já tem conta?{' '}
-          <Link href="/login" style={{ color: '#6D28D9', fontWeight: 600, textDecoration: 'none' }}>Entrar</Link>
+          <Link href={`/login${intentQuery(intent)}`} style={{ color: '#6D28D9', fontWeight: 600, textDecoration: 'none' }}>Entrar</Link>
         </span>
       </div>
 
@@ -186,6 +188,14 @@ export default function SignupPage(): JSX.Element {
         </>
       )}
     </div>
+  );
+}
+
+export default function SignupPage(): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   );
 }
 

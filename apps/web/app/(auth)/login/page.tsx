@@ -1,11 +1,13 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
-export default function LoginPage(): JSX.Element {
+function LoginForm(): JSX.Element {
   const router = useRouter();
+  const intent = readCheckoutIntent(useSearchParams());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,7 +24,7 @@ export default function LoginPage(): JSX.Element {
       body: JSON.stringify({ email, password }),
     });
     if (!res.ok) { setError('E-mail ou senha inválidos.'); setLoading(false); return; }
-    router.push('/dashboard'); router.refresh();
+    router.push(postAuthPath(intent)); router.refresh();
   };
 
   return (
@@ -30,7 +32,7 @@ export default function LoginPage(): JSX.Element {
       <div style={{ textAlign: 'right', marginBottom: 32 }}>
         <span style={{ fontSize: 13, color: '#64748B' }}>
           Novo no Orcivo?{' '}
-          <Link href="/signup" style={{ color: '#6D28D9', fontWeight: 600, textDecoration: 'none' }}>
+          <Link href={`/signup${intentQuery(intent)}`} style={{ color: '#6D28D9', fontWeight: 600, textDecoration: 'none' }}>
             Criar conta grátis
           </Link>
         </span>
@@ -99,6 +101,14 @@ export default function LoginPage(): JSX.Element {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage(): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
 
