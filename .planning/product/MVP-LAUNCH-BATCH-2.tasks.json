@@ -184,7 +184,7 @@
       "touchesPaths": ["apps/backend/src/billing/mercadopago.payment-provider.ts", "apps/backend/src/billing/mercadopago.payment-provider.spec.ts"],
       "risk": "B",
       "productBatch": "MVP-LAUNCH-BATCH-2",
-      "ownerGate": "none",
+      "ownerGate": "level-c-mp-env-code-change",
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
       "candidateConstraints": {},
       "verificationProfile": "B",
