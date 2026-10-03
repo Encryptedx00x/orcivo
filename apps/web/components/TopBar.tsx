@@ -228,6 +228,7 @@ export function TopBar(): JSX.Element {
           {open && (
             <section
               id={feedId}
+              className="ov-notif-panel"
               aria-label="Notificações"
               aria-live="polite"
               style={{
@@ -237,11 +238,14 @@ export function TopBar(): JSX.Element {
                 right: 0,
                 width: 384,
                 maxWidth: 'calc(100vw - 24px)',
+                maxHeight: 'calc(100vh - 96px)',
                 background: '#fff',
                 border: '1px solid #E2E8F0',
                 borderRadius: 12,
                 boxShadow: '0 12px 32px rgba(15, 23, 42, 0.14)',
                 overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
               <div
@@ -251,6 +255,7 @@ export function TopBar(): JSX.Element {
                   alignItems: 'baseline',
                   padding: '14px 16px',
                   borderBottom: '1px solid #E2E8F0',
+                  flexShrink: 0,
                 }}
               >
                 <strong style={{ fontSize: 14, color: '#0A0A0F' }}>Atividades</strong>
@@ -260,7 +265,7 @@ export function TopBar(): JSX.Element {
                     : 'Tudo em dia'}
                 </span>
               </div>
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 420, overflowY: 'auto', minHeight: 0 }}>
                 {loading && (
                   <p style={{ padding: '18px 16px', margin: 0, fontSize: 13, color: '#64748B' }}>
                     Carregando atividades…

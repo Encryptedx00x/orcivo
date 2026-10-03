@@ -204,7 +204,7 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
             <tbody>
               {filtered.map((order) => (
                 <tr key={order.id}>
-                  <td>
+                  <td data-label="Número">
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
                       style={{
@@ -217,27 +217,36 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
                       #{order.number}
                     </Link>
                   </td>
-                  <td style={{ fontWeight: 500 }}>{order.customer?.name ?? '—'}</td>
-                  <td className="muted">{order.title ?? '—'}</td>
-                  <td className="muted">{order.technician?.name ?? '—'}</td>
-                  <td>
+                  <td data-label="Cliente" style={{ fontWeight: 500 }}>
+                    {order.customer?.name ?? '—'}
+                  </td>
+                  <td data-label="Serviço" className="muted">
+                    {order.title ?? '—'}
+                  </td>
+                  <td data-label="Técnico" className="muted">
+                    {order.technician?.name ?? '—'}
+                  </td>
+                  <td data-label="Status">
                     <Pill k={SM[order.status]?.[0] ?? 'slate'}>
                       {SM[order.status]?.[1] ?? order.status}
                     </Pill>
                   </td>
                   <td
+                    data-label="Agendada"
                     className="muted"
                     style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
                   >
                     {fmtDate(order.scheduled_at)}
                   </td>
                   <td
+                    data-label="Finalizada"
                     className="muted"
                     style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
                   >
                     {fmtDate(order.finished_at)}
                   </td>
                   <td
+                    data-label="Total"
                     style={{
                       textAlign: 'right',
                       fontFamily: 'JetBrains Mono, monospace',
@@ -247,7 +256,7 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
                   >
                     {fmtMoney(order.total)}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td data-label="" style={{ textAlign: 'right' }}>
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
                       style={{ color: '#94A3B8', display: 'inline-flex' }}

@@ -53,8 +53,16 @@ export default function NovoClientePage(): JSX.Element {
     const payload = Object.fromEntries(
       Object.entries({
         name: form.name,
+        type: tipo === 'empresa' ? 'PJ' : 'PF',
+        tax_id: form.cpf || undefined,
         phone: form.phone || undefined,
+        phone2: form.phone2 || undefined,
         email: form.email || undefined,
+        cep: form.cep || undefined,
+        street: form.street || undefined,
+        number: form.number || undefined,
+        complement: form.complement || undefined,
+        neighborhood: form.neighborhood || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
         notes: form.notes || undefined,

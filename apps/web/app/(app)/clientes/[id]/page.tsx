@@ -5,8 +5,15 @@ import { ClienteDetail } from './ClienteDetail';
 interface Customer {
   id: string;
   name: string;
+  tax_id: string | null;
   phone: string | null;
+  phone2: string | null;
   email: string | null;
+  cep: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
   city: string | null;
   state: string | null;
   notes: string | null;

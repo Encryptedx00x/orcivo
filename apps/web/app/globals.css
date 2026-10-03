@@ -389,6 +389,74 @@ body {
   }
 }
 
+/* ── Quote item editor (novo orçamento) ── */
+.ov-items-head {
+  display: grid;
+  grid-template-columns: 1fr 70px 110px 110px 32px;
+  gap: 10px;
+  padding: 8px 4px;
+  color: var(--fg-3);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-1);
+}
+.ov-item-row {
+  display: grid;
+  grid-template-columns: 1fr 70px 110px 110px 32px;
+  grid-template-areas: 'desc qty price subtotal remove';
+  gap: 10px;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border-2);
+}
+.ov-item-desc {
+  grid-area: desc;
+  min-width: 0;
+}
+.ov-item-qty {
+  grid-area: qty;
+}
+.ov-item-price {
+  grid-area: price;
+}
+.ov-item-subtotal {
+  grid-area: subtotal;
+  text-align: right;
+}
+.ov-item-remove {
+  grid-area: remove;
+}
+.ov-item-label {
+  display: none;
+}
+@media (max-width: 640px) {
+  .ov-items-head {
+    display: none;
+  }
+  .ov-item-row {
+    grid-template-columns: 1fr 1fr 32px;
+    grid-template-areas:
+      'desc desc remove'
+      'qty price price'
+      'subtotal subtotal subtotal';
+    row-gap: 6px;
+    padding: 14px 4px;
+  }
+  .ov-item-subtotal {
+    padding-top: 4px;
+    border-top: 1px dashed var(--border-2);
+  }
+  .ov-item-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-3);
+    margin-bottom: 4px;
+  }
+}
+
 /* ── Label ── */
 .ov-label {
   display: block;
@@ -479,6 +547,58 @@ body {
 }
 .ov-table .num {
   font-variant-numeric: tabular-nums;
+}
+/* Below 640px, rows become labeled cards instead of a cramped/clipped
+   table — scrolling a data table sideways on a phone is not usable. Each
+   td needs a data-label attribute; empty-header cells (actions/chevron)
+   should carry data-label="" so they render without a label row. */
+@media (max-width: 640px) {
+  .ov-table thead {
+    display: none;
+  }
+  .ov-table,
+  .ov-table tbody,
+  .ov-table tr {
+    display: block;
+    width: 100%;
+  }
+  .ov-table tbody tr {
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-md);
+    margin-bottom: 10px;
+    padding: 6px 14px;
+  }
+  .ov-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+  .ov-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-2);
+  }
+  .ov-table tr td:last-child {
+    border-bottom: 0;
+  }
+  .ov-table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .ov-table td[data-label='']::before {
+    content: none;
+  }
+  .ov-table td[data-label=''] {
+    padding: 2px 0 0;
+    border-bottom: 0;
+    justify-content: flex-end;
+  }
 }
 
 /* ── Tabs ── */

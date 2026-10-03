@@ -8,8 +8,15 @@ import { contactLinks } from '../contact-links';
 interface Customer {
   id: string;
   name: string;
+  tax_id: string | null;
   phone: string | null;
+  phone2: string | null;
   email: string | null;
+  cep: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
   city: string | null;
   state: string | null;
   notes: string | null;
@@ -211,16 +218,31 @@ export function ClienteDetail({
 
           {/* Contact KVs */}
           <h3 style={kvHead}>Contato</h3>
+          {customer.tax_id && <KV k="CPF/CNPJ" v={customer.tax_id} />}
           {customer.phone && <KV k="Telefone" v={customer.phone} />}
+          {customer.phone2 && <KV k="Telefone secundário" v={customer.phone2} />}
           {customer.email && <KV k="Email" v={customer.email} />}
 
           {/* Address */}
-          {(customer.city || customer.state) && (
+          {(customer.street || customer.city || customer.state) && (
             <>
-              <h3 style={{ ...kvHead, marginTop: 18 }}>Localização</h3>
+              <h3 style={{ ...kvHead, marginTop: 18 }}>Endereço</h3>
               <div style={{ fontSize: 13, color: '#334155', lineHeight: '20px' }}>
-                {customer.city}
-                {customer.state ? ` / ${customer.state}` : ''}
+                {customer.street && (
+                  <div>
+                    {customer.street}
+                    {customer.number ? `, ${customer.number}` : ''}
+                    {customer.complement ? ` — ${customer.complement}` : ''}
+                  </div>
+                )}
+                {(customer.neighborhood || customer.city || customer.state) && (
+                  <div>
+                    {customer.neighborhood && `${customer.neighborhood} · `}
+                    {customer.city}
+                    {customer.state ? ` / ${customer.state}` : ''}
+                  </div>
+                )}
+                {customer.cep && <div>CEP {customer.cep}</div>}
               </div>
             </>
           )}

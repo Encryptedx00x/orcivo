@@ -119,7 +119,13 @@ model Customer {
   type                CustomerType?
   tax_id              String?
   phone               String?
+  phone2              String?
   email               String?
+  cep                 String?
+  street              String?
+  number              String?
+  complement          String?
+  neighborhood        String?
   city                String?
   state               String?
   notes               String?

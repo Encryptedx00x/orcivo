@@ -181,10 +181,13 @@ export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Elem
             <tbody>
               {filtered.map((item) => (
                 <tr key={item.id}>
-                  <td>
+                  <td data-label="Tipo">
                     <Pill k="brand">{TYPE_LABEL[item.type] ?? item.type}</Pill>
                   </td>
-                  <td style={{ fontWeight: 500, color: item.is_active ? '#0A0A0F' : '#64748B' }}>
+                  <td
+                    data-label="Item"
+                    style={{ fontWeight: 500, color: item.is_active ? '#0A0A0F' : '#64748B' }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {item.photo_url ? (
                         <img
@@ -205,8 +208,10 @@ export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Elem
                       <span>{item.name}</span>
                     </div>
                   </td>
-                  <td className="muted">{item.unit ?? '—'}</td>
-                  <td>
+                  <td data-label="Unidade" className="muted">
+                    {item.unit ?? '—'}
+                  </td>
+                  <td data-label="Estoque">
                     <div
                       style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}
                     >
@@ -214,10 +219,14 @@ export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Elem
                       {isLowStock(item) && <Pill k="warning">Estoque baixo</Pill>}
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <td
+                    data-label="Preço de custo"
+                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  >
                     {item.cost_price !== undefined ? formatMoney(item.cost_price) : '—'}
                   </td>
                   <td
+                    data-label="Preço de venda"
                     style={{
                       textAlign: 'right',
                       fontVariantNumeric: 'tabular-nums',
@@ -226,14 +235,14 @@ export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Elem
                   >
                     {formatMoney(item.sale_price ?? item.unit_price)}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     {item.is_active ? (
                       <Pill k="success">Ativo</Pill>
                     ) : (
                       <Pill k="slate">Inativo</Pill>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td data-label="" style={{ textAlign: 'right' }}>
                     <Link
                       href={`/catalogo/${item.id}/editar`}
                       aria-label={`Editar ${item.name}`}

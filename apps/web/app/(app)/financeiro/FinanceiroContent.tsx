@@ -318,6 +318,7 @@ export function FinanceiroContent({
           </div>
         ) : (
           <table
+            className="ov-table"
             style={{
               width: '100%',
               borderCollapse: 'separate',
@@ -377,6 +378,7 @@ export function FinanceiroContent({
                   return (
                     <tr key={row.id}>
                       <td
+                        data-label="Cliente"
                         style={{
                           padding: '12px 16px',
                           fontSize: 14,
@@ -388,11 +390,13 @@ export function FinanceiroContent({
                         {row.customer}
                       </td>
                       <td
+                        data-label="Descrição"
                         style={{ padding: '12px 16px', fontSize: 13, color: T.fg3, borderBottom }}
                       >
                         {row.description || '—'}
                       </td>
                       <td
+                        data-label="Valor"
                         style={{
                           padding: '12px 16px',
                           fontSize: 14,
@@ -406,14 +410,16 @@ export function FinanceiroContent({
                         {row.amount}
                       </td>
                       <td
+                        data-label="Método"
                         style={{ padding: '12px 16px', fontSize: 14, color: T.fg3, borderBottom }}
                       >
                         {row.method}
                       </td>
-                      <td style={{ padding: '12px 16px', borderBottom }}>
+                      <td data-label="Status" style={{ padding: '12px 16px', borderBottom }}>
                         <StatusBadge status={row.status} />
                       </td>
                       <td
+                        data-label="Vencimento"
                         style={{
                           padding: '12px 16px',
                           fontSize: 13,
@@ -425,6 +431,7 @@ export function FinanceiroContent({
                         {row.due}
                       </td>
                       <td
+                        data-label="Pago em"
                         style={{
                           padding: '12px 16px',
                           fontSize: 13,
@@ -435,7 +442,10 @@ export function FinanceiroContent({
                       >
                         {row.paidAt}
                       </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', borderBottom }}>
+                      <td
+                        data-label=""
+                        style={{ padding: '12px 16px', textAlign: 'right', borderBottom }}
+                      >
                         <EntityHistory
                           entityType="payment"
                           entityId={row.id}

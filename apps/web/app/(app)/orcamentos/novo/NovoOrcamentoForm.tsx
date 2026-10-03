@@ -423,138 +423,84 @@ export default function NovoOrcamentoForm(): JSX.Element {
             </p>
           )}
 
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <table
-              style={{ width: '100%', minWidth: 560, borderCollapse: 'separate', borderSpacing: 0 }}
-            >
-              {items.length > 0 && (
-                <thead>
-                  <tr>
-                    {['Item', 'Qtd', 'Unidade', 'Preço un.', 'Subtotal', ''].map((h) => (
-                      <th
-                        key={h}
-                        style={{
-                          textAlign: h === 'Subtotal' || h === 'Preço un.' ? 'right' : 'left',
-                          padding: '8px 12px',
-                          background: T.slate50,
-                          color: T.fg3,
-                          fontWeight: 500,
-                          fontSize: 11,
-                          textTransform: 'uppercase',
-                          letterSpacing: '.04em',
-                          borderBottom: `1px solid ${T.border1}`,
-                        }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-              )}
-              <tbody>
-                {items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border2}` }}>
-                      <input
-                        className="ov-input"
-                        style={{ height: 36, fontSize: 13 }}
-                        value={item.description}
-                        onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                        placeholder="Descrição do item"
-                        required
-                      />
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 12px',
-                        borderBottom: `1px solid ${T.border2}`,
-                        width: 80,
-                      }}
-                    >
-                      <input
-                        className="ov-input"
-                        style={{ height: 36, fontSize: 13, textAlign: 'right' }}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateItem(idx, 'quantity', e.target.value.replace(',', '.'))
-                        }
-                        required
-                      />
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 12px',
-                        borderBottom: `1px solid ${T.border2}`,
-                        width: 80,
-                        color: T.fg3,
-                        fontSize: 13,
-                      }}
-                    >
-                      un
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 12px',
-                        borderBottom: `1px solid ${T.border2}`,
-                        width: 110,
-                      }}
-                    >
-                      <input
-                        className="ov-input"
-                        style={{
-                          height: 36,
-                          fontSize: 13,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                        value={item.unit_price}
-                        onChange={(e) =>
-                          updateItem(idx, 'unit_price', e.target.value.replace(',', '.'))
-                        }
-                        required
-                      />
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 12px',
-                        borderBottom: `1px solid ${T.border2}`,
-                        width: 110,
-                        textAlign: 'right',
-                        fontWeight: 600,
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 13,
-                        color: T.ink,
-                      }}
-                    >
-                      {formatMoney(safeMultiply(item.quantity || '0', item.unit_price || '0'))}
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 8px',
-                        borderBottom: `1px solid ${T.border2}`,
-                        width: 32,
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => removeItem(idx)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: '#94A3B8',
-                          display: 'flex',
-                          padding: 4,
-                        }}
-                      >
-                        <X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {items.length > 0 && (
+            <div className="ov-items-head">
+              <span>Item</span>
+              <span>Qtd</span>
+              <span>Preço un.</span>
+              <span style={{ textAlign: 'right' }}>Subtotal</span>
+              <span />
+            </div>
+          )}
+          {items.map((item, idx) => (
+            <div className="ov-item-row" key={idx}>
+              <div className="ov-item-desc">
+                <label className="ov-item-label">Item</label>
+                <input
+                  className="ov-input"
+                  style={{ height: 40, fontSize: 14 }}
+                  value={item.description}
+                  onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                  placeholder="Descrição do item"
+                  required
+                />
+              </div>
+              <div className="ov-item-qty">
+                <label className="ov-item-label">Qtd</label>
+                <input
+                  className="ov-input"
+                  style={{ height: 40, fontSize: 14, textAlign: 'right' }}
+                  value={item.quantity}
+                  onChange={(e) => updateItem(idx, 'quantity', e.target.value.replace(',', '.'))}
+                  required
+                />
+              </div>
+              <div className="ov-item-price">
+                <label className="ov-item-label">Preço un.</label>
+                <input
+                  className="ov-input"
+                  style={{
+                    height: 40,
+                    fontSize: 14,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                  value={item.unit_price}
+                  onChange={(e) => updateItem(idx, 'unit_price', e.target.value.replace(',', '.'))}
+                  required
+                />
+              </div>
+              <div className="ov-item-subtotal">
+                <label className="ov-item-label">Subtotal</label>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 14,
+                    color: T.ink,
+                  }}
+                >
+                  {formatMoney(safeMultiply(item.quantity || '0', item.unit_price || '0'))}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="ov-item-remove"
+                onClick={() => removeItem(idx)}
+                aria-label="Remover item"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94A3B8',
+                  display: 'flex',
+                  padding: 4,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ))}
         </div>
       );
 

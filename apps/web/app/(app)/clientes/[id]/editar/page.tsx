@@ -11,8 +11,15 @@ type Tipo = 'fisica' | 'empresa';
 interface CustomerData {
   id: string;
   name: string;
+  tax_id: string | null;
   phone: string | null;
+  phone2: string | null;
   email: string | null;
+  cep: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
   city: string | null;
   state: string | null;
   notes: string | null;
@@ -28,8 +35,15 @@ export default function EditarClientePage(): JSX.Element {
   const [tipo, setTipo] = useState<Tipo>('fisica');
   const [form, setForm] = useState({
     name: '',
+    cpf: '',
     phone: '',
+    phone2: '',
     email: '',
+    cep: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
     city: '',
     state: '',
     notes: '',
@@ -48,8 +62,15 @@ export default function EditarClientePage(): JSX.Element {
         setTipo(data.type === 'PJ' ? 'empresa' : 'fisica');
         setForm({
           name: data.name ?? '',
+          cpf: data.tax_id ?? '',
           phone: data.phone ?? '',
+          phone2: data.phone2 ?? '',
           email: data.email ?? '',
+          cep: data.cep ?? '',
+          street: data.street ?? '',
+          number: data.number ?? '',
+          complement: data.complement ?? '',
+          neighborhood: data.neighborhood ?? '',
           city: data.city ?? '',
           state: data.state ?? '',
           notes: data.notes ?? '',
@@ -81,8 +102,15 @@ export default function EditarClientePage(): JSX.Element {
       Object.entries({
         name: form.name,
         type: tipo === 'empresa' ? 'PJ' : 'PF',
+        tax_id: form.cpf || undefined,
         phone: form.phone || undefined,
+        phone2: form.phone2 || undefined,
         email: form.email || undefined,
+        cep: form.cep || undefined,
+        street: form.street || undefined,
+        number: form.number || undefined,
+        complement: form.complement || undefined,
+        neighborhood: form.neighborhood || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
         notes: form.notes || undefined,
@@ -281,6 +309,23 @@ export default function EditarClientePage(): JSX.Element {
                     placeholder="Ex.: Marcos Pereira"
                   />
                 </Field>
+                <Field label={tipo === 'fisica' ? 'CPF' : 'CNPJ'}>
+                  <input
+                    style={inp}
+                    value={form.cpf}
+                    onChange={set('cpf')}
+                    placeholder={tipo === 'fisica' ? '000.000.000-00' : '00.000.000/0000-00'}
+                  />
+                </Field>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: 14,
+                  marginTop: 14,
+                }}
+              >
                 <Field label="Telefone principal">
                   <input
                     style={inp}
@@ -289,8 +334,9 @@ export default function EditarClientePage(): JSX.Element {
                     placeholder="(11) 90000-0000"
                   />
                 </Field>
-              </div>
-              <div style={{ marginTop: 14 }}>
+                <Field label="Telefone secundário">
+                  <input style={inp} value={form.phone2} onChange={set('phone2')} placeholder="—" />
+                </Field>
                 <Field label="Email">
                   <input
                     type="email"
@@ -303,10 +349,62 @@ export default function EditarClientePage(): JSX.Element {
               </div>
             </div>
 
-            {/* Localização */}
+            {/* Endereço */}
             <div style={card}>
-              <h3 style={sectionTitle}>Localização</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 14 }}>
+              <h3 style={sectionTitle}>Endereço</h3>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px 200px', gap: 14 }}
+              >
+                <Field label="CEP">
+                  <input
+                    style={inp}
+                    value={form.cep}
+                    onChange={set('cep')}
+                    placeholder="00000-000"
+                  />
+                </Field>
+                <Field label="Rua">
+                  <input
+                    style={inp}
+                    value={form.street}
+                    onChange={set('street')}
+                    placeholder="Av. das Nações"
+                  />
+                </Field>
+                <Field label="Número">
+                  <input
+                    style={inp}
+                    value={form.number}
+                    onChange={set('number')}
+                    placeholder="123"
+                  />
+                </Field>
+                <Field label="Complemento">
+                  <input
+                    style={inp}
+                    value={form.complement}
+                    onChange={set('complement')}
+                    placeholder="apto, bloco…"
+                  />
+                </Field>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 100px',
+                  gap: 14,
+                  marginTop: 14,
+                }}
+              >
+                <Field label="Bairro">
+                  <input
+                    style={inp}
+                    value={form.neighborhood}
+                    onChange={set('neighborhood')}
+                    placeholder="Centro"
+                  />
+                </Field>
                 <Field label="Cidade">
                   <input
                     style={inp}
