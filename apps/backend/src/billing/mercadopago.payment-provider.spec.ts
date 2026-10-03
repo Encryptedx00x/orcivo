@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PaymentProvider, PaymentProviderSubscriptionInput } from '@orcivo/shared-types';
 import {
@@ -9,11 +10,12 @@ import {
 
 const NOW = new Date('2026-10-01T15:00:00.000Z');
 
-function buildProvider(env: Record<string, string> = {}): MercadoPagoPaymentProvider {
-  const values: Record<string, string> = {
+function buildProvider(env: Record<string, string | undefined> = {}): MercadoPagoPaymentProvider {
+  const values: Record<string, string | undefined> = {
     MP_ENV: 'sandbox',
     MP_ACCESS_TOKEN: 'TEST-fake-access-token',
     MP_PUBLIC_KEY: 'TEST-fake-public-key',
+    MP_WEBHOOK_SECRET: 'TEST-fake-webhook-secret',
     ...env,
   };
   const config = {
@@ -83,8 +85,52 @@ describe('MercadoPagoPaymentProvider', () => {
     }
   });
 
-  it('refuses a non-sandbox environment', () => {
-    expect(() => buildProvider({ MP_ENV: 'production' })).toThrow(/sandbox/);
+  it('initializes in sandbox mode', () => {
+    expect(() => buildProvider()).not.toThrow();
+  });
+
+  it('initializes in production mode when all required credentials are configured', () => {
+    expect(() => buildProvider({ MP_ENV: 'production' })).not.toThrow();
+  });
+
+  it.each(['MP_ACCESS_TOKEN', 'MP_PUBLIC_KEY', 'MP_WEBHOOK_SECRET'])(
+    'fails clearly when %s is missing in production',
+    (missingVariable) => {
+      expect(() => buildProvider({ MP_ENV: 'production', [missingVariable]: undefined })).toThrow(
+        new RegExp(missingVariable),
+      );
+    },
+  );
+
+  it('refuses an invalid Mercado Pago environment', () => {
+    expect(() => buildProvider({ MP_ENV: 'staging' })).toThrow(/MP_ENV.*sandbox.*production/);
+  });
+
+  it('logs the active mode without credential values', () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const accessToken = 'private-access-token';
+    const publicKey = 'public-key';
+    const webhookSecret = 'webhook-secret';
+
+    buildProvider({
+      MP_ENV: 'production',
+      MP_ACCESS_TOKEN: accessToken,
+      MP_PUBLIC_KEY: publicKey,
+      MP_WEBHOOK_SECRET: webhookSecret,
+    });
+
+    const messages = log.mock.calls.map(([message]) => String(message)).join('\n');
+    expect(messages).toContain('production');
+    expect(messages).not.toContain(accessToken);
+    expect(messages).not.toContain(publicKey);
+    expect(messages).not.toContain(webhookSecret);
+    log.mockRestore();
+  });
+
+  it('uses the app subscription page as the default return URL', async () => {
+    const fetchMock = mockFetch([{ body: { id: 'pre2', status: 'pending' } }]);
+    await buildProvider().createSubscription(baseInput);
+    expect(call(fetchMock).body.back_url).toBe('https://app.orcivo.com.br/plano');
   });
 
   it('fails clearly when the access token is missing', async () => {

@@ -127,7 +127,7 @@ export function mapPaymentStatus(
  *   expiração; o MP não tem recorrência PIX, então a renovação é uma nova
  *   cobrança emitida pelo domínio a cada ciclo.
  *
- * Only sandbox/test credentials are accepted in this version.
+ * Supports sandbox and production credentials.
  */
 @Injectable()
 export class MercadoPagoPaymentProvider implements PaymentProvider {
@@ -141,13 +141,28 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
 
   constructor(configService: ConfigService) {
     const env = configService.get<string>('MP_ENV', 'sandbox');
-    if (env !== 'sandbox') {
-      throw new Error('MP_ENV must be "sandbox": production credentials are not allowed yet');
+    if (env !== 'sandbox' && env !== 'production') {
+      throw new Error('MP_ENV must be "sandbox" or "production"');
     }
+
     this.baseUrl = configService.get<string>('MP_API_URL', DEFAULT_API_URL);
     this.accessToken = configService.get<string>('MP_ACCESS_TOKEN', '');
     this.publicKey = configService.get<string>('MP_PUBLIC_KEY', '');
-    this.backUrl = configService.get<string>('MP_BACK_URL', 'https://orcivo.com.br');
+    this.backUrl = configService.get<string>('MP_BACK_URL', 'https://app.orcivo.com.br/plano');
+
+    if (env === 'production') {
+      for (const [name, value] of [
+        ['MP_ACCESS_TOKEN', this.accessToken],
+        ['MP_PUBLIC_KEY', this.publicKey],
+        ['MP_WEBHOOK_SECRET', configService.get<string>('MP_WEBHOOK_SECRET', '')],
+      ] as const) {
+        if (!value.trim()) {
+          throw new Error(`${name} must be configured when MP_ENV is "production"`);
+        }
+      }
+    }
+
+    this.logger.log(`Mercado Pago initialized in ${env} mode`);
   }
 
   private async request<T>(
@@ -324,7 +339,8 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
         id: String(payment.id),
         status: mapPaymentStatus(payment.status, payment.status_detail),
         externalReference: payment.external_reference || null,
-        amount: payment.transaction_amount !== undefined ? String(payment.transaction_amount) : null,
+        amount:
+          payment.transaction_amount !== undefined ? String(payment.transaction_amount) : null,
         dueDate: payment.date_of_expiration?.slice(0, 10) ?? null,
         paidAt: payment.date_approved ?? null,
       };
