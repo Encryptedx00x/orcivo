@@ -1,3 +1,12 @@
+import { pageMetadata } from '../seo';
+
+export const metadata = pageMetadata(
+  'Política de Privacidade | Orcivo',
+  'Saiba como o Orcivo trata seus dados pessoais e como exercer seus direitos de privacidade.',
+  '/privacidade',
+  true,
+);
+
 import Link from 'next/link';
 
 export default function PrivacidadePage() {

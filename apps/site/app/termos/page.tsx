@@ -1,3 +1,12 @@
+import { pageMetadata } from '../seo';
+
+export const metadata = pageMetadata(
+  'Termos de Uso | Orcivo',
+  'Consulte os Termos de Uso do Orcivo e as condições de uso da plataforma para técnicos instaladores.',
+  '/termos',
+  true,
+);
+
 import Link from 'next/link';
 
 export default function TermosPage() {

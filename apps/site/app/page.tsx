@@ -1,3 +1,12 @@
+import { pageMetadata } from './seo';
+
+export const metadata = pageMetadata(
+  'Orcivo — Gestão para técnicos instaladores',
+  'Orçamentos, OS, PDF e aprovação pelo WhatsApp — tudo no celular.',
+  '/',
+  true,
+);
+
 import Link from 'next/link';
 import {
   Zap, FileText, MessageCircle, CheckCircle2, ArrowRight, ShieldCheck,
@@ -280,17 +289,6 @@ export default function HomePage() {
         </Reveal>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────── */}
-      <footer className="border-t border-slate-100 py-10 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-slate-500">© 2026 Orcivo</span>
-          <nav className="flex gap-6">
-            <Link href="/planos" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">Planos</Link>
-            <Link href="/termos" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">Termos de Uso</Link>
-            <Link href="/privacidade" className="text-sm text-slate-500 hover:text-slate-900 transition-colors">Privacidade</Link>
-          </nav>
-        </div>
-      </footer>
     </div>
   );
 }

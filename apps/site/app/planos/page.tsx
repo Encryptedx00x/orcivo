@@ -126,16 +126,6 @@ export default function PlanosPage() {
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-100 py-8 px-6 mt-8">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-slate-500">© 2026 Orcivo</span>
-          <nav className="flex gap-6">
-            <Link href="/termos" className="text-sm text-slate-500 hover:text-slate-900">Termos de Uso</Link>
-            <Link href="/privacidade" className="text-sm text-slate-500 hover:text-slate-900">Privacidade</Link>
-          </nav>
-        </div>
-      </footer>
     </div>
   );
 }
