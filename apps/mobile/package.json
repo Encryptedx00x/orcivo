@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "build": "echo 'Mobile: use EAS Build para gerar APK/IPA'"
+    "build": "echo 'Mobile: use EAS Build para gerar APK/IPA'",
+    "eas-build-post-install": "cd ../.. && pnpm --filter @orcivo/shared-types build"
   },
   "dependencies": {
     "@orcivo/shared-types": "workspace:*",
