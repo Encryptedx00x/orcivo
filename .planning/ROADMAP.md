@@ -468,3 +468,13 @@ Plans:
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.13: Feature: preço de venda por % de markup sobre o custo no catálogo (BACKLOG)
+
+**Goal:** Catálogo/precificação hoje só permite definir o preço de venda como valor numérico fixo. Owner pediu (2026-10-03) a opção de definir o preço de venda como % de markup acima do preço de custo (ex.: custo R$10 + 40% = venda R$14), calculado automaticamente.
+
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
