@@ -43,6 +43,26 @@ como tasks novas na próxima sessão):**
    o usuário tem que selecionar e copiar manualmente. Adicionar um botão
    "Copiar código".
 
+**Decisão de produto pendente — semântica de cancelamento (owner, 2026-10-03):**
+Owner cancelou a assinatura de teste e o `status` virou `CANCELLED`, mas
+não ficou claro pra qual plano a conta volta. Código real hoje
+(`subscription.service.ts:207-227`, `cancelSubscription`): só seta
+`status: 'CANCELLED'` — **não toca em `plan_code`**, não existe nenhuma
+lógica de "voltar pro plano anterior". Perguntas que precisam de uma
+decisão explícita do owner (documentar a decisão mesmo que a implementação
+só venha depois):
+1. Ao cancelar, a conta deveria voltar pro Livre/Default imediatamente, ou
+   manter o plano pago ativo até o fim do período já pago (comportamento
+   comum em SaaS: cancela a renovação, mas mantém acesso até `current_period_end`)?
+2. Caso o histórico seja Default → upgrade pra X → upgrade/downgrade pra Y
+   → cancela Y: volta pro Default, ou pro X (se X ainda estivesse "dentro
+   da validade" de algum período pago anterior)? Hoje não existe conceito
+   de "plano anterior" guardado — só o `plan_code` atual é sobrescrito a
+   cada troca, não há histórico.
+3. Se a resposta for "mantém até o fim do período pago", falta campo pra
+   marcar "cancelamento agendado" vs. "cancelado agora", e um job pra
+   efetivar a troca pro Livre quando o período expirar.
+
 **Verificação pedida pelo owner (criar tasks, ainda não feito):** confirmar
 que os limites/benefícios de `PLAN_LIMITS` (customers_max, quotes_per_month,
 work_orders_per_month, members_max, has_logo, pdf_watermark, has_reports,
