@@ -127,7 +127,8 @@ export function mapPaymentStatus(
  *   expiração; o MP não tem recorrência PIX, então a renovação é uma nova
  *   cobrança emitida pelo domínio a cada ciclo.
  *
- * Supports sandbox and production credentials.
+ * Supports test and production credentials. The legacy `sandbox` mode remains
+ * accepted for existing local test setups.
  */
 @Injectable()
 export class MercadoPagoPaymentProvider implements PaymentProvider {
@@ -140,9 +141,9 @@ export class MercadoPagoPaymentProvider implements PaymentProvider {
   private readonly logger = new Logger(MercadoPagoPaymentProvider.name);
 
   constructor(configService: ConfigService) {
-    const env = configService.get<string>('MP_ENV', 'sandbox');
-    if (env !== 'sandbox' && env !== 'production') {
-      throw new Error('MP_ENV must be "sandbox" or "production"');
+    const env = configService.get<string>('MP_ENV', 'test');
+    if (env !== 'test' && env !== 'sandbox' && env !== 'production') {
+      throw new Error('MP_ENV must be "test", "sandbox", or "production"');
     }
 
     this.baseUrl = configService.get<string>('MP_API_URL', DEFAULT_API_URL);

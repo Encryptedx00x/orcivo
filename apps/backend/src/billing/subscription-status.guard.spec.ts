@@ -16,7 +16,7 @@ function context(method: string, companyId = 'company-1'): ExecutionContext {
 function mercadoPagoProvider(): MercadoPagoPaymentProvider {
   return new MercadoPagoPaymentProvider({
     get: (key: string, fallback?: string) =>
-      ({ MP_ENV: 'sandbox', MP_ACCESS_TOKEN: 'TEST-only-token' })[key] ?? fallback,
+      ({ MP_ENV: 'test', MP_ACCESS_TOKEN: 'TEST-only-token' })[key] ?? fallback,
   } as unknown as ConfigService);
 }
 
