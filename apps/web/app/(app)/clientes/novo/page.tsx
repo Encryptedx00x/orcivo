@@ -224,7 +224,10 @@ export default function NovoClientePage(): JSX.Element {
 
               <h3 style={sectionTitle}>Dados básicos</h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}
+              >
                 <Field label={tipo === 'fisica' ? 'Nome completo *' : 'Razão social *'}>
                   <input
                     style={inp}
@@ -309,7 +312,7 @@ export default function NovoClientePage(): JSX.Element {
                 </button>
               </h3>
               <div
-                className="ov-row-address"
+                className="ov-row-stack"
                 style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px 200px', gap: 14 }}
               >
                 <Field label="CEP">

@@ -117,7 +117,7 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="max-w-6xl mx-auto px-6 pt-20 pb-16 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="max-w-6xl mx-auto px-6 pt-10 sm:pt-20 pb-16 grid lg:grid-cols-2 gap-12 items-center">
           {/* Coluna texto */}
           <div>
             <span className="ov-anim-hero inline-flex items-center gap-2 text-xs font-semibold text-primary-700 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full mb-6">

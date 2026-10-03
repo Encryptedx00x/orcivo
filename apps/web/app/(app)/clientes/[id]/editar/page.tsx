@@ -268,7 +268,10 @@ export default function EditarClientePage(): JSX.Element {
 
               <h3 style={sectionTitle}>Dados básicos</h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}
+              >
                 <Field label={tipo === 'fisica' ? 'Nome completo *' : 'Razão social *'}>
                   <input
                     style={inp}
