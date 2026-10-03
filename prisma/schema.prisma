@@ -16,11 +16,14 @@ model User {
   phone             String?
   password_hash     String
   accepted_terms_at DateTime
+  // Versão (data de vigência) dos documentos aceitos; 'pre-versioning' = conta anterior ao registro.
+  accepted_terms_version   String @default("pre-versioning")
+  accepted_privacy_version String @default("pre-versioning")
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company_members      CompanyMember[]
+  company_members     CompanyMember[]
   refresh_tokens       RefreshToken[]
   assigned_customers   Customer[]       @relation("AssignedTo")
   work_orders_assigned WorkOrder[]      @relation("WorkOrderAssignedTo")

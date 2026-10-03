@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
-import { SignupStep1Schema } from '@orcivo/shared-types';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Linking, ScrollView } from 'react-native';
+import { LEGAL_DOCS_VERSION, SignupStep1Schema } from '@orcivo/shared-types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
 import type { AuthStackParamList } from '../../navigation/AuthStack';
+
+const TERMOS_URL = 'https://orcivo.com.br/termos';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignupStep1'>;
 
@@ -12,7 +14,12 @@ export function SignupStep1Screen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
 
   const handleNext = async () => {
-    const parsed = SignupStep1Schema.safeParse({ ...form, accepted_terms: form.accepted_terms || undefined });
+    const parsed = SignupStep1Schema.safeParse({
+      ...form,
+      accepted_terms: form.accepted_terms || undefined,
+      terms_version: LEGAL_DOCS_VERSION,
+      privacy_version: LEGAL_DOCS_VERSION,
+    });
     if (!parsed.success) {
       Alert.alert('Dados inválidos', parsed.error.issues.map(i => i.message).join('\n'));
       return;
@@ -39,7 +46,14 @@ export function SignupStep1Screen({ navigation }: Props) {
       <TextInput style={styles.input} placeholder="Senha (mín. 8 caracteres)" value={form.password} onChangeText={v => setForm(f => ({ ...f, password: v }))} secureTextEntry />
       <TouchableOpacity style={styles.checkRow} onPress={() => setForm(f => ({ ...f, accepted_terms: !f.accepted_terms }))}>
         <View style={[styles.checkbox, form.accepted_terms && styles.checkboxActive]} />
-        <Text style={styles.checkLabel}>Aceito os termos de uso</Text>
+        <Text style={styles.checkLabel}>Aceito os termos de uso e a política de privacidade</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="link"
+        onPress={() => void Linking.openURL(TERMOS_URL)}
+        style={styles.termsLink}
+      >
+        <Text style={styles.termsLinkText}>Ver termos de uso</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.btn} onPress={handleNext} disabled={loading}>
         <Text style={styles.btnText}>{loading ? 'Aguarde...' : 'Continuar'}</Text>
@@ -56,7 +70,9 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   checkbox: { width: 20, height: 20, borderWidth: 2, borderColor: '#6D28D9', borderRadius: 4, marginRight: 10 },
   checkboxActive: { backgroundColor: '#6D28D9' },
-  checkLabel: { fontSize: 14, color: '#0A0A0F' },
+  checkLabel: { fontSize: 14, color: '#0A0A0F', flex: 1 },
+  termsLink: { marginTop: -8, marginBottom: 20, paddingVertical: 4 },
+  termsLinkText: { fontSize: 14, color: '#6D28D9', textDecorationLine: 'underline' },
   btn: { backgroundColor: '#6D28D9', borderRadius: 8, padding: 14, alignItems: 'center' },
   btnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
 });
