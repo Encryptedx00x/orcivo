@@ -110,10 +110,14 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       STORAGE_SIGNED_URL_TTL: 300
-      MAIL_PROVIDER: console
-      ASAAS_ENV: sandbox
-      ASAAS_API_KEY: ''
-      ASAAS_WEBHOOK_TOKEN: ''
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-noreply@orcivo.com.br}
+      MP_ENV: ${MP_ENV:-test}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-}
+      MP_PUBLIC_KEY: ${MP_PUBLIC_KEY:-}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
+      MP_BACK_URL: ${MP_BACK_URL:-https://app.orcivo.com.br/plano}
     networks: [orcivo_internal, caddy]
     depends_on:
       db:
