@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 const publicPaths = ['/login', '/signup'];
-const alwaysPublicPaths = ['/approve'];
+// Acessíveis com ou sem sessão (sem redirecionar quem já está logado): /convite precisa
+// funcionar para quem aceita convite de outra empresa estando logado na própria conta.
+// Os proxies /submit de cada rota são cobertos pelo mesmo prefixo.
+const alwaysPublicPaths = ['/approve', '/forgot-password', '/reset-password', '/convite'];
 
 function jwtExpiresAt(token: string): number {
   try {
