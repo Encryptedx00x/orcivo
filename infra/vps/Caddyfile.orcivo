@@ -5,6 +5,11 @@ orcivo.com.br {
     reverse_proxy orcivo-site:3002
 }
 
+# www -> apex (permanent). Requires a DNS A record for www.orcivo.com.br pointing at this VPS.
+www.orcivo.com.br {
+    redir https://orcivo.com.br{uri} permanent
+}
+
 app.orcivo.com.br {
     encode zstd gzip
     header {
@@ -24,6 +29,8 @@ api.orcivo.com.br {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
     }
+    # The Mercado Pago webhook (POST /webhooks/mercadopago) goes through this same block:
+    # it is server-to-server, so it needs no CORS and no dedicated route. See README.md.
     reverse_proxy orcivo-backend:3000
 }
 
