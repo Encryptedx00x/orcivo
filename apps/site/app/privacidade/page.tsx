@@ -1,5 +1,5 @@
 import { pageMetadata } from '../seo';
-import { LEGAL_DOCS_VERSION } from '../../../../packages/shared-types/src/auth/legal-versions';
+import { LEGAL_DOCS_VERSION } from '@orcivo/shared-types';
 
 export const metadata = pageMetadata(
   'Política de Privacidade | Orcivo',
@@ -46,9 +46,7 @@ export default function PrivacidadePage() {
           <Ph>[RAZÃO SOCIAL]</Ph>, CNPJ <Ph>[CNPJ]</Ph>, com sede em <Ph>[ENDEREÇO]</Ph>
           (&ldquo;Orcivo&rdquo;). Ela complementa os <Link href="/termos">Termos de Uso</Link>.
         </p>
-        <p>
-          O Orcivo atua em dois papéis distintos:
-        </p>
+        <p>O Orcivo atua em dois papéis distintos:</p>
         <ul>
           <li>
             <strong>Controlador</strong>, em relação aos dados do próprio Usuário (técnico ou
@@ -65,7 +63,9 @@ export default function PrivacidadePage() {
         <h2>2. Dados que tratamos</h2>
         <h3>2.1 Dados do Usuário (Orcivo como controlador)</h3>
         <ul>
-          <li>Cadastro: nome, e-mail, telefone (opcional) e senha (guardada apenas em forma de hash).</li>
+          <li>
+            Cadastro: nome, e-mail, telefone (opcional) e senha (guardada apenas em forma de hash).
+          </li>
           <li>
             Empresa: nome fantasia, CPF ou CNPJ, cidade, UF, telefone, cor da marca, logo e chave
             Pix informados por você.
@@ -100,8 +100,8 @@ export default function PrivacidadePage() {
             (art. 7º, V, LGPD).
           </li>
           <li>
-            <strong>Cobrança, assinatura e emissão de comprovantes</strong> — execução de contrato
-            e cumprimento de obrigação legal ou regulatória (art. 7º, V e II).
+            <strong>Cobrança, assinatura e emissão de comprovantes</strong> — execução de contrato e
+            cumprimento de obrigação legal ou regulatória (art. 7º, V e II).
           </li>
           <li>
             <strong>Segurança, prevenção a fraudes, auditoria e suporte</strong> — legítimo
@@ -113,8 +113,8 @@ export default function PrivacidadePage() {
             senha, falhas de cobrança, avisos do serviço) — execução de contrato.
           </li>
           <li>
-            <strong>Comunicações de novidades ou ofertas</strong>, quando houver — consentimento
-            ou legítimo interesse conforme o caso, com opção de descadastro.
+            <strong>Comunicações de novidades ou ofertas</strong>, quando houver — consentimento ou
+            legítimo interesse conforme o caso, com opção de descadastro.
           </li>
           <li>
             <strong>Registro do aceite dos Termos e desta Política</strong> — cumprimento de
@@ -139,8 +139,8 @@ export default function PrivacidadePage() {
             pagos.
           </li>
           <li>
-            <strong>Provedor de e-mail (Resend)</strong> — envio de e-mails transacionais
-            (cadastro, redefinição de senha, avisos de cobrança e orçamentos enviados).
+            <strong>Provedor de e-mail (Resend)</strong> — envio de e-mails transacionais (cadastro,
+            redefinição de senha, avisos de cobrança e orçamentos enviados).
           </li>
           <li>
             <strong>Hospedagem e armazenamento de arquivos</strong> — servidores (VPS) que executam
@@ -152,9 +152,9 @@ export default function PrivacidadePage() {
           Também podemos compartilhar dados com autoridades quando exigido por lei ou ordem
           judicial, e com assessores profissionais sob sigilo. Quando um orçamento é enviado ao
           cliente final do Usuário, o conteúdo do orçamento é disponibilizado a esse cliente por
-          link, por decisão do Usuário. Se algum suboperador estiver fora do Brasil, a
-          transferência internacional observará os mecanismos do art. 33 da LGPD. Mudanças na lista
-          de suboperadores serão refletidas nesta página.
+          link, por decisão do Usuário. Se algum suboperador estiver fora do Brasil, a transferência
+          internacional observará os mecanismos do art. 33 da LGPD. Mudanças na lista de
+          suboperadores serão refletidas nesta página.
         </p>
 
         <h2>5. Seus direitos como titular</h2>
@@ -181,8 +181,8 @@ export default function PrivacidadePage() {
         <h2>6. Retenção e exclusão</h2>
         <ul>
           <li>
-            Dados da conta são mantidos enquanto ela estiver ativa. Ao encerrar a conta, os dados
-            do Usuário e de seus clientes finais são excluídos ou anonimizados após um período de
+            Dados da conta são mantidos enquanto ela estiver ativa. Ao encerrar a conta, os dados do
+            Usuário e de seus clientes finais são excluídos ou anonimizados após um período de
             carência para recuperação e término de rotinas de backup, salvo o que a lei obrigue
             manter.
           </li>
@@ -192,12 +192,12 @@ export default function PrivacidadePage() {
             obrigações legais e fiscais e defesa em processos.
           </li>
           <li>
-            Registros de segurança e auditoria são mantidos pelo período necessário à finalidade e
-            à lei.
+            Registros de segurança e auditoria são mantidos pelo período necessário à finalidade e à
+            lei.
           </li>
           <li>
-            Cópias de segurança expiram em ciclo de rotação; a eliminação definitiva nelas ocorre
-            ao fim do ciclo.
+            Cópias de segurança expiram em ciclo de rotação; a eliminação definitiva nelas ocorre ao
+            fim do ciclo.
           </li>
         </ul>
         <p>
@@ -208,8 +208,8 @@ export default function PrivacidadePage() {
         <h2>7. Segurança</h2>
         <p>
           Adotamos medidas técnicas e organizacionais proporcionais ao risco: tráfego criptografado
-          (HTTPS), senhas protegidas por hash, isolamento dos dados entre contas, controle de
-          acesso por função, registros de auditoria, cópias de segurança e acesso restrito à
+          (HTTPS), senhas protegidas por hash, isolamento dos dados entre contas, controle de acesso
+          por função, registros de auditoria, cópias de segurança e acesso restrito à
           infraestrutura. Nenhum sistema é totalmente imune; em caso de incidente que possa causar
           risco ou dano relevante, comunicaremos os titulares afetados e a ANPD nos termos da lei.
         </p>

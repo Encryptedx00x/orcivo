@@ -9,8 +9,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 FROM base AS build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/site/package.json ./apps/site/package.json
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY packages/shared-types/tsconfig.json ./packages/shared-types/tsconfig.json
 
 RUN pnpm install --frozen-lockfile --filter @orcivo/site...
+
+COPY packages/shared-types ./packages/shared-types
+RUN pnpm --filter @orcivo/shared-types build
+RUN pnpm install --offline --frozen-lockfile --filter @orcivo/site...
 
 COPY apps/site ./apps/site
 COPY apps/backend/src/quote/fonts ./apps/backend/src/quote/fonts

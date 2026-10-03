@@ -1,5 +1,5 @@
 import { pageMetadata } from '../seo';
-import { LEGAL_DOCS_VERSION } from '../../../../packages/shared-types/src/auth/legal-versions';
+import { LEGAL_DOCS_VERSION } from '@orcivo/shared-types';
 import { getPlans, priceLabel } from '../planos/plan-catalog';
 
 export const metadata = pageMetadata(
@@ -46,9 +46,9 @@ export default function TermosPage() {
         <p>
           O Orcivo é um serviço de software oferecido por <Ph>[RAZÃO SOCIAL]</Ph>, inscrita no CNPJ
           sob o nº <Ph>[CNPJ]</Ph>, com sede em <Ph>[ENDEREÇO]</Ph> (&ldquo;Orcivo&rdquo;). Ao criar
-          uma conta, marcar a caixa de aceite no cadastro (site, aplicativo web ou aplicativo
-          móvel) ou usar o serviço, você (&ldquo;Usuário&rdquo;) declara ter lido e concordado com
-          estes Termos de Uso e com a <Link href="/privacidade">Política de Privacidade</Link>.
+          uma conta, marcar a caixa de aceite no cadastro (site, aplicativo web ou aplicativo móvel)
+          ou usar o serviço, você (&ldquo;Usuário&rdquo;) declara ter lido e concordado com estes
+          Termos de Uso e com a <Link href="/privacidade">Política de Privacidade</Link>.
         </p>
         <p>
           Para aceitar, você precisa ter capacidade civil para contratar. Se contratar em nome de
@@ -114,9 +114,8 @@ export default function TermosPage() {
           preservados, porém novas criações ficam bloqueadas até o uso voltar ao limite.
         </p>
         <p>
-          O Orcivo poderá reajustar preços e limites de planos pagos mediante aviso prévio
-          razoável; o reajuste só se aplica ao ciclo seguinte ao aviso e você poderá cancelar antes
-          dele.
+          O Orcivo poderá reajustar preços e limites de planos pagos mediante aviso prévio razoável;
+          o reajuste só se aplica ao ciclo seguinte ao aviso e você poderá cancelar antes dele.
         </p>
 
         <h2>5. Uso justo e uso ampliado</h2>
@@ -139,10 +138,10 @@ export default function TermosPage() {
         <h2>6. Assinatura, renovação, cancelamento e reembolso</h2>
         <p>
           <strong>Assinatura.</strong> O Orcivo Livre é gratuito. Os planos Orcivo Solo, Orcivo Mais
-          e Orcivo Equipe são pagos, em ciclo mensal ou anual, escolhido na contratação. O
-          pagamento é processado pelo Mercado Pago, que pode oferecer cartão de crédito, Pix e
-          outros meios disponíveis no momento da contratação. O Orcivo não armazena os dados
-          completos do seu cartão.
+          e Orcivo Equipe são pagos, em ciclo mensal ou anual, escolhido na contratação. O pagamento
+          é processado pelo Mercado Pago, que pode oferecer cartão de crédito, Pix e outros meios
+          disponíveis no momento da contratação. O Orcivo não armazena os dados completos do seu
+          cartão.
         </p>
         <p>
           <strong>Renovação.</strong> Os planos pagos renovam automaticamente ao fim de cada ciclo,
@@ -159,9 +158,9 @@ export default function TermosPage() {
         </p>
         <p>
           <strong>Cancelamento.</strong> Você pode cancelar a qualquer momento pelo painel de
-          assinatura. O cancelamento interrompe renovações futuras e o acesso ao plano pago
-          continua até o fim do período já pago, quando a conta passa ao Orcivo Livre, respeitados
-          os limites desse plano.
+          assinatura. O cancelamento interrompe renovações futuras e o acesso ao plano pago continua
+          até o fim do período já pago, quando a conta passa ao Orcivo Livre, respeitados os limites
+          desse plano.
         </p>
         <p>
           <strong>Reembolso.</strong> Em contratação feita à distância, você pode desistir em até 7
@@ -180,16 +179,16 @@ export default function TermosPage() {
           para hospedar, processar, exibir e transmitir esses conteúdos para prestar o serviço.
         </p>
         <p>
-          Em relação aos dados pessoais dos seus clientes finais que você insere no Orcivo, na
-          forma da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD):{' '}
+          Em relação aos dados pessoais dos seus clientes finais que você insere no Orcivo, na forma
+          da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD):{' '}
           <strong>o Usuário (técnico ou empresa) é o controlador</strong> e{' '}
           <strong>o Orcivo é o operador</strong>, tratando esses dados somente conforme as
           instruções do Usuário e para a finalidade de prestar o serviço. Cabe ao Usuário: ter base
-          legal para coletar e tratar os dados dos seus clientes, informá-los adequadamente,
-          atender aos pedidos desses titulares e não inserir dados que não deveria coletar. O
-          Orcivo adotará medidas de segurança adequadas, auxiliará o Usuário no atendimento de
-          direitos dos titulares na medida do possível e só usará subcontratados (suboperadores)
-          listados na <Link href="/privacidade">Política de Privacidade</Link>.
+          legal para coletar e tratar os dados dos seus clientes, informá-los adequadamente, atender
+          aos pedidos desses titulares e não inserir dados que não deveria coletar. O Orcivo adotará
+          medidas de segurança adequadas, auxiliará o Usuário no atendimento de direitos dos
+          titulares na medida do possível e só usará subcontratados (suboperadores) listados na{' '}
+          <Link href="/privacidade">Política de Privacidade</Link>.
         </p>
 
         <h2>8. Disponibilidade, suporte e segurança</h2>
@@ -246,9 +245,9 @@ export default function TermosPage() {
 
         <h2>13. Lei aplicável e foro</h2>
         <p>
-          Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro do domicílio do
-          Usuário consumidor, ou, nas demais hipóteses, o foro da comarca de <Ph>[ENDEREÇO]</Ph>,
-          para dirimir controvérsias.
+          Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro do domicílio do Usuário
+          consumidor, ou, nas demais hipóteses, o foro da comarca de <Ph>[ENDEREÇO]</Ph>, para
+          dirimir controvérsias.
         </p>
 
         <h2>14. Contato</h2>

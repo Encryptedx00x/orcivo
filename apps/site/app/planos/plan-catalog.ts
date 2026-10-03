@@ -1,11 +1,9 @@
-// Importa a fonte de @orcivo/shared-types diretamente: o site ainda não tem
-// dependência workspace declarada, e este módulo não exige build do pacote.
 import {
   PLAN_LIMITS,
   PLAN_PRICING,
   type PlanLimitCode,
   type PlanLimitValues,
-} from '../../../../packages/shared-types/src/billing/plans';
+} from '@orcivo/shared-types';
 
 export type BillingCycle = 'yearly' | 'monthly';
 
@@ -64,8 +62,6 @@ export function priceLabel(code: PlanLimitCode, cycle: BillingCycle): string {
 export function annualDiscount(): number {
   const discounts = Object.values(PLAN_PRICING)
     .filter(({ monthly }) => Number(monthly) > 0)
-    .map(({ monthly, yearly }) =>
-      Math.floor((1 - Number(yearly) / (Number(monthly) * 12)) * 100),
-    );
+    .map(({ monthly, yearly }) => Math.floor((1 - Number(yearly) / (Number(monthly) * 12)) * 100));
   return discounts.length ? Math.max(0, Math.min(...discounts)) : 0;
 }
