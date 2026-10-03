@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
+import { Footer } from './components/Footer';
+import { SITE_URL } from './seo';
 
 const inter = localFont({
   src: [
@@ -14,19 +16,22 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Orcivo — Gestão para técnicos instaladores',
-  description: 'Orçamentos, OS, PDF e aprovação pelo WhatsApp — tudo no celular.',
-  openGraph: {
-    title: 'Orcivo — Gestão para técnicos instaladores',
-    description: 'Orçamentos, OS, PDF e aprovação pelo WhatsApp — tudo no celular.',
-    type: 'website',
+  metadataBase: new URL(SITE_URL),
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
+  manifest: '/manifest.webmanifest',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.variable}>{children}</body>
+      <body className={inter.variable}>{children}<Footer /></body>
     </html>
   );
 }

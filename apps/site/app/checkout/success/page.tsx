@@ -1,3 +1,12 @@
+import { pageMetadata } from '../../seo';
+
+export const metadata = pageMetadata(
+  'Confirmação de pagamento | Orcivo',
+  'Confira a confirmação do pagamento da sua assinatura Orcivo e acesse o gerenciamento do seu plano.',
+  '/checkout/success',
+  false,
+);
+
 import Link from 'next/link';
 
 export default function CheckoutSuccessPage() {
