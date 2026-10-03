@@ -314,14 +314,7 @@ export default function EquipePage(): JSX.Element {
       <p style={{ fontSize: 13, color: T.fg3, margin: '0 0 12px' }}>
         Padrão da função, aplicado automaticamente. Permissões personalizadas chegam em breve.
       </p>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
+      <div className="ov-grid-2" style={{ marginBottom: 24 }}>
         {(
           [
             [

@@ -14,6 +14,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+import { useMobileSidebar } from './MobileSidebar';
 
 const PLAN_LABEL: Record<string, string> = {
   LIVRE: 'Orcivo Livre',
@@ -50,16 +51,19 @@ function NavItem({
   href,
   icon: Icon,
   pathname,
+  onNavigate,
 }: {
   label: string;
   href: string;
   icon: React.ElementType;
   pathname: string;
+  onNavigate: () => void;
 }) {
   const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -83,150 +87,156 @@ function NavItem({
 export function AppSidebar(): JSX.Element {
   const pathname = usePathname();
   const { user, company } = useAuth();
+  const { open, close } = useMobileSidebar();
   const displayName = user?.name || 'Usuário';
   const initials = user?.name ? getInitials(user.name) : '?';
   const planLabel = company ? (PLAN_LABEL[company.plan_code] ?? company.plan_code) : '';
   const companyLine = company ? [company.trade_name, planLabel].filter(Boolean).join(' · ') : '';
   return (
-    <aside
-      className="ov-sidebar"
-      style={{
-        width: 260,
-        minHeight: '100vh',
-        borderRight: '1px solid #E2E8F0',
-        backgroundColor: '#FFFFFF',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        padding: '18px 14px',
-      }}
-    >
-      {/* Brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 14px' }}>
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: 'linear-gradient(135deg, #0A0A0F 0%, #6D28D9 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M5 12 10 17 19 7" />
-          </svg>
-        </div>
-        <span style={{ fontWeight: 700, fontSize: 17, color: '#0A0A0F', letterSpacing: '-0.01em' }}>
-          Orcivo
-        </span>
-      </div>
-
-      {/* Nav */}
-      <nav style={{ flex: 1, overflowY: 'auto' }}>
-        <p
-          style={{
-            fontSize: 11,
-            fontFamily: 'var(--font-mono, monospace)',
-            fontWeight: 500,
-            color: '#64748B',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            padding: '14px 10px 4px',
-            margin: 0,
-          }}
-        >
-          Principal
-        </p>
-        {NAV_MAIN.map((item) => (
-          <NavItem key={item.href} {...item} pathname={pathname} />
-        ))}
-
-        <p
-          style={{
-            fontSize: 11,
-            fontFamily: 'var(--font-mono, monospace)',
-            fontWeight: 500,
-            color: '#64748B',
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            padding: '14px 10px 4px',
-            margin: 0,
-          }}
-        >
-          Conta
-        </p>
-        {NAV_ACCOUNT.map((item) => (
-          <NavItem key={item.href} {...item} pathname={pathname} />
-        ))}
-      </nav>
-
-      {/* Footer */}
-      <div
+    <>
+      {open && <div className="ov-sidebar-backdrop" onClick={close} />}
+      <aside
+        className={`ov-sidebar${open ? ' ov-sidebar-open' : ''}`}
         style={{
-          marginTop: 'auto',
-          paddingTop: 12,
-          borderTop: '1px solid #F1F5F9',
+          width: 260,
+          minHeight: '100vh',
+          borderRight: '1px solid #E2E8F0',
+          backgroundColor: '#FFFFFF',
           display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '12px 10px 0',
+          flexDirection: 'column',
+          flexShrink: 0,
+          padding: '18px 14px',
         }}
       >
+        {/* Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 14px' }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 9,
+              background: 'linear-gradient(135deg, #0A0A0F 0%, #6D28D9 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 12 10 17 19 7" />
+            </svg>
+          </div>
+          <span
+            style={{ fontWeight: 700, fontSize: 17, color: '#0A0A0F', letterSpacing: '-0.01em' }}
+          >
+            Orcivo
+          </span>
+        </div>
+
+        {/* Nav */}
+        <nav style={{ flex: 1, overflowY: 'auto' }}>
+          <p
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--font-mono, monospace)',
+              fontWeight: 500,
+              color: '#64748B',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              padding: '14px 10px 4px',
+              margin: 0,
+            }}
+          >
+            Principal
+          </p>
+          {NAV_MAIN.map((item) => (
+            <NavItem key={item.href} {...item} pathname={pathname} onNavigate={close} />
+          ))}
+
+          <p
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--font-mono, monospace)',
+              fontWeight: 500,
+              color: '#64748B',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              padding: '14px 10px 4px',
+              margin: 0,
+            }}
+          >
+            Conta
+          </p>
+          {NAV_ACCOUNT.map((item) => (
+            <NavItem key={item.href} {...item} pathname={pathname} onNavigate={close} />
+          ))}
+        </nav>
+
+        {/* Footer */}
         <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: '50%',
-            background: '#EDE9FE',
-            color: '#4C1D95',
+            marginTop: 'auto',
+            paddingTop: 12,
+            borderTop: '1px solid #F1F5F9',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 600,
-            fontSize: 13,
-            flexShrink: 0,
+            gap: 10,
+            padding: '12px 10px 0',
           }}
         >
-          {initials}
-        </div>
-        <div style={{ minWidth: 0 }}>
           <div
             style={{
-              fontSize: 13,
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              background: '#EDE9FE',
+              color: '#4C1D95',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               fontWeight: 600,
-              color: '#0A0A0F',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              fontSize: 13,
+              flexShrink: 0,
             }}
           >
-            {displayName}
+            {initials}
           </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: '#64748B',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {companyLine}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#0A0A0F',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {displayName}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: '#64748B',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {companyLine}
+            </div>
           </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

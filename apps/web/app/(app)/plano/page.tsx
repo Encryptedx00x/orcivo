@@ -112,7 +112,7 @@ export default async function PlanoPage({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="ov-grid-2" style={{ marginBottom: 24 }}>
         {/* Current plan */}
         <div
           style={{
@@ -295,13 +295,10 @@ export default async function PlanoPage({
       )}
 
       {/* Plan comparison */}
-      <h3
-        id="planos"
-        style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}
-      >
+      <h3 id="planos" style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}>
         Trocar de plano
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
+      <div className="ov-grid-4">
         {PLANS.map((p) => {
           const isCurrent = p.code === current.code && !isCancelled;
           return (
@@ -386,7 +383,11 @@ export default async function PlanoPage({
                   }}
                   disabled
                 >
-                  {isCurrent ? 'Plano atual' : (isCancelled ? 'Livre após o cancelamento' : 'Cancele para voltar ao Livre')}
+                  {isCurrent
+                    ? 'Plano atual'
+                    : isCancelled
+                      ? 'Livre após o cancelamento'
+                      : 'Cancele para voltar ao Livre'}
                 </button>
               ) : (
                 <Link
@@ -406,7 +407,9 @@ export default async function PlanoPage({
                     textDecoration: 'none',
                   }}
                 >
-                  {isLivre ? `Assinar ${p.name.replace('Orcivo ', '')}` : `Mudar para ${p.name.replace('Orcivo ', '')}`}
+                  {isLivre
+                    ? `Assinar ${p.name.replace('Orcivo ', '')}`
+                    : `Mudar para ${p.name.replace('Orcivo ', '')}`}
                 </Link>
               )}
             </div>

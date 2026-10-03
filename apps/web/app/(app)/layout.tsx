@@ -2,6 +2,7 @@ import { AppSidebar } from '../../components/AppSidebar';
 import { TopBar } from '../../components/TopBar';
 import { SubscriptionBanner } from '../../components/SubscriptionBanner';
 import { AuthProvider, type AuthState } from '../../components/AuthProvider';
+import { MobileSidebarProvider } from '../../components/MobileSidebar';
 import { apiFetch } from '../../lib/api';
 
 interface SessionSummary {
@@ -22,16 +23,18 @@ export default async function AppLayout({
 
   return (
     <AuthProvider value={auth}>
-      <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F8FAFC' }}>
-        <AppSidebar />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <SubscriptionBanner />
-          <TopBar />
-          <main className="ov-page" style={{ flex: 1 }}>
-            {children}
-          </main>
+      <MobileSidebarProvider>
+        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F8FAFC' }}>
+          <AppSidebar />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <SubscriptionBanner />
+            <TopBar />
+            <main className="ov-page" style={{ flex: 1 }}>
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </MobileSidebarProvider>
     </AuthProvider>
   );
 }

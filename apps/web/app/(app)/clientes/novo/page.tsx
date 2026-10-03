@@ -147,7 +147,10 @@ export default function NovoClientePage(): JSX.Element {
       </div>
 
       <form id="novo-cliente-form" onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+        <div
+          className="ov-row-detail"
+          style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}
+        >
           {/* ── Left column ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Dados básicos */}
@@ -306,6 +309,7 @@ export default function NovoClientePage(): JSX.Element {
                 </button>
               </h3>
               <div
+                className="ov-row-address"
                 style={{ display: 'grid', gridTemplateColumns: '180px 1fr 120px 200px', gap: 14 }}
               >
                 <Field label="CEP">

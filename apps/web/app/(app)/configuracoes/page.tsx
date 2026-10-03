@@ -356,7 +356,10 @@ export default function ConfiguracoesPage(): JSX.Element {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}>
+      <div
+        className="ov-row-detail"
+        style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}
+      >
         {/* Sidebar nav */}
         <aside>
           {TABS.map(({ id, label, icon: Icon }) => (

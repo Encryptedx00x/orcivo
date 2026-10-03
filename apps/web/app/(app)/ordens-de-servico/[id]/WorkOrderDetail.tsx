@@ -659,6 +659,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
 
         {/* 2-column layout */}
         <div
+          className="ov-row-detail"
           style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, padding: '0 24px' }}
         >
           {/* LEFT */}
@@ -668,14 +669,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
               <div style={cardHeader}>
                 <h3 style={cardTitle}>Informações</h3>
               </div>
-              <div
-                style={{
-                  padding: '14px 18px',
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                  gap: 16,
-                }}
-              >
+              <div className="ov-grid-3" style={{ padding: '14px 18px' }}>
                 <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
                 <KV label="Iniciada em" value={formatDate(order.started_at)} />
                 <KV label="Concluída em" value={formatDate(order.finished_at)} />
@@ -773,6 +767,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                         </p>
                       ) : (
                         <div
+                          className="ov-photo-grid"
                           style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}
                         >
                           {photos.map((photo) => (

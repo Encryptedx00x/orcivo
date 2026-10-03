@@ -96,9 +96,61 @@ body {
     padding: 16px;
   }
 }
+/* ── App sidebar: off-canvas drawer on mobile ── */
+.ov-hamburger {
+  display: none;
+}
+.ov-sidebar-backdrop {
+  display: none;
+}
 @media (max-width: 900px) {
+  .ov-hamburger {
+    display: flex !important;
+  }
   .ov-sidebar {
-    width: 200px !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 50;
+    width: 260px !important;
+    transform: translateX(-100%);
+    transition: transform var(--dur-base) var(--ease-out);
+    box-shadow: 0 0 0 transparent;
+  }
+  .ov-sidebar.ov-sidebar-open {
+    transform: translateX(0);
+    box-shadow: 0 0 32px rgba(15, 23, 42, 0.18);
+  }
+  .ov-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 15, 0.4);
+    z-index: 40;
+  }
+  .ov-topbar {
+    padding: 0 16px !important;
+  }
+  .ov-topbar-search {
+    display: none;
+  }
+  .ov-topbar-company {
+    display: none;
+  }
+}
+
+/* ── Auth split layout ── */
+@media (max-width: 768px) {
+  .ov-auth-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .ov-auth-art {
+    display: none;
+  }
+  .ov-auth-form-col {
+    padding: 24px 20px !important;
+    min-height: auto !important;
   }
 }
 .ov-page-header {
@@ -298,6 +350,27 @@ body {
   .ov-grid-3,
   .ov-grid-2 {
     grid-template-columns: 1fr;
+  }
+}
+/* Sidebar/detail split layouts (aside + content, any fixed px column) */
+@media (max-width: 768px) {
+  .ov-row-detail {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* Multi-field form rows (CEP/Rua/Número/Complemento etc.) */
+@media (max-width: 640px) {
+  .ov-row-address {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* Photo thumbnail grid */
+.ov-photo-grid {
+  grid-template-columns: repeat(6, 1fr);
+}
+@media (max-width: 640px) {
+  .ov-photo-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
   }
 }
 

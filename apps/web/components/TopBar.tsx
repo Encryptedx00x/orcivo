@@ -2,8 +2,9 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Check, ChevronDown, LogOut, Search } from 'lucide-react';
+import { Bell, Check, ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+import { useMobileSidebar } from './MobileSidebar';
 
 interface NotificationItem {
   id: string;
@@ -29,6 +30,7 @@ function notificationTime(value: string): string {
 export function TopBar(): JSX.Element {
   const router = useRouter();
   const { company } = useAuth();
+  const { toggle } = useMobileSidebar();
   const companyName = company?.trade_name;
   const feedId = useId();
   const feed = useRef<HTMLDivElement>(null);
@@ -104,6 +106,7 @@ export function TopBar(): JSX.Element {
 
   return (
     <header
+      className="ov-topbar"
       style={{
         height: 64,
         borderBottom: '1px solid #E2E8F0',
@@ -116,7 +119,28 @@ export function TopBar(): JSX.Element {
         gap: 16,
       }}
     >
-      <div style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
+      <button
+        type="button"
+        className="ov-hamburger"
+        aria-label="Abrir menu"
+        onClick={toggle}
+        style={{
+          background: 'none',
+          border: 'none',
+          borderRadius: 10,
+          width: 40,
+          height: 40,
+          flexShrink: 0,
+          cursor: 'pointer',
+          color: '#334155',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Menu size={20} />
+      </button>
+
+      <div className="ov-topbar-search" style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
         <Search
           size={16}
           style={{
@@ -369,6 +393,7 @@ export function TopBar(): JSX.Element {
             {(companyName ?? 'O').charAt(0).toUpperCase()}
           </div>
           <span
+            className="ov-topbar-company"
             style={{
               fontSize: 13,
               fontWeight: 500,

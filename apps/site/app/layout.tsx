@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
 import { Footer } from './components/Footer';
@@ -28,10 +28,18 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className={inter.variable}>{children}<Footer /></body>
+      <body className={inter.variable}>
+        {children}
+        <Footer />
+      </body>
     </html>
   );
 }

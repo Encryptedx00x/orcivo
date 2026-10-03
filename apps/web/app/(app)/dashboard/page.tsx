@@ -261,14 +261,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
       </div>
 
       {/* KPIs */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
+      <div className="ov-grid-4" style={{ marginBottom: 20 }}>
         {kpis.map((m, i) => (
           <div key={i} className="ov-card">
             <div className="ov-card-body" style={{ padding: '16px 18px' }}>
