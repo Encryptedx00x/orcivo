@@ -2,52 +2,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
+import { annualDiscount, getPlans, priceLabel, type BillingCycle } from './plan-catalog';
 
 // O checkout roda dentro do app (autenticado): o site só leva ao signup/login
 // com plan/cycle na query string.
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.orcivo.com.br';
 
-const plans = [
-  {
-    name: 'Orcivo Livre',
-    code: 'LIVRE',
-    monthly: 'Grátis',
-    yearly: 'Grátis',
-    features: ['5 clientes', '10 orçamentos/mês', 'PDF com marca d\'água', 'Suporte por e-mail'],
-    highlight: false,
-    cta: 'Criar conta grátis',
-  },
-  {
-    name: 'Orcivo Solo',
-    code: 'SOLO',
-    monthly: 'R$9,90/mês',
-    yearly: 'R$79,90/ano',
-    features: ['50 clientes', '50 orçamentos/mês', 'PDF sem marca d\'água', 'Logo própria no PDF', 'Suporte prioritário'],
-    highlight: false,
-    cta: 'Assinar agora',
-  },
-  {
-    name: 'Orcivo Mais',
-    code: 'MAIS',
-    monthly: 'R$24,90/mês',
-    yearly: 'R$199,90/ano',
-    features: ['200 clientes', '200 orçamentos/mês', 'Relatórios financeiros', 'Até 3 membros na equipe', 'Suporte prioritário'],
-    highlight: true,
-    cta: 'Assinar agora',
-  },
-  {
-    name: 'Orcivo Equipe',
-    code: 'EQUIPE',
-    monthly: 'R$49,90/mês',
-    yearly: 'R$389,90/ano',
-    features: ['Uso ampliado de clientes', 'Uso ampliado de orçamentos', 'Contratos digitais', 'Até 10 membros', 'Suporte VIP'],
-    highlight: false,
-    cta: 'Assinar agora',
-  },
-];
-
 export default function PlanosPage() {
-  const [cycle, setCycle] = useState<'yearly' | 'monthly'>('yearly');
+  const [cycle, setCycle] = useState<BillingCycle>('yearly');
+  const plans = getPlans();
+  const discount = annualDiscount();
 
   return (
     <div className="min-h-screen bg-white">
@@ -76,14 +40,14 @@ export default function PlanosPage() {
               onClick={() => setCycle('yearly')}
               className={`px-5 py-2 text-sm font-medium rounded-md transition-colors ${cycle === 'yearly' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
             >
-              Anual <span className="text-green-600 text-xs font-semibold ml-1">-30%</span>
+              Anual {discount > 0 && <span className="text-green-600 text-xs font-semibold ml-1">-{discount}%</span>}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {plans.map((plan) => {
-            const price = cycle === 'yearly' ? plan.yearly : plan.monthly;
+            const price = priceLabel(plan.code, cycle);
             const query = `?plan=${plan.code}&cycle=${cycle.toUpperCase()}`;
             const isPaid = plan.code !== 'LIVRE';
             const href = isPaid ? `${APP_URL}/signup${query}` : `${APP_URL}/signup`;
