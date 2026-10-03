@@ -3,6 +3,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { User, Mail, Phone, Lock, Eye, EyeOff, Building, MapPin, Shield } from 'lucide-react';
+import { LEGAL_DOCS_VERSION } from '@orcivo/shared-types';
 import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -27,7 +28,12 @@ function SignupForm(): JSX.Element {
     const res = await fetch('/api/auth/signup/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...s1, accepted_terms: true }),
+      body: JSON.stringify({
+        ...s1,
+        accepted_terms: true,
+        terms_version: LEGAL_DOCS_VERSION,
+        privacy_version: LEGAL_DOCS_VERSION,
+      }),
     });
     const data = await res.json();
     if (!res.ok) { setError(data.message ?? 'Erro ao criar conta.'); setLoading(false); return; }

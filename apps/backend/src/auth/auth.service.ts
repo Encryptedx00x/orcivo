@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
+  LEGAL_DOCS_VERSION,
   ForgotPasswordDto,
   ResetPasswordDto,
   SignupStep1Dto,
@@ -45,6 +46,8 @@ export class AuthService {
         phone: dto.phone,
         password_hash,
         accepted_terms_at: new Date(),
+        accepted_terms_version: dto.terms_version ?? LEGAL_DOCS_VERSION,
+        accepted_privacy_version: dto.privacy_version ?? LEGAL_DOCS_VERSION,
       },
       select: { id: true, name: true, email: true },
     });

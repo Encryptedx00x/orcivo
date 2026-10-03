@@ -1,4 +1,4 @@
-import { SignupStep1Schema, SignupStep2Schema, LoginSchema, CustomerCreateSchema, CustomerListQuerySchema } from '../index';
+import { SignupStep1Schema, SignupStep2Schema, LoginSchema, CustomerCreateSchema, CustomerListQuerySchema, LEGAL_DOCS_VERSION } from '../index';
 
 describe('SignupStep1Schema', () => {
   it('accepts valid input', () => {
@@ -116,5 +116,31 @@ describe('CustomerListQuerySchema', () => {
   it('rejects limit > 100', () => {
     const result = CustomerListQuerySchema.safeParse({ limit: 200 });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('SignupStep1Schema — versão legal (paridade web/mobile)', () => {
+  const base = {
+    name: 'João Silva',
+    email: 'joao@example.com',
+    password: 'senha123',
+    accepted_terms: true,
+  };
+
+  it('aceita payload de cliente antigo sem terms_version/privacy_version', () => {
+    expect(SignupStep1Schema.safeParse(base).success).toBe(true);
+  });
+
+  it('aceita a versão vigente', () => {
+    const result = SignupStep1Schema.safeParse({
+      ...base,
+      terms_version: LEGAL_DOCS_VERSION,
+      privacy_version: LEGAL_DOCS_VERSION,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejeita versão desconhecida', () => {
+    expect(SignupStep1Schema.safeParse({ ...base, terms_version: '1999-01-01' }).success).toBe(false);
   });
 });
