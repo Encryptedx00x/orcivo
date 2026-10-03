@@ -278,7 +278,7 @@
       "scope": ["apps/site/app/termos", "apps/site/app/privacidade", "apps/web/app/(auth)/signup", "apps/backend/src/auth", "prisma/schema.prisma", "prisma/migrations", "apps/mobile/src/screens/auth", "packages/shared-types/src/auth", "packages/shared-types/src/__tests__"],
       "touchesPaths": ["apps/site/app/termos", "apps/site/app/privacidade", "apps/web/app/(auth)/signup", "apps/backend/src/auth", "prisma/schema.prisma", "prisma/migrations", "apps/mobile/src/screens/auth", "packages/shared-types/src/auth", "packages/shared-types/src/__tests__"],
       "protectedPathGrants": ["prisma/schema.prisma"],
-      "risk": "B",
+      "risk": "C",
       "productBatch": "MVP-LAUNCH-BATCH-2",
       "ownerGate": "level-c-legal-docs-auth-migration",
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
