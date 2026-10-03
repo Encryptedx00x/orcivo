@@ -38,8 +38,14 @@ export function LoginScreen({ navigation }: Props) {
       <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
         <Text style={styles.btnText}>{loading ? 'Entrando...' : 'Entrar'}</Text>
       </TouchableOpacity>
+      <TouchableOpacity accessibilityRole="link" onPress={() => navigation.navigate('ForgotPassword')}>
+        <Text style={styles.link}>Esqueci minha senha</Text>
+      </TouchableOpacity>
       <TouchableOpacity onPress={() => navigation.navigate('SignupStep1')}>
         <Text style={styles.link}>Criar conta</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => navigation.navigate('AcceptInvite')}>
+        <Text style={styles.link}>Tenho um convite</Text>
       </TouchableOpacity>
     </View>
   );
