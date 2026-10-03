@@ -1,4 +1,11 @@
-import { SignupStep1Schema, SignupStep2Schema, LoginSchema, CustomerCreateSchema, CustomerListQuerySchema, LEGAL_DOCS_VERSION } from '../index';
+import {
+  SignupStep1Schema,
+  SignupStep2Schema,
+  LoginSchema,
+  CustomerCreateSchema,
+  CustomerListQuerySchema,
+  LEGAL_DOCS_VERSION,
+} from '../index';
 
 describe('SignupStep1Schema', () => {
   it('accepts valid input', () => {
@@ -99,7 +106,9 @@ describe('CustomerCreateSchema', () => {
   it('accepts optional type PF/PJ', () => {
     expect(CustomerCreateSchema.safeParse({ name: 'X', type: 'PF' }).success).toBe(true);
     expect(CustomerCreateSchema.safeParse({ name: 'X', type: 'PJ' }).success).toBe(true);
-    expect(CustomerCreateSchema.safeParse({ name: 'X', type: 'OUTRO' as never }).success).toBe(false);
+    expect(CustomerCreateSchema.safeParse({ name: 'X', type: 'OUTRO' as never }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -113,8 +122,13 @@ describe('CustomerListQuerySchema', () => {
     }
   });
 
-  it('rejects limit > 100', () => {
+  it('accepts limit up to 500 (cobre o cap de clientes do Orcivo Mais/Equipe)', () => {
     const result = CustomerListQuerySchema.safeParse({ limit: 200 });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects limit > 500', () => {
+    const result = CustomerListQuerySchema.safeParse({ limit: 501 });
     expect(result.success).toBe(false);
   });
 });
@@ -141,6 +155,8 @@ describe('SignupStep1Schema — versão legal (paridade web/mobile)', () => {
   });
 
   it('rejeita versão desconhecida', () => {
-    expect(SignupStep1Schema.safeParse({ ...base, terms_version: '1999-01-01' }).success).toBe(false);
+    expect(SignupStep1Schema.safeParse({ ...base, terms_version: '1999-01-01' }).success).toBe(
+      false,
+    );
   });
 });

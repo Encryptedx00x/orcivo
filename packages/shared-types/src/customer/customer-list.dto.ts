@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 export const CustomerListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  // Orcivo Mais permite 200 clientes (ver PLAN_LIMITS em billing/plans.ts) e
+  // Orcivo Equipe não tem limite — o cap aqui só protege a API, não é a
+  // paginação de negócio.
+  limit: z.coerce.number().int().min(1).max(500).default(20),
   search: z.string().optional(),
 });
 

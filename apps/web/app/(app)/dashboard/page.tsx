@@ -301,7 +301,10 @@ export default async function DashboardPage(): Promise<JSX.Element> {
       </div>
 
       {/* Two columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div
+        className="ov-row-detail"
+        style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}
+      >
         {/* Agenda de hoje */}
         <div className="ov-card">
           <div
