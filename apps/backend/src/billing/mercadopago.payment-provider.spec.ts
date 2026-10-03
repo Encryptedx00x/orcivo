@@ -393,6 +393,8 @@ describe('MercadoPagoPaymentProvider', () => {
     it.each([
       ['pending', undefined, 'PENDING'],
       ['in_process', undefined, 'PENDING'],
+      ['in_mediation', undefined, 'PENDING'],
+      ['authorized', undefined, 'PENDING'],
       ['approved', 'accredited', 'ACTIVE'],
       ['rejected', 'cc_rejected_other_reason', 'PAST_DUE'],
       ['cancelled', 'expired', 'PAST_DUE'],
