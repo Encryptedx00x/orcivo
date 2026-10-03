@@ -25,9 +25,17 @@ registro; próxima sessão deve consultar `webhook_events`/`subscriptions`
 na produção pra confirmar e então marcar a task como concluída.
 
 **Pendências abertas (não bloqueantes, registradas 2026-10-03):**
-- **Bug mobile:** depois de tocar em "Começar" na tela de login, o painel
-  continua com estilo web (não nativo) — usabilidade ruim no app. Owner
-  reportou direto, ainda não investigado/corrigido.
+- **Bug mobile (app nativo):** depois de tocar em "Começar" na tela de
+  login, o painel continua com estilo web (não nativo) — usabilidade ruim
+  no app. Owner reportou direto, ainda não investigado/corrigido.
+- **Responsividade mobile do site/web (navegador no celular):** owner
+  reportou que signup, login, dashboard e as telas internas do `apps/web`
+  não são responsivas em tela de celular — crítico porque hoje é o único
+  caminho real pra acessar pelo celular enquanto o app nativo não tem
+  `.apk` publicado. Precisa de um levantamento tela por tela (provável
+  causa: componentes com larguras fixas/px em vez de flex/grid responsivo)
+  e tasks de correção — ainda não investigado, próxima sessão deve
+  começar por aqui dado o impacto.
 - **Download do app:** `apps/site/app/download/page.tsx` criado (rota
   `/download`, só Android, aponta para
   `https://s3.orcivo.com.br/orcivo-public/orcivo-latest.apk`), mas esse
