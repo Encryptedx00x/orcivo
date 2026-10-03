@@ -10,6 +10,36 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## Estado corrente — 2026-10-03 — MVP-LAUNCH-BATCH-2 publicado, deploy em produção feito
+
+FASE A (16/16 tasks do batch) e FASE B (deploy VPS) concluídas nesta sessão.
+Produção rodando com Mercado Pago real (`MP_ENV=production`, backend loga
+"Mercado Pago initialized in production mode" sem expor segredo). Migrations
+aplicadas, seed de planos confirmado, 4 domínios + webhook (401 sem
+assinatura) testados, zero regressão nos outros 7 sites da VPS.
+
+Único item que ainda depende do owner: `L2-P02-mp-production-activation`
+AC3 — confirmar com um pagamento Pix real de baixo valor (Orcivo Solo,
+R$9,90) + estorno pelo painel MP. Em andamento pelo owner no momento deste
+registro; próxima sessão deve consultar `webhook_events`/`subscriptions`
+na produção pra confirmar e então marcar a task como concluída.
+
+**Pendências abertas (não bloqueantes, registradas 2026-10-03):**
+- **Bug mobile:** depois de tocar em "Começar" na tela de login, o painel
+  continua com estilo web (não nativo) — usabilidade ruim no app. Owner
+  reportou direto, ainda não investigado/corrigido.
+- **Download do app:** `apps/site/app/download/page.tsx` criado (rota
+  `/download`, só Android, aponta para
+  `https://s3.orcivo.com.br/orcivo-public/orcivo-latest.apk`), mas esse
+  arquivo **não existe ainda** — nenhum build do app foi gerado. Falta:
+  (1) conta Expo/EAS do owner pra rodar `eas build --profile preview
+  --platform android` (gera o .apk, não precisa de Android SDK local);
+  (2) subir o .apk resultante pro bucket MinIO `orcivo-public` nesse
+  caminho exato. iOS trava até o owner assinar o Apple Developer Program
+  (US$99/ano) — pré-requisito dele, não técnico. Lembrar da regra do
+  próprio CLAUDE.md: não publicar em lojas antes de 3+ técnicos reais
+  validarem o produto — o .apk direto do site é o caminho certo por ora.
+
 ## Estado corrente — 2026-10-01 — AUTONOMIA TOTAL CONCEDIDA (overnight)
 
 Owner (sessão de lançamento, 2026-10-01, tarde da noite): "Gere todas as
