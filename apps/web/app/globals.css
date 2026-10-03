@@ -481,6 +481,9 @@ body {
   gap: 4px;
   border-bottom: 1px solid var(--border-1);
   margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 .ov-tab {
   padding: 10px 14px;
@@ -491,6 +494,8 @@ body {
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   transition: color var(--dur-fast) var(--ease-out);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .ov-tab:hover {
   color: var(--ink);

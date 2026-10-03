@@ -1,4 +1,10 @@
-import { BadGatewayException, BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlanCode, SubscriptionStatus } from '@prisma/client';
 import { PLAN_PRICING } from '@orcivo/shared-types';
@@ -32,7 +38,9 @@ export class SubscriptionService {
     @Inject(PAYMENT_PROVIDER) private readonly paymentProvider: PaymentProvider,
   ) {}
 
-  async getOrCreate(companyId: string): Promise<{ status: SubscriptionStatus | null; plan_code: PlanCode }> {
+  async getOrCreate(
+    companyId: string,
+  ): Promise<{ status: SubscriptionStatus | null; plan_code: PlanCode }> {
     const existing = await this.prisma.subscription.findUnique({
       where: { company_id: companyId },
     });
@@ -191,6 +199,35 @@ export class SubscriptionService {
       },
     });
 
+    if (providerSubscription?.pix && providerSubscriptionId) {
+      await this.prisma.subscriptionPayment.upsert({
+        where: { asaas_payment_id: providerSubscriptionId },
+        create: {
+          subscription_id: updatedSub.id,
+          asaas_payment_id: providerSubscriptionId,
+          amount: value,
+          status: 'pending',
+          due_date: new Date(nextDueDate),
+          pix_qr_code: providerSubscription.pix.qrCode,
+          pix_qr_code_base64: providerSubscription.pix.qrCodeBase64 ?? null,
+          pix_ticket_url: providerSubscription.pix.ticketUrl ?? null,
+          pix_expires_at: providerSubscription.pix.expiresAt
+            ? new Date(providerSubscription.pix.expiresAt)
+            : null,
+        },
+        update: {
+          amount: value,
+          status: 'pending',
+          pix_qr_code: providerSubscription.pix.qrCode,
+          pix_qr_code_base64: providerSubscription.pix.qrCodeBase64 ?? null,
+          pix_ticket_url: providerSubscription.pix.ticketUrl ?? null,
+          pix_expires_at: providerSubscription.pix.expiresAt
+            ? new Date(providerSubscription.pix.expiresAt)
+            : null,
+        },
+      });
+    }
+
     return {
       subscription: updatedSub,
       provider_subscription_id: providerSubscriptionId,
@@ -200,11 +237,46 @@ export class SubscriptionService {
   }
 
   /**
+   * Pix pendente mais recente ainda dentro do prazo — permite o usuário
+   * recuperar o QR/código sem precisar cancelar e assinar de novo.
+   */
+  async getPendingPix(companyId: string): Promise<{
+    qrCode: string;
+    qrCodeBase64: string | null;
+    ticketUrl: string | null;
+    expiresAt: string | null;
+    amount: string;
+  } | null> {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { company_id: companyId },
+      select: { id: true },
+    });
+    if (!sub) return null;
+
+    const payment = await this.prisma.subscriptionPayment.findFirst({
+      where: { subscription_id: sub.id, status: 'pending', pix_qr_code: { not: null } },
+      orderBy: { created_at: 'desc' },
+    });
+    if (!payment || !payment.pix_qr_code) return null;
+    if (payment.pix_expires_at && payment.pix_expires_at.getTime() < Date.now()) return null;
+
+    return {
+      qrCode: payment.pix_qr_code,
+      qrCodeBase64: payment.pix_qr_code_base64,
+      ticketUrl: payment.pix_ticket_url,
+      expiresAt: payment.pix_expires_at?.toISOString() ?? null,
+      amount: payment.amount.toFixed(2),
+    };
+  }
+
+  /**
    * Cancela a assinatura paga: encerra a cobrança recorrente no provedor e
    * marca a assinatura local como CANCELLED (mesmo estado do webhook de
    * cancelamento). Se o provedor falhar, nada é alterado localmente.
    */
-  async cancelSubscription(companyId: string): Promise<{ status: SubscriptionStatus; plan_code: PlanCode }> {
+  async cancelSubscription(
+    companyId: string,
+  ): Promise<{ status: SubscriptionStatus; plan_code: PlanCode }> {
     const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
     if (!sub || sub.plan_code === 'LIVRE') {
       throw new BadRequestException('Não há assinatura paga para cancelar.');
@@ -217,7 +289,9 @@ export class SubscriptionService {
       try {
         await this.paymentProvider.cancelSubscription(sub.asaas_sub_id);
       } catch (err) {
-        this.logger.error(`Falha ao cancelar subscription ${this.paymentProvider.provider}: ${err}`);
+        this.logger.error(
+          `Falha ao cancelar subscription ${this.paymentProvider.provider}: ${err}`,
+        );
         throw new BadGatewayException('Não foi possível cancelar agora. Tente novamente.');
       }
     }

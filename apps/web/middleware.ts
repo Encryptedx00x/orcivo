@@ -16,7 +16,9 @@ function jwtExpiresAt(token: string): number {
   }
 }
 
-async function tryRefresh(req: NextRequest): Promise<{ accessToken: string; refreshToken: string } | null> {
+async function tryRefresh(
+  req: NextRequest,
+): Promise<{ accessToken: string; refreshToken: string } | null> {
   const refreshToken = req.cookies.get('refresh_token')?.value;
   if (!refreshToken) return null;
 
@@ -28,7 +30,7 @@ async function tryRefresh(req: NextRequest): Promise<{ accessToken: string; refr
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
     if (!res.ok) return null;
-    const data = await res.json() as { access_token: string; refresh_token?: string };
+    const data = (await res.json()) as { access_token: string; refresh_token?: string };
     return { accessToken: data.access_token, refreshToken: data.refresh_token ?? refreshToken };
   } catch {
     return null;
@@ -39,12 +41,12 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const accessToken = req.cookies.get('access_token')?.value;
 
-  if (alwaysPublicPaths.some(p => pathname.startsWith(p))) {
+  if (alwaysPublicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  if (publicPaths.some(p => pathname.startsWith(p))) {
-    if (accessToken) return NextResponse.redirect(new URL('/clientes', req.url));
+  if (publicPaths.some((p) => pathname.startsWith(p))) {
+    if (accessToken) return NextResponse.redirect(new URL('/dashboard', req.url));
     return NextResponse.next();
   }
 
@@ -58,7 +60,12 @@ export async function middleware(req: NextRequest) {
     if (!refreshed) return NextResponse.redirect(new URL('/login', req.url));
 
     const res = NextResponse.next();
-    const cookieOpts = { httpOnly: true, sameSite: 'strict' as const, secure: process.env['NODE_ENV'] === 'production', path: '/' };
+    const cookieOpts = {
+      httpOnly: true,
+      sameSite: 'strict' as const,
+      secure: process.env['NODE_ENV'] === 'production',
+      path: '/',
+    };
     res.cookies.set('access_token', refreshed.accessToken, cookieOpts);
     res.cookies.set('refresh_token', refreshed.refreshToken, cookieOpts);
     return res;

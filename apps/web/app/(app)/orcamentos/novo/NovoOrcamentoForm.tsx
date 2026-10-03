@@ -71,7 +71,15 @@ const STEPS = ['Cliente', 'Itens', 'Desconto e validade', 'Termos', 'Revisão'];
 // ── Stepper ───────────────────────────────────────────────────────────
 function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: 20,
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+      }}
+    >
       {STEPS.map((s, i) => (
         <>
           <div
@@ -88,6 +96,8 @@ function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void
               cursor: 'pointer',
               color: i === step ? T.ink : T.fg3,
               background: i === step ? T.purple50 : 'transparent',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}
           >
             <div

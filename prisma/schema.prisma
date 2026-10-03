@@ -411,16 +411,23 @@ model Subscription {
 }
 
 model SubscriptionPayment {
-  id               String       @id @default(uuid())
-  subscription_id  String
-  subscription     Subscription @relation(fields: [subscription_id], references: [id])
-  asaas_payment_id String?      @unique
-  amount           Decimal      @db.Decimal(12, 2)
-  status           String
-  due_date         DateTime?
-  paid_at          DateTime?
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
+  id                  String       @id @default(uuid())
+  subscription_id     String
+  subscription        Subscription @relation(fields: [subscription_id], references: [id])
+  asaas_payment_id    String?      @unique
+  amount              Decimal      @db.Decimal(12, 2)
+  status              String
+  due_date            DateTime?
+  paid_at             DateTime?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+  // Pix copia-e-cola/QR persistido para o cliente conseguir recuperar o
+  // pagamento pendente se saiu da tela de checkout sem pagar (o provedor só
+  // devolve esses dados uma vez, na criação da cobrança).
+  pix_qr_code         String?
+  pix_qr_code_base64  String?
+  pix_ticket_url      String?
+  pix_expires_at      DateTime?
 
   @@map("subscription_payments")
 }

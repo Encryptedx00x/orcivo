@@ -10,6 +10,7 @@ import {
   type PaidPlanCode,
 } from '../actions';
 import { PLANS, findPlan, priceLabel } from '../plans';
+import { PixPaymentView } from '../PixPaymentView';
 
 const PAID = PLANS.filter((p) => p.code !== 'LIVRE');
 
@@ -86,20 +87,7 @@ export function CheckoutForm(props: {
           Escaneie o QR Code ou copie o código. Sua assinatura é ativada assim que o pagamento for
           confirmado.
         </p>
-        {pix.qrCodeBase64 && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            alt="QR Code Pix"
-            src={`data:image/png;base64,${pix.qrCodeBase64}`}
-            style={{ width: 200, height: 200 }}
-          />
-        )}
-        <textarea
-          readOnly
-          value={pix.qrCode}
-          rows={3}
-          style={{ width: '100%', fontSize: 12, marginTop: 12 }}
-        />
+        <PixPaymentView pix={pix} />
         <div style={{ marginTop: 16 }}>
           <Link
             href="/plano?checkout=ok"

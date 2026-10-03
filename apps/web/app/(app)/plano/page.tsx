@@ -4,6 +4,8 @@ import { formatMoney } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
 import { CancelButton } from './cancel-button';
 import { PLANS, priceLabel } from './plans';
+import { getPendingPix } from './actions';
+import { PendingPixBanner } from './PendingPixBanner';
 
 const T = {
   ink: '#0A0A0F',
@@ -57,10 +59,11 @@ export default async function PlanoPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }): Promise<JSX.Element> {
-  const [sub, paymentsRes, members] = await Promise.all([
+  const [sub, paymentsRes, members, pendingPix] = await Promise.all([
     apiFetch<Subscription>('/billing/subscription'),
     apiFetch<{ data: SubPayment[] }>('/billing/payments'),
     apiFetch<Array<unknown>>('/company/members'),
+    getPendingPix(),
   ]);
   const payments: SubPayment[] = paymentsRes.data;
   const memberCount = Array.isArray(members) ? members.length : 1;
@@ -96,20 +99,24 @@ export default async function PlanoPage({
         </a>
       </div>
 
-      {justSubscribed && (
-        <div
-          role="status"
-          style={{
-            background: T.successBg,
-            color: '#166534',
-            borderRadius: 10,
-            padding: '12px 16px',
-            fontSize: 14,
-            marginBottom: 16,
-          }}
-        >
-          Pagamento em andamento. Sua assinatura é ativada assim que o pagamento for confirmado.
-        </div>
+      {pendingPix ? (
+        <PendingPixBanner pix={pendingPix} />
+      ) : (
+        justSubscribed && (
+          <div
+            role="status"
+            style={{
+              background: T.successBg,
+              color: '#166534',
+              borderRadius: 10,
+              padding: '12px 16px',
+              fontSize: 14,
+              marginBottom: 16,
+            }}
+          >
+            Pagamento em andamento. Sua assinatura é ativada assim que o pagamento for confirmado.
+          </div>
+        )
       )}
 
       <div className="ov-grid-2" style={{ marginBottom: 24 }}>
@@ -315,7 +322,7 @@ export default async function PlanoPage({
                 <div
                   style={{
                     position: 'absolute',
-                    top: -10,
+                    top: -12,
                     left: 18,
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -326,12 +333,22 @@ export default async function PlanoPage({
                     borderRadius: 9999,
                     background: isCurrent ? T.purple600 : T.fg2,
                     color: '#fff',
+                    lineHeight: 1,
                   }}
                 >
                   {p.tag}
                 </div>
               )}
-              <div style={{ fontWeight: 700, fontSize: 17, color: T.ink }}>{p.name}</div>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: 17,
+                  color: T.ink,
+                  marginTop: p.tag ? 10 : 0,
+                }}
+              >
+                {p.name}
+              </div>
               <div
                 style={{
                   fontSize: 26,

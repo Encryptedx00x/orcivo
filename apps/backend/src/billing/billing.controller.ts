@@ -19,7 +19,9 @@ interface CheckoutBody {
  * plan_code é o código do plano SEM sufixo de ciclo (ex.: 'SOLO', nunca
  * 'SOLO_MONTHLY'); o ciclo vem separado em billing_cycle.
  */
-function assertValidCheckoutBody(body: Partial<CheckoutBody> | undefined): asserts body is CheckoutBody {
+function assertValidCheckoutBody(
+  body: Partial<CheckoutBody> | undefined,
+): asserts body is CheckoutBody {
   if (!body || !PAID_PLAN_CODES.includes(body.plan_code as CheckoutBody['plan_code'])) {
     throw new BadRequestException('plan_code inválido. Use: SOLO, MAIS ou EQUIPE');
   }
@@ -51,6 +53,11 @@ export class BillingController {
   @Get('payments')
   getPayments(@Req() req: TenantRequest) {
     return this.subscriptionService.getPayments(req.companyId);
+  }
+
+  @Get('pending-pix')
+  getPendingPix(@Req() req: TenantRequest) {
+    return this.subscriptionService.getPendingPix(req.companyId);
   }
 
   // AllowPastDue: quem está inadimplente/bloqueado precisa conseguir contratar

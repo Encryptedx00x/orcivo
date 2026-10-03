@@ -18,6 +18,22 @@ export type CheckoutResult =
 
 export type CancelResult = { ok: true } | { ok: false; message: string };
 
+export interface PendingPix {
+  qrCode: string;
+  qrCodeBase64: string | null;
+  ticketUrl: string | null;
+  expiresAt: string | null;
+  amount: string;
+}
+
+export async function getPendingPix(): Promise<PendingPix | null> {
+  try {
+    return await apiFetch<PendingPix | null>('/billing/pending-pix');
+  } catch {
+    return null;
+  }
+}
+
 const PLANS: readonly string[] = ['SOLO', 'MAIS', 'EQUIPE'];
 const CYCLES: readonly string[] = ['MONTHLY', 'YEARLY'];
 const METHODS: readonly string[] = ['PIX', 'CREDIT_CARD'];
