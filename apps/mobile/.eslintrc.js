@@ -3,7 +3,14 @@ const path = require('path');
 /** @type {import('eslint').Linter.Config} */
 module.exports = {
   root: true,
-  ignorePatterns: ['.eslintrc.js', 'dist/', 'node_modules/', 'babel.config.js', 'metro.config.js'],
+  ignorePatterns: [
+    '.eslintrc.js',
+    'dist/',
+    'node_modules/',
+    'babel.config.js',
+    'metro.config.js',
+    'app.config.js',
+  ],
   extends: ['../../.eslintrc.js', 'plugin:@typescript-eslint/recommended'],
   parser: '@typescript-eslint/parser',
   parserOptions: {

@@ -25,6 +25,9 @@ module.exports = {
     plugins: ['expo-secure-store'],
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+      eas: {
+        projectId: '8e7221e2-7469-4967-90f2-28e019ed93d8',
+      },
     },
   },
 };
