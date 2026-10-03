@@ -24,7 +24,12 @@ function compile(relativePath, modules) {
 }
 
 // Exercise the real plan metadata rather than duplicating names/prices in the test.
-const plans = compile('./plans.ts', {});
+const sharedPlans = compile('../../../../../packages/shared-types/src/billing/plans.ts', {});
+const sharedMoney = compile('../../../../../packages/shared-types/src/helpers/money.ts', {
+  'decimal.js': require('decimal.js'),
+});
+const sharedTypes = { ...sharedPlans, ...sharedMoney };
+const plans = compile('./plans.ts', { '@orcivo/shared-types': sharedTypes });
 
 function createElement(type, props, ...children) {
   return typeof type === 'function' ? type({ ...props, children }) : { type, props: props ?? {}, children: children.flat(Infinity) };
@@ -42,7 +47,7 @@ native.Platform = { OS: 'ios' };
 
 // Same lightweight hook/host adapter used by EquipeScreen/FinanceiroScreen tests.
 // It verifies behavior and native props; device layout is not simulated.
-function mount({ getJson, getWorkOrders } = {}) {
+function mount({ getJson, getWorkOrders, planMetadata = plans } = {}) {
   const slots = [];
   let index = 0;
   const effects = [];
@@ -78,7 +83,7 @@ function mount({ getJson, getWorkOrders } = {}) {
     '../../services/api': { api: { get: getJson ?? (async () => { throw new Error('unexpected api.get'); }) } },
     '../../services/work-order.service': { workOrderService: { fetchAll: getWorkOrders ?? (async () => ({ data: [] })) } },
     './plano-errors': { planoError },
-    './plans': plans,
+    './plans': planMetadata,
   });
   let tree;
   const render = () => {
@@ -112,6 +117,48 @@ function jsonRouter(map) {
     return map[path];
   };
 }
+
+test('shows current shared monthly prices for every current plan and alternative', async () => {
+  for (const code of Object.keys(sharedPlans.PLAN_PRICING)) {
+    const screen = mount({
+      getJson: jsonRouter({
+        '/company/me/subscription-status': { ...livreStatus, plan_code: code },
+        '/company/me/plan-limits': { ...livreLimits, ...sharedPlans.PLAN_LIMITS[code], plan_code: code },
+      }),
+    });
+    await screen.settle();
+    for (const [planCode, pricing] of Object.entries(sharedPlans.PLAN_PRICING)) {
+      const label = planCode === 'LIVRE'
+        ? (code === 'LIVRE' ? 'Gratuito · uso justo' : 'Gratuito')
+        : `${sharedMoney.formatMoney(pricing.monthly)}/mês`;
+      assert.ok(screen.text(label), `${code}: ${planCode} must display ${label}`);
+    }
+  }
+});
+
+test('a shared price change reaches the current plan and alternatives without mobile edits', async () => {
+  const changedPlans = compile('./plans.ts', {
+    '@orcivo/shared-types': {
+      ...sharedTypes,
+      PLAN_PRICING: {
+        ...sharedPlans.PLAN_PRICING,
+        MAIS: { ...sharedPlans.PLAN_PRICING.MAIS, monthly: '1234.56' },
+      },
+    },
+  });
+  for (const code of ['MAIS', 'LIVRE']) {
+    const screen = mount({
+      planMetadata: changedPlans,
+      getJson: jsonRouter({
+        '/company/me/subscription-status': { ...livreStatus, plan_code: code },
+        '/company/me/plan-limits': { ...livreLimits, ...sharedPlans.PLAN_LIMITS[code], plan_code: code },
+      }),
+    });
+    await screen.settle();
+    assert.ok(screen.text('R$ 1.234,56/mês'));
+    assert.equal(screen.text(`${sharedMoney.formatMoney(sharedPlans.PLAN_PRICING.MAIS.monthly)}/mês`), false);
+  }
+});
 
 test('shows a loading state, then the current plan with its real name (never FREE/POP/PRO/TOP)', async () => {
   const screen = mount({
