@@ -12,7 +12,7 @@ const NOW = new Date('2026-10-01T15:00:00.000Z');
 
 function buildProvider(env: Record<string, string | undefined> = {}): MercadoPagoPaymentProvider {
   const values: Record<string, string | undefined> = {
-    MP_ENV: 'sandbox',
+    MP_ENV: 'test',
     MP_ACCESS_TOKEN: 'TEST-fake-access-token',
     MP_PUBLIC_KEY: 'TEST-fake-public-key',
     MP_WEBHOOK_SECRET: 'TEST-fake-webhook-secret',
@@ -85,8 +85,12 @@ describe('MercadoPagoPaymentProvider', () => {
     }
   });
 
-  it('initializes in sandbox mode', () => {
+  it('initializes in test mode', () => {
     expect(() => buildProvider()).not.toThrow();
+  });
+
+  it('continues to accept the legacy sandbox mode', () => {
+    expect(() => buildProvider({ MP_ENV: 'sandbox' })).not.toThrow();
   });
 
   it('initializes in production mode when all required credentials are configured', () => {
