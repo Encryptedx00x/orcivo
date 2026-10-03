@@ -12,7 +12,7 @@
     "P02-PASS": { "kind": "DERIVED", "state": "PASS", "requires": ["P02-T12", "P02-T13"], "desc": "P02 = PASS once both human gates clear" },
     "P03": { "kind": "GSD_PHASE", "state": "PASS", "requires": ["P02-PASS"], "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md", "desc": "storage privado — T10 + T13 PASS", "resolvedAt": "2026-09-04" }
   },
-  "phaseOrder": ["L2-P01", "L2-P02", "L2-P03", "L2-P04", "L2-P05"],
+  "phaseOrder": ["L2-P01", "L2-P02", "L2-P03", "L2-P04", "L2-P05", "L2-P06"],
   "ownerDecisions": {
     "PRICING": "DECIDED 2026-10-01 (owner, via AskUserQuestion then blanket override). Orcivo Equipe anual = R$389,90 (doc value, supersedes code's R$399,90). Mensal Mais = R$24,90, Mensal Equipe = R$49,90 (doc example values, supersedes code's 19,90/39,90). Orcivo Livre = 5 clientes / 10 orçamentos/mês / 15 OS/mês (seed value for clientes/orçamentos; 15 OS/mês already locked separately, P-16). Orcivo Mais = 200 clientes (code value, doc's 300 rejected). Orcivo Equipe = 8 usuários (doc value, supersedes code's 10). Orcivo Solo unchanged (R$9,90/mês, R$79,90/ano, 50 clientes/50 orçamentos/30 OS). These numbers are the new single source of truth; doc and code both sync to them (LAUNCH2-P01-docs-pricing-reconcile).",
     "AUTONOMY": "Owner (2026-10-01, late night): 'Gere todas as tasks para rodar no autopilot ... pode seguir de forma 100% autônoma decidindo o que tiver waiting for human por mim ... Até mesmo restrições dos planos e valores se quiser alterar você tem permissão ... Você que manda a partir de agora, até amanhã.' Every Level C item in this batch except LAUNCH2-P02-mp-production-activation is pre-authorized — the dispatcher/agent decides and proceeds without pausing. Document the decision rationale in commit messages / task notes for auditability, but do not block on AskUserQuestion.",
@@ -207,7 +207,7 @@
       "blockedByGates": ["P02-T12", "P02-T13", "P03"],
       "candidateConstraints": {},
       "verificationProfile": "C",
-      "phaseGate": "L2-P02",
+      "phaseGate": "L2-P06",
       "status": "SCHEDULED"
     },
     {
