@@ -24,6 +24,36 @@ R$9,90) + estorno pelo painel MP. Em andamento pelo owner no momento deste
 registro; próxima sessão deve consultar `webhook_events`/`subscriptions`
 na produção pra confirmar e então marcar a task como concluída.
 
+**MP_PRODUCTION confirmado em 2026-10-03 pelo owner**: Pix real de R$9,90
+(Orcivo Solo) pago, subscription `19cd5569` foi TRIALING→ACTIVE,
+`webhook_events` com `payment.created`+`payment.updated` PROCESSED sem
+duplicar. Gate aprovado, `L2-P02-mp-production-activation` concluída.
+Falta só o owner estornar esse pagamento de teste pelo painel MP.
+
+**Bugs reais de UX achados pelo owner no teste (checkout Pix, registrar
+como tasks novas na próxima sessão):**
+1. Ao sair da página de checkout com um Pix pendente gerado, não existe
+   NENHUM jeito de recuperar aquele QR Code/código depois — a tela
+   "Gerenciar assinatura" só mostra "pagamento pendente" sem link pra
+   voltar ao Pix. Owner teve que cancelar o plano e assinar de novo pra
+   gerar um Pix novo. Precisa: botão "ver Pix pendente" / persistir e
+   expor o QR+código enquanto o pagamento não expira.
+2. Sem botão de copiar o código Pix "copia e cola" — hoje é só um
+   `<textarea readOnly>` em `apps/web/app/(app)/plano/checkout/checkout-form.tsx`,
+   o usuário tem que selecionar e copiar manualmente. Adicionar um botão
+   "Copiar código".
+
+**Verificação pedida pelo owner (criar tasks, ainda não feito):** confirmar
+que os limites/benefícios de `PLAN_LIMITS` (customers_max, quotes_per_month,
+work_orders_per_month, members_max, has_logo, pdf_watermark, has_reports,
+has_contracts) são realmente **aplicados** ao assinar um plano superior
+(ex. Livre→Mais libera 200 clientes de fato, remove watermark do PDF) E
+**retirados** ao fazer downgrade pra um plano inferior (ex. Mais→Livre
+volta o limite de 5 clientes, volta o watermark, bloqueia report/contrato)
+— incluindo o caso de já ter dados acima do novo limite (o que acontece
+com os clientes 6-200 se cair pra Livre?). Checar `plan-limits.service.ts`
+e os guards que usam `check-plan-limit.decorator.ts`.
+
 **Pendências abertas (não bloqueantes, registradas 2026-10-03):**
 - **Bug mobile (app nativo):** depois de tocar em "Começar" na tela de
   login, o painel continua com estilo web (não nativo) — usabilidade ruim
