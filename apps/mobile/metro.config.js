@@ -12,5 +12,9 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
 ];
+// pnpm hoists deps as symlinks; Metro's default resolver doesn't follow
+// them, which only breaks on a fresh EAS Build install (remote worker),
+// never locally where node_modules is already resolved on disk.
+config.resolver.unstable_enableSymlinks = true;
 
 module.exports = config;
