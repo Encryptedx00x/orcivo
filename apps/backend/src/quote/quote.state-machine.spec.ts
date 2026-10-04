@@ -161,7 +161,7 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
         { provide: AuditService, useValue: mockAudit },
         {
           provide: UsersService,
-          useValue: { resolveSignatureUrl: jest.fn().mockResolvedValue(null) },
+          useValue: { getSignatureBuffer: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();

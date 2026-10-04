@@ -12,7 +12,7 @@ import { QuoteService } from './quote.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
-import { StorageService } from '../storage/storage.service';
+import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
 import { WorkOrderService } from '../work-order/work-order.service';
 import { QuotePdfService } from './quote-pdf.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
@@ -92,8 +92,10 @@ const mockPdfService = {
   generate: jest.fn().mockResolvedValue(Buffer.from('PDF')),
 };
 
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
 const mockUsersService = {
-  resolveSignatureUrl: jest.fn().mockResolvedValue(null),
+  getSignatureBuffer: jest.fn().mockResolvedValue(null),
 };
 
 describe('QuoteService', () => {
@@ -337,16 +339,56 @@ describe('QuoteService', () => {
         approval_token: 'tok',
         valid_until: null,
       });
-      mockUsersService.resolveSignatureUrl.mockResolvedValue(
-        'https://minio.example.com/signed/comp-1/signatures/technicians/user-1?X-Amz-Signature=x',
-      );
+      mockUsersService.getSignatureBuffer.mockResolvedValueOnce(PNG);
 
       await service.send('q1', 'comp-1', 'user-1', true);
 
-      expect(mockUsersService.resolveSignatureUrl).toHaveBeenCalledWith('comp-1', 'user-1');
+      expect(mockUsersService.getSignatureBuffer).toHaveBeenCalledWith('comp-1', 'user-1');
+      // Frozen per-quote copy, so later PDFs keep the signature that was sent.
+      expect(mockStorage.uploadBuffer).toHaveBeenCalledWith(
+        PHOTO_BUCKET,
+        'comp-1/quotes/q1/technician-signature',
+        PNG,
+        'image/png',
+      );
       expect(mockPdfService.generate).toHaveBeenCalledWith(
         expect.objectContaining({
-          technician_signature_url: expect.stringContaining('comp-1/signatures/technicians/user-1'),
+          technician_signature_url: `data:image/png;base64,${PNG.toString('base64')}`,
+        }),
+        expect.anything(),
+      );
+      expect(mockTx.quote.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            technician_signature_key: 'comp-1/quotes/q1/technician-signature',
+          }),
+        }),
+      );
+    });
+
+    it('PDF regerado depois do envio (download no app) mantém a assinatura congelada', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'APPROVED',
+        number: 7,
+        items: [],
+        customer: { name: 'Maria' },
+        approval: null,
+        technician_signature_key: 'comp-1/quotes/q1/technician-signature',
+      });
+      mockStorage.getObjectBuffer.mockResolvedValueOnce(PNG);
+
+      await service.generatePdf('q1', 'comp-1');
+
+      expect(mockStorage.getObjectBuffer).toHaveBeenCalledWith(
+        PHOTO_BUCKET,
+        'comp-1/quotes/q1/technician-signature',
+      );
+      expect(mockPdfService.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'APPROVED',
+          technician_signature_url: `data:image/png;base64,${PNG.toString('base64')}`,
         }),
         expect.anything(),
       );
@@ -373,7 +415,7 @@ describe('QuoteService', () => {
       });
       await service.send('q1', 'comp-1', 'user-1');
 
-      expect(mockUsersService.resolveSignatureUrl).not.toHaveBeenCalled();
+      expect(mockUsersService.getSignatureBuffer).not.toHaveBeenCalled();
       expect(mockPdfService.generate).toHaveBeenCalledWith(
         expect.objectContaining({ technician_signature_url: null }),
         expect.anything(),
@@ -722,7 +764,7 @@ describe('QuoteService', () => {
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'q1', status: 'APPROVED' },
-          data: { status: 'DRAFT' },
+          data: { status: 'DRAFT', technician_signature_key: null },
         }),
       );
       expect(mockAudit.record).toHaveBeenCalledWith(

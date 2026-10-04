@@ -28,6 +28,15 @@ export class UsersService {
     }
   }
 
+  /** Raw bytes of the technician's saved signature, or null if none. */
+  async getSignatureBuffer(companyId: string, userId: string): Promise<Buffer | null> {
+    try {
+      return await this.storage.getObjectBuffer(PHOTO_BUCKET, this.objectKey(companyId, userId));
+    } catch {
+      return null;
+    }
+  }
+
   /** Resolves the technician's saved signature to a short-lived signed URL, or null if none. */
   async resolveSignatureUrl(companyId: string, userId: string): Promise<string | null> {
     const objectKey = this.objectKey(companyId, userId);

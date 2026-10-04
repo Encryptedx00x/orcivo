@@ -209,6 +209,9 @@ export class QuoteService {
       {
         ...quote,
         customer_name: quote.customer?.name ?? null,
+        technician_signature_url: await this.technicianSignatureDataUri(
+          (quote as { technician_signature_key?: string | null }).technician_signature_key,
+        ),
       },
       company,
     );
@@ -353,18 +356,36 @@ export class QuoteService {
   }
 
   /**
-   * PB1-P10/AC2: quando o técnico opta por aplicar a assinatura reutilizável
-   * no envio, resolve a assinatura privada (P03 storage, tenant-scoped por
-   * company_id+user_id) para uma signed URL de uso único pelo renderer do
-   * PDF. Sem assinatura salva ou sem opt-in, retorna null.
+   * PB1-P10/AC2: quando o técnico opta por aplicar a assinatura reutilizável no
+   * envio, congela uma cópia dela junto do orçamento. O PDF enviado e qualquer PDF
+   * regerado depois (download no app) usam essa cópia — trocar a assinatura
+   * reutilizável depois não altera orçamentos já enviados. Sem assinatura salva ou
+   * sem opt-in, retorna null.
    */
-  private async resolveTechnicianSignatureUrl(
+  private async snapshotTechnicianSignature(
     companyId: string,
     userId: string,
+    quoteId: string,
     applySignature: boolean,
-  ): Promise<string | null> {
+  ): Promise<{ key: string; dataUri: string } | null> {
     if (!applySignature) return null;
-    return this.usersService.resolveSignatureUrl(companyId, userId);
+    const buffer = await this.usersService.getSignatureBuffer(companyId, userId);
+    if (!buffer) return null;
+    const mime = imageMime(buffer);
+    const key = `${companyId}/quotes/${quoteId}/technician-signature`;
+    await this.storage.uploadBuffer(PHOTO_BUCKET, key, buffer, mime);
+    return { key, dataUri: toDataUri(buffer, mime) };
+  }
+
+  /** Inline data URI of a quote's frozen technician signature (no network fetch at render). */
+  private async technicianSignatureDataUri(key: string | null | undefined): Promise<string | null> {
+    if (!key) return null;
+    try {
+      const buffer = await this.storage.getObjectBuffer(PHOTO_BUCKET, key);
+      return toDataUri(buffer, imageMime(buffer));
+    } catch {
+      return null;
+    }
   }
 
   async send(
@@ -380,9 +401,10 @@ export class QuoteService {
     const customerName =
       (quote as unknown as { customer?: { name?: string } }).customer?.name ?? 'cliente';
 
-    const technicianSignatureUrl = await this.resolveTechnicianSignatureUrl(
+    const technicianSignature = await this.snapshotTechnicianSignature(
       companyId,
       userId,
+      id,
       applySignature,
     );
 
@@ -395,7 +417,7 @@ export class QuoteService {
         ...quote,
         status: spec.to,
         customer_name: quote.customer?.name ?? null,
-        technician_signature_url: technicianSignatureUrl,
+        technician_signature_url: technicianSignature?.dataUri ?? null,
       },
       company,
     );
@@ -413,7 +435,12 @@ export class QuoteService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const q = await tx.quote.update({
         where: { id },
-        data: { status: 'SENT', approval_token: token, pdf_url: pdfKey },
+        data: {
+          status: 'SENT',
+          approval_token: token,
+          pdf_url: pdfKey,
+          technician_signature_key: technicianSignature?.key ?? null,
+        },
         include: { items: true, customer: true, approval: true },
       });
       await this.auditService.record(tx, {
@@ -427,7 +454,7 @@ export class QuoteService {
         to: 'SENT',
         humanText:
           `Orçamento #${q.number} (${customerName}) enviado para aprovação` +
-          (technicianSignatureUrl ? ' com assinatura do técnico aplicada' : ''),
+          (technicianSignature ? ' com assinatura do técnico aplicada' : ''),
       });
       return q;
     });
@@ -703,8 +730,15 @@ export class QuoteService {
     const newValidUntil = to === 'SENT' ? new Date(Date.now() + APPROVAL_TOKEN_TTL_MS) : undefined;
     const previousApprovalToken =
       (quote as unknown as { approval_token?: string | null }).approval_token ?? undefined;
-    const data: { status: 'SENT' | 'DRAFT'; approval_token?: string; valid_until?: Date } = {
+    const data: {
+      status: 'SENT' | 'DRAFT';
+      approval_token?: string;
+      valid_until?: Date;
+      technician_signature_key?: null;
+    } = {
       status: to,
+      // Back to draft = content can change; the next send decides the signature again.
+      ...(to === 'DRAFT' ? { technician_signature_key: null } : {}),
     };
     if (to === 'SENT' && newApprovalToken && newValidUntil) {
       data.approval_token = newApprovalToken;
@@ -843,4 +877,14 @@ export class QuoteService {
 
     return this.storage.getObjectBuffer(PDF_BUCKET, key);
   }
+}
+
+function imageMime(buffer: Buffer): string {
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg';
+  if (buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return 'image/png';
+}
+
+function toDataUri(buffer: Buffer, mime: string): string {
+  return `data:${mime};base64,${buffer.toString('base64')}`;
 }

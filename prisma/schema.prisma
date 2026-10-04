@@ -240,6 +240,7 @@ model Quote {
   subtotal           Decimal      @default(0) @db.Decimal(12, 2)
   total              Decimal      @default(0) @db.Decimal(12, 2)
   pdf_url            String?
+  technician_signature_key String?
   approval_token     String?      @unique
   created_by_user_id String?
 
