@@ -94,7 +94,7 @@ export default function NovoClientePage(): JSX.Element {
   };
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: 1100 }}>
+    <div style={{ maxWidth: 1100 }}>
       {/* Header */}
       <div
         style={{
@@ -255,6 +255,7 @@ export default function NovoClientePage(): JSX.Element {
                 </Field>
               </div>
               <div
+                className="ov-row-stack"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr 1fr',
@@ -357,6 +358,7 @@ export default function NovoClientePage(): JSX.Element {
                 </Field>
               </div>
               <div
+                className="ov-row-stack"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr 100px',

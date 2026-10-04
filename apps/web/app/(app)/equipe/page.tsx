@@ -188,9 +188,10 @@ export default function EquipePage(): JSX.Element {
           >
             <thead>
               <tr>
-                {['Nome', 'Email', 'Função', ''].map((h) => (
+                {['Nome', 'Email', 'Função'].map((h) => (
                   <th
                     key={h}
+                    className={h === 'Email' ? 'ov-hide-mobile' : undefined}
                     style={{
                       textAlign: 'left',
                       padding: '10px 18px',
@@ -221,8 +222,20 @@ export default function EquipePage(): JSX.Element {
                     }}
                   >
                     {m.user.name}
+                    <div
+                      className="ov-show-mobile"
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 400,
+                        color: T.fg3,
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {m.user.email}
+                    </div>
                   </td>
                   <td
+                    className="ov-hide-mobile"
                     style={{
                       padding: '12px 18px',
                       fontSize: 13,
@@ -240,15 +253,6 @@ export default function EquipePage(): JSX.Element {
                     }}
                   >
                     <RolePill role={m.role} />
-                  </td>
-                  <td
-                    style={{
-                      padding: '12px 18px',
-                      textAlign: 'right',
-                      borderBottom: i < members.length - 1 ? `1px solid ${T.border2}` : 0,
-                    }}
-                  >
-                    {/* future: remove member */}
                   </td>
                 </tr>
               ))}

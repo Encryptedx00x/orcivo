@@ -102,6 +102,18 @@ body {
     padding: 16px;
   }
 }
+/* Pages that wrap themselves in .ov-page inside <main class="ov-page"> */
+.ov-page .ov-page {
+  padding: 0;
+}
+/* Hand-built title/actions rows (inline flex + space-between) must wrap, not overflow */
+@media (max-width: 640px) {
+  main [style*='justify-content: space-between'],
+  main [style*='justify-content:space-between'] {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+}
 /* ── App sidebar: off-canvas drawer on mobile ── */
 .ov-hamburger {
   display: none;
@@ -143,6 +155,14 @@ body {
   }
   .ov-topbar-company {
     display: none;
+  }
+  /* Anchored to the bell it would grow off the left edge; pin to the viewport. */
+  .ov-notif-panel {
+    position: fixed !important;
+    top: 64px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
   }
 }
 
@@ -361,10 +381,14 @@ body {
   }
 }
 @media (max-width: 640px) {
-  .ov-grid-4,
   .ov-grid-3,
   .ov-grid-2 {
     grid-template-columns: 1fr;
+  }
+  /* KPI rows: 2x2 keeps the summary above the fold */
+  .ov-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 }
 /* Sidebar/detail split layouts (aside + content, any fixed px column) */
@@ -609,7 +633,10 @@ body {
   margin-bottom: 16px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+.ov-tabs::-webkit-scrollbar {
+  display: none;
 }
 .ov-tab {
   padding: 10px 14px;
@@ -946,4 +973,17 @@ body {
 .pub-cta .btn-accept:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ── Responsive visibility ── */
+.ov-show-mobile {
+  display: none;
+}
+@media (max-width: 640px) {
+  .ov-hide-mobile {
+    display: none !important;
+  }
+  .ov-show-mobile {
+    display: block;
+  }
 }

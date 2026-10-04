@@ -71,3 +71,36 @@ export const PLAN_PRICING = {
   MAIS: { monthly: '24.90', yearly: '199.90' },
   EQUIPE: { monthly: '49.90', yearly: '389.90' },
 } as const satisfies Record<PlanLimitCode, PlanPricingValues>;
+
+export const PLAN_PRESENTATION = {
+  LIVRE: { name: 'Orcivo Livre', support: 'Suporte por e-mail' },
+  SOLO: { name: 'Orcivo Solo', support: 'Suporte prioritário' },
+  MAIS: { name: 'Orcivo Mais', support: 'Suporte prioritário' },
+  EQUIPE: { name: 'Orcivo Equipe', support: 'Suporte VIP' },
+} as const satisfies Record<PlanLimitCode, { name: string; support: string }>;
+
+const quantity = new Intl.NumberFormat('pt-BR');
+
+/** Lista de recursos exibida em site, web e mobile — derivada de PLAN_LIMITS. */
+export function planFeatures(code: PlanLimitCode): string[] {
+  const limits: PlanLimitValues = PLAN_LIMITS[code];
+  return [
+    limits.customers_max === null
+      ? 'Clientes em uso justo'
+      : `${quantity.format(limits.customers_max)} clientes`,
+    limits.quotes_per_month === null
+      ? 'Orçamentos em uso justo'
+      : `${quantity.format(limits.quotes_per_month)} orçamentos/mês`,
+    limits.work_orders_per_month === null
+      ? 'OS em uso justo'
+      : `${quantity.format(limits.work_orders_per_month)} OS/mês`,
+    limits.members_max === 1
+      ? '1 membro na equipe'
+      : `Até ${quantity.format(limits.members_max)} membros na equipe`,
+    limits.pdf_watermark ? "PDF com marca d'água" : "PDF sem marca d'água",
+    ...(limits.has_logo ? ['Logo própria no PDF'] : []),
+    ...(limits.has_reports ? ['Relatórios financeiros'] : []),
+    ...(limits.has_contracts ? ['Contratos digitais'] : []),
+    PLAN_PRESENTATION[code].support,
+  ];
+}

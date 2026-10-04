@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Fragment, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, BookOpen, X, Check, FileText, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -78,12 +78,12 @@ function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void
         marginBottom: 20,
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
       }}
     >
       {STEPS.map((s, i) => (
-        <>
+        <Fragment key={s}>
           <div
-            key={i}
             onClick={() => setStep(i)}
             style={{
               display: 'flex',
@@ -120,12 +120,9 @@ function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void
             <span>{s}</span>
           </div>
           {i < STEPS.length - 1 && (
-            <div
-              key={`sep-${i}`}
-              style={{ width: 24, height: 1, background: T.border1, flexShrink: 0 }}
-            />
+            <div style={{ width: 24, height: 1, background: T.border1, flexShrink: 0 }} />
           )}
-        </>
+        </Fragment>
       ))}
     </div>
   );
@@ -134,6 +131,7 @@ function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void
 // ── Main component ────────────────────────────────────────────────────
 export default function NovoOrcamentoForm(): JSX.Element {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -145,7 +143,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [newCustomerLoading, setNewCustomerLoading] = useState(false);
 
   // Form state
-  const [customerId, setCustomerId] = useState('');
+  const [customerId, setCustomerId] = useState(() => searchParams.get('client_id') ?? '');
   const [title, setTitle] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
@@ -337,13 +335,13 @@ export default function NovoOrcamentoForm(): JSX.Element {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label className="ov-label">Cliente *</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <select
                   className="ov-input"
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   required
-                  style={{ flex: 1 }}
+                  style={{ flex: '1 1 200px', minWidth: 0 }}
                 >
                   <option value="">Selecione um cliente</option>
                   {customers.map((c) => (

@@ -267,7 +267,7 @@ export default async function PlanoPage({
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: T.ink }}>
-                    {PAY_STATUS[p.status] ?? p.status}
+                    {PAY_STATUS[p.status.toUpperCase()] ?? p.status}
                   </div>
                   <div style={{ fontSize: 12, color: T.fg3 }}>
                     {p.paid_at ? `Pago em ${ddmmyy(p.paid_at)}` : ddmmyy(p.created_at)}

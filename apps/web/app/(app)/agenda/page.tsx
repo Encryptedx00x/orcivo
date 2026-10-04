@@ -62,6 +62,18 @@ export default function AgendaPage(): JSX.Element {
   const [selected, setSelected] = useState<Appt | null>(null);
   const [loadError, setLoadError] = useState('');
   const days = getWeekDays(base);
+  // Phones get a single-day grid with a day picker; desktop keeps the full week.
+  const [isMobile, setIsMobile] = useState(false);
+  const [dayIdx, setDayIdx] = useState(() => (new Date().getDay() + 6) % 7);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  const visibleDays = isMobile ? [dayIdx] : days.map((_, i) => i);
+  const gridColumns = isMobile ? '52px minmax(0, 1fr)' : '60px repeat(7, minmax(0, 1fr))';
 
   const load = useCallback(async () => {
     const days = getWeekDays(base);
@@ -165,18 +177,59 @@ export default function AgendaPage(): JSX.Element {
           </button>
         </p>
       )}
+      {isMobile && (
+        <div
+          role="tablist"
+          aria-label="Dia da semana"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: 4,
+            marginBottom: 12,
+          }}
+        >
+          {days.map((d, i) => {
+            const active = i === dayIdx;
+            const isToday = d.toDateString() === new Date().toDateString();
+            return (
+              <button
+                key={i}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setDayIdx(i)}
+                style={{
+                  minHeight: 52,
+                  border: `1px solid ${active ? '#6D28D9' : '#E2E8F0'}`,
+                  borderRadius: 10,
+                  background: active ? '#6D28D9' : '#fff',
+                  color: active ? '#fff' : isToday ? '#6D28D9' : '#0A0A0F',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                <div style={{ textTransform: 'uppercase', opacity: 0.8 }}>{DAY_SHORT[i]}</div>
+                <div style={{ fontSize: 16 }}>{d.getDate()}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="ov-card" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
-        <div style={{ minWidth: 720 }}>
+        <div style={{ minWidth: isMobile ? 0 : 720 }}>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '60px repeat(7, minmax(0, 1fr))',
+              gridTemplateColumns: gridColumns,
               borderBottom: '1px solid #E2E8F0',
               background: '#F8FAFC',
             }}
           >
             <div />
-            {days.map((d, i) => {
+            {visibleDays.map((i) => {
+              const d = days[i];
               const isToday = d.toDateString() === new Date().toDateString();
               return (
                 <div
@@ -201,7 +254,7 @@ export default function AgendaPage(): JSX.Element {
               key={hi}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '60px repeat(7, minmax(0, 1fr))',
+                gridTemplateColumns: gridColumns,
                 borderBottom: '1px solid #F1F5F9',
                 minHeight: 48,
               }}
@@ -216,7 +269,7 @@ export default function AgendaPage(): JSX.Element {
               >
                 {h}
               </div>
-              {days.map((_, di) => {
+              {visibleDays.map((di) => {
                 const events = eventsFor(di, Number(h.slice(0, 2)));
                 return (
                   <div
@@ -229,44 +282,45 @@ export default function AgendaPage(): JSX.Element {
                     }}
                   >
                     {events.map((evt) => (
-                    <button
-                      key={evt.id}
-                      type="button"
-                      aria-label={`Editar compromisso ${evt.title}`}
-                      onClick={() => {
-                        setSelected(evt);
-                        setShowModal(true);
-                      }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        border: 0,
-                        marginBottom: 4,
-                        padding: '6px 8px',
-                        borderRadius: 8,
-                        background: '#F5F3FF',
-                        borderLeft: `3px solid ${TYPE_COLOR[evt.type] ?? '#6D28D9'}`,
-                        minHeight: 40,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
+                      <button
+                        key={evt.id}
+                        type="button"
+                        aria-label={`Editar compromisso ${evt.title}`}
+                        onClick={() => {
+                          setSelected(evt);
+                          setShowModal(true);
+                        }}
                         style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: '#0A0A0F',
-                          whiteSpace: 'nowrap',
+                          width: '100%',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          border: 0,
+                          marginBottom: 4,
+                          padding: '6px 8px',
+                          borderRadius: 8,
+                          background: '#F5F3FF',
+                          borderLeft: `3px solid ${TYPE_COLOR[evt.type] ?? '#6D28D9'}`,
+                          minHeight: 40,
                           overflow: 'hidden',
-                          textOverflow: 'ellipsis',
                         }}
                       >
-                        {evt.title}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748B' }}>
-                        {evt.customer?.name ?? evt.type.charAt(0) + evt.type.slice(1).toLowerCase()}
-                      </div>
-                    </button>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: '#0A0A0F',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {evt.title}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#64748B' }}>
+                          {evt.customer?.name ??
+                            evt.type.charAt(0) + evt.type.slice(1).toLowerCase()}
+                        </div>
+                      </button>
                     ))}
                   </div>
                 );

@@ -1073,7 +1073,10 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                   style={editInput}
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}
+              >
                 <div>
                   <label style={editLabel}>Tipo de desconto</label>
                   <select

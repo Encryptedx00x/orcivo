@@ -109,7 +109,7 @@ function NovaOSContent(): JSX.Element {
   }
 
   return (
-    <div style={{ padding: '20px 32px', maxWidth: 900 }}>
+    <div style={{ maxWidth: 900 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div
@@ -569,7 +569,7 @@ export default function NovaOSPage(): JSX.Element {
           role="status"
           aria-live="polite"
           aria-busy="true"
-          style={{ padding: '20px 32px', maxWidth: 900, color: '#64748B', fontSize: 14 }}
+          style={{ maxWidth: 900, color: '#64748B', fontSize: 14 }}
         >
           Carregando formulário...
         </div>

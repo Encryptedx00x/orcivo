@@ -1,4 +1,4 @@
-import { PLAN_PRICING, formatMoney } from '@orcivo/shared-types';
+import { PLAN_PRESENTATION, PLAN_PRICING, formatMoney, planFeatures } from '@orcivo/shared-types';
 
 export interface PlanMeta {
   code: 'LIVRE' | 'SOLO' | 'MAIS' | 'EQUIPE';
@@ -7,38 +7,19 @@ export interface PlanMeta {
   features: string[];
 }
 
-export const PLANS: PlanMeta[] = [
-  {
-    code: 'LIVRE',
-    name: 'Orcivo Livre',
-    tag: null,
-    features: ['1 usuário', 'Até 15 OS / mês', 'PDF com marca Orcivo', 'Suporte por e-mail'],
-  },
-  {
-    code: 'SOLO',
-    name: 'Orcivo Solo',
-    tag: null,
-    features: ['3 usuários', 'OS em uso justo', 'Seu logo no PDF', 'Chave Pix'],
-  },
-  {
-    code: 'MAIS',
-    name: 'Orcivo Mais',
-    tag: 'Recomendado',
-    features: [
-      'Até 10 usuários',
-      'Tudo do Orcivo Solo',
-      'Catálogo avançado',
-      'Relatórios',
-      'Suporte prioritário',
-    ],
-  },
-  {
-    code: 'EQUIPE',
-    name: 'Orcivo Equipe',
-    tag: 'Para escala',
-    features: ['Uso ampliado', 'Tudo do Orcivo Mais', 'Multi-empresa', 'Suporte dedicado'],
-  },
-];
+const TAGS: Record<PlanMeta['code'], string | null> = {
+  LIVRE: null,
+  SOLO: null,
+  MAIS: 'Recomendado',
+  EQUIPE: 'Para escala',
+};
+
+export const PLANS: PlanMeta[] = (['LIVRE', 'SOLO', 'MAIS', 'EQUIPE'] as const).map((code) => ({
+  code,
+  name: PLAN_PRESENTATION[code].name,
+  tag: TAGS[code],
+  features: planFeatures(code),
+}));
 
 export function findPlan(code: string | null | undefined): PlanMeta | undefined {
   return PLANS.find((p) => p.code === code);
