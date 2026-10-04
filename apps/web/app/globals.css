@@ -1059,7 +1059,9 @@ form:has(select[name='type'] option[value='SERVICE']:checked) .ov-stock-field {
     border-radius: 8px;
     background: transparent;
     color: var(--fg-3);
-    font: 500 13px var(--font-sans);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
   }
   .ov-dash-switch-btn[aria-pressed='true'] {
@@ -1202,5 +1204,198 @@ form:has(select[name='type'] option[value='SERVICE']:checked) .ov-stock-field {
   }
   .ov-bento-shortcut svg {
     color: var(--purple-600);
+  }
+}
+
+/* ── Modo fácil (phones): bigger type/targets, more contrast, labeled bottom bar ──
+   Everything is scoped to html[data-easy='1'] so the mode is removable in one place. */
+.ov-easy-nav,
+.ov-dash-easy {
+  display: none;
+}
+@media (max-width: 640px) {
+  html[data-easy='1'] {
+    --fg-2: #1e293b;
+    --fg-3: #475569;
+  }
+  html[data-easy='1'] body {
+    font-size: 18px;
+    line-height: 27px;
+  }
+  html[data-easy='1'] main {
+    padding-bottom: 96px !important;
+  }
+  html[data-easy='1'] main h1,
+  html[data-easy='1'] .ov-page-header h1 {
+    font-size: 26px !important;
+    line-height: 32px !important;
+  }
+  html[data-easy='1'] main input:not([type='checkbox']):not([type='radio']),
+  html[data-easy='1'] main select,
+  html[data-easy='1'] main textarea {
+    font-size: 17px !important;
+    min-height: 52px;
+  }
+  html[data-easy='1'] main label,
+  html[data-easy='1'] .ov-label {
+    font-size: 15px !important;
+    color: var(--fg-2) !important;
+  }
+  html[data-easy='1'] main button,
+  html[data-easy='1'] main a[style*='padding'] {
+    min-height: 48px;
+    font-size: 16px !important;
+  }
+  html[data-easy='1'] .ov-btn {
+    height: auto;
+    min-height: 52px;
+    font-size: 16px;
+    padding: 0 18px;
+  }
+  html[data-easy='1'] .ov-tab {
+    font-size: 16px;
+    padding: 12px 16px;
+  }
+  html[data-easy='1'] .ov-table td {
+    font-size: 15px;
+  }
+  html[data-easy='1'] .ov-table td[data-label]::before {
+    font-size: 12px;
+  }
+  html[data-easy='1'] .ov-table td:first-child {
+    font-size: 17px;
+  }
+
+  /* Bottom bar: icon + text, 64px targets */
+  html[data-easy='1'] .ov-easy-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    background: #fff;
+    border-top: 1px solid var(--border-1);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+  }
+  .ov-easy-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 64px;
+    border: 0;
+    background: transparent;
+    color: #475569;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .ov-easy-nav-item[aria-current='page'] {
+    color: var(--purple-600);
+    background: var(--purple-50, #f5f3ff);
+  }
+
+  /* Dashboard easy home */
+  html[data-easy='1'] .ov-dash-classic,
+  html[data-easy='1'] .ov-dash-bento {
+    display: none !important;
+  }
+  html[data-easy='1'] .ov-dash-easy {
+    display: block;
+  }
+  .ov-easy-home h1 {
+    margin: 4px 0 12px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .ov-easy-home h2 {
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 26px;
+    margin: 22px 0 12px;
+    color: var(--ink);
+  }
+  .ov-easy-today {
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--purple-50, #f5f3ff);
+    color: #1e293b;
+  }
+  .ov-easy-today p {
+    margin: 0;
+    font-size: 17px;
+    line-height: 26px;
+  }
+  .ov-easy-today p + p {
+    margin-top: 6px;
+  }
+  .ov-easy-late {
+    color: var(--danger);
+  }
+  .ov-easy-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ov-easy-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 84px;
+    padding: 14px 14px 14px 16px;
+    border: 1px solid var(--border-1);
+    border-radius: 16px;
+    background: #fff;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .ov-easy-action:first-child {
+    border: 0;
+    background: var(--purple-600);
+    color: #fff;
+  }
+  .ov-easy-icon {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--purple-50, #f5f3ff);
+    color: var(--purple-600);
+  }
+  .ov-easy-action:first-child .ov-easy-icon {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+  .ov-easy-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .ov-easy-text strong {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .ov-easy-text span {
+    font-size: 15px;
+    line-height: 20px;
+    color: #475569;
+  }
+  .ov-easy-action:first-child .ov-easy-text span {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .ov-easy-chevron {
+    flex-shrink: 0;
+    opacity: 0.6;
   }
 }

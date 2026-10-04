@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Check, ChevronDown, CreditCard, LogOut, Menu, Settings } from 'lucide-react';
+import { Bell, Check, ChevronDown, CreditCard, LogOut, Menu, Settings, Smile } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { useMobileSidebar } from './MobileSidebar';
 import { BrandMark } from './BrandMark';
+import { useEasyMode } from './EasyMode';
 
 const menuItem: React.CSSProperties = {
   display: 'flex',
@@ -59,6 +60,7 @@ export function TopBar(): JSX.Element {
   const [error, setError] = useState('');
   const menu = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [easyOn, setEasy] = useEasyMode();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -467,6 +469,30 @@ export function TopBar(): JSX.Element {
                   <Icon size={16} aria-hidden="true" /> {label}
                 </button>
               ))}
+              <div className="ov-show-mobile">
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={easyOn}
+                  onClick={() => {
+                    setEasy(!easyOn);
+                    setMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  <Smile size={16} aria-hidden="true" /> Modo fácil
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: easyOn ? '#6D28D9' : '#64748B',
+                    }}
+                  >
+                    {easyOn ? 'Ligado' : 'Desligado'}
+                  </span>
+                </button>
+              </div>
               <button
                 type="button"
                 role="menuitem"

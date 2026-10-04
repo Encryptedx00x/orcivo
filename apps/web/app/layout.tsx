@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
+import { EASY_MODE_BOOT } from '../lib/easy-mode';
 
 const inter = localFont({
   src: [
@@ -47,7 +48,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: EASY_MODE_BOOT }} />
+      </head>
       <body
         className={`${inter.variable} ${jetBrainsMono.variable} bg-white text-[#0A0A0F] antialiased`}
       >

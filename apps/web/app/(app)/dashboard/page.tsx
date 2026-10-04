@@ -294,9 +294,77 @@ export default async function DashboardPage(): Promise<JSX.Element> {
     </div>
   );
 
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const easy = (
+    <div className="ov-easy-home">
+      <h1>
+        {greet}, {firstName}!
+      </h1>
+      <div className="ov-easy-today">
+        <p>
+          Hoje você tem{' '}
+          <strong>{plural(k?.agenda_today ?? 0, 'compromisso', 'compromissos')}</strong> e{' '}
+          <strong>{plural(k?.os_pending ?? 0, 'serviço em aberto', 'serviços em aberto')}</strong>.
+        </p>
+        <p>
+          Falta receber <strong>{formatMoney(k?.receivables_pending_total ?? '0')}</strong>
+          {overdue > 0 ? (
+            <>
+              {' '}
+              —{' '}
+              <strong className="ov-easy-late">
+                {plural(overdue, 'pagamento atrasado', 'pagamentos atrasados')}
+              </strong>
+            </>
+          ) : null}
+          .
+        </p>
+      </div>
+      <h2>O que você quer fazer agora?</h2>
+      <div className="ov-easy-actions">
+        {(
+          [
+            [
+              FileText,
+              'Fazer um orçamento',
+              'Monte o preço e mande pelo WhatsApp',
+              '/orcamentos/novo',
+            ],
+            [Users, 'Cadastrar um cliente', 'Nome e telefone já bastam', '/clientes/novo'],
+            [Calendar, 'Ver minha agenda', 'Seus compromissos de hoje e da semana', '/agenda'],
+            [
+              ClipboardList,
+              'Abrir um serviço (OS)',
+              'Registre o serviço que vai fazer',
+              '/ordens-de-servico/novo',
+            ],
+            [DollarSign, 'Anotar um pagamento', 'Marque o que o cliente já pagou', '/financeiro'],
+            [
+              FolderOpen,
+              'Ver meus orçamentos',
+              'Veja quem aprovou e quem falta responder',
+              '/orcamentos',
+            ],
+          ] as const
+        ).map(([Icon, title, hint, href]) => (
+          <Link key={href + title} href={href} className="ov-easy-action">
+            <span className="ov-easy-icon">
+              <Icon size={26} aria-hidden="true" />
+            </span>
+            <span className="ov-easy-text">
+              <strong>{title}</strong>
+              <span>{hint}</span>
+            </span>
+            <ChevronRight size={22} aria-hidden="true" className="ov-easy-chevron" />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="ov-page" style={{ maxWidth: 1440 }}>
-      <DashboardLayout bento={bento}>
+      <DashboardLayout bento={bento} easy={easy}>
         <div className="ov-page-header">
           <div>
             <h1
