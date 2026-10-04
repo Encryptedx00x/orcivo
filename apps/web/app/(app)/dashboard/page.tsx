@@ -8,8 +8,6 @@ import {
   DollarSign,
   Package,
   Inbox,
-  FolderOpen,
-  ChevronRight,
 } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
@@ -224,138 +222,63 @@ export default async function DashboardPage(): Promise<JSX.Element> {
   ];
 
   const next = s?.upcoming[0];
-  const bento = (
+  // Modo fácil (phones): a bento grid with few words and big targets.
+  const easy = (
     <div className="ov-bento">
       <div className="ov-bento-hello">
         <strong>
           {greet}, {firstName}
         </strong>
-        <span>
-          {dateCap} · {planLabel}
-        </span>
       </div>
       <Link href="/orcamentos/novo" className="ov-bento-tile ov-bento-cta ov-bento-wide">
-        <Plus size={22} aria-hidden="true" />
-        <span>
-          <strong>Novo orçamento</strong>
-          <small>PDF pronto para enviar no WhatsApp</small>
-        </span>
+        <Plus size={28} aria-hidden="true" />
+        <strong>Novo orçamento</strong>
       </Link>
-      <Link href="/agenda" className="ov-bento-tile ov-bento-tall">
-        <Calendar size={18} aria-hidden="true" />
-        <span className="ov-bento-label">Agenda hoje</span>
+      <Link href="/agenda" className="ov-bento-tile">
+        <Calendar size={22} aria-hidden="true" />
         <span className="ov-bento-value">{k?.agenda_today ?? 0}</span>
-        <span className="ov-bento-sub">
-          {next
-            ? `${new Date(next.starts_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${next.title}`
-            : 'Nenhum compromisso'}
-        </span>
+        <span className="ov-bento-label">Hoje</span>
+        {next && (
+          <span className="ov-bento-sub">
+            {new Date(next.starts_at).toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}{' '}
+            · {next.title}
+          </span>
+        )}
       </Link>
       <Link href="/ordens-de-servico" className="ov-bento-tile">
-        <ClipboardList size={18} aria-hidden="true" />
-        <span className="ov-bento-label">OS pendentes</span>
+        <ClipboardList size={22} aria-hidden="true" />
         <span className="ov-bento-value">{k?.os_pending ?? 0}</span>
+        <span className="ov-bento-label">Serviços</span>
       </Link>
       <Link href="/orcamentos" className="ov-bento-tile">
-        <FileText size={18} aria-hidden="true" />
-        <span className="ov-bento-label">Orçamentos</span>
+        <FileText size={22} aria-hidden="true" />
         <span className="ov-bento-value">{k?.quotes_pending ?? 0}</span>
-        <span className="ov-bento-sub">{formatMoney(k?.quotes_pending_total ?? '0')}</span>
+        <span className="ov-bento-label">Orçamentos</span>
       </Link>
-      <Link
-        href="/financeiro"
-        className={`ov-bento-tile ov-bento-wide${overdue > 0 ? ' ov-bento-alert' : ''}`}
-      >
-        <DollarSign size={18} aria-hidden="true" />
-        <span className="ov-bento-label">A receber</span>
-        <span className="ov-bento-value">{formatMoney(k?.receivables_pending_total ?? '0')}</span>
-        <span className="ov-bento-sub">
-          {overdue > 0 ? `${overdue} vencido${overdue > 1 ? 's' : ''}` : 'Tudo em dia'}
+      <Link href="/financeiro" className={`ov-bento-tile${overdue > 0 ? ' ov-bento-alert' : ''}`}>
+        <DollarSign size={22} aria-hidden="true" />
+        <span className="ov-bento-value ov-bento-money">
+          {formatMoney(k?.receivables_pending_total ?? '0')}
         </span>
-        <ChevronRight size={18} className="ov-bento-chevron" aria-hidden="true" />
+        <span className="ov-bento-label">
+          {overdue > 0 ? `${overdue} atrasado${overdue > 1 ? 's' : ''}` : 'A receber'}
+        </span>
       </Link>
       <div className="ov-bento-shortcuts ov-bento-wide">
         {(
           [
-            [Users, 'Clientes', '/clientes'],
-            [ClipboardList, 'Nova OS', '/ordens-de-servico/novo'],
-            [Calendar, 'Compromisso', '/agenda'],
-            [Package, 'Catálogo', '/catalogo'],
-            [DollarSign, 'Recebimento', '/financeiro'],
-            [FolderOpen, 'Documentos', '/documentos'],
+            [Users, 'Cliente', '/clientes/novo'],
+            [ClipboardList, 'Serviço', '/ordens-de-servico/novo'],
+            [Calendar, 'Agenda', '/agenda'],
+            [DollarSign, 'Recebido', '/financeiro'],
           ] as const
         ).map(([Icon, label, href]) => (
           <Link key={label} href={href} className="ov-bento-shortcut">
-            <Icon size={20} aria-hidden="true" />
+            <Icon size={26} aria-hidden="true" />
             {label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  const easy = (
-    <div className="ov-easy-home">
-      <h1>
-        {greet}, {firstName}!
-      </h1>
-      <div className="ov-easy-today">
-        <p>
-          Hoje você tem{' '}
-          <strong>{plural(k?.agenda_today ?? 0, 'compromisso', 'compromissos')}</strong> e{' '}
-          <strong>{plural(k?.os_pending ?? 0, 'serviço em aberto', 'serviços em aberto')}</strong>.
-        </p>
-        <p>
-          Falta receber <strong>{formatMoney(k?.receivables_pending_total ?? '0')}</strong>
-          {overdue > 0 ? (
-            <>
-              {' '}
-              —{' '}
-              <strong className="ov-easy-late">
-                {plural(overdue, 'pagamento atrasado', 'pagamentos atrasados')}
-              </strong>
-            </>
-          ) : null}
-          .
-        </p>
-      </div>
-      <h2>O que você quer fazer agora?</h2>
-      <div className="ov-easy-actions">
-        {(
-          [
-            [
-              FileText,
-              'Fazer um orçamento',
-              'Monte o preço e mande pelo WhatsApp',
-              '/orcamentos/novo',
-            ],
-            [Users, 'Cadastrar um cliente', 'Nome e telefone já bastam', '/clientes/novo'],
-            [Calendar, 'Ver minha agenda', 'Seus compromissos de hoje e da semana', '/agenda'],
-            [
-              ClipboardList,
-              'Abrir um serviço (OS)',
-              'Registre o serviço que vai fazer',
-              '/ordens-de-servico/novo',
-            ],
-            [DollarSign, 'Anotar um pagamento', 'Marque o que o cliente já pagou', '/financeiro'],
-            [
-              FolderOpen,
-              'Ver meus orçamentos',
-              'Veja quem aprovou e quem falta responder',
-              '/orcamentos',
-            ],
-          ] as const
-        ).map(([Icon, title, hint, href]) => (
-          <Link key={href + title} href={href} className="ov-easy-action">
-            <span className="ov-easy-icon">
-              <Icon size={26} aria-hidden="true" />
-            </span>
-            <span className="ov-easy-text">
-              <strong>{title}</strong>
-              <span>{hint}</span>
-            </span>
-            <ChevronRight size={22} aria-hidden="true" className="ov-easy-chevron" />
           </Link>
         ))}
       </div>
@@ -364,7 +287,7 @@ export default async function DashboardPage(): Promise<JSX.Element> {
 
   return (
     <div className="ov-page" style={{ maxWidth: 1440 }}>
-      <DashboardLayout bento={bento} easy={easy}>
+      <DashboardLayout easy={easy}>
         <div className="ov-page-header">
           <div>
             <h1
