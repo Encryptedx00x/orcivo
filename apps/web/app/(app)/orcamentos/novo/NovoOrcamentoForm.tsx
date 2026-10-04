@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, BookOpen, X, Check, FileText, Share2 } from 'lucide-react';
+import { Plus, BookOpen, X, Check, FileText, Share2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
   multiplyDecimal,
@@ -70,7 +70,17 @@ function safeSum(vals: string[]): string {
 const STEPS = ['Cliente', 'Itens', 'Desconto e validade', 'Termos', 'Revisão'];
 
 // ── Stepper ───────────────────────────────────────────────────────────
-function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void }) {
+type StepStatus = 'done' | 'error' | 'todo';
+
+function Stepper({
+  step,
+  setStep,
+  status,
+}: {
+  step: number;
+  setStep: (n: number) => void;
+  status: StepStatus[];
+}) {
   return (
     <div
       style={{
@@ -112,11 +122,24 @@ function Stepper({ step, setStep }: { step: number; setStep: (n: number) => void
                 justifyContent: 'center',
                 fontSize: 12,
                 fontWeight: 600,
-                background: i < step ? T.success : i === step ? T.purple600 : T.slate100,
-                color: i <= step ? '#fff' : T.fg3,
+                background:
+                  i === step
+                    ? T.purple600
+                    : status[i] === 'done'
+                      ? T.success
+                      : status[i] === 'error'
+                        ? T.danger
+                        : T.slate100,
+                color: i === step || status[i] !== 'todo' ? '#fff' : T.fg3,
               }}
             >
-              {i < step ? <Check size={12} strokeWidth={3} /> : i + 1}
+              {i !== step && status[i] === 'done' ? (
+                <Check size={12} strokeWidth={3} />
+              ) : i !== step && status[i] === 'error' ? (
+                '!'
+              ) : (
+                i + 1
+              )}
             </div>
             <span>{s}</span>
           </div>
@@ -256,6 +279,21 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const validItems = items.filter((it) => it.description.trim() && Number(it.quantity) > 0);
   const canSave = !!customerId && validItems.length > 0;
 
+  // Stepper reflects real completeness: required steps turn red once visited
+  // and still incomplete; optional steps turn green once visited.
+  const [furthest, setFurthest] = useState(0);
+  useEffect(() => setFurthest((f) => Math.max(f, step)), [step]);
+  const itemsComplete =
+    items.length > 0 &&
+    items.every((it) => it.description.trim() && Number(it.quantity) > 0 && it.unit_price !== '');
+  const stepStatus: StepStatus[] = STEPS.map((_, i) => {
+    const visited = i < furthest || (i === furthest && i !== step);
+    if (i === 0) return customerId ? 'done' : visited ? 'error' : 'todo';
+    if (i === 1) return itemsComplete ? 'done' : visited ? 'error' : 'todo';
+    if (i === STEPS.length - 1) return 'todo';
+    return visited ? 'done' : 'todo';
+  });
+
   // ── Persistência: cria o rascunho e devolve o id (ou null em erro) ──
   async function saveDraft(): Promise<string | null> {
     setError('');
@@ -385,20 +423,13 @@ export default function NovoOrcamentoForm(): JSX.Element {
     if (step === 1)
       return (
         <div className="ov-card ov-card-body">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 14,
-            }}
-          >
+          <div className="ov-items-toolbar">
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>Itens</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="ov-items-actions">
               <button
                 type="button"
                 className="ov-btn ov-btn-outline"
-                style={{ height: 34, fontSize: 13, gap: 6 }}
+                style={{ gap: 6 }}
                 onClick={() => setShowCatalogDialog(true)}
               >
                 <BookOpen size={14} />
@@ -407,7 +438,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
               <button
                 type="button"
                 className="ov-btn ov-btn-outline"
-                style={{ height: 34, fontSize: 13, gap: 6 }}
+                style={{ gap: 6 }}
                 onClick={addManualItem}
               >
                 <Plus size={14} />
@@ -487,16 +518,8 @@ export default function NovoOrcamentoForm(): JSX.Element {
                 className="ov-item-remove"
                 onClick={() => removeItem(idx)}
                 aria-label="Remover item"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#94A3B8',
-                  display: 'flex',
-                  padding: 4,
-                }}
               >
-                <X size={16} />
+                <Trash2 size={18} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -939,41 +962,36 @@ export default function NovoOrcamentoForm(): JSX.Element {
           </h1>
           <div style={{ color: T.fg3, fontSize: 14, marginTop: 2 }}>Rascunho · não enviado</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            className="ov-btn ov-btn-outline"
-            disabled={loading || !canSave}
-            onClick={() => {
-              void handleSave();
-            }}
-            title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
-            style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
-          >
-            Salvar rascunho
-          </button>
-          <button
-            type="button"
-            className="ov-btn ov-btn-outline"
-            style={{
-              gap: 8,
-              opacity: canSave ? 1 : 0.5,
-              cursor: canSave ? 'pointer' : 'not-allowed',
-            }}
-            disabled={loading || !canSave}
-            onClick={() => {
-              void handlePdf();
-            }}
-            title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
-          >
-            <FileText size={16} />
-            Gerar PDF
-          </button>
-        </div>
+        {canSave && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="ov-btn ov-btn-outline"
+              disabled={loading}
+              onClick={() => {
+                void handleSave();
+              }}
+            >
+              Salvar rascunho
+            </button>
+            <button
+              type="button"
+              className="ov-btn ov-btn-outline"
+              style={{ gap: 8 }}
+              disabled={loading}
+              onClick={() => {
+                void handlePdf();
+              }}
+            >
+              <FileText size={16} />
+              Gerar PDF
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Stepper ─────────────────────────────────────────────────── */}
-      <Stepper step={step} setStep={setStep} />
+      <Stepper step={step} setStep={setStep} status={stepStatus} />
 
       {/* ── Editor grid: left content + right rail ───────────────────── */}
       <div
@@ -1107,65 +1125,50 @@ export default function NovoOrcamentoForm(): JSX.Element {
             </div>
           </div>
 
-          {/* Quick actions */}
-          <div className="ov-card ov-card-body">
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                color: T.fg3,
-                textTransform: 'uppercase',
-                letterSpacing: '.06em',
-                fontWeight: 500,
-                marginBottom: 10,
-              }}
-            >
-              Ações rápidas
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button
-                type="button"
-                className="ov-btn ov-btn-outline"
+          {/* Quick actions — only once there is something to share */}
+          {canSave && (
+            <div className="ov-card ov-card-body">
+              <div
                 style={{
-                  justifyContent: 'flex-start',
-                  gap: 8,
-                  opacity: canSave ? 1 : 0.5,
-                  cursor: canSave ? 'pointer' : 'not-allowed',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: T.fg3,
+                  textTransform: 'uppercase',
+                  letterSpacing: '.06em',
+                  fontWeight: 500,
+                  marginBottom: 10,
                 }}
-                disabled={loading || !canSave}
-                onClick={() => {
-                  void handleWhatsApp();
-                }}
-                title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
               >
-                <Share2 size={14} />
-                Compartilhar no WhatsApp
-              </button>
-              <button
-                type="button"
-                className="ov-btn ov-btn-outline"
-                style={{
-                  justifyContent: 'flex-start',
-                  gap: 8,
-                  opacity: canSave ? 1 : 0.5,
-                  cursor: canSave ? 'pointer' : 'not-allowed',
-                }}
-                disabled={loading || !canSave}
-                onClick={() => {
-                  void handlePdf();
-                }}
-                title={canSave ? undefined : 'Selecione um cliente e adicione itens'}
-              >
-                <FileText size={14} />
-                Baixar PDF
-              </button>
+                Ações rápidas
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-outline"
+                  style={{ justifyContent: 'flex-start', gap: 8 }}
+                  disabled={loading}
+                  onClick={() => {
+                    void handleWhatsApp();
+                  }}
+                >
+                  <Share2 size={14} />
+                  Compartilhar no WhatsApp
+                </button>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-outline"
+                  style={{ justifyContent: 'flex-start', gap: 8 }}
+                  disabled={loading}
+                  onClick={() => {
+                    void handlePdf();
+                  }}
+                >
+                  <FileText size={14} />
+                  Baixar PDF
+                </button>
+              </div>
             </div>
-            {!canSave && (
-              <p style={{ fontSize: 12, color: T.fg3, marginTop: 10, marginBottom: 0 }}>
-                Selecione um cliente e adicione ao menos um item para liberar as ações.
-              </p>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </>
