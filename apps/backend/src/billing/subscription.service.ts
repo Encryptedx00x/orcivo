@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -142,6 +143,14 @@ export class SubscriptionService {
     const owner = company.members[0]?.user;
     const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
 
+    // A paid subscription keeps its status, plan and provider resource until the
+    // new charge is confirmed; the webhook then switches plans and cancels the old
+    // resource. Re-subscribing to the same plan would only create a second charge.
+    const isPaying = sub?.status === 'ACTIVE' || sub?.status === 'PAST_DUE';
+    if (isPaying && sub.plan_code === planCode) {
+      throw new ConflictException('Você já assina este plano.');
+    }
+
     let providerCustomerId = sub?.asaas_customer_id ?? null;
     if (!providerCustomerId) {
       try {
@@ -172,7 +181,7 @@ export class SubscriptionService {
           billingCycle: cycle,
           payerEmail: owner?.email,
           cardTokenId: options.cardTokenId,
-          externalReference: companyId,
+          externalReference: isPaying ? `${companyId}:${planCode}` : companyId,
           description: `Orcivo ${planCode} — ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
         });
         providerSubscriptionId = providerSubscription.id || null;
@@ -181,23 +190,40 @@ export class SubscriptionService {
       }
     }
 
-    const updatedSub = await this.prisma.subscription.upsert({
-      where: { company_id: companyId },
-      create: {
-        company_id: companyId,
-        plan_code: planCode as PlanCode,
-        status: 'TRIALING',
-        asaas_customer_id: providerCustomerId,
-        asaas_sub_id: providerSubscriptionId,
-        grace_period_days: GRACE_PERIOD_DAYS[planCode as PlanCode] ?? 0,
-      },
-      update: {
-        plan_code: planCode as PlanCode,
-        status: 'TRIALING',
-        asaas_customer_id: providerCustomerId ?? undefined,
-        asaas_sub_id: providerSubscriptionId ?? undefined,
-      },
-    });
+    // A previous checkout that was never paid must not keep a live charge (a card
+    // preapproval would bill alongside the new one).
+    if (
+      sub?.status === 'TRIALING' &&
+      sub.asaas_sub_id &&
+      providerSubscriptionId &&
+      sub.asaas_sub_id !== providerSubscriptionId
+    ) {
+      try {
+        await this.paymentProvider.cancelSubscription(sub.asaas_sub_id);
+      } catch (err) {
+        this.logger.warn(`Falha ao cancelar checkout anterior ${sub.asaas_sub_id}: ${err}`);
+      }
+    }
+
+    const updatedSub = isPaying
+      ? sub
+      : await this.prisma.subscription.upsert({
+          where: { company_id: companyId },
+          create: {
+            company_id: companyId,
+            plan_code: planCode as PlanCode,
+            status: 'TRIALING',
+            asaas_customer_id: providerCustomerId,
+            asaas_sub_id: providerSubscriptionId,
+            grace_period_days: GRACE_PERIOD_DAYS[planCode as PlanCode] ?? 0,
+          },
+          update: {
+            plan_code: planCode as PlanCode,
+            status: 'TRIALING',
+            asaas_customer_id: providerCustomerId ?? undefined,
+            asaas_sub_id: providerSubscriptionId ?? undefined,
+          },
+        });
 
     if (providerSubscription?.pix && providerSubscriptionId) {
       await this.prisma.subscriptionPayment.upsert({

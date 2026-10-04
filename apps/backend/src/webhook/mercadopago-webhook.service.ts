@@ -1,6 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { Prisma, Subscription } from '@prisma/client';
+import { PlanCode, Prisma, Subscription } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   MercadoPagoApiError,
@@ -47,7 +47,8 @@ export class MercadoPagoWebhookService {
     const action = typeof body['action'] === 'string' ? body['action'] : topic;
     // The notification id is stable across MP retries of the same event. It is
     // unsigned, but tampering is harmless: state is always re-read from the MP API.
-    const notificationId = body['id'] !== undefined ? String(body['id']) : `${dataId}:${signatureTs}`;
+    const notificationId =
+      body['id'] !== undefined ? String(body['id']) : `${dataId}:${signatureTs}`;
     const idempotencyKey = createHash('sha256')
       .update(`${PROVIDER}:${notificationId}:${action}`)
       .digest('hex');
@@ -157,13 +158,31 @@ export class MercadoPagoWebhookService {
       case 'ACTIVE': {
         // A stale resource (not the one currently tracked) must not resurrect a cancelled sub.
         if (!isCurrentResource && sub.status === 'CANCELLED') return;
+        // Plan change checkout (`companyId:PLAN`) confirmed: adopt the new resource
+        // and stop the old recurring charge.
+        const refPlan = resource.externalReference?.split(':')[1] as PlanCode | undefined;
+        const switchTo =
+          !isCurrentResource && refPlan && refPlan !== sub.plan_code ? refPlan : null;
+        if (switchTo && sub.asaas_sub_id) {
+          try {
+            await this.mercadoPago.cancelSubscription(sub.asaas_sub_id);
+          } catch (err) {
+            this.logger.warn(`Falha ao cancelar assinatura anterior ${sub.asaas_sub_id}: ${err}`);
+          }
+        }
+        const planCode = switchTo ?? sub.plan_code;
         await tx.subscription.update({
           where: { id: sub.id },
-          data: { status: 'ACTIVE', past_due_at: null, blocked_at: null },
+          data: {
+            status: 'ACTIVE',
+            past_due_at: null,
+            blocked_at: null,
+            ...(switchTo ? { plan_code: switchTo, asaas_sub_id: resource.id } : {}),
+          },
         });
         await tx.company.update({
           where: { id: sub.company_id },
-          data: { plan_code: sub.plan_code },
+          data: { plan_code: planCode },
         });
         if (resource.kind === 'payment' && resource.amount !== null) {
           const paidAt = resource.paidAt ? new Date(resource.paidAt) : now;
@@ -227,8 +246,9 @@ export class MercadoPagoWebhookService {
     if (byId) return { sub: byId, isCurrentResource: true };
 
     if (!resource.externalReference) return { sub: null, isCurrentResource: false };
+    const [companyId] = resource.externalReference.split(':');
     const byRef = await tx.subscription.findUnique({
-      where: { company_id: resource.externalReference },
+      where: { company_id: companyId },
     });
     if (!byRef) return { sub: null, isCurrentResource: false };
     if (!byRef.asaas_sub_id) {
