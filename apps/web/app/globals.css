@@ -1034,3 +1034,173 @@ body {
 form:has(select[name='type'] option[value='SERVICE']:checked) .ov-stock-field {
   display: none;
 }
+
+/* ── Dashboard: optional bento grid (phones only) ── */
+.ov-dash-switch,
+.ov-dash-bento {
+  display: none;
+}
+@media (max-width: 640px) {
+  .ov-dash-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    background: var(--slate-100);
+  }
+  .ov-dash-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-3);
+    font: 500 13px var(--font-sans);
+    cursor: pointer;
+  }
+  .ov-dash-switch-btn[aria-pressed='true'] {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: var(--shadow-card);
+  }
+  .ov-dash[data-layout='bento'] .ov-dash-classic {
+    display: none;
+  }
+  .ov-dash[data-layout='bento'] .ov-dash-bento {
+    display: block;
+  }
+
+  .ov-bento {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .ov-bento-wide {
+    grid-column: 1 / -1;
+  }
+  .ov-bento-tall {
+    grid-row: span 2;
+  }
+  .ov-bento-hello {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    padding: 2px 2px 4px;
+  }
+  .ov-bento-hello strong {
+    font-size: 22px;
+    line-height: 28px;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .ov-bento-hello span {
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+  .ov-bento-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px;
+    border: 1px solid var(--border-1);
+    border-radius: 16px;
+    background: #fff;
+    color: var(--ink);
+    text-decoration: none;
+    min-width: 0;
+    min-height: 112px;
+  }
+  .ov-bento-tile > svg:first-child {
+    color: var(--purple-600);
+    margin-bottom: auto;
+  }
+  .ov-bento-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-3);
+  }
+  .ov-bento-value {
+    font-size: 26px;
+    line-height: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .ov-bento-sub {
+    font-size: 12px;
+    color: var(--fg-3);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .ov-bento-chevron {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--fg-3);
+  }
+  .ov-bento-alert .ov-bento-sub {
+    color: var(--danger);
+    font-weight: 600;
+  }
+  .ov-bento-cta {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    min-height: 88px;
+    border: 0;
+    background: linear-gradient(135deg, var(--purple-600) 0%, var(--purple-700) 100%);
+    color: #fff;
+  }
+  .ov-bento-cta > svg:first-child {
+    color: #fff;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .ov-bento-cta span {
+    display: flex;
+    flex-direction: column;
+  }
+  .ov-bento-cta strong {
+    font-size: 18px;
+  }
+  .ov-bento-cta small {
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .ov-bento-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .ov-bento-shortcut {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 76px;
+    padding: 8px 4px;
+    border: 1px solid var(--border-1);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none;
+  }
+  .ov-bento-shortcut svg {
+    color: var(--purple-600);
+  }
+}

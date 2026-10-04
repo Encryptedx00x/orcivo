@@ -8,9 +8,12 @@ import {
   DollarSign,
   Package,
   Inbox,
+  FolderOpen,
+  ChevronRight,
 } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
+import { DashboardLayout } from '../../../components/DashboardLayout';
 
 const T = {
   ink: '#0A0A0F',
@@ -220,113 +223,288 @@ export default async function DashboardPage(): Promise<JSX.Element> {
     },
   ];
 
+  const next = s?.upcoming[0];
+  const bento = (
+    <div className="ov-bento">
+      <div className="ov-bento-hello">
+        <strong>
+          {greet}, {firstName}
+        </strong>
+        <span>
+          {dateCap} · {planLabel}
+        </span>
+      </div>
+      <Link href="/orcamentos/novo" className="ov-bento-tile ov-bento-cta ov-bento-wide">
+        <Plus size={22} aria-hidden="true" />
+        <span>
+          <strong>Novo orçamento</strong>
+          <small>PDF pronto para enviar no WhatsApp</small>
+        </span>
+      </Link>
+      <Link href="/agenda" className="ov-bento-tile ov-bento-tall">
+        <Calendar size={18} aria-hidden="true" />
+        <span className="ov-bento-label">Agenda hoje</span>
+        <span className="ov-bento-value">{k?.agenda_today ?? 0}</span>
+        <span className="ov-bento-sub">
+          {next
+            ? `${new Date(next.starts_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${next.title}`
+            : 'Nenhum compromisso'}
+        </span>
+      </Link>
+      <Link href="/ordens-de-servico" className="ov-bento-tile">
+        <ClipboardList size={18} aria-hidden="true" />
+        <span className="ov-bento-label">OS pendentes</span>
+        <span className="ov-bento-value">{k?.os_pending ?? 0}</span>
+      </Link>
+      <Link href="/orcamentos" className="ov-bento-tile">
+        <FileText size={18} aria-hidden="true" />
+        <span className="ov-bento-label">Orçamentos</span>
+        <span className="ov-bento-value">{k?.quotes_pending ?? 0}</span>
+        <span className="ov-bento-sub">{formatMoney(k?.quotes_pending_total ?? '0')}</span>
+      </Link>
+      <Link
+        href="/financeiro"
+        className={`ov-bento-tile ov-bento-wide${overdue > 0 ? ' ov-bento-alert' : ''}`}
+      >
+        <DollarSign size={18} aria-hidden="true" />
+        <span className="ov-bento-label">A receber</span>
+        <span className="ov-bento-value">{formatMoney(k?.receivables_pending_total ?? '0')}</span>
+        <span className="ov-bento-sub">
+          {overdue > 0 ? `${overdue} vencido${overdue > 1 ? 's' : ''}` : 'Tudo em dia'}
+        </span>
+        <ChevronRight size={18} className="ov-bento-chevron" aria-hidden="true" />
+      </Link>
+      <div className="ov-bento-shortcuts ov-bento-wide">
+        {(
+          [
+            [Users, 'Clientes', '/clientes'],
+            [ClipboardList, 'Nova OS', '/ordens-de-servico/novo'],
+            [Calendar, 'Compromisso', '/agenda'],
+            [Package, 'Catálogo', '/catalogo'],
+            [DollarSign, 'Recebimento', '/financeiro'],
+            [FolderOpen, 'Documentos', '/documentos'],
+          ] as const
+        ).map(([Icon, label, href]) => (
+          <Link key={label} href={href} className="ov-bento-shortcut">
+            <Icon size={20} aria-hidden="true" />
+            {label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="ov-page" style={{ maxWidth: 1440 }}>
-      <div className="ov-page-header">
-        <div>
-          <h1
-            style={{
-              fontSize: 24,
-              lineHeight: '32px',
-              fontWeight: 700,
-              letterSpacing: '-0.015em',
-              color: T.ink,
-              margin: 0,
-            }}
-          >
-            {greet}, {firstName}
-          </h1>
-          <div style={{ color: T.fg3, fontSize: 14, marginTop: 4 }}>
-            {dateCap} · {s?.company.trade_name ?? ''} · {planLabel}
+      <DashboardLayout bento={bento}>
+        <div className="ov-page-header">
+          <div>
+            <h1
+              style={{
+                fontSize: 24,
+                lineHeight: '32px',
+                fontWeight: 700,
+                letterSpacing: '-0.015em',
+                color: T.ink,
+                margin: 0,
+              }}
+            >
+              {greet}, {firstName}
+            </h1>
+            <div style={{ color: T.fg3, fontSize: 14, marginTop: 4 }}>
+              {dateCap} · {s?.company.trade_name ?? ''} · {planLabel}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Link
+              href="/clientes/novo"
+              className="ov-btn ov-btn-outline"
+              style={{ gap: 8, textDecoration: 'none' }}
+            >
+              <Users size={16} />
+              Novo cliente
+            </Link>
+            <Link
+              href="/orcamentos/novo"
+              className="ov-btn ov-btn-primary"
+              style={{ gap: 8, textDecoration: 'none' }}
+            >
+              <Plus size={16} />
+              Novo orçamento
+            </Link>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link
-            href="/clientes/novo"
-            className="ov-btn ov-btn-outline"
-            style={{ gap: 8, textDecoration: 'none' }}
-          >
-            <Users size={16} />
-            Novo cliente
-          </Link>
-          <Link
-            href="/orcamentos/novo"
-            className="ov-btn ov-btn-primary"
-            style={{ gap: 8, textDecoration: 'none' }}
-          >
-            <Plus size={16} />
-            Novo orçamento
-          </Link>
-        </div>
-      </div>
 
-      {/* KPIs */}
-      <div className="ov-grid-4" style={{ marginBottom: 20 }}>
-        {kpis.map((m, i) => (
-          <div key={i} className="ov-card">
-            <div className="ov-card-body" style={{ padding: '16px 18px' }}>
-              <div
+        {/* KPIs */}
+        <div className="ov-grid-4" style={{ marginBottom: 20 }}>
+          {kpis.map((m, i) => (
+            <div key={i} className="ov-card">
+              <div className="ov-card-body" style={{ padding: '16px 18px' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: T.fg3,
+                    textTransform: 'uppercase',
+                    letterSpacing: '.06em',
+                  }}
+                >
+                  {m.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 28,
+                    lineHeight: '36px',
+                    fontWeight: 700,
+                    letterSpacing: '-0.02em',
+                    marginTop: 6,
+                    fontVariantNumeric: 'tabular-nums',
+                    color: m.danger ? T.danger : T.ink,
+                  }}
+                >
+                  {m.value}
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Pill bg={m.bg} color={m.color}>
+                    {m.sub}
+                  </Pill>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Two columns */}
+        <div
+          className="ov-row-detail"
+          style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}
+        >
+          {/* Agenda de hoje */}
+          <div className="ov-card">
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: `1px solid ${T.border2}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
+                Agenda de hoje
+              </h3>
+              <Link
+                href="/agenda"
                 style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
+                  fontSize: 13,
+                  color: T.purple700,
                   fontWeight: 500,
-                  color: T.fg3,
-                  textTransform: 'uppercase',
-                  letterSpacing: '.06em',
+                  textDecoration: 'none',
                 }}
               >
-                {m.label}
-              </div>
+                Ver tudo →
+              </Link>
+            </div>
+            {(s?.upcoming ?? []).length === 0 ? (
               <div
                 style={{
-                  fontSize: 28,
-                  lineHeight: '36px',
-                  fontWeight: 700,
-                  letterSpacing: '-0.02em',
-                  marginTop: 6,
-                  fontVariantNumeric: 'tabular-nums',
-                  color: m.danger ? T.danger : T.ink,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '40px 16px',
+                  color: '#94A3B8',
                 }}
               >
-                {m.value}
+                <Inbox size={28} strokeWidth={1.5} />
+                <p style={{ fontSize: 14, margin: 0 }}>Nenhum compromisso para hoje.</p>
               </div>
-              <div style={{ marginTop: 8 }}>
-                <Pill bg={m.bg} color={m.color}>
-                  {m.sub}
-                </Pill>
+            ) : (
+              s!.upcoming.map((u, i) => (
+                <div
+                  key={u.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                    padding: '12px 18px',
+                    borderBottom: i < s!.upcoming.length - 1 ? `1px solid ${T.border2}` : 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 54,
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                      fontSize: 13,
+                      color: T.ink,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {new Date(u.starts_at).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: T.ink }}>{u.title}</div>
+                    {u.customer && (
+                      <div style={{ fontSize: 12, color: T.fg3, marginTop: 2 }}>
+                        {u.customer.name}
+                      </div>
+                    )}
+                  </div>
+                  <Pill bg={T.purple50} color={T.purple800}>
+                    {u.type.charAt(0) + u.type.slice(1).toLowerCase()}
+                  </Pill>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Right column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="ov-card">
+              <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border2}` }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
+                  Ações rápidas
+                </h3>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+                {QUICK_ACTIONS.map(([Icon, label, href], x) => (
+                  <Link
+                    key={x}
+                    href={href}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '0 18px',
+                      height: 64,
+                      borderRight: x % 2 === 0 ? `1px solid ${T.border2}` : 'none',
+                      borderTop: x > 1 ? `1px solid ${T.border2}` : 'none',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: T.ink,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <Icon size={18} color={T.purple600} />
+                    {label}
+                  </Link>
+                ))}
               </div>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Two columns */}
-      <div
-        className="ov-row-detail"
-        style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 24 }}
-      >
-        {/* Agenda de hoje */}
+        {/* Atividades */}
+        <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 12px', color: T.ink }}>
+          Últimas atividades
+        </h3>
         <div className="ov-card">
-          <div
-            style={{
-              padding: '14px 18px',
-              borderBottom: `1px solid ${T.border2}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
-              Agenda de hoje
-            </h3>
-            <Link
-              href="/agenda"
-              style={{ fontSize: 13, color: T.purple700, fontWeight: 500, textDecoration: 'none' }}
-            >
-              Ver tudo →
-            </Link>
-          </div>
-          {(s?.upcoming ?? []).length === 0 ? (
+          {(s?.activity ?? []).length === 0 ? (
             <div
               style={{
                 display: 'flex',
@@ -338,134 +516,37 @@ export default async function DashboardPage(): Promise<JSX.Element> {
               }}
             >
               <Inbox size={28} strokeWidth={1.5} />
-              <p style={{ fontSize: 14, margin: 0 }}>Nenhum compromisso para hoje.</p>
+              <p style={{ fontSize: 14, margin: 0 }}>Sem atividades recentes.</p>
             </div>
           ) : (
-            s!.upcoming.map((u, i) => (
+            s!.activity.map((a, i) => (
               <div
-                key={u.id}
+                key={a.id}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 14,
+                  gap: 10,
                   padding: '12px 18px',
-                  borderBottom: i < s!.upcoming.length - 1 ? `1px solid ${T.border2}` : 0,
+                  borderBottom: i < s!.activity.length - 1 ? `1px solid ${T.border2}` : 0,
                 }}
               >
-                <div
-                  style={{
-                    width: 54,
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: T.ink,
-                    flexShrink: 0,
-                  }}
-                >
-                  {new Date(u.starts_at).toLocaleTimeString('pt-BR', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: T.ink }}>{u.title}</div>
-                  {u.customer && (
-                    <div style={{ fontSize: 12, color: T.fg3, marginTop: 2 }}>
-                      {u.customer.name}
-                    </div>
-                  )}
-                </div>
                 <Pill bg={T.purple50} color={T.purple800}>
-                  {u.type.charAt(0) + u.type.slice(1).toLowerCase()}
+                  {AREA_LABEL[a.entity_type] ?? ENTITY_LABEL[a.entity_type] ?? a.entity_type}
                 </Pill>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: T.fg2 }}>{activityDetail(a)}</div>
+                  <div style={{ fontSize: 11, color: T.fg3, marginTop: 2 }}>
+                    {activityPath(a.entity_type, a.action)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: T.fg3, flexShrink: 0 }}>
+                  {relativeTime(a.created_at)}
+                </div>
               </div>
             ))
           )}
         </div>
-
-        {/* Right column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="ov-card">
-            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border2}` }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: T.ink }}>
-                Ações rápidas
-              </h3>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-              {QUICK_ACTIONS.map(([Icon, label, href], x) => (
-                <Link
-                  key={x}
-                  href={href}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '0 18px',
-                    height: 64,
-                    borderRight: x % 2 === 0 ? `1px solid ${T.border2}` : 'none',
-                    borderTop: x > 1 ? `1px solid ${T.border2}` : 'none',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: T.ink,
-                    textDecoration: 'none',
-                  }}
-                >
-                  <Icon size={18} color={T.purple600} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Atividades */}
-      <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 12px', color: T.ink }}>
-        Últimas atividades
-      </h3>
-      <div className="ov-card">
-        {(s?.activity ?? []).length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              padding: '40px 16px',
-              color: '#94A3B8',
-            }}
-          >
-            <Inbox size={28} strokeWidth={1.5} />
-            <p style={{ fontSize: 14, margin: 0 }}>Sem atividades recentes.</p>
-          </div>
-        ) : (
-          s!.activity.map((a, i) => (
-            <div
-              key={a.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '12px 18px',
-                borderBottom: i < s!.activity.length - 1 ? `1px solid ${T.border2}` : 0,
-              }}
-            >
-              <Pill bg={T.purple50} color={T.purple800}>
-                {AREA_LABEL[a.entity_type] ?? ENTITY_LABEL[a.entity_type] ?? a.entity_type}
-              </Pill>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: T.fg2 }}>{activityDetail(a)}</div>
-                <div style={{ fontSize: 11, color: T.fg3, marginTop: 2 }}>
-                  {activityPath(a.entity_type, a.action)}
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: T.fg3, flexShrink: 0 }}>
-                {relativeTime(a.created_at)}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      </DashboardLayout>
     </div>
   );
 }
