@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Home,
   Users,
@@ -12,8 +12,12 @@ import {
   FolderOpen,
   Settings,
   UserPlus,
+  CreditCard,
+  LogOut,
+  X,
 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
+import { BrandMark } from './BrandMark';
 import { useMobileSidebar } from './MobileSidebar';
 
 const PLAN_LABEL: Record<string, string> = {
@@ -43,6 +47,7 @@ const NAV_MAIN = [
 
 const NAV_ACCOUNT = [
   { label: 'Equipe', href: '/equipe', icon: UserPlus },
+  { label: 'Plano e assinatura', href: '/plano', icon: CreditCard },
   { label: 'Configurações', href: '/configuracoes', icon: Settings },
 ];
 
@@ -86,6 +91,7 @@ function NavItem({
 
 export function AppSidebar(): JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, company } = useAuth();
   const { open, close } = useMobileSidebar();
   const displayName = user?.name || 'Usuário';
@@ -109,37 +115,34 @@ export function AppSidebar(): JSX.Element {
         }}
       >
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 14px' }}>
-          <div
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '4px 8px 14px',
+          }}
+        >
+          <BrandMark />
+          <button
+            type="button"
+            className="ov-hamburger"
+            aria-label="Fechar menu"
+            onClick={close}
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: 'linear-gradient(135deg, #0A0A0F 0%, #6D28D9 100%)',
-              display: 'flex',
+              width: 40,
+              height: 40,
+              border: 0,
+              borderRadius: 10,
+              background: 'transparent',
+              color: '#64748B',
+              cursor: 'pointer',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0,
             }}
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M5 12 10 17 19 7" />
-            </svg>
-          </div>
-          <span
-            style={{ fontWeight: 700, fontSize: 17, color: '#0A0A0F', letterSpacing: '-0.01em' }}
-          >
-            Orcivo
-          </span>
+            <X size={20} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -235,6 +238,32 @@ export function AppSidebar(): JSX.Element {
               {companyLine}
             </div>
           </div>
+          <button
+            type="button"
+            aria-label="Sair"
+            title="Sair"
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              router.push('/login');
+              router.refresh();
+            }}
+            style={{
+              marginLeft: 'auto',
+              width: 40,
+              height: 40,
+              flexShrink: 0,
+              border: 0,
+              borderRadius: 10,
+              background: 'transparent',
+              color: '#64748B',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
     </>

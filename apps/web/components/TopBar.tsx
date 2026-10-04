@@ -2,9 +2,27 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Check, ChevronDown, LogOut, Menu, Search } from 'lucide-react';
+import { Bell, Check, ChevronDown, CreditCard, LogOut, Menu, Settings } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { useMobileSidebar } from './MobileSidebar';
+import { BrandMark } from './BrandMark';
+
+const menuItem: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  minHeight: 44,
+  padding: '0 10px',
+  border: 0,
+  borderRadius: 8,
+  background: 'transparent',
+  color: '#0A0A0F',
+  fontSize: 14,
+  fontWeight: 500,
+  cursor: 'pointer',
+  textAlign: 'left',
+};
 
 interface NotificationItem {
   id: string;
@@ -39,6 +57,24 @@ export function TopBar(): JSX.Element {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const menu = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (menu.current && !menu.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
 
   const loadNotifications = async () => {
     try {
@@ -140,39 +176,10 @@ export function TopBar(): JSX.Element {
         <Menu size={20} />
       </button>
 
-      <div className="ov-topbar-search" style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
-        <Search
-          size={16}
-          style={{
-            position: 'absolute',
-            left: 12,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#CBD5E1',
-            pointerEvents: 'none',
-          }}
-        />
-        <input
-          type="search"
-          placeholder="Busca em breve"
-          disabled
-          title="Busca em breve"
-          aria-disabled="true"
-          style={{
-            width: '100%',
-            height: 40,
-            border: '1px solid #E2E8F0',
-            borderRadius: 10,
-            paddingLeft: 36,
-            paddingRight: 12,
-            fontSize: 14,
-            color: '#94A3B8',
-            backgroundColor: '#F1F5F9',
-            outline: 'none',
-            cursor: 'not-allowed',
-          }}
-        />
-      </div>
+      <span className="ov-show-mobile" style={{ marginLeft: 4 }}>
+        <BrandMark size={26} />
+      </span>
+      <div style={{ flex: 1 }} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div ref={feed} style={{ position: 'relative' }}>
@@ -368,70 +375,109 @@ export function TopBar(): JSX.Element {
           )}
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '0 8px',
-            height: 40,
-            borderRadius: 10,
-            border: '1px solid #E2E8F0',
-            cursor: 'pointer',
-          }}
-        >
-          <div
+        <div ref={menu} style={{ position: 'relative' }}>
+          <button
+            type="button"
+            aria-label="Menu da conta"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((current) => !current)}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #6D28D9, #8B5CF6)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 700,
-              color: '#fff',
-              flexShrink: 0,
+              gap: 8,
+              padding: '0 8px',
+              height: 40,
+              borderRadius: 10,
+              border: '1px solid #E2E8F0',
+              background: menuOpen ? '#F5F3FF' : '#fff',
+              cursor: 'pointer',
             }}
           >
-            {(companyName ?? 'O').charAt(0).toUpperCase()}
-          </div>
-          <span
-            className="ov-topbar-company"
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: '#0A0A0F',
-              maxWidth: 120,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {companyName ?? ''}
-          </span>
-          <ChevronDown size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #6D28D9, #8B5CF6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#fff',
+                flexShrink: 0,
+              }}
+            >
+              {(companyName ?? 'O').charAt(0).toUpperCase()}
+            </div>
+            <span
+              className="ov-topbar-company"
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: '#0A0A0F',
+                maxWidth: 120,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {companyName ?? ''}
+            </span>
+            <ChevronDown size={14} style={{ color: '#94A3B8', flexShrink: 0 }} />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              style={{
+                position: 'absolute',
+                right: 0,
+                top: 48,
+                zIndex: 20,
+                minWidth: 220,
+                background: '#fff',
+                border: '1px solid #E2E8F0',
+                borderRadius: 12,
+                boxShadow: '0 12px 32px rgba(15, 23, 42, 0.14)',
+                padding: 6,
+              }}
+            >
+              {companyName && (
+                <div
+                  style={{ padding: '8px 10px', fontSize: 13, fontWeight: 600, color: '#0A0A0F' }}
+                >
+                  {companyName}
+                </div>
+              )}
+              {[
+                { label: 'Configurações', href: '/configuracoes', icon: Settings },
+                { label: 'Plano e assinatura', href: '/plano', icon: CreditCard },
+              ].map(({ label, href, icon: Icon }) => (
+                <button
+                  key={href}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push(href);
+                  }}
+                  style={menuItem}
+                >
+                  <Icon size={16} aria-hidden="true" /> {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void handleLogout()}
+                style={{ ...menuItem, color: '#DC2626' }}
+              >
+                <LogOut size={16} aria-hidden="true" /> Sair
+              </button>
+            </div>
+          )}
         </div>
-
-        <button
-          onClick={handleLogout}
-          style={{
-            background: 'none',
-            border: 'none',
-            borderRadius: 10,
-            width: 40,
-            height: 40,
-            cursor: 'pointer',
-            color: '#64748B',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          title="Sair"
-        >
-          <LogOut size={16} />
-        </button>
       </div>
     </header>
   );

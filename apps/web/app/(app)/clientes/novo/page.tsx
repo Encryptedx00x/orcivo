@@ -2,42 +2,67 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Info, Check, Plus } from 'lucide-react';
+import { Info, Check } from 'lucide-react';
 import { CustomerCreateSchema } from '@orcivo/shared-types';
+import { maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
+import { lookupCep } from '../../../../lib/cep';
+
+const EMPTY_FORM = {
+  name: '',
+  cpf: '',
+  phone: '',
+  phone2: '',
+  email: '',
+  cep: '',
+  street: '',
+  number: '',
+  complement: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  notes: '',
+};
+
+const MASKS: Record<string, (v: string) => string> = {
+  cpf: maskCpfCnpj,
+  phone: maskPhone,
+  phone2: maskPhone,
+  cep: maskCep,
+};
 
 type Tipo = 'fisica' | 'empresa';
-
-const TAGS = ['Residência', 'Recorrente', 'VIP', 'Indicação', 'Obras'];
 
 export default function NovoClientePage(): JSX.Element {
   const router = useRouter();
   const [tipo, setTipo] = useState<Tipo>('fisica');
-  const [activeTags, setActiveTags] = useState<string[]>(['Residência']);
-  const [form, setForm] = useState({
-    name: '',
-    cpf: '',
-    phone: '',
-    phone2: '',
-    email: '',
-    cep: '',
-    street: '',
-    number: '',
-    complement: '',
-    neighborhood: '',
-    city: '',
-    state: '',
-    notes: '',
-  });
-  const [shortcuts, setShortcuts] = useState({ quote: true, visit: false, address: false });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [shortcuts, setShortcuts] = useState({ quote: true });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const set =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm((p) => ({ ...p, [k]: e.target.value }));
+      setForm((p) => ({ ...p, [k]: MASKS[k]?.(e.target.value) ?? e.target.value }));
 
-  const toggleTag = (t: string) =>
-    setActiveTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
+  const [saved, setSaved] = useState('');
+  const [cepStatus, setCepStatus] = useState<'idle' | 'loading' | 'notfound'>('idle');
+  const fillFromCep = async (cep: string) => {
+    if (onlyDigits(cep).length !== 8) return;
+    setCepStatus('loading');
+    const address = await lookupCep(cep);
+    if (!address) {
+      setCepStatus('notfound');
+      return;
+    }
+    setCepStatus('idle');
+    setForm((p) => ({
+      ...p,
+      street: address.street || p.street,
+      neighborhood: address.neighborhood || p.neighborhood,
+      city: address.city || p.city,
+      state: address.state || p.state,
+    }));
+  };
 
   const initials =
     form.name
@@ -48,17 +73,18 @@ export default function NovoClientePage(): JSX.Element {
       .map((w) => w[0].toUpperCase())
       .join('') || '?';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, andNew = false) => {
+    e?.preventDefault();
+    setSaved('');
     const payload = Object.fromEntries(
       Object.entries({
         name: form.name,
         type: tipo === 'empresa' ? 'PJ' : 'PF',
-        tax_id: form.cpf || undefined,
-        phone: form.phone || undefined,
-        phone2: form.phone2 || undefined,
+        tax_id: onlyDigits(form.cpf) || undefined,
+        phone: onlyDigits(form.phone) || undefined,
+        phone2: onlyDigits(form.phone2) || undefined,
         email: form.email || undefined,
-        cep: form.cep || undefined,
+        cep: onlyDigits(form.cep) || undefined,
         street: form.street || undefined,
         number: form.number || undefined,
         complement: form.complement || undefined,
@@ -82,6 +108,14 @@ export default function NovoClientePage(): JSX.Element {
     if (!res.ok) {
       setError('Erro ao salvar cliente.');
       setLoading(false);
+      return;
+    }
+    if (andNew) {
+      setSaved(`${form.name} salvo. Pode cadastrar o próximo.`);
+      setForm(EMPTY_FORM);
+      setError('');
+      setLoading(false);
+      window.scrollTo({ top: 0 });
       return;
     }
     if (shortcuts.quote) {
@@ -142,9 +176,9 @@ export default function NovoClientePage(): JSX.Element {
           </Link>
           <button
             type="button"
-            disabled
-            title="Salvar e novo indisponível"
-            style={{ ...btnOutline, opacity: 0.5, cursor: 'not-allowed' }}
+            style={btnOutline}
+            disabled={loading}
+            onClick={() => void handleSubmit(undefined, true)}
           >
             Salvar e novo
           </button>
@@ -154,6 +188,22 @@ export default function NovoClientePage(): JSX.Element {
         </div>
       </div>
 
+      {(saved || error) && (
+        <div
+          role={error ? 'alert' : 'status'}
+          style={{
+            marginBottom: 16,
+            padding: '10px 14px',
+            borderRadius: 10,
+            fontSize: 14,
+            background: error ? '#FEF2F2' : '#F0FDF4',
+            color: error ? '#B91C1C' : '#166534',
+            border: `1px solid ${error ? '#FECACA' : '#BBF7D0'}`,
+          }}
+        >
+          {error || saved}
+        </div>
+      )}
       <form id="novo-cliente-form" onSubmit={handleSubmit}>
         <div
           className="ov-row-detail"
@@ -187,45 +237,6 @@ export default function NovoClientePage(): JSX.Element {
                     onClick={() => setTipo('empresa')}
                   >
                     Empresa
-                  </button>
-                </div>
-                <div style={{ flex: 1 }} />
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {TAGS.map((t) => {
-                    const on = activeTags.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => toggleTag(t)}
-                        style={{
-                          padding: '5px 11px',
-                          borderRadius: 9999,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: on ? 'var(--purple-50, #F5F3FF)' : 'transparent',
-                          color: on ? '#4C1D95' : '#334155',
-                          border: `1px solid ${on ? '#DDD6FE' : '#E2E8F0'}`,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {on && <Check size={11} />}
-                        {t}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    disabled
-                    title="Criação de etiquetas indisponível"
-                    style={{ ...tagAdd, opacity: 0.5, cursor: 'not-allowed' }}
-                  >
-                    <Plus size={11} /> etiqueta
                   </button>
                 </div>
               </div>
@@ -301,8 +312,8 @@ export default function NovoClientePage(): JSX.Element {
                 <span>Endereço</span>
                 <button
                   type="button"
-                  disabled
-                  title="Busca por CEP indisponível"
+                  disabled={cepStatus === 'loading'}
+                  onClick={() => void fillFromCep(form.cep)}
                   style={{
                     color: '#6D28D9',
                     fontSize: 13,
@@ -313,11 +324,14 @@ export default function NovoClientePage(): JSX.Element {
                     border: 'none',
                     padding: 0,
                     fontFamily: 'inherit',
-                    opacity: 0.5,
-                    cursor: 'not-allowed',
+                    cursor: 'pointer',
                   }}
                 >
-                  Buscar por CEP
+                  {cepStatus === 'loading'
+                    ? 'Buscando…'
+                    : cepStatus === 'notfound'
+                      ? 'CEP não encontrado'
+                      : 'Buscar por CEP'}
                 </button>
               </h3>
               <div
@@ -328,7 +342,10 @@ export default function NovoClientePage(): JSX.Element {
                   <input
                     style={inp}
                     value={form.cep}
-                    onChange={set('cep')}
+                    onChange={(e) => {
+                      set('cep')(e);
+                      if (onlyDigits(e.target.value).length === 8) void fillFromCep(e.target.value);
+                    }}
                     placeholder="00000-000"
                   />
                 </Field>
@@ -416,8 +433,6 @@ export default function NovoClientePage(): JSX.Element {
                 placeholder="Ex.: prefere atendimento pela manhã, paga sempre via Pix…"
               />
             </div>
-
-            {error && <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>{error}</p>}
           </div>
 
           {/* ── Right rail ── */}
@@ -473,11 +488,7 @@ export default function NovoClientePage(): JSX.Element {
               <h3 style={sectionTitle}>Atalhos depois de salvar</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {(
-                  [
-                    ['quote', 'Criar orçamento em seguida'],
-                    ['visit', 'Agendar visita técnica'],
-                    ['address', 'Salvar endereço como obra'],
-                  ] as [keyof typeof shortcuts, string][]
+                  [['quote', 'Criar orçamento em seguida']] as [keyof typeof shortcuts, string][]
                 ).map(([k, label]) => (
                   <label
                     key={k}
@@ -606,20 +617,6 @@ const segInactive: React.CSSProperties = {
   border: '1px solid transparent',
   cursor: 'pointer',
   fontFamily: 'inherit',
-};
-const tagAdd: React.CSSProperties = {
-  padding: '5px 11px',
-  borderRadius: 9999,
-  fontSize: 11,
-  fontWeight: 600,
-  color: '#6D28D9',
-  border: '1px dashed #A78BFA',
-  background: 'transparent',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
 };
 const btnPrimary: React.CSSProperties = {
   height: 38,

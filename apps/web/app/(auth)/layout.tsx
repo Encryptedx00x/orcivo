@@ -1,4 +1,5 @@
 import { AuthArtPanel } from '../../components/AuthArtPanel';
+import { BrandMark } from '../../components/BrandMark';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
@@ -31,7 +32,10 @@ export default function AuthLayout({ children }: { children: React.ReactNode }):
           minHeight: '100vh',
         }}
       >
-        <div />
+        <div className="ov-show-mobile" style={{ width: '100%', maxWidth: 400, marginBottom: 24 }}>
+          <BrandMark size={28} />
+        </div>
+        <div className="ov-hide-mobile" />
         <div style={{ width: '100%', maxWidth: 400 }}>{children}</div>
         <p style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>© 2026 Orcivo</p>
       </div>

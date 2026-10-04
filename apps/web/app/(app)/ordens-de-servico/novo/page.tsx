@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Calendar, User, Info, ChevronDown } from 'lucide-react';
 import { WorkOrderCreateSchema } from '@orcivo/shared-types';
+import { maskPhone } from '@orcivo/shared-types';
 
 interface CustomerOption {
   id: string;
@@ -236,7 +237,7 @@ function NovaOSContent(): JSX.Element {
                           {selectedCustomer.name}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748B' }}>
-                          {selectedCustomer.phone ?? ''}
+                          {maskPhone(selectedCustomer.phone)}
                           {selectedCustomer.city ? ` · ${selectedCustomer.city}` : ''}
                         </div>
                       </div>
@@ -349,7 +350,7 @@ function NovaOSContent(): JSX.Element {
                                 {c.name}
                               </div>
                               <div style={{ fontSize: 12, color: '#64748B' }}>
-                                {c.phone ?? '—'}
+                                {c.phone ? maskPhone(c.phone) : '—'}
                                 {c.city ? ` · ${c.city}` : ''}
                               </div>
                             </div>

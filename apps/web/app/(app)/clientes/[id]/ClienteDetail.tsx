@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Plus, ChevronRight, Pencil } from 'lucide-react';
 import { AuditHistoryFeed } from '../AuditHistoryFeed';
 import { contactLinks } from '../contact-links';
+import { maskCep, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
 
 interface Customer {
   id: string;
@@ -218,8 +219,8 @@ export function ClienteDetail({
 
           {/* Contact KVs */}
           <h3 style={kvHead}>Contato</h3>
-          {customer.tax_id && <KV k="CPF/CNPJ" v={customer.tax_id} />}
-          {customer.phone && <KV k="Telefone" v={customer.phone} />}
+          {customer.tax_id && <KV k="CPF/CNPJ" v={maskCpfCnpj(customer.tax_id)} />}
+          {customer.phone && <KV k="Telefone" v={maskPhone(customer.phone)} />}
           {customer.phone2 && <KV k="Telefone secundário" v={customer.phone2} />}
           {customer.email && <KV k="Email" v={customer.email} />}
 
@@ -242,7 +243,7 @@ export function ClienteDetail({
                     {customer.state ? ` / ${customer.state}` : ''}
                   </div>
                 )}
-                {customer.cep && <div>CEP {customer.cep}</div>}
+                {customer.cep && <div>CEP {maskCep(customer.cep)}</div>}
               </div>
             </>
           )}

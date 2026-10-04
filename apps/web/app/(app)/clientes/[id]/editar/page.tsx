@@ -5,6 +5,14 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Check, Loader2 } from 'lucide-react';
 import { CustomerCreateSchema } from '@orcivo/shared-types';
+import { maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
+
+const MASKS: Record<string, (v: string) => string> = {
+  cpf: maskCpfCnpj,
+  phone: maskPhone,
+  phone2: maskPhone,
+  cep: maskCep,
+};
 
 type Tipo = 'fisica' | 'empresa';
 
@@ -62,11 +70,11 @@ export default function EditarClientePage(): JSX.Element {
         setTipo(data.type === 'PJ' ? 'empresa' : 'fisica');
         setForm({
           name: data.name ?? '',
-          cpf: data.tax_id ?? '',
-          phone: data.phone ?? '',
-          phone2: data.phone2 ?? '',
+          cpf: maskCpfCnpj(data.tax_id),
+          phone: maskPhone(data.phone),
+          phone2: maskPhone(data.phone2),
           email: data.email ?? '',
-          cep: data.cep ?? '',
+          cep: maskCep(data.cep),
           street: data.street ?? '',
           number: data.number ?? '',
           complement: data.complement ?? '',
@@ -82,7 +90,7 @@ export default function EditarClientePage(): JSX.Element {
 
   const set =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setForm((p) => ({ ...p, [k]: e.target.value }));
+      setForm((p) => ({ ...p, [k]: MASKS[k]?.(e.target.value) ?? e.target.value }));
 
   const initials =
     form.name
@@ -102,11 +110,11 @@ export default function EditarClientePage(): JSX.Element {
       Object.entries({
         name: form.name,
         type: tipo === 'empresa' ? 'PJ' : 'PF',
-        tax_id: form.cpf || undefined,
-        phone: form.phone || undefined,
-        phone2: form.phone2 || undefined,
+        tax_id: onlyDigits(form.cpf) || undefined,
+        phone: onlyDigits(form.phone) || undefined,
+        phone2: onlyDigits(form.phone2) || undefined,
         email: form.email || undefined,
-        cep: form.cep || undefined,
+        cep: onlyDigits(form.cep) || undefined,
         street: form.street || undefined,
         number: form.number || undefined,
         complement: form.complement || undefined,

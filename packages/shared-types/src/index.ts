@@ -29,6 +29,7 @@ export * from './plan/plan-feature.enum';
 export * from './auth/forgot-password.dto';
 export * from './auth/reset-password.dto';
 export * from './helpers/money';
+export * from './helpers/br-format';
 export * from './billing/subscription.dto';
 export * from './invite/invite.dto';
 export * from './notification';

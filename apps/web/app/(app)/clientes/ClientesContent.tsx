@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, Users, Search, ChevronRight } from 'lucide-react';
+import { maskPhone } from '@orcivo/shared-types';
 
 interface Customer {
   id: string;
@@ -102,7 +103,7 @@ export function ClientesContent({ customers }: { customers: Customer[] }): JSX.E
                     <span style={{ fontWeight: 600 }}>{c.name}</span>
                   </td>
                   <td data-label="Telefone" className="ov-muted">
-                    {c.phone ?? '—'}
+                    {c.phone ? maskPhone(c.phone) : '—'}
                   </td>
                   <td data-label="Cidade" className="ov-muted">
                     {c.city ? `${c.city}${c.state ? ` / ${c.state}` : ''}` : '—'}

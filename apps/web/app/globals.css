@@ -176,7 +176,12 @@ body {
   }
   .ov-auth-form-col {
     padding: 24px 20px !important;
-    min-height: auto !important;
+    min-height: 100vh;
+    justify-content: flex-start !important;
+  }
+  .ov-auth-form-col > p:last-child {
+    margin-top: auto;
+    padding-top: 32px;
   }
 }
 .ov-page-header {

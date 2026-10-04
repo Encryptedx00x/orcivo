@@ -10,6 +10,7 @@ import {
   formatMoney,
   CustomerCreateSchema,
 } from '@orcivo/shared-types';
+import { maskPhone } from '@orcivo/shared-types';
 
 // ── Token aliases ─────────────────────────────────────────────────────
 const T = {
@@ -278,7 +279,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
           customer_id: customerId,
           title: title || undefined,
           notes: terms || undefined,
-          valid_until: validUntil ? new Date(validUntil).toISOString() : undefined,
+          valid_until: validUntil ? new Date(`${validUntil}T23:59:59`).toISOString() : undefined,
           discount_type: discountType,
           discount_value: discountValue || '0',
           items: validItems.map((it) => ({
@@ -364,7 +365,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
             {selectedCustomer?.phone && (
               <div>
                 <label className="ov-label">Contato</label>
-                <input className="ov-input" readOnly value={selectedCustomer.phone} />
+                <input className="ov-input" readOnly value={maskPhone(selectedCustomer.phone)} />
               </div>
             )}
             <div style={{ gridColumn: '1 / -1' }}>
@@ -596,7 +597,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
           </div>
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 16, color: T.ink }}>
             {selectedCustomer?.name ?? '—'}
-            {selectedCustomer?.phone ? ` · ${selectedCustomer.phone}` : ''}
+            {selectedCustomer?.phone ? ` · ${maskPhone(selectedCustomer.phone)}` : ''}
           </div>
 
           {title && (

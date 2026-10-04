@@ -20,6 +20,7 @@ import {
   saveTechnicianSignature,
   sendQuoteWithSignature,
 } from './signature-actions';
+import { maskPhone } from '@orcivo/shared-types';
 
 const STATUS_LABEL: Record<Quote['status'], string> = {
   DRAFT: 'Rascunho',
@@ -152,7 +153,9 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
     setEditError('');
     setEditTitle(quote.title ?? '');
     setEditNotes(quote.notes ?? '');
-    setEditValidUntil(quote.valid_until ? quote.valid_until.slice(0, 10) : '');
+    setEditValidUntil(
+      quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('sv-SE') : '',
+    );
     setEditDiscountType(quote.discount_type);
     setEditDiscountValue(quote.discount_value);
     setEditItems(quote.items.map((i) => ({ ...i })));
@@ -194,7 +197,9 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
       const result = await updateQuote(quote.id, {
         title: editTitle || undefined,
         notes: editNotes || undefined,
-        valid_until: editValidUntil ? new Date(editValidUntil).toISOString() : undefined,
+        valid_until: editValidUntil
+          ? new Date(`${editValidUntil}T23:59:59`).toISOString()
+          : undefined,
         discount_type: editDiscountType,
         discount_value: editDiscountValue || '0',
         items: validItems.map((i) => ({
@@ -431,7 +436,9 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
         <h2 style={sectionTitle}>Cliente</h2>
         <p style={{ fontWeight: 600, fontSize: 15 }}>{quote.customer.name}</p>
         {quote.customer.phone && (
-          <p style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>{quote.customer.phone}</p>
+          <p style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
+            {maskPhone(quote.customer.phone)}
+          </p>
         )}
       </div>
 
