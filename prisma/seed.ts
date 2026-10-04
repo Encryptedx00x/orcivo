@@ -1,5 +1,6 @@
 import { PrismaClient, PlanCode } from '@prisma/client';
-import { PLAN_LIMITS } from '@orcivo/shared-types';
+// Relative import: the repo root does not depend on the workspace package.
+import { PLAN_LIMITS } from '../packages/shared-types/src/billing/plans.ts';
 
 const prisma = new PrismaClient();
 

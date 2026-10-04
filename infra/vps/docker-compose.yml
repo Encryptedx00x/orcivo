@@ -88,6 +88,29 @@ services:
       db:
         condition: service_healthy
 
+  # One-shot, idempotent: `docker compose run --rm seed` (PlanLimit upsert from shared PLAN_LIMITS).
+  seed:
+    image: orcivo-backend-build
+    profiles: [tools]
+    environment:
+      <<: *backend-env
+      NODE_PATH: /app/apps/backend/node_modules
+    working_dir: /app/apps/backend
+    command:
+      [
+        'pnpm',
+        'exec',
+        'ts-node',
+        '--transpile-only',
+        '-O',
+        '{"module":"commonjs"}',
+        '../../prisma/seed.ts',
+      ]
+    networks: [orcivo_internal]
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ./source

@@ -483,22 +483,24 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
               <span style={{ color: '#64748B', fontSize: 14 }}>Subtotal</span>
               <span>{formatMoney(quote.subtotal)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#64748B', fontSize: 14 }}>
-                Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
-              </span>
-              <span style={{ color: '#DC2626' }}>
-                -{' '}
-                {quote.discount_type === 'PERCENT'
-                  ? formatMoney(
-                      multiplyDecimal(
-                        quote.subtotal,
-                        multiplyDecimal(quote.discount_value, '0.01'),
-                      ),
-                    )
-                  : formatMoney(quote.discount_value)}
-              </span>
-            </div>
+            {!/^0*(\.0*)?$/.test(quote.discount_value ?? '0') && (
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748B', fontSize: 14 }}>
+                  Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
+                </span>
+                <span style={{ color: '#DC2626' }}>
+                  -{' '}
+                  {quote.discount_type === 'PERCENT'
+                    ? formatMoney(
+                        multiplyDecimal(
+                          quote.subtotal,
+                          multiplyDecimal(quote.discount_value, '0.01'),
+                        ),
+                      )
+                    : formatMoney(quote.discount_value)}
+                </span>
+              </div>
+            )}
             <div
               style={{
                 display: 'flex',

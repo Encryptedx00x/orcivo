@@ -13,4 +13,8 @@ module.exports = {
   rules: {
     'no-console': 'warn',
   },
+  overrides: [
+    // Root-level TS scripts (prisma/seed.ts); apps/packages have their own configs.
+    { files: ['*.ts'], parser: '@typescript-eslint/parser' },
+  ],
 };

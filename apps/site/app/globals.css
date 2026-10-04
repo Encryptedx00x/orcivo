@@ -141,3 +141,14 @@ html {
     transition: none;
   }
 }
+
+/* Touch targets: nav/footer text links need ~44px on phones */
+@media (max-width: 640px) {
+  header a,
+  footer a,
+  a[href*='/login'] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

@@ -1,20 +1,10 @@
 // Run with Node 24+: node --test apps/site/app/planos/plan-catalog.test.mjs
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
 
-// Resolve the extensionless TypeScript import exactly as Next does.
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    if (specifier === '../../../../packages/shared-types/src/billing/plans') {
-      return nextResolve(`${specifier}.ts`, context);
-    }
-    return nextResolve(specifier, context);
-  },
-});
-
 const { getPlans, priceLabel, annualDiscount } = await import('./plan-catalog.ts');
-const { PLAN_LIMITS, PLAN_PRICING } = await import('../../../../packages/shared-types/src/billing/plans.ts');
+// Same module instance plan-catalog.ts uses, so mutations below are visible to it.
+const { PLAN_LIMITS, PLAN_PRICING } = await import('@orcivo/shared-types');
 
 test('lists the shared plans in order with Mais as the only popular plan', () => {
   const plans = getPlans();

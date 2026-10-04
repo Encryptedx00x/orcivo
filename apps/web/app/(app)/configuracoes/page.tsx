@@ -361,12 +361,20 @@ export default function ConfiguracoesPage(): JSX.Element {
         style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}
       >
         {/* Sidebar nav */}
-        <aside>
+        <aside className="ov-config-nav" role="tablist" aria-label="Seções">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <div
+            <button
               key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className="ov-config-tab"
               onClick={() => setTab(id)}
               style={{
+                width: '100%',
+                border: 0,
+                fontFamily: 'inherit',
+                textAlign: 'left',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
@@ -383,7 +391,7 @@ export default function ConfiguracoesPage(): JSX.Element {
             >
               <Icon size={16} color={tab === id ? '#6D28D9' : '#64748B'} />
               {label}
-            </div>
+            </button>
           ))}
         </aside>
 

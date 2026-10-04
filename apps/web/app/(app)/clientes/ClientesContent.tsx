@@ -35,7 +35,8 @@ export function ClientesContent({ customers }: { customers: Customer[] }): JSX.E
             Clientes
           </h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
-            {customers.length} clientes cadastrados
+            {customers.length}{' '}
+            {customers.length === 1 ? 'cliente cadastrado' : 'clientes cadastrados'}
           </div>
         </div>
         <div className="row-flex">

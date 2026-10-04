@@ -22,7 +22,7 @@ export function InventoryFields({ item }: { item?: InventoryItem }): JSX.Element
             type="text"
             inputMode="decimal"
             required
-            defaultValue={item?.sale_price ?? item?.unit_price ?? ''}
+            defaultValue={toComma(item?.sale_price ?? item?.unit_price ?? '')}
             placeholder="0,00"
             pattern="\d{1,10}([.,]\d{1,2})?"
             aria-describedby="price-help"
@@ -39,12 +39,12 @@ export function InventoryFields({ item }: { item?: InventoryItem }): JSX.Element
             type="text"
             inputMode="decimal"
             required
-            defaultValue={item?.cost_price ?? '0.00'}
+            defaultValue={toComma(item?.cost_price ?? '0.00')}
             pattern="\d{1,10}([.,]\d{1,2})?"
             aria-describedby="price-help"
           />
         </div>
-        <div>
+        <div className="ov-stock-field">
           <label htmlFor="quantity" style={labelStyle}>
             Quantidade *
           </label>
@@ -60,7 +60,7 @@ export function InventoryFields({ item }: { item?: InventoryItem }): JSX.Element
             defaultValue={item?.quantity ?? 0}
           />
         </div>
-        <div>
+        <div className="ov-stock-field">
           <label htmlFor="low_stock_threshold" style={labelStyle}>
             Limite de estoque baixo *
           </label>
@@ -81,13 +81,15 @@ export function InventoryFields({ item }: { item?: InventoryItem }): JSX.Element
       <p id="price-help" style={helpStyle}>
         Use vírgula ou ponto nos preços, com até duas casas decimais.
       </p>
-      <p id="stock-help" style={helpStyle}>
+      <p id="stock-help" className="ov-stock-field" style={helpStyle}>
         Produtos com quantidade igual ou inferior ao limite recebem o aviso de estoque baixo.
         Serviços não recebem esse aviso.
       </p>
     </fieldset>
   );
 }
+
+const toComma = (value: string) => value.replace('.', ',');
 
 const labelStyle: React.CSSProperties = {
   display: 'block',

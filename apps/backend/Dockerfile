@@ -15,6 +15,7 @@ COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/shared-types/tsconfig.json ./packages/shared-types/tsconfig.json
 COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY prisma/migrations ./prisma/migrations
+COPY prisma/seed.ts ./prisma/seed.ts
 
 RUN pnpm install --frozen-lockfile --filter @orcivo/backend...
 
