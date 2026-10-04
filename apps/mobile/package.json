@@ -19,7 +19,7 @@
     "@react-navigation/native-stack": "6.11.0",
     "decimal.js": "10.6.0",
     "expo": "~54.0.34",
-    "expo-constants": "^56.0.15",
+    "expo-constants": "~18.0.14",
     "expo-crypto": "15.0.9",
     "expo-file-system": "19.0.22",
     "expo-image-picker": "17.0.11",
