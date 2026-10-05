@@ -1,16 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Calendar, FileText, Home, Menu, Users } from 'lucide-react';
-import { useMobileSidebar } from './MobileSidebar';
+import { usePathname, useRouter } from 'next/navigation';
+import { Smile } from 'lucide-react';
 import { EASY_KEY } from '../lib/easy-mode';
 
-// "Modo fácil": bigger type and targets, higher contrast and a labeled bottom bar
-// on phones. Everything hangs off html[data-easy='1'] (see globals.css), so the
-// mode can be removed by deleting this file, lib/easy-mode.ts, its CSS block and
-// the pre-paint script in app/layout.tsx.
+// "Modo fácil" is the /facil experience (app/facil). This file only holds the
+// per-device flag (html[data-easy='1'], set before paint by lib/easy-mode) and the
+// glue inside the standard app: landing on /dashboard goes to /facil, and full
+// screens opened from Modo fácil ("Mais opções") get a way back.
 const EVENT = 'orcivo:easy-mode';
 
 export function setEasyMode(on: boolean): void {
@@ -35,36 +33,42 @@ export function useEasyMode(): [boolean, (on: boolean) => void] {
   return [on, setEasyMode];
 }
 
-const TABS = [
-  { href: '/dashboard', label: 'Início', icon: Home },
-  { href: '/clientes', label: 'Clientes', icon: Users },
-  { href: '/orcamentos', label: 'Orçamentos', icon: FileText },
-  { href: '/agenda', label: 'Agenda', icon: Calendar },
-];
-
-export function EasyBottomNav(): JSX.Element {
+/** Rendered by the standard (app) layout. */
+export function EasyModeGlue(): JSX.Element | null {
+  const [easyOn] = useEasyMode();
   const pathname = usePathname();
-  const { toggle } = useMobileSidebar();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (easyOn && pathname === '/dashboard') router.replace('/facil');
+  }, [easyOn, pathname, router]);
+
+  if (!easyOn || pathname === '/dashboard') return null;
   return (
-    <nav className="ov-easy-nav" aria-label="Navegação principal">
-      {TABS.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
-        return (
-          <Link
-            key={href}
-            href={href}
-            className="ov-easy-nav-item"
-            aria-current={active ? 'page' : undefined}
-          >
-            <Icon size={24} aria-hidden="true" />
-            {label}
-          </Link>
-        );
-      })}
-      <button type="button" className="ov-easy-nav-item" onClick={toggle}>
-        <Menu size={24} aria-hidden="true" />
-        Menu
-      </button>
-    </nav>
+    <a
+      href="/facil"
+      style={{
+        position: 'fixed',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        bottom: 'max(16px, env(safe-area-inset-bottom))',
+        zIndex: 70,
+        height: 52,
+        padding: '0 20px',
+        borderRadius: 9999,
+        background: '#6D28D9',
+        color: '#FFFFFF',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 16,
+        fontWeight: 700,
+        textDecoration: 'none',
+        boxShadow: '0 10px 24px rgba(109,40,217,0.35)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <Smile size={20} aria-hidden="true" /> Voltar ao Modo fácil
+    </a>
   );
 }

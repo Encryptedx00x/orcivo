@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/orcivo-design-system-019e1407-ea5b-79d7-afec-780a132dbd25/colors_and_type.css">
+  <link rel="stylesheet" href="_ds/orcivo-design-system-019e1407-ea5b-79d7-afec-780a132dbd25/handoff/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="_ds/orcivo-design-system-019e1407-ea5b-79d7-afec-780a132dbd25/_ds_bundle.js"></script>
+  <style>
+    @keyframes orcPulse { 0%,100% { opacity: .4 } 50% { opacity: .8 } }
+    .orc-app button, .orc-app input, .orc-app textarea { font-family: inherit; }
+    .orc-app input:focus, .orc-app textarea:focus { outline: none; }
+    .orc-app a { color: #5B21B6; }
+    .orc-app a:hover { color: #4C1D95; }
+  </style>
+</helmet>
+<div class="orc-app" data-screen-label="{{ screenLabel }}" style="width:375px;height:780px;position:relative;overflow:hidden;background:#F8FAFC;font-family:Inter, system-ui, sans-serif;font-size:18px;line-height:1.4;color:#0A0A0F;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased">
+  <div ref="{{ scrollRef }}" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none">
+    <div style="padding:16px 16px 28px;display:flex;flex-direction:column;gap:16px">
+
+      <sc-if value="{{ hasBack }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <button onClick="{{ back }}" style="height:56px;padding:0 22px 0 14px;border-radius:9999px;border:1px solid #E2E8F0;background:#FFFFFF;display:flex;align-items:center;gap:6px;font-size:18px;font-weight:600;color:#0A0A0F;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="chevron-left" size="24" hint-size="24px,24px"></x-import>
+              Voltar
+            </button>
+            <sc-if value="{{ hasStep }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:16px;font-weight:600;color:#475569">{{ stepText }}</span>
+            </sc-if>
+          </div>
+          <sc-if value="{{ hasStep }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+              <sc-for list="{{ stepBars }}" as="b" hint-placeholder-count="3">
+                <div style="height:6px;border-radius:9999px;background:{{ b.color }}"></div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- INÍCIO -->
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:2px;padding:8px 4px 0">
+          <span style="font-size:16px;font-weight:500;color:#475569">Sábado, 4 de outubro</span>
+          <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Boa tarde, Carlos</h1>
+        </div>
+      </sc-if>
+      <sc-if value="{{ homeBody }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <button onClick="{{ goQ1 }}" style="grid-column:span 2;min-height:128px;border:none;border-radius:24px;background:#6D28D9;color:#FFFFFF;padding:20px;display:flex;align-items:center;gap:16px;text-align:left;cursor:pointer">
+            <div style="width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="34" hint-size="34px,34px"></x-import>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+              <span style="font-size:22px;line-height:28px;font-weight:700;letter-spacing:-0.01em;white-space:nowrap">Novo orçamento</span>
+              <span style="font-size:16px;font-weight:500;color:#EDE9FE">Pronto em 3 passos</span>
+            </div>
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="chevron-right" size="28" hint-size="28px,28px"></x-import>
+          </button>
+
+          <button onClick="{{ goAgenda }}" style="grid-row:span 2;border:1px solid #E2E8F0;border-radius:24px;background:#FFFFFF;padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="width:44px;height:44px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="calendar" size="24" hint-size="24px,24px"></x-import>
+            </div>
+            <span style="font-size:44px;line-height:48px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;margin-top:6px">{{ home.today }}</span>
+            <span style="font-size:18px;font-weight:700">Hoje</span>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;width:100%">
+              <sc-for list="{{ home.next }}" as="n" hint-placeholder-count="2">
+                <div style="display:flex;flex-direction:column;padding-top:8px;border-top:1px solid #F1F5F9">
+                  <span style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">{{ n.time }}</span>
+                  <span style="font-size:15px;line-height:20px;color:#334155">{{ n.title }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ home.noNext }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:15px;color:#475569">Nada marcado</span>
+              </sc-if>
+            </div>
+          </button>
+
+          <button onClick="{{ goServices }}" style="min-height:132px;border:1px solid #E2E8F0;border-radius:24px;background:#FFFFFF;padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="width:44px;height:44px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="clipboard-list" size="24" hint-size="24px,24px"></x-import>
+            </div>
+            <span style="font-size:36px;line-height:42px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px">{{ home.services }}</span>
+            <span style="font-size:18px;font-weight:700">Serviços</span>
+            <span style="font-size:15px;color:#475569">para fazer</span>
+          </button>
+
+          <button onClick="{{ goQuotes }}" style="min-height:132px;border:1px solid #E2E8F0;border-radius:24px;background:#FFFFFF;padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="width:44px;height:44px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="file-text" size="24" hint-size="24px,24px"></x-import>
+            </div>
+            <span style="font-size:36px;line-height:42px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px">{{ home.quotes }}</span>
+            <span style="font-size:18px;font-weight:700">Orçamentos</span>
+            <span style="font-size:15px;color:#475569">esperando resposta</span>
+          </button>
+
+          <button onClick="{{ goMoney }}" style="grid-column:span 2;min-height:104px;border:1px solid #E2E8F0;border-radius:24px;background:#FFFFFF;padding:16px 20px;display:flex;align-items:center;gap:16px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex:1;min-width:0">
+              <span style="font-size:18px;font-weight:700">A receber</span>
+              <span style="font-size:30px;line-height:38px;font-weight:800;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ home.receivable }}</span>
+              <sc-if value="{{ home.hasLate }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9999px;background:#FEE2E2;color:#991B1B;font-size:15px;font-weight:600"><span style="width:8px;height:8px;border-radius:9999px;background:#DC2626"></span>{{ home.lateLabel }}</span>
+              </sc-if>
+            </div>
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="chevron-right" size="24" color="#64748B" hint-size="24px,24px"></x-import>
+          </button>
+
+          <span style="grid-column:span 2;font-size:17px;font-weight:700;color:#334155;margin:6px 4px 0">Atalhos</span>
+          <div style="grid-column:span 2;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            <sc-for list="{{ shortcuts }}" as="s" hint-placeholder-count="4">
+              <button onClick="{{ s.go }}" style="min-height:92px;border:1px solid #E2E8F0;border-radius:20px;background:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:#6D28D9;padding:8px 2px">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ s.icon }}" size="28" hint-size="28px,28px"></x-import>
+                <span style="font-size:15px;font-weight:600;color:#0A0A0F">{{ s.label }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CLIENTE NOVO (tela) -->
+      <sc-if value="{{ isClientNew }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Cliente novo</h1>
+      </sc-if>
+
+      <!-- NOVO ORÇAMENTO 1 -->
+      <sc-if value="{{ isQ1 }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:32px;line-height:38px;font-weight:700;letter-spacing:-0.02em">Para quem?</h1>
+      </sc-if>
+      <sc-if value="{{ q1Body }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="height:64px;border-radius:18px;border:1.5px solid #CBD5E1;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:0 16px">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="search" size="24" color="#64748B" hint-size="24px,24px"></x-import>
+            <input value="{{ q }}" onChange="{{ onQ }}" placeholder="Buscar nome ou telefone" style="flex:1;min-width:0;border:none;background:transparent;font-size:18px;color:#0A0A0F">
+          </div>
+          <sc-if value="{{ q1HasList }}" hint-placeholder-val="{{ true }}">
+            <span style="font-size:17px;font-weight:700;color:#334155;margin:2px 4px 0">{{ q1ListLabel }}</span>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ q1Clients }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.pick }}" style="min-height:80px;width:100%;border-radius:20px;border:2px solid {{ c.border }};background:{{ c.bg }};display:flex;align-items:center;gap:14px;padding:12px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+                  <div style="width:52px;height:52px;border-radius:9999px;background:#EDE9FE;color:#4C1D95;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ c.initials }}</div>
+                  <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                    <span style="font-size:19px;line-height:24px;font-weight:600">{{ c.name }}</span>
+                    <span style="font-size:16px;color:#475569;font-variant-numeric:tabular-nums">{{ c.phone }}</span>
+                  </div>
+                  <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}">
+                    <div style="width:36px;height:36px;border-radius:9999px;background:#6D28D9;color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                      <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="22" hint-size="22px,22px"></x-import>
+                    </div>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ q1NoList }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:18px;font-size:17px;color:#334155;text-wrap:pretty">{{ q1EmptyText }}</div>
+          </sc-if>
+          <sc-if value="{{ ncClosedQ1 }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ openNc }}" style="min-height:72px;border-radius:20px;border:2px dashed #C4B5FD;background:#F5F3FF;color:#4C1D95;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="user-plus" size="24" hint-size="24px,24px"></x-import>
+              Cliente novo
+            </button>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- FORMULÁRIO CLIENTE NOVO (compartilhado) -->
+      <sc-if value="{{ showNcForm }}" hint-placeholder-val="{{ false }}">
+        <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;padding:18px;display:flex;flex-direction:column;gap:16px">
+          <sc-if value="{{ ncShowClose }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:20px;font-weight:700">Cliente novo</span>
+              <button onClick="{{ closeNc }}" style="height:56px;padding:0 12px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Fechar</button>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:17px;font-weight:600">Nome</span>
+            <input value="{{ ncName }}" onChange="{{ onNcName }}" placeholder="Ex.: Marcos Oliveira" style="height:60px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 16px;font-size:18px;color:#0A0A0F;background:#FFFFFF">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:17px;font-weight:600">Telefone (WhatsApp)</span>
+            <input type="tel" inputMode="numeric" value="{{ ncPhone }}" onChange="{{ onNcPhone }}" placeholder="(11) 98765-4321" style="height:60px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 16px;font-size:18px;color:#0A0A0F;background:#FFFFFF;font-variant-numeric:tabular-nums">
+          </div>
+          <span style="font-size:16px;color:#475569">Endereço e documento você completa depois.</span>
+        </div>
+      </sc-if>
+
+      <!-- NOVO ORÇAMENTO 2 -->
+      <sc-if value="{{ isQ2 }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <h1 style="margin:0;font-size:32px;line-height:38px;font-weight:700;letter-spacing:-0.02em">O que vai fazer?</h1>
+          <span style="font-size:17px;color:#475569">Para {{ clientName }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ q2Body }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <sc-if value="{{ q2HasFav }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin:2px 4px 0">
+              <span style="font-size:17px;font-weight:700;color:#334155">Mais usados</span>
+              <span style="font-size:15px;color:#475569">Toque para pôr</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <sc-for list="{{ favs }}" as="f" hint-placeholder-count="6">
+                <button onClick="{{ f.add }}" style="min-height:116px;border-radius:20px;border:2px solid {{ f.border }};background:{{ f.bg }};padding:14px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;gap:10px;text-align:left;cursor:pointer;color:#0A0A0F">
+                  <span style="font-size:17px;line-height:22px;font-weight:600;text-wrap:pretty">{{ f.name }}</span>
+                  <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px">
+                    <span style="font-size:17px;font-weight:700;font-variant-numeric:tabular-nums">{{ f.price }}</span>
+                    <span style="min-width:36px;height:32px;padding:0 10px;border-radius:9999px;background:{{ f.badgeBg }};color:{{ f.badgeFg }};font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ f.badge }}</span>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+            <button onClick="{{ toggleAll }}" style="height:56px;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;color:#0A0A0F;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="package" size="22" color="#6D28D9" hint-size="22px,22px"></x-import>
+              {{ allLabel }}
+            </button>
+            <sc-if value="{{ showAll }}" hint-placeholder-val="{{ false }}">
+              <div style="height:60px;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:0 14px">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="search" size="22" color="#64748B" hint-size="22px,22px"></x-import>
+                <input value="{{ catQ }}" onChange="{{ onCatQ }}" placeholder="Buscar serviço ou produto" style="flex:1;min-width:0;border:none;background:transparent;font-size:18px;color:#0A0A0F">
+                <sc-if value="{{ catHasQ }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ clearCatQ }}" aria-label="Limpar busca" style="width:44px;height:44px;border:none;border-radius:12px;background:#F1F5F9;color:#334155;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">
+                    <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="x" size="20" hint-size="20px,20px"></x-import>
+                  </button>
+                </sc-if>
+              </div>
+              <span style="font-size:15px;color:#475569;margin:0 4px">{{ catCountText }}</span>
+              <sc-if value="{{ catNoResult }}" hint-placeholder-val="{{ false }}">
+                <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;font-size:17px;color:#334155">Nada com esse nome. Toque em Item novo para criar.</div>
+              </sc-if>
+              <sc-if value="{{ catHasResult }}" hint-placeholder-val="{{ true }}">
+              <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;overflow:hidden">
+                <sc-for list="{{ others }}" as="o" hint-placeholder-count="3">
+                  <button onClick="{{ o.add }}" style="width:100%;min-height:68px;border:none;border-bottom:1px solid #F1F5F9;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:10px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+                    <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                      <span style="font-size:17px;font-weight:600">{{ o.name }}</span>
+                      <span style="font-size:16px;color:#475569;font-variant-numeric:tabular-nums">{{ o.price }}</span>
+                    </div>
+                    <div style="min-width:44px;height:44px;padding:0 8px;border-radius:14px;background:{{ o.badgeBg }};color:{{ o.badgeFg }};font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center">
+                      <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ o.icon }}" size="22" hint-size="22px,22px"></x-import>
+                      <span>{{ o.qtyText }}</span>
+                    </div>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ catHasMore }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ catMore }}" style="width:100%;height:60px;border:none;background:#F8FAFC;color:#4C1D95;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer">
+                    <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="22" hint-size="22px,22px"></x-import>
+                    {{ catMoreText }}
+                  </button>
+                </sc-if>
+              </div>
+              </sc-if>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{ q2NoFav }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:18px;display:flex;flex-direction:column;gap:6px">
+              <span style="font-size:19px;font-weight:700">Você ainda não tem serviços e preços salvos.</span>
+              <span style="font-size:17px;color:#334155">Crie o primeiro abaixo. Ele fica guardado para os próximos orçamentos.</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ niClosed }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ openNi }}" style="min-height:72px;border-radius:20px;border:2px dashed #C4B5FD;background:#F5F3FF;color:#4C1D95;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="24" hint-size="24px,24px"></x-import>
+              Item novo
+            </button>
+          </sc-if>
+          <sc-if value="{{ niOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;padding:18px;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:20px;font-weight:700">Item novo</span>
+                <button onClick="{{ closeNi }}" style="height:56px;padding:0 12px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Fechar</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:17px;font-weight:600">O que é</span>
+                <input value="{{ niName }}" onChange="{{ onNiName }}" placeholder="Ex.: Troca de capacitor" style="height:60px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 16px;font-size:18px;color:#0A0A0F;background:#FFFFFF">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:17px;font-weight:600">Preço</span>
+                <input inputMode="numeric" value="{{ niPrice }}" onChange="{{ onNiPrice }}" placeholder="R$ 0,00" style="height:60px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 16px;font-size:20px;font-weight:700;color:#0A0A0F;background:#FFFFFF;font-variant-numeric:tabular-nums">
+              </div>
+              <button onClick="{{ toggleNiSave }}" style="min-height:56px;border:none;background:transparent;display:flex;align-items:center;gap:12px;padding:0;text-align:left;cursor:pointer;color:#0A0A0F">
+                <div style="width:32px;height:32px;border-radius:10px;border:2px solid {{ niCheckBorder }};background:{{ niCheckBg }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="20" hint-size="20px,20px"></x-import>
+                </div>
+                <span style="font-size:17px">Guardar em Meus serviços e preços</span>
+              </button>
+              <button onClick="{{ addNi }}" style="height:56px;border-radius:16px;border:none;background:{{ niBtnBg }};color:{{ niBtnFg }};font-size:18px;font-weight:700;cursor:pointer">Pôr no orçamento</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasLines }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:17px;font-weight:700;color:#334155;margin:4px 4px 0">No orçamento</span>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ lines }}" as="l" hint-placeholder-count="2">
+                <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                    <span style="font-size:18px;line-height:23px;font-weight:600;flex:1;text-wrap:pretty">{{ l.name }}</span>
+                    <span style="font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap">{{ l.total }}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                    <span style="font-size:16px;color:#475569;font-variant-numeric:tabular-nums">{{ l.unit }} cada</span>
+                    <div style="display:flex;align-items:center;border:1.5px solid #CBD5E1;border-radius:16px;overflow:hidden;height:56px;background:#FFFFFF">
+                      <button onClick="{{ l.dec }}" aria-label="Diminuir" style="width:56px;height:56px;border:none;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#0A0A0F">
+                        <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="minus" size="24" hint-size="24px,24px"></x-import>
+                      </button>
+                      <span style="min-width:44px;text-align:center;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums">{{ l.qty }}</span>
+                      <button onClick="{{ l.inc }}" aria-label="Aumentar" style="width:56px;height:56px;border:none;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6D28D9">
+                        <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="24" hint-size="24px,24px"></x-import>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- NOVO ORÇAMENTO 3 -->
+      <sc-if value="{{ isQ3 }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:32px;line-height:38px;font-weight:700;letter-spacing:-0.02em">Revisar e enviar</h1>
+      </sc-if>
+      <sc-if value="{{ q3Body }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="border-radius:24px;background:#F5F3FF;border:1px solid #DDD6FE;padding:20px;display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:17px;font-weight:600;color:#4C1D95">Total</span>
+            <span style="font-size:44px;line-height:52px;font-weight:800;letter-spacing:-0.025em;font-variant-numeric:tabular-nums">{{ q3.total }}</span>
+            <sc-if value="{{ q3.hasDiscount }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:16px;color:#4C1D95">{{ q3.discountText }}</span>
+            </sc-if>
+            <div style="height:1px;background:#DDD6FE;margin:12px 0"></div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:48px;height:48px;border-radius:9999px;background:#FFFFFF;color:#4C1D95;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ q3.initials }}</div>
+              <div style="display:flex;flex-direction:column">
+                <span style="font-size:18px;font-weight:600">{{ q3.clientName }}</span>
+                <span style="font-size:16px;color:#334155;font-variant-numeric:tabular-nums">{{ q3.clientPhone }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:6px 16px 10px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:18px;font-weight:700">{{ q3.itemsCount }}</span>
+              <button onClick="{{ editItems }}" style="height:56px;padding:0 4px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Alterar</button>
+            </div>
+            <sc-for list="{{ q3Items }}" as="i" hint-placeholder-count="3">
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #F1F5F9">
+                <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                  <span style="font-size:17px;font-weight:600">{{ i.name }}</span>
+                  <span style="font-size:15px;color:#475569;font-variant-numeric:tabular-nums">{{ i.qtyText }}</span>
+                </div>
+                <span style="font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap">{{ i.total }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:44px;height:44px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="pen-line" size="22" hint-size="22px,22px"></x-import>
+              </div>
+              <div style="display:flex;flex-direction:column;flex:1">
+                <span style="font-size:18px;font-weight:600">Sua assinatura</span>
+                <span style="font-size:15px;color:#475569">{{ sig.status }}</span>
+              </div>
+            </div>
+            <sc-if value="{{ sig.signed }}" hint-placeholder-val="{{ false }}">
+              <div style="height:72px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                <sc-if value="{{ sig.isImg }}" hint-placeholder-val="{{ false }}"><div role="img" aria-label="Sua assinatura" style="width:100%;height:68px;background-image:{{ sig.bg }};background-size:contain;background-position:center;background-repeat:no-repeat"></div></sc-if><sc-if value="{{ sig.isText }}" hint-placeholder-val="{{ true }}"><span style="font-size:30px;font-style:italic;font-weight:500;white-space:nowrap">{{ sig.text }}</span></sc-if><sc-if value="{{ sig.isPhoto }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;color:#475569"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="camera" size="22" hint-size="22px,22px"></x-import><span style="font-size:16px;font-weight:600">Foto da assinatura</span></div></sc-if>
+              </div>
+            </sc-if>
+            <sc-if value="{{ sig.hasSaved }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ sig.toggle }}" role="switch" aria-checked="{{ sig.on }}" style="min-height:56px;border:none;background:transparent;display:flex;align-items:center;gap:12px;padding:0;text-align:left;cursor:pointer;color:#0A0A0F">
+                <span style="font-size:17px;flex:1">Pôr minha assinatura neste orçamento</span>
+                <div style="width:60px;height:36px;border-radius:9999px;background:{{ sig.track }};padding:4px;display:flex;justify-content:{{ sig.justify }};flex-shrink:0"><div style="width:28px;height:28px;border-radius:9999px;background:#FFFFFF;box-shadow:0 1px 3px rgba(15,23,42,0.2)"></div></div>
+              </button>
+            </sc-if>
+            <button onClick="{{ goSign }}" style="height:56px;border-radius:16px;border:1.5px solid #DDD6FE;background:#F5F3FF;color:#4C1D95;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="pen-line" size="22" hint-size="22px,22px"></x-import>
+              {{ sig.btn }}
+            </button>
+          </div>
+
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;flex-direction:column">
+              <span style="font-size:18px;font-weight:700">Como o cliente aprova</span>
+              <span style="font-size:15px;line-height:20px;color:#475569;text-wrap:pretty">O cliente escolhe no link do WhatsApp. Pelo menos uma fica ligada.</span>
+            </div>
+            <sc-for list="{{ approvals }}" as="a" hint-placeholder-count="4">
+              <button onClick="{{ a.pick }}" role="checkbox" aria-checked="{{ a.on }}" style="min-height:68px;width:100%;border-radius:16px;border:2px solid {{ a.border }};background:{{ a.bg }};display:flex;align-items:center;gap:12px;padding:10px 14px;text-align:left;cursor:pointer;color:#0A0A0F">
+                <div style="width:28px;height:28px;border-radius:9px;border:2px solid {{ a.ring }};background:{{ a.dot }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex-shrink:0"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="18" hint-size="18px,18px"></x-import></div>
+                <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                  <span style="font-size:17px;font-weight:600">{{ a.label }}</span>
+                  <span style="font-size:15px;color:#475569">{{ a.sub }}</span>
+                </div>
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ a.icon }}" size="22" color="#6D28D9" hint-size="22px,22px"></x-import>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;overflow:hidden">
+            <button onClick="{{ toggleMore }}" style="width:100%;min-height:72px;border:none;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:12px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+              <div style="display:flex;flex-direction:column;flex:1">
+                <span style="font-size:18px;font-weight:700">Mais opções</span>
+                <span style="font-size:15px;color:#475569">{{ moreSummary }}</span>
+              </div>
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ moreChevron }}" size="26" color="#334155" hint-size="26px,26px"></x-import>
+            </button>
+            <sc-if value="{{ moreOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:4px 16px 18px;display:flex;flex-direction:column;gap:20px;border-top:1px solid #F1F5F9">
+                <div style="display:flex;flex-direction:column;gap:8px;padding-top:12px">
+                  <span style="font-size:17px;font-weight:600">Desconto</span>
+                  <div style="display:flex;gap:8px">
+                    <div style="display:flex;border:1.5px solid #CBD5E1;border-radius:14px;overflow:hidden;flex-shrink:0">
+                      <button onClick="{{ setPct }}" style="width:60px;height:56px;border:none;background:{{ dPct.bg }};color:{{ dPct.fg }};font-size:18px;font-weight:700;cursor:pointer">%</button>
+                      <button onClick="{{ setFix }}" style="width:60px;height:56px;border:none;background:{{ dFix.bg }};color:{{ dFix.fg }};font-size:18px;font-weight:700;cursor:pointer">R$</button>
+                    </div>
+                    <input inputMode="numeric" value="{{ dValue }}" onChange="{{ onDiscount }}" placeholder="{{ dPlaceholder }}" style="flex:1;min-width:0;height:56px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 14px;font-size:18px;font-weight:600;color:#0A0A0F;background:#FFFFFF;font-variant-numeric:tabular-nums">
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:17px;font-weight:600">Vale por</span>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                    <sc-for list="{{ validityOpts }}" as="v" hint-placeholder-count="3">
+                      <button onClick="{{ v.pick }}" style="height:56px;border-radius:14px;border:1.5px solid {{ v.border }};background:{{ v.bg }};color:{{ v.fg }};font-size:17px;font-weight:700;cursor:pointer">{{ v.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:17px;font-weight:600">Condições</span>
+                  <textarea value="{{ terms }}" onChange="{{ onTerms }}" rows="3" placeholder="Ex.: 50% na aprovação e 50% no fim do serviço." style="border-radius:14px;border:1.5px solid #CBD5E1;padding:14px;font-size:18px;line-height:1.4;color:#0A0A0F;background:#FFFFFF;resize:none"></textarea>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ASSINATURA -->
+      <sc-if value="{{ isSign }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <h1 style="margin:0;font-size:32px;line-height:38px;font-weight:700;letter-spacing:-0.02em">Sua assinatura</h1>
+          <span style="font-size:17px;color:#475569">Escolha como quer assinar.</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <sc-for list="{{ sgMethods }}" as="m" hint-placeholder-count="4">
+            <button onClick="{{ m.pick }}" aria-pressed="{{ m.on }}" style="min-height:104px;border-radius:20px;border:2px solid {{ m.border }};background:{{ m.bg }};display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px;text-align:left;cursor:pointer;color:#0A0A0F">
+              <div style="width:40px;height:40px;border-radius:12px;background:{{ m.iconBg }};color:{{ m.iconFg }};display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ m.icon }}" size="22" hint-size="22px,22px"></x-import></div>
+              <span style="font-size:17px;line-height:22px;font-weight:700">{{ m.label }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <sc-if value="{{ sgIsNone }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:17px;line-height:24px;color:#334155">O orçamento vai sem a sua assinatura. A assinatura salva continua guardada.</div>
+        </sc-if>
+        <sc-if value="{{ sgIsTyped }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <span style="font-size:17px;font-weight:600">Seu nome</span>
+            <input value="{{ sgTyped }}" onChange="{{ onSgTyped }}" placeholder="Ex.: Carlos Mendes" style="height:60px;border-radius:14px;border:1.5px solid #CBD5E1;padding:0 16px;font-size:18px;color:#0A0A0F;background:#FFFFFF">
+            <div style="height:96px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;display:flex;flex-direction:column;justify-content:flex-end;padding:0 18px 14px;gap:6px">
+              <span style="font-size:30px;font-style:italic;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sgTypedPreview }}</span>
+              <div style="height:1px;background:#94A3B8"></div>
+            </div>
+            <span style="font-size:15px;color:#475569">Assim o nome aparece no documento.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ sgIsDraw }}" hint-placeholder-val="{{ true }}">
+          <div style="position:relative;height:300px;border-radius:24px;background:#FFFFFF;border:2px solid #DDD6FE;overflow:hidden">
+            <canvas ref="{{ sigRef }}" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair"></canvas>
+            <div style="position:absolute;left:24px;right:24px;bottom:72px;height:2px;background:#CBD5E1;pointer-events:none"></div>
+            <span style="position:absolute;left:24px;bottom:40px;font-size:16px;color:#475569;pointer-events:none">Carlos Mendes · Técnico</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ sgIsPhoto }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ sgNoPhoto }}" hint-placeholder-val="{{ true }}">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <span style="font-size:17px;line-height:24px;color:#334155;text-wrap:pretty">Assine num papel branco e tire uma foto. Também dá para escolher da galeria.</span>
+              <button onClick="{{ sgTakePhoto }}" style="height:60px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="camera" size="24" hint-size="24px,24px"></x-import>Tirar foto</button>
+              <button onClick="{{ sgGallery }}" style="height:56px;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;color:#0A0A0F;font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="image" size="22" color="#6D28D9" hint-size="22px,22px"></x-import>Escolher da galeria</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ sgHasPhoto }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <div style="height:170px;border-radius:14px;background:#E2E8F0;display:flex;align-items:center;justify-content:center">
+                <div style="width:78%;height:116px;background:#FFFFFF;border-radius:6px;border:1px solid #CBD5E1;transform:rotate(-2deg);display:flex;flex-direction:column;justify-content:flex-end;padding:0 16px 20px;gap:6px">
+                  <span style="font-size:26px;font-style:italic;font-weight:500;color:#1E293B">Carlos Mendes</span>
+                  <div style="height:1px;background:#94A3B8"></div>
+                </div>
+              </div>
+              <button onClick="{{ sgRetake }}" style="height:56px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="rotate-ccw" size="20" hint-size="20px,20px"></x-import>Tirar outra foto</button>
+            </div>
+          </sc-if>
+        </sc-if>
+        <sc-if value="{{ sgCanSave }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ sgToggleSave }}" role="checkbox" aria-checked="{{ sgSave }}" style="min-height:72px;border-radius:20px;border:1px solid #E2E8F0;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:10px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="width:32px;height:32px;border-radius:10px;border:2px solid {{ sgSaveBorder }};background:{{ sgSaveBg }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex-shrink:0"><x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="20" hint-size="20px,20px"></x-import></div>
+            <div style="display:flex;flex-direction:column;min-width:0">
+              <span style="font-size:17px;font-weight:600">Salvar para usar nas próximas vezes</span>
+              <span style="font-size:15px;color:#475569">Fica no lugar da assinatura salva.</span>
+            </div>
+          </button>
+        </sc-if>
+      </sc-if>
+
+      <!-- PRONTO -->
+      <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:48px 8px 0">
+          <div style="width:104px;height:104px;border-radius:9999px;background:#DCFCE7;color:#16A34A;display:flex;align-items:center;justify-content:center">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="56" stroke="2.5" hint-size="56px,56px"></x-import>
+          </div>
+          <h1 style="margin:8px 0 0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em;text-wrap:balance">{{ done.title }}</h1>
+          <p style="margin:0;font-size:18px;line-height:26px;color:#334155;text-wrap:pretty">{{ done.text }}</p>
+          <div style="width:100%;border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:8px;text-align:left">
+            <div style="display:flex;flex-direction:column">
+              <span style="font-size:17px;font-weight:600">{{ done.cardTitle }}</span>
+              <span style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums">{{ done.cardValue }}</span>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9999px;background:{{ done.chip.bg }};color:{{ done.chip.fg }};font-size:15px;font-weight:600"><span style="width:8px;height:8px;border-radius:9999px;background:{{ done.chip.dot }}"></span>{{ done.chip.label }}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CLIENTES -->
+      <sc-if value="{{ isClients }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;padding:8px 4px 0">
+          <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Clientes</h1>
+          <span style="font-size:16px;color:#475569">{{ clientsCount }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ clientsBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <button onClick="{{ goClientNew }}" style="height:60px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="user-plus" size="24" hint-size="24px,24px"></x-import>
+            Novo cliente
+          </button>
+          <div style="height:64px;border-radius:18px;border:1.5px solid #CBD5E1;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:0 16px">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="search" size="24" color="#64748B" hint-size="24px,24px"></x-import>
+            <input value="{{ clientsQ }}" onChange="{{ onClientsQ }}" placeholder="Buscar nome ou telefone" style="flex:1;min-width:0;border:none;background:transparent;font-size:18px;color:#0A0A0F">
+          </div>
+          <sc-for list="{{ clientCards }}" as="c" hint-placeholder-count="4">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:12px 16px 16px;display:flex;flex-direction:column;gap:12px">
+              <button onClick="{{ c.open }}" style="min-height:60px;border:none;background:transparent;display:flex;align-items:center;gap:14px;padding:0;text-align:left;cursor:pointer;color:#0A0A0F;width:100%">
+                <div style="width:48px;height:48px;border-radius:9999px;background:#EDE9FE;color:#4C1D95;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ c.initials }}</div>
+                <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                  <span style="font-size:19px;line-height:24px;font-weight:600">{{ c.name }}</span>
+                  <span style="font-size:17px;color:#334155;font-variant-numeric:tabular-nums">{{ c.phone }}</span>
+                </div>
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="chevron-right" size="24" color="#64748B" hint-size="24px,24px"></x-import>
+              </button>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <button onClick="{{ c.call }}" style="height:56px;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;color:#0A0A0F;font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="phone" size="22" color="#6D28D9" hint-size="22px,22px"></x-import>
+                  Ligar
+                </button>
+                <button onClick="{{ c.wa }}" style="height:56px;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;color:#0A0A0F;font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="message-circle" size="22" color="#16A34A" hint-size="22px,22px"></x-import>
+                  WhatsApp
+                </button>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ clientsNoMatch }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:18px;font-size:17px;color:#334155">Nenhum cliente com esse nome ou telefone.</div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- CLIENTE (detalhe) -->
+      <sc-if value="{{ isClient }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:64px;height:64px;border-radius:9999px;background:#EDE9FE;color:#4C1D95;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{ cd.initials }}</div>
+          <div style="display:flex;flex-direction:column;min-width:0">
+            <h1 style="margin:0;font-size:26px;line-height:32px;font-weight:700;letter-spacing:-0.02em">{{ cd.name }}</h1>
+            <span style="font-size:17px;color:#334155;font-variant-numeric:tabular-nums">{{ cd.phone }}</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ clientBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:16px;color:#475569">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="map-pin" size="20" hint-size="20px,20px"></x-import>
+            <span>{{ cd.addr }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <button onClick="{{ cdNewQuote }}" style="min-height:108px;border:none;border-radius:20px;background:#6D28D9;color:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="file-text" size="30" hint-size="30px,30px"></x-import>
+              <span style="font-size:16px;font-weight:700">Orçamento</span>
+            </button>
+            <button onClick="{{ cdNewService }}" style="min-height:108px;border:1px solid #E2E8F0;border-radius:20px;background:#FFFFFF;color:#6D28D9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="clipboard-list" size="30" hint-size="30px,30px"></x-import>
+              <span style="font-size:16px;font-weight:700;color:#0A0A0F">Serviço</span>
+            </button>
+            <button onClick="{{ cdCall }}" style="min-height:108px;border:1px solid #E2E8F0;border-radius:20px;background:#FFFFFF;color:#6D28D9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="phone" size="30" hint-size="30px,30px"></x-import>
+              <span style="font-size:16px;font-weight:700;color:#0A0A0F">Ligar</span>
+            </button>
+          </div>
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:6px 16px 8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;min-height:52px">
+              <span style="font-size:19px;font-weight:700">Histórico</span>
+              <sc-if value="{{ cdHasHist }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ cdSeeAll }}" style="height:56px;padding:0 4px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Ver tudo</button>
+              </sc-if>
+            </div>
+            <sc-for list="{{ cdHist }}" as="h" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:12px 0;border-top:1px solid #F1F5F9">
+                <div style="display:flex;flex-direction:column;min-width:0">
+                  <span style="font-size:17px;font-weight:600">{{ h.title }}</span>
+                  <span style="font-size:15px;color:#475569;font-variant-numeric:tabular-nums">{{ h.sub }}</span>
+                </div>
+                <span style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:9999px;background:{{ h.chip.bg }};color:{{ h.chip.fg }};font-size:14px;font-weight:600;white-space:nowrap"><span style="width:8px;height:8px;border-radius:9999px;background:{{ h.chip.dot }}"></span>{{ h.chip.label }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ cdNoHist }}" hint-placeholder-val="{{ false }}">
+              <p style="margin:0;padding:12px 0 10px;border-top:1px solid #F1F5F9;font-size:17px;color:#334155">Nenhum orçamento ou serviço com {{ cd.first }} ainda.</p>
+            </sc-if>
+          </div>
+          <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;overflow:hidden">
+            <button onClick="{{ toggleCdMore }}" style="width:100%;min-height:64px;border:none;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:10px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+              <div style="display:flex;flex-direction:column;flex:1">
+                <span style="font-size:18px;font-weight:700">Mais opções</span>
+                <span style="font-size:15px;color:#475569">WhatsApp, editar dados</span>
+              </div>
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ cdMoreChevron }}" size="26" color="#334155" hint-size="26px,26px"></x-import>
+            </button>
+            <sc-if value="{{ cdMoreOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;border-top:1px solid #F1F5F9">
+                <button onClick="{{ cdWa }}" style="min-height:60px;border:none;border-bottom:1px solid #F1F5F9;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:0 16px;font-size:18px;font-weight:600;color:#0A0A0F;cursor:pointer;text-align:left">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="message-circle" size="22" color="#16A34A" hint-size="22px,22px"></x-import>
+                  Mandar mensagem no WhatsApp
+                </button>
+                <button onClick="{{ cdEdit }}" style="min-height:60px;border:none;background:#FFFFFF;display:flex;align-items:center;gap:12px;padding:0 16px;font-size:18px;font-weight:600;color:#0A0A0F;cursor:pointer;text-align:left">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="pen-line" size="22" color="#6D28D9" hint-size="22px,22px"></x-import>
+                  Editar dados do cliente
+                </button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ORÇAMENTOS -->
+      <sc-if value="{{ isQuotes }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;padding:8px 4px 0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Orçamentos</h1>
+      </sc-if>
+      <sc-if value="{{ quotesBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <button onClick="{{ goQ1 }}" style="height:60px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="24" hint-size="24px,24px"></x-import>
+            Novo orçamento
+          </button>
+          <sc-for list="{{ quoteSections }}" as="sec" hint-placeholder-count="3">
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:10px;margin:0 4px">
+                <span style="width:12px;height:12px;border-radius:9999px;background:{{ sec.dot }}"></span>
+                <span style="font-size:20px;font-weight:700;flex:1">{{ sec.title }}</span>
+                <span style="min-width:32px;height:32px;padding:0 10px;border-radius:9999px;background:#F1F5F9;color:#334155;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ sec.count }}</span>
+              </div>
+              <sc-for list="{{ sec.items }}" as="it" hint-placeholder-count="1">
+                <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;flex-direction:column;min-width:0">
+                    <span style="font-size:19px;line-height:24px;font-weight:600">{{ it.client }}</span>
+                    <span style="font-size:15px;color:#475569">{{ it.meta }}</span>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px">
+                    <span style="font-size:22px;font-weight:800;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ it.value }}</span>
+                    <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9999px;background:{{ it.chip.bg }};color:{{ it.chip.fg }};font-size:15px;font-weight:600;white-space:nowrap"><span style="width:8px;height:8px;border-radius:9999px;background:{{ it.chip.dot }}"></span>{{ it.chip.label }}</span>
+                  </div>
+                  <button onClick="{{ it.act }}" style="height:56px;border-radius:16px;border:1.5px solid {{ it.btnBorder }};background:{{ it.btnBg }};color:{{ it.btnFg }};font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+                    <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ it.icon }}" size="22" hint-size="22px,22px"></x-import>
+                    {{ it.action }}
+                  </button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <button onClick="{{ showHidden }}" style="height:56px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Ver recusados e vencidos (2)</button>
+        </div>
+      </sc-if>
+
+      <!-- SERVIÇOS DE HOJE -->
+      <sc-if value="{{ isServices }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Serviços de hoje</h1>
+          <span style="font-size:16px;color:#475569">Sábado, 4 de outubro</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ servicesBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ svcCards }}" as="s" hint-placeholder-count="3">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;gap:14px;align-items:flex-start">
+                <span style="font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;width:64px;flex-shrink:0;line-height:28px">{{ s.time }}</span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+                  <span style="font-size:19px;line-height:24px;font-weight:600">{{ s.title }}</span>
+                  <span style="font-size:16px;color:#334155">{{ s.client }}</span>
+                  <span style="font-size:15px;color:#475569">{{ s.addr }}</span>
+                </div>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9999px;background:{{ s.chip.bg }};color:{{ s.chip.fg }};font-size:15px;font-weight:600;align-self:flex-start"><span style="width:8px;height:8px;border-radius:9999px;background:{{ s.chip.dot }}"></span>{{ s.chip.label }}</span>
+              <button onClick="{{ s.open }}" style="height:56px;border-radius:16px;border:1.5px solid {{ s.btnBorder }};background:{{ s.btnBg }};color:{{ s.btnFg }};font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ s.icon }}" size="22" hint-size="22px,22px"></x-import>
+                {{ s.action }}
+              </button>
+            </div>
+          </sc-for>
+          <button onClick="{{ goAgenda }}" style="height:56px;border:none;background:transparent;color:#5B21B6;font-size:17px;font-weight:600;cursor:pointer">Ver outros dias na Agenda</button>
+        </div>
+      </sc-if>
+
+      <!-- EXECUTAR SERVIÇO -->
+      <sc-if value="{{ isRun }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <h1 style="margin:0;font-size:28px;line-height:34px;font-weight:700;letter-spacing:-0.02em">{{ run.title }}</h1>
+          <span style="font-size:17px;color:#334155">{{ run.client }} · {{ run.addr }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ runBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin:0 4px">
+              <span style="font-size:19px;font-weight:700">O que fazer</span>
+              <span style="font-size:17px;font-weight:600;color:#334155">{{ run.progressText }}</span>
+            </div>
+            <div style="height:8px;border-radius:9999px;background:#E2E8F0;overflow:hidden">
+              <div style="height:8px;border-radius:9999px;background:#16A34A;width:{{ run.pct }}"></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ runTasks }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.toggle }}" style="min-height:72px;width:100%;border-radius:20px;border:2px solid {{ t.border }};background:{{ t.bg }};display:flex;align-items:center;gap:14px;padding:12px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+                <div style="width:36px;height:36px;border-radius:10px;border:2px solid {{ t.boxBorder }};background:{{ t.boxBg }};color:#FFFFFF;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="24" stroke="2.5" hint-size="24px,24px"></x-import>
+                </div>
+                <span style="font-size:18px;line-height:24px;font-weight:600;color:{{ t.fg }}">{{ t.name }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 4px 0">
+            <span style="font-size:19px;font-weight:700">Fotos</span>
+            <span style="font-size:16px;color:#475569">{{ run.photoCount }}</span>
+          </div>
+          <sc-if value="{{ hasPhotos }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              <sc-for list="{{ runPhotos }}" as="p" hint-placeholder-count="2">
+                <div style="aspect-ratio:1;border-radius:16px;background:#F1F5F9;border:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#64748B">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="image" size="28" hint-size="28px,28px"></x-import>
+                  <span style="font-size:14px;font-weight:600;color:#334155">{{ p.stage }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <button onClick="{{ takePhoto }}" style="height:64px;border-radius:18px;border:1.5px solid #DDD6FE;background:#F5F3FF;color:#4C1D95;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="camera" size="26" hint-size="26px,26px"></x-import>
+            Tirar foto
+          </button>
+        </div>
+      </sc-if>
+
+      <!-- AGENDA -->
+      <sc-if value="{{ isAgenda }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;padding:8px 4px 0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Agenda</h1>
+      </sc-if>
+      <sc-if value="{{ agendaTop }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <button onClick="{{ goAgNew }}" style="height:60px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="24" hint-size="24px,24px"></x-import>
+            Marcar
+          </button>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <sc-for list="{{ dayChips }}" as="d" hint-placeholder-count="3">
+              <button onClick="{{ d.pick }}" style="height:56px;border-radius:14px;border:1.5px solid {{ d.border }};background:{{ d.bg }};color:{{ d.fg }};font-size:17px;font-weight:700;cursor:pointer">{{ d.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size:17px;font-weight:700;color:#334155;margin:4px 4px 0">{{ dayLabel }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ agendaBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ agBlocks }}" as="a" hint-placeholder-count="3">
+            <sc-if value="{{ a.isEvent }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:12px;align-items:stretch">
+                <div style="width:76px;flex-shrink:0;display:flex;flex-direction:column;padding-top:14px">
+                  <span style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums">{{ a.start }}</span>
+                  <span style="font-size:15px;color:#475569;font-variant-numeric:tabular-nums;white-space:nowrap">até {{ a.end }}</span>
+                </div>
+                <div style="flex:1;min-width:0;border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+                  <span style="font-size:18px;line-height:23px;font-weight:600">{{ a.title }}</span>
+                  <span style="font-size:16px;color:#334155">{{ a.client }}</span>
+                  <span style="display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:9999px;background:#F5F3FF;color:#4C1D95;font-size:15px;font-weight:600;align-self:flex-start">{{ a.type }}</span>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ a.isFree }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ a.mark }}" style="min-height:64px;margin-left:88px;border-radius:20px;border:2px dashed #CBD5E1;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 16px;cursor:pointer;color:#334155;text-align:left">
+                <span style="font-size:16px;font-weight:500">{{ a.freeText }}</span>
+                <span style="font-size:17px;font-weight:700;color:#5B21B6;white-space:nowrap">+ Marcar</span>
+              </button>
+            </sc-if>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- MARCAR HORÁRIO -->
+      <sc-if value="{{ isAgNew }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Marcar horário</h1>
+        <div style="display:flex;flex-direction:column;gap:22px">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:19px;font-weight:700">O que é?</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <sc-for list="{{ naTypes }}" as="o" hint-placeholder-count="6">
+                <button onClick="{{ o.pick }}" style="height:56px;border-radius:14px;border:1.5px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }};font-size:17px;font-weight:700;cursor:pointer">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:19px;font-weight:700">Com quem?</span>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ naClients }}" as="o" hint-placeholder-count="4">
+                <button onClick="{{ o.pick }}" style="min-height:56px;border-radius:14px;border:1.5px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }};font-size:17px;font-weight:600;cursor:pointer;text-align:left;padding:0 16px">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:19px;font-weight:700">Que dia?</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              <sc-for list="{{ naDays }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.pick }}" style="height:56px;border-radius:14px;border:1.5px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }};font-size:17px;font-weight:700;cursor:pointer">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:19px;font-weight:700">Que horas?</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;border:1.5px solid #CBD5E1;border-radius:18px;background:#FFFFFF;height:72px;overflow:hidden">
+              <button onClick="{{ naTimeDec }}" aria-label="30 minutos antes" style="width:72px;height:72px;border:none;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#0A0A0F">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="minus" size="28" hint-size="28px,28px"></x-import>
+              </button>
+              <span style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums">{{ naTime }}</span>
+              <button onClick="{{ naTimeInc }}" aria-label="30 minutos depois" style="width:72px;height:72px;border:none;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6D28D9">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="28" hint-size="28px,28px"></x-import>
+              </button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="font-size:19px;font-weight:700">Quanto tempo?</span>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+              <sc-for list="{{ naDurs }}" as="o" hint-placeholder-count="4">
+                <button onClick="{{ o.pick }}" style="height:56px;border-radius:14px;border:1.5px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }};font-size:16px;font-weight:700;cursor:pointer">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- FINANCEIRO -->
+      <sc-if value="{{ isMoney }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Financeiro</h1>
+      </sc-if>
+      <sc-if value="{{ moneyTop }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:4px">
+            <div style="width:40px;height:40px;border-radius:12px;background:#DCFCE7;color:#16A34A;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check-circle" size="22" hint-size="22px,22px"></x-import>
+            </div>
+            <span style="font-size:17px;font-weight:700">Recebido</span>
+            <span style="font-size:22px;line-height:28px;font-weight:800;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ money.received }}</span>
+            <span style="font-size:15px;color:#475569">em outubro</span>
+          </div>
+          <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:4px">
+            <div style="width:40px;height:40px;border-radius:12px;background:#FEF3C7;color:#B45309;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="clock" size="22" hint-size="22px,22px"></x-import>
+            </div>
+            <span style="font-size:17px;font-weight:700">A receber</span>
+            <span style="font-size:22px;line-height:28px;font-weight:800;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ money.receivable }}</span>
+            <span style="font-size:15px;font-weight:600;color:{{ money.lateFg }}">{{ money.lateText }}</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ moneyBody }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-if value="{{ hasDues }}" hint-placeholder-val="{{ true }}">
+            <span style="font-size:20px;font-weight:700;margin:6px 4px 0">A receber</span>
+          </sc-if>
+          <sc-for list="{{ dues }}" as="d" hint-placeholder-count="3">
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;flex-direction:column;min-width:0">
+                <span style="font-size:19px;line-height:24px;font-weight:600">{{ d.client }}</span>
+                <span style="font-size:15px;color:#475569">{{ d.ref }}</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px">
+                <span style="font-size:22px;font-weight:800;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ d.amount }}</span>
+                <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9999px;background:{{ d.chip.bg }};color:{{ d.chip.fg }};font-size:15px;font-weight:600;white-space:nowrap"><span style="width:8px;height:8px;border-radius:9999px;background:{{ d.chip.dot }}"></span>{{ d.chip.label }}</span>
+              </div>
+              <sc-if value="{{ d.isClosed }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ d.open }}" style="height:56px;border-radius:16px;border:1.5px solid #DDD6FE;background:#F5F3FF;color:#4C1D95;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+                  <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check" size="22" hint-size="22px,22px"></x-import>
+                  Marcar como pago
+                </button>
+              </sc-if>
+              <sc-if value="{{ d.isOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid #F1F5F9;padding-top:12px">
+                  <span style="font-size:17px;font-weight:700">Como recebeu?</span>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    <sc-for list="{{ d.methods }}" as="m" hint-placeholder-count="4">
+                      <button onClick="{{ m.pick }}" style="height:56px;border-radius:14px;border:none;background:#6D28D9;color:#FFFFFF;font-size:17px;font-weight:700;cursor:pointer">{{ m.label }}</button>
+                    </sc-for>
+                  </div>
+                  <button onClick="{{ d.close }}" style="height:56px;border:none;background:transparent;color:#334155;font-size:17px;font-weight:600;cursor:pointer">Fechar</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ hasPaid }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:20px;font-weight:700;margin:10px 4px 0">Recebidos hoje</span>
+            <div style="border-radius:20px;background:#FFFFFF;border:1px solid #E2E8F0;padding:4px 16px">
+              <sc-for list="{{ paidList }}" as="p" hint-placeholder-count="1">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:64px;border-bottom:1px solid #F1F5F9">
+                  <div style="display:flex;flex-direction:column;min-width:0">
+                    <span style="font-size:17px;font-weight:600">{{ p.client }}</span>
+                    <span style="font-size:15px;color:#475569">{{ p.amount }} · {{ p.method }}</span>
+                  </div>
+                  <span style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:9999px;background:#DCFCE7;color:#166534;font-size:14px;font-weight:600"><span style="width:8px;height:8px;border-radius:9999px;background:#16A34A"></span>Pago</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- MENU -->
+      <sc-if value="{{ isMenu }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;padding:8px 4px 0;font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em">Menu</h1>
+        <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;overflow:hidden">
+          <sc-for list="{{ menuItems }}" as="m" hint-placeholder-count="5">
+            <button onClick="{{ m.go }}" style="width:100%;min-height:76px;border:none;border-bottom:1px solid #F1F5F9;background:#FFFFFF;display:flex;align-items:center;gap:14px;padding:10px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+              <div style="width:48px;height:48px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ m.icon }}" size="24" hint-size="24px,24px"></x-import>
+              </div>
+              <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+                <span style="font-size:18px;font-weight:600">{{ m.label }}</span>
+                <span style="font-size:15px;color:#475569">{{ m.sub }}</span>
+              </div>
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="chevron-right" size="24" color="#64748B" hint-size="24px,24px"></x-import>
+            </button>
+          </sc-for>
+        </div>
+        <div style="border-radius:24px;background:#FFFFFF;border:1px solid #E2E8F0;overflow:hidden">
+          <button onClick="{{ easyToggle }}" style="width:100%;min-height:80px;border:none;border-bottom:1px solid #F1F5F9;background:#FFFFFF;display:flex;align-items:center;gap:14px;padding:10px 16px;text-align:left;cursor:pointer;color:#0A0A0F">
+            <div style="width:48px;height:48px;border-radius:14px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="smile" size="24" hint-size="24px,24px"></x-import>
+            </div>
+            <div style="display:flex;flex-direction:column;flex:1">
+              <span style="font-size:18px;font-weight:600">Modo fácil</span>
+              <span style="font-size:15px;color:#475569">{{ easyText }}</span>
+            </div>
+            <div style="width:60px;height:36px;border-radius:9999px;background:{{ easyTrack }};padding:4px;display:flex;justify-content:{{ easyJustify }};flex-shrink:0">
+              <div style="width:28px;height:28px;border-radius:9999px;background:#FFFFFF;box-shadow:0 1px 3px rgba(15,23,42,0.2)"></div>
+            </div>
+          </button>
+          <button onClick="{{ logout }}" style="width:100%;min-height:72px;border:none;background:#FFFFFF;display:flex;align-items:center;gap:14px;padding:10px 16px;text-align:left;cursor:pointer;color:#B91C1C">
+            <div style="width:48px;height:48px;border-radius:14px;background:#FEF2F2;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="log-out" size="24" hint-size="24px,24px"></x-import>
+            </div>
+            <span style="font-size:18px;font-weight:600">Sair</span>
+          </button>
+        </div>
+      </sc-if>
+
+      <!-- ESTADOS GENÉRICOS -->
+      <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px" aria-busy="true">
+          <span style="font-size:17px;font-weight:600;color:#475569;margin:0 4px">Carregando…</span>
+          {{ skeleton }}
+        </div>
+      </sc-if>
+      <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+        <div style="border-radius:24px;background:#FFFFFF;border:1px solid #FECACA;padding:24px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+          <div style="width:72px;height:72px;border-radius:24px;background:#FEF2F2;color:#DC2626;display:flex;align-items:center;justify-content:center">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="wifi-off" size="34" hint-size="34px,34px"></x-import>
+          </div>
+          <span style="font-size:21px;line-height:27px;font-weight:700;text-wrap:balance">{{ err.title }}</span>
+          <span style="font-size:17px;line-height:24px;color:#334155;text-wrap:pretty">{{ err.text }}</span>
+          <button onClick="{{ retry }}" style="height:60px;width:100%;margin-top:6px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="rotate-ccw" size="22" hint-size="22px,22px"></x-import>
+            Tentar de novo
+          </button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:36px 12px 0">
+          <div style="width:80px;height:80px;border-radius:26px;background:#F5F3FF;color:#6D28D9;display:flex;align-items:center;justify-content:center">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ emp.icon }}" size="38" hint-size="38px,38px"></x-import>
+          </div>
+          <span style="font-size:22px;line-height:28px;font-weight:700;text-wrap:balance">{{ emp.title }}</span>
+          <span style="font-size:17px;line-height:24px;color:#334155;text-wrap:pretty">{{ emp.text }}</span>
+          <button onClick="{{ emp.action }}" style="height:60px;width:100%;margin-top:8px;border:none;border-radius:16px;background:#6D28D9;color:#FFFFFF;font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="plus" size="24" hint-size="24px,24px"></x-import>
+            {{ emp.btn }}
+          </button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- BARRA DE AÇÃO -->
+  <sc-if value="{{ hasCta }}" hint-placeholder-val="{{ false }}">
+    <div style="background:#FFFFFF;border-top:1px solid #E2E8F0;padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;flex-shrink:0">
+      <sc-if value="{{ cta.hasTotal }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px">
+          <span style="font-size:17px;font-weight:600;color:#334155">Total</span>
+          <span style="font-size:28px;font-weight:800;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ cta.total }}</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ cta.hasHint }}" hint-placeholder-val="{{ false }}">
+        <span style="font-size:15px;color:#475569;text-align:center">{{ cta.hint }}</span>
+      </sc-if>
+      <button onClick="{{ cta.onPrimary }}" style="height:60px;width:100%;border:none;border-radius:16px;background:{{ cta.bg }};color:{{ cta.fg }};font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+        <sc-if value="{{ cta.hasIcon }}" hint-placeholder-val="{{ false }}">
+          <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ cta.icon }}" size="24" hint-size="24px,24px"></x-import>
+        </sc-if>
+        {{ cta.label }}
+      </button>
+      <sc-if value="{{ cta.hasSecondary }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ cta.onSecondary }}" style="height:56px;width:100%;border-radius:16px;border:1.5px solid #CBD5E1;background:#FFFFFF;color:#0A0A0F;font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer">
+          <sc-if value="{{ cta.hasIcon2 }}" hint-placeholder-val="{{ false }}">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ cta.icon2 }}" size="22" hint-size="22px,22px"></x-import>
+          </sc-if>
+          {{ cta.label2 }}
+        </button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- BARRA INFERIOR -->
+  <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
+    <nav aria-label="Navegação principal" style="height:84px;flex-shrink:0;background:#FFFFFF;border-top:1px solid #E2E8F0;display:grid;grid-template-columns:1fr 1fr 1.25fr 1fr 0.9fr;padding:0 4px">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="5">
+        <button onClick="{{ n.go }}" aria-current="{{ n.current }}" style="border:none;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:{{ n.fg }};min-width:0;padding:0">
+          <div style="width:60px;height:34px;border-radius:9999px;background:{{ n.bg }};display:flex;align-items:center;justify-content:center">
+            <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="{{ n.icon }}" size="26" hint-size="26px,26px"></x-import>
+          </div>
+          <span style="font-size:14px;font-weight:{{ n.weight }};letter-spacing:-0.01em;white-space:nowrap">{{ n.label }}</span>
+        </button>
+      </sc-for>
+    </nav>
+  </sc-if>
+
+  <!-- CONFIRMAÇÃO -->
+  <sc-if value="{{ toastOn }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position:absolute;left:12px;right:12px;bottom:{{ toastBottom }};background:#0A0A0F;color:#FFFFFF;border-radius:18px;padding:6px 6px 6px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 20px 40px rgba(15,23,42,0.18);min-height:64px">
+      <x-import component-from-global-scope="OrcIcon" from="./orc-icons.js" name="check-circle" size="24" color="#4ADE80" hint-size="24px,24px"></x-import>
+      <span style="font-size:17px;line-height:22px;font-weight:600;flex:1;padding:8px 0">{{ toast.msg }}</span>
+      <sc-if value="{{ toast.hasUndo }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ toast.undo }}" style="height:56px;padding:0 14px;border:none;border-radius:14px;background:transparent;color:#C4B5FD;font-size:17px;font-weight:700;cursor:pointer">Desfazer</button>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:375,&quot;height&quot;:780},&quot;screen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;home&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;q1&quot;,&quot;q2&quot;,&quot;q3&quot;,&quot;sign&quot;,&quot;done&quot;,&quot;clients&quot;,&quot;client&quot;,&quot;clientNew&quot;,&quot;quotes&quot;,&quot;services&quot;,&quot;run&quot;,&quot;agenda&quot;,&quot;agNew&quot;,&quot;money&quot;,&quot;menu&quot;],&quot;tsType&quot;:&quot;string&quot;},&quot;uiState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;normal&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;vazio&quot;,&quot;carregando&quot;,&quot;erro&quot;,&quot;sucesso&quot;],&quot;tsType&quot;:&quot;string&quot;},&quot;doneKind&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;quote&quot;,&quot;options&quot;:[&quot;quote&quot;,&quot;service&quot;],&quot;tsType&quot;:&quot;string&quot;},&quot;ncOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;niOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;moreOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;payOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;nonce&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;number&quot;}}">
+const NB = '\u00a0';
+const fmt = (c) => { c = Math.round(c); const r = Math.floor(c / 100), d = String(c % 100).padStart(2, '0'); return 'R$' + NB + String(r).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + d; };
+const maskPhone = (v) => { const d = v.replace(/\D/g, '').slice(0, 11); if (!d.length) return ''; if (d.length <= 2) return '(' + d; if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2); if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6); return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7); };
+const initialsOf = (n) => n.split(' ').filter(w => w.length > 2).slice(0, 2).map(w => w[0]).join('').toUpperCase() || n[0].toUpperCase();
+const hhmm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const durLabel = (m) => m < 60 ? m + ' min' : (m % 60 ? Math.floor(m / 60) + 'h' + (m % 60) : (m / 60) + ' h');
+
+const CLIENTS = [
+  { id: 'c1', name: 'Marcos Oliveira', phone: '(11) 98765-4321', addr: 'Rua das Acácias, 120 · Vila Mariana' },
+  { id: 'c2', name: 'Padaria Pão Quente', phone: '(11) 3456-7890', addr: 'Av. Jabaquara, 1500 · Saúde' },
+  { id: 'c3', name: 'Cláudia Souza', phone: '(11) 99123-4567', addr: 'Rua Tupi, 77 · Santa Cecília' },
+  { id: 'c4', name: 'Condomínio Jardim das Flores', phone: '(11) 3222-1100', addr: 'Av. das Flores, 900 · Moema' },
+  { id: 'c5', name: 'Roberto Lima', phone: '(11) 97654-3210', addr: 'Rua Itapeva, 300 · Bela Vista' },
+  { id: 'c6', name: 'Ana Paula Ferreira', phone: '(11) 98888-1234', addr: 'Rua Bahia, 45 · Higienópolis' },
+];
+const CATALOG = [
+  { id: 'k1', name: 'Instalação de ar‑condicionado 12.000 BTUs', price: 45000, fav: true },
+  { id: 'k2', name: 'Limpeza de split', price: 18000, fav: true },
+  { id: 'k3', name: 'Ponto de tomada', price: 8500, fav: true },
+  { id: 'k4', name: 'Instalação de câmera', price: 12000, fav: true },
+  { id: 'k5', name: 'Visita técnica', price: 8000, fav: true },
+  { id: 'k6', name: 'Troca de disjuntor', price: 9500, fav: true },
+  { id: 'k7', name: 'Carga de gás R410A', price: 25000 },
+  { id: 'k8', name: 'Cabo PP 2 x 2,5 mm (metro)', price: 650 },
+  { id: 'k9', name: 'Suporte para condensadora', price: 9000 },
+  { id: 'k10', name: 'Instalação de ar\u2011condicionado 9.000 BTUs', price: 40000 },
+  { id: 'k11', name: 'Instalação de ar\u2011condicionado 18.000 BTUs', price: 55000 },
+  { id: 'k12', name: 'Higienização completa de split', price: 25000 },
+  { id: 'k13', name: 'Troca de capacitor', price: 12000 },
+  { id: 'k14', name: 'Instalação de chuveiro', price: 9000 },
+  { id: 'k15', name: 'Troca de tomada', price: 4500 },
+  { id: 'k16', name: 'Instalação de luminária', price: 7000 },
+  { id: 'k17', name: 'Quadro de distribuição 12 disjuntores', price: 68000 },
+  { id: 'k18', name: 'Aterramento', price: 35000 },
+  { id: 'k19', name: 'Configuração de DVR', price: 15000 },
+  { id: 'k20', name: 'Câmera Full HD (produto)', price: 22000 },
+  { id: 'k21', name: 'Fonte 12V 10A (produto)', price: 8500 },
+  { id: 'k22', name: 'Cabo coaxial com alimentação (metro)', price: 350 },
+  { id: 'k23', name: 'Interfone residencial', price: 18000 },
+  { id: 'k24', name: 'Sensor de presença', price: 6500 },
+];
+const APPROVALS = [
+  { k: 'APPROVE_BUTTON', label: 'Botão Aprovar', sub: 'O cliente só toca em Aprovar', icon: 'check-circle' },
+  { k: 'TYPED_NAME', label: 'Nome digitado', sub: 'O cliente escreve o nome completo', icon: 'file-text' },
+  { k: 'DRAWN_SIGNATURE', label: 'Assinatura com o dedo', sub: 'O cliente assina na tela do celular', icon: 'pen-line' },
+  { k: 'PHOTO_SIGNATURE', label: 'Foto da assinatura', sub: 'O cliente manda a foto da assinatura no papel', icon: 'camera' },
+];
+const QUOTES = [
+  { id: 'o1042', n: 1042, client: 'c1', total: 108000, status: 'SENT', meta: '#1042 · enviado há 2 dias' },
+  { id: 'o1039', n: 1039, client: 'c2', total: 235000, status: 'SENT', meta: '#1039 · enviado há 5 dias' },
+  { id: 'o1036', n: 1036, client: 'c3', total: 64000, status: 'APPROVED', meta: '#1036 · aprovado ontem' },
+  { id: 'o1043', n: 1043, client: 'c5', total: 18000, status: 'DRAFT', meta: '#1043 · criado hoje' },
+];
+const SERVICES = [
+  { id: 's1', n: 316, time: '09:00', title: 'Limpeza de split', client: 'c1', addr: 'Rua das Acácias, 120', status: 'DONE', tasks: ['Limpar os filtros', 'Lavar a evaporadora', 'Testar o dreno'] },
+  { id: 's2', n: 318, time: '14:00', title: 'Instalação de 4 câmeras', client: 'c4', addr: 'Av. das Flores, 900', status: 'IN_PROGRESS', tasks: ['Fixar as 4 câmeras', 'Passar os cabos', 'Ligar no gravador', 'Mostrar a imagem no celular do cliente'] },
+  { id: 's3', n: 319, time: '17:30', title: 'Troca de disjuntor', client: 'c6', addr: 'Rua Bahia, 45', status: 'PENDING', tasks: ['Desligar a energia do quadro', 'Trocar o disjuntor', 'Testar as tomadas', 'Mostrar ao cliente'] },
+];
+const AGENDA = {
+  hoje: [
+    { s: 540, e: 630, title: 'Limpeza de split', type: 'Manutenção', client: 'c1' },
+    { s: 840, e: 1020, title: 'Instalação de 4 câmeras', type: 'Instalação', client: 'c4' },
+    { s: 1050, e: 1110, title: 'Troca de disjuntor', type: 'Visita', client: 'c6' },
+  ],
+  amanha: [
+    { s: 480, e: 540, title: 'Orçamento no local', type: 'Orçamento', client: 'c2' },
+    { s: 660, e: 780, title: 'Carga de gás', type: 'Manutenção', client: 'c3' },
+  ],
+  outro: [{ s: 540, e: 600, title: 'Visita técnica', type: 'Visita', client: 'c5' }],
+};
+const DAY_LABEL = { hoje: 'Hoje · sábado, 4 de outubro', amanha: 'Amanhã · domingo, 5 de outubro', outro: 'Segunda, 6 de outubro' };
+const PAYMENTS = [
+  { id: 'p1', client: 'c2', ref: 'Serviço #312', amount: 120000, due: 'late', dueText: 'Atrasado há 3 dias' },
+  { id: 'p2', client: 'c1', ref: 'Serviço #316', amount: 69000, due: 'soon', dueText: 'Vence amanhã' },
+  { id: 'p3', client: 'c3', ref: 'Serviço #314', amount: 45000, due: 'later', dueText: 'Vence 10/10' },
+];
+const CH = {
+  wait: { bg: '#FEF3C7', fg: '#92400E', dot: '#D97706' },
+  ok: { bg: '#DCFCE7', fg: '#166534', dot: '#16A34A' },
+  draft: { bg: '#F1F5F9', fg: '#334155', dot: '#64748B' },
+  late: { bg: '#FEE2E2', fg: '#991B1B', dot: '#DC2626' },
+  doing: { bg: '#EDE9FE', fg: '#4C1D95', dot: '#6D28D9' },
+};
+const chip = (k, label) => Object.assign({ label }, CH[k]);
+const SVC_STATUS = { PENDING: ['wait', 'Para fazer'], IN_PROGRESS: ['doing', 'Fazendo'], DONE: ['ok', 'Feito'] };
+const AP_TYPES = ['Visita', 'Instalação', 'Orçamento', 'Manutenção', 'Reunião', 'Outro'];
+const STACK0 = { q1: ['home'], q2: ['home', 'q1'], q3: ['home', 'q1', 'q2'], sign: ['home', 'q1', 'q2', 'q3'], client: ['clients'], clientNew: ['clients'], run: ['services'], services: ['home'], money: ['home'], agNew: ['agenda'] };
+const NAV_SCREENS = ['home', 'clients', 'client', 'quotes', 'services', 'agenda', 'money', 'menu'];
+const TAB_OF = { home: 'home', clients: 'clients', client: 'clients', quotes: 'quotes', agenda: 'agenda', services: 'home', money: 'home', menu: 'menu' };
+const LABELS = { home: 'Início', q1: 'Orçamento · Para quem?', q2: 'Orçamento · O que vai fazer?', q3: 'Orçamento · Revisar e enviar', sign: 'Assinar', done: 'Pronto', clients: 'Clientes', client: 'Cliente', clientNew: 'Cliente novo', quotes: 'Orçamentos', services: 'Serviços de hoje', run: 'Executar serviço', agenda: 'Agenda', agNew: 'Marcar horário', money: 'Financeiro', menu: 'Menu' };
+const EMPTY = {
+  clients: { icon: 'users', title: 'Você ainda não cadastrou clientes.', text: 'Cadastre seu primeiro cliente para criar orçamentos e serviços.', btn: 'Novo cliente', to: 'clientNew' },
+  quotes: { icon: 'file-text', title: 'Você ainda não fez orçamentos.', text: 'Faça o primeiro em 3 passos e envie pelo WhatsApp.', btn: 'Novo orçamento', to: 'q1' },
+  services: { icon: 'clipboard-list', title: 'Nenhum serviço para hoje.', text: 'Os serviços marcados para hoje aparecem aqui.', btn: 'Marcar na agenda', to: 'agNew' },
+  agenda: { icon: 'calendar', title: 'Nada marcado para hoje.', text: 'Toque em Marcar para guardar um horário.', btn: 'Marcar', to: 'agNew' },
+  money: { icon: 'dollar-sign', title: 'Nada para receber.', text: 'Quando um serviço tiver valor a receber, ele aparece aqui.', btn: 'Novo orçamento', to: 'q1' },
+};
+const ERR_WHAT = { home: 'o seu dia', q1: 'seus clientes', q2: 'seus serviços e preços', clients: 'seus clientes', client: 'este cliente', quotes: 'seus orçamentos', services: 'os serviços de hoje', run: 'este serviço', agenda: 'a agenda', agNew: 'a agenda', money: 'o financeiro', menu: 'o menu', clientNew: 'o cadastro', sign: 'a assinatura' };
+const SUCCESS = {
+  home: ['Pronto! Pagamento registrado.', true], q1: ['Pronto! Cliente salvo.', false], q2: ['Limpeza de split posto no orçamento.', true],
+  clients: ['Pronto! Cliente salvo.', true], client: ['Pronto! Dados do cliente salvos.', false], clientNew: ['Pronto! Cliente salvo.', true],
+  quotes: ['Pronto! Orçamento reenviado no WhatsApp.', false], services: ['Pronto! Serviço finalizado.', true], run: ['Foto guardada.', true],
+  agenda: ['Pronto! Horário marcado.', true], agNew: ['Pronto! Horário marcado.', true], money: ['Pronto! R$ 690,00 recebido.', true], menu: ['Modo fácil ligado neste aparelho.', false], sign: ['Assinatura guardada.', false], q3: ['PDF baixado.', false],
+};
+const findC = (id) => CLIENTS.find(c => c.id === id) || { id, name: id, phone: '', addr: '' };
+const first = (n) => n.split(' ')[0];
+const PRE_ITEMS = () => [
+  { id: 'k1', name: CATALOG[0].name, price: 45000, qty: 1 },
+  { id: 'k2', name: CATALOG[1].name, price: 18000, qty: 2 },
+  { id: 'k5', name: CATALOG[4].name, price: 8000, qty: 1 },
+];
+function initState(p) {
+  const screen = p.screen || 'home';
+  const doneKind = p.doneKind || 'quote';
+  const pre = ['q2', 'q3', 'sign'].includes(screen) || (screen === 'done' && doneKind === 'quote');
+  return {
+    screen, st: p.uiState || 'normal', doneKind, stack: (STACK0[screen] || []).slice(),
+    clientId: pre ? 'c1' : null, q: '', ncOpen: !!p.ncOpen, ncName: p.ncOpen ? 'Ana Paula' : '', ncPhone: p.ncOpen ? '(11) 98888-12' : '', newClients: [],
+    items: pre ? PRE_ITEMS() : [], showAll: false, catQ: '', catLimit: 5, allowed: { APPROVE_BUTTON: true, TYPED_NAME: true, DRAWN_SIGNATURE: true, PHOTO_SIGNATURE: true }, niOpen: !!p.niOpen, niName: p.niOpen ? 'Troca de capacitor' : '', niDigits: p.niOpen ? '12000' : '', niSave: true, niSeq: 0,
+    moreOpen: !!p.moreOpen, dType: 'PERCENT', dDigits: p.moreOpen ? '10' : '', validity: 15, terms: p.moreOpen ? '50% na aprovação e 50% no fim do serviço.' : '',
+    signed: true, sigUrl: null, inked: false, savedSig: { kind: 'typed', text: 'Carlos Mendes' }, sgMethod: 'TYPED_NAME', sgTyped: 'Carlos Mendes', sgPhoto: false, sgSave: true,
+    clientsQ: '', detailId: 'c1', cdMore: false,
+    svcId: 's2', svcStatus: {}, tasks: { s1: [true, true, true], s2: [true, true, false, false], s3: [false, false, false, false] }, photos: { s1: ['Antes', 'Depois'], s2: ['Antes', 'Durante'], s3: [] },
+    payOpen: p.payOpen ? 'p2' : null, paid: [], agDay: 'hoje', added: [], na: { type: null, client: null, day: 'hoje', time: 630, dur: 60 },
+    easy: true, toast: null,
+  };
+}
+
+class Component extends DCLogic {
+  state = initState(this.props || {});
+
+  componentDidUpdate(pp) {
+    const p = this.props;
+    if (p.screen !== pp.screen || p.uiState !== pp.uiState || p.nonce !== pp.nonce || p.doneKind !== pp.doneKind) {
+      clearTimeout(this.tt);
+      this.setState(initState(p));
+      if (this.scrollEl) this.scrollEl.scrollTop = 0;
+    }
+  }
+  componentWillUnmount() { clearTimeout(this.tt); }
+
+  top() { if (this.scrollEl) this.scrollEl.scrollTop = 0; }
+  go(screen, extra) { this.setState(s => Object.assign({ screen, st: 'normal', stack: s.stack.concat([s.screen]), toast: null }, extra || {})); this.top(); }
+  tab(screen, extra) { this.setState(Object.assign({ screen, st: 'normal', stack: STACK0[screen] && screen !== 'services' && screen !== 'money' ? [] : (STACK0[screen] || []).slice(), toast: null }, extra || {})); this.top(); }
+  back() {
+    clearTimeout(this.tt);
+    this.setState(s => { const st = s.stack.slice(); const prev = st.pop() || 'home'; return { screen: prev, stack: st, st: 'normal', ncOpen: false, toast: null }; });
+    this.top();
+  }
+  toast(msg, undo) {
+    clearTimeout(this.tt);
+    this.setState({ toast: { msg, undo } });
+    this.tt = setTimeout(() => this.setState({ toast: null }), 6000);
+  }
+  undoWith(fn) { return () => { clearTimeout(this.tt); fn(); this.setState({ toast: null }); }; }
+
+  addItem(it) {
+    this.setState(s => {
+      const items = s.items.slice(); const i = items.findIndex(x => x.id === it.id);
+      if (i >= 0) items[i] = Object.assign({}, items[i], { qty: items[i].qty + 1 }); else items.push({ id: it.id, name: it.name, price: it.price, qty: 1 });
+      return { items, st: 'normal' };
+    });
+  }
+  changeQty(id, d) {
+    const prevItems = this.state.items;
+    const it = prevItems.find(x => x.id === id); if (!it) return;
+    if (it.qty + d <= 0) {
+      this.setState({ items: prevItems.filter(x => x.id !== id) });
+      this.toast(`${it.name} tirado do orçamento.`, this.undoWith(() => this.setState({ items: prevItems })));
+      return;
+    }
+    this.setState({ items: prevItems.map(x => x.id === id ? Object.assign({}, x, { qty: x.qty + d }) : x) });
+  }
+
+  setupCanvas(el) {
+    if (!el || el === this.cv) return;
+    this.cv = el;
+    const dpr = window.devicePixelRatio || 1;
+    el.width = el.offsetWidth * dpr; el.height = el.offsetHeight * dpr;
+    const ctx = el.getContext('2d'); ctx.scale(dpr, dpr);
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0A0A0F';
+    let drawing = false;
+    const pos = (e) => { const b = el.getBoundingClientRect(); const k = el.offsetWidth / b.width; return [(e.clientX - b.left) * k, (e.clientY - b.top) * k]; };
+    el.onpointerdown = (e) => { drawing = true; try { el.setPointerCapture(e.pointerId); } catch (_) {} const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); };
+    el.onpointermove = (e) => { if (!drawing) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); };
+    el.onpointerup = el.onpointercancel = () => { if (drawing && !this.state.inked) this.setState({ inked: true }); drawing = false; };
+  }
+  clearCanvas() { if (this.cv) { const c = this.cv.getContext('2d'); c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, this.cv.width, this.cv.height); c.restore(); } this.setState({ inked: false }); }
+
+  renderVals() {
+    const s = this.state;
+    const sc = s.screen, st = s.st;
+    const isLoading = st === 'carregando' && sc !== 'done';
+    const isError = st === 'erro' && sc !== 'done';
+    const empty = st === 'vazio';
+    const emptyDef = empty ? EMPTY[sc] : null;
+    const isEmpty = !!emptyDef;
+    const bodyOk = !isLoading && !(isError && sc !== 'q3') && !isEmpty;
+    const purple = '#6D28D9';
+    const opt = (on) => on ? { bg: purple, fg: '#FFFFFF', border: purple } : { bg: '#FFFFFF', fg: '#0A0A0F', border: '#CBD5E1' };
+
+    // Shared numbers
+    const dues = empty ? [] : PAYMENTS.filter(p => !s.paid.find(x => x.id === p.id));
+    const receivable = dues.reduce((a, p) => a + p.amount, 0);
+    const lateCount = dues.filter(p => p.due === 'late').length;
+    const svcStatus = (sv) => s.svcStatus[sv.id] || sv.status;
+    const allClients = CLIENTS.concat(s.newClients);
+    const client = s.clientId ? (allClients.find(c => c.id === s.clientId) || CLIENTS[0]) : null;
+
+    const subtotal = s.items.reduce((a, i) => a + i.price * i.qty, 0);
+    const dNum = parseInt(s.dDigits || '0', 10);
+    const discount = s.dType === 'PERCENT' ? Math.round(subtotal * Math.min(dNum, 100) / 100) : Math.min(dNum, subtotal);
+    const total = subtotal - discount;
+
+    // Home
+    const todayEvents = empty ? [] : AGENDA.hoje.concat(s.added.filter(a => a.day === 'hoje')).sort((a, b) => a.s - b.s);
+    const home = {
+      today: todayEvents.length,
+      next: todayEvents.slice(0, 2).map(e => ({ time: hhmm(e.s), title: e.title })),
+      noNext: todayEvents.length === 0,
+      services: empty ? 0 : SERVICES.filter(x => svcStatus(x) !== 'DONE').length,
+      quotes: empty ? 0 : QUOTES.filter(q => q.status === 'SENT').length,
+      receivable: fmt(receivable),
+      hasLate: lateCount > 0,
+      lateLabel: lateCount + (lateCount > 1 ? ' atrasados' : ' atrasado'),
+    };
+
+    // Q1
+    const qq = s.q.trim().toLowerCase();
+    const q1List = (empty ? [] : s.newClients.slice().reverse().concat(CLIENTS).filter(c => !qq || c.name.toLowerCase().includes(qq) || c.phone.replace(/\D/g, '').includes(qq.replace(/\D/g, '') || '§'))).slice(0, qq ? 8 : 5);
+    const q1Clients = q1List.map(c => {
+      const sel = s.clientId === c.id;
+      return { name: c.name, phone: c.phone, initials: initialsOf(c.name), sel, border: sel ? purple : '#E2E8F0', bg: sel ? '#F5F3FF' : '#FFFFFF', pick: () => this.setState({ clientId: c.id, ncOpen: false }) };
+    });
+    const ncDigits = s.ncPhone.replace(/\D/g, '').length;
+    const ncValid = s.ncName.trim().length > 1 && ncDigits >= 10;
+    const saveNc = (to) => {
+      const id = 'n' + Date.now();
+      const c = { id, name: s.ncName.trim(), phone: s.ncPhone, addr: 'Endereço não informado' };
+      this.setState(x => ({ newClients: x.newClients.concat([c]), clientId: id, ncOpen: false, ncName: '', ncPhone: '' }));
+      if (to === 'q2') { this.go('q2', { clientId: id, ncOpen: false }); this.toast(`Pronto! ${first(c.name)} salvo.`); }
+      else { this.setState({ screen: 'clients', stack: [], ncOpen: false }); this.toast(`Pronto! ${first(c.name)} salvo nos clientes.`, this.undoWith(() => this.setState(x => ({ newClients: x.newClients.filter(n => n.id !== id) })))); }
+    };
+
+    // Q2
+    const inCart = (id) => (s.items.find(i => i.id === id) || {}).qty || 0;
+    const favs = (empty ? [] : CATALOG.filter(c => c.fav)).map(c => {
+      const n = inCart(c.id);
+      return { name: c.name, price: fmt(c.price), add: () => this.addItem(c), border: n ? purple : '#E2E8F0', bg: n ? '#F5F3FF' : '#FFFFFF', badge: n ? n + '×' : '+', badgeBg: n ? purple : '#F5F3FF', badgeFg: n ? '#FFFFFF' : '#6D28D9' };
+    });
+    const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const catQn = norm(s.catQ.trim());
+    const catAll = catQn ? CATALOG.filter(c => norm(c.name).includes(catQn)) : CATALOG.filter(c => !c.fav);
+    const catShown = catAll.slice(0, s.catLimit);
+    const catLeft = catAll.length - catShown.length;
+    const others = catShown.map(c => { const n = inCart(c.id); return { name: c.name, price: fmt(c.price), icon: n ? 'check' : 'plus', qtyText: n ? String(n) : '', badgeBg: n ? purple : '#F5F3FF', badgeFg: n ? '#FFFFFF' : '#6D28D9', add: () => { this.addItem(c); this.toast(`${c.name} posto no orçamento.`); } }; });
+    const niCents = parseInt(s.niDigits || '0', 10);
+    const niValid = s.niName.trim().length > 1 && niCents > 0;
+    const lines = s.items.map(i => ({ name: i.name, unit: fmt(i.price), qty: i.qty, total: fmt(i.price * i.qty), inc: () => this.changeQty(i.id, 1), dec: () => this.changeQty(i.id, -1) }));
+
+    // Q3
+    const g = s.signed === 'once' ? s.oneSig : s.signed ? s.savedSig : null;
+    const sig = { signed: !!g, status: !g ? 'Ainda não assinou. É opcional.' : (s.signed === 'once' ? 'Vai só neste orçamento.' : 'Sua assinatura salva vai no PDF.'), btn: g ? 'Trocar assinatura' : 'Assinar', isImg: !!g && g.kind === 'img', bg: g && g.url ? 'url(' + g.url + ')' : 'none', isText: !!g && g.kind === 'typed', text: g && g.text || '', isPhoto: !!g && g.kind === 'photo', hasSaved: !!s.savedSig, on: !!s.signed, track: s.signed ? '#6D28D9' : '#CBD5E1', justify: s.signed ? 'flex-end' : 'flex-start', toggle: () => this.setState(x => ({ signed: x.signed ? false : true })) };
+    if (!g && s.savedSig) { sig.status = 'Não vai neste orçamento.'; sig.btn = 'Trocar assinatura'; }
+    const moreBits = [];
+    if (discount > 0) moreBits.push('Desconto de ' + fmt(discount));
+    moreBits.push('Vale por ' + s.validity + ' dias');
+    if (s.terms.trim()) moreBits.push('com condições');
+    const q3 = {
+      total: fmt(total), hasDiscount: discount > 0, discountText: `Já com desconto de ${fmt(discount)} (era ${fmt(subtotal)})`,
+      clientName: client ? client.name : '', clientPhone: client ? client.phone : '', initials: client ? initialsOf(client.name) : '',
+      itemsCount: s.items.length === 1 ? '1 item' : s.items.length + ' itens',
+    };
+    const q3Items = s.items.map(i => ({ name: i.name, qtyText: `${i.qty} × ${fmt(i.price)}`, total: fmt(i.price * i.qty) }));
+    const dValue = s.dDigits ? (s.dType === 'PERCENT' ? s.dDigits + '%' : fmt(dNum)) : '';
+
+    // Done
+    const svcRun = SERVICES.find(x => x.id === s.svcId) || SERVICES[1];
+    const done = s.doneKind === 'service'
+      ? { title: 'Pronto! Serviço finalizado', text: `${svcRun.title} em ${findC(svcRun.client).name} ficou como Feito.`, cardTitle: `Serviço #${svcRun.n}`, cardValue: findC(svcRun.client).name, chip: chip('ok', 'Feito') }
+      : { title: 'Pronto! Orçamento enviado', text: `${client ? client.name : 'O cliente'} recebeu no WhatsApp. Quando aprovar, aparece em Orçamentos.`, cardTitle: 'Orçamento #1044', cardValue: fmt(total), chip: chip('wait', 'Esperando resposta') };
+
+    // Clients
+    const cq = s.clientsQ.trim().toLowerCase();
+    const clientList = empty ? [] : allClients.filter(c => !cq || c.name.toLowerCase().includes(cq) || c.phone.replace(/\D/g, '').includes(cq.replace(/\D/g, '') || '§'));
+    const clientCards = clientList.map(c => ({
+      name: c.name, phone: c.phone, initials: initialsOf(c.name),
+      open: () => this.go('client', { detailId: c.id, cdMore: false }),
+      call: () => this.toast(`Ligando para ${first(c.name)}…`),
+      wa: () => this.toast(`Abrindo o WhatsApp de ${first(c.name)}…`),
+    }));
+    const cdC = allClients.find(c => c.id === s.detailId) || CLIENTS[0];
+    const cdHist = empty ? [] : [
+      { title: 'Orçamento #1042', sub: 'R$ 1.080,00 · há 2 dias', chip: chip('wait', 'Esperando resposta') },
+      { title: 'Serviço #316', sub: 'Limpeza de split · hoje', chip: chip('ok', 'Feito') },
+      { title: 'Pagamento', sub: 'R$ 690,00 · vence amanhã', chip: chip('wait', 'A receber') },
+    ];
+
+    // Quotes
+    const qMeta = (q) => q.status === 'SENT' && s.resent && s.resent[q.id] ? `#${q.n} · reenviado agora` : q.meta;
+    const qItem = (q) => {
+      const c = findC(q.client);
+      const base = { client: c.name, meta: qMeta(q), value: fmt(q.total) };
+      if (q.status === 'SENT') return Object.assign(base, { chip: chip('wait', 'Esperando resposta'), action: 'Reenviar', icon: 'message-circle', btnBg: '#F5F3FF', btnFg: '#4C1D95', btnBorder: '#DDD6FE', act: () => { this.setState(x => ({ resent: Object.assign({}, x.resent, { [q.id]: true }) })); this.toast(`Pronto! Reenviado para ${first(c.name)} no WhatsApp.`); } });
+      if (q.status === 'APPROVED') return Object.assign(base, { chip: chip('ok', 'Aprovado'), action: 'Abrir', icon: 'file-text', btnBg: '#FFFFFF', btnFg: '#0A0A0F', btnBorder: '#CBD5E1', act: () => this.toast(`Abrindo o orçamento #${q.n}…`) });
+      return Object.assign(base, { chip: chip('draft', 'Rascunho'), action: 'Abrir', icon: 'file-text', btnBg: '#FFFFFF', btnFg: '#0A0A0F', btnBorder: '#CBD5E1', act: () => this.go('q3', { clientId: q.client, items: [{ id: 'k2', name: CATALOG[1].name, price: 18000, qty: 1 }], stack: ['quotes'] }) });
+    };
+    const groups = [['SENT', 'Esperando resposta', '#D97706'], ['APPROVED', 'Aprovados', '#16A34A'], ['DRAFT', 'Rascunhos', '#64748B']];
+    const quoteSections = groups.map(([k, title, dot]) => { const items = QUOTES.filter(q => q.status === k).map(qItem); return { title, dot, count: items.length, items }; }).filter(g => g.count);
+
+    // Services
+    const svcCards = SERVICES.map(sv => {
+      const stt = svcStatus(sv); const [ck, cl] = SVC_STATUS[stt];
+      const c = findC(sv.client);
+      const primary = stt !== 'DONE';
+      return {
+        time: sv.time, title: sv.title, client: c.name, addr: sv.addr, chip: chip(ck, cl),
+        action: stt === 'PENDING' ? 'Começar' : stt === 'IN_PROGRESS' ? 'Continuar' : 'Ver',
+        icon: stt === 'PENDING' ? 'play' : stt === 'IN_PROGRESS' ? 'chevron-right' : 'file-text',
+        btnBg: primary ? purple : '#FFFFFF', btnFg: primary ? '#FFFFFF' : '#0A0A0F', btnBorder: primary ? purple : '#CBD5E1',
+        open: () => {
+          if (stt === 'PENDING') { this.setState(x => ({ svcStatus: Object.assign({}, x.svcStatus, { [sv.id]: 'IN_PROGRESS' }) })); this.go('run', { svcId: sv.id }); this.toast('Serviço começado.', this.undoWith(() => this.setState(x => ({ svcStatus: Object.assign({}, x.svcStatus, { [sv.id]: 'PENDING' }), screen: 'services' })))); }
+          else this.go('run', { svcId: sv.id });
+        },
+      };
+    });
+    const tArr = s.tasks[svcRun.id] || [];
+    const doneCount = tArr.filter(Boolean).length;
+    const left = svcRun.tasks.length - doneCount;
+    const runTasks = svcRun.tasks.map((name, i) => {
+      const d = !!tArr[i];
+      return { name, border: d ? '#BBF7D0' : '#E2E8F0', bg: d ? '#F0FDF4' : '#FFFFFF', boxBorder: d ? '#16A34A' : '#94A3B8', boxBg: d ? '#16A34A' : '#FFFFFF', fg: d ? '#166534' : '#0A0A0F',
+        toggle: () => this.setState(x => { const arr = (x.tasks[svcRun.id] || []).slice(); arr[i] = !arr[i]; return { tasks: Object.assign({}, x.tasks, { [svcRun.id]: arr }) }; }) };
+    });
+    const photos = s.photos[svcRun.id] || [];
+    const stage = doneCount === 0 ? 'Antes' : left === 0 ? 'Depois' : 'Durante';
+    const run = { title: svcRun.title, client: findC(svcRun.client).name, addr: svcRun.addr, progressText: `${doneCount} de ${svcRun.tasks.length} feitas`, pct: Math.round(doneCount / svcRun.tasks.length * 100) + '%', photoCount: photos.length === 1 ? '1 foto' : photos.length + ' fotos' };
+
+    // Agenda
+    const dayEvents = empty ? [] : (AGENDA[s.agDay] || []).concat(s.added.filter(a => a.day === s.agDay)).sort((a, b) => a.s - b.s);
+    const agBlocks = [];
+    dayEvents.forEach((e, i) => {
+      agBlocks.push({ isEvent: true, isFree: false, start: hhmm(e.s), end: hhmm(e.e), title: e.title, client: e.client ? findC(e.client).name : 'Sem cliente', type: e.type });
+      const nx = dayEvents[i + 1];
+      if (nx && nx.s - e.e >= 60) agBlocks.push({ isEvent: false, isFree: true, freeText: `Livre das ${hhmm(e.e)} às ${hhmm(nx.s)}`, mark: () => this.go('agNew', { na: { type: null, client: null, day: s.agDay, time: e.e, dur: 60 } }) });
+    });
+    const days = [['hoje', 'Hoje'], ['amanha', 'Amanhã'], ['outro', 'Seg, 6']];
+    const dayChips = days.map(([k, label]) => Object.assign({ label, pick: () => this.setState({ agDay: k }) }, opt(s.agDay === k)));
+    const na = s.na;
+    const setNa = (patch) => this.setState(x => ({ na: Object.assign({}, x.na, patch) }));
+    const naTypes = AP_TYPES.map(t => Object.assign({ label: t, pick: () => setNa({ type: t }) }, opt(na.type === t)));
+    const naClients = CLIENTS.slice(0, 3).map(c => Object.assign({ label: c.name, pick: () => setNa({ client: c.id }) }, opt(na.client === c.id))).concat([Object.assign({ label: 'Sem cliente', pick: () => setNa({ client: 'none' }) }, opt(na.client === 'none'))]);
+    const naDays = days.map(([k, label]) => Object.assign({ label, pick: () => setNa({ day: k }) }, opt(na.day === k)));
+    const naDurs = [30, 60, 120, 240].map(m => Object.assign({ label: durLabel(m), pick: () => setNa({ dur: m }) }, opt(na.dur === m)));
+
+    // Money
+    const methods = ['Pix', 'Dinheiro', 'Cartão', 'Transferência'];
+    const duesV = dues.map(p => {
+      const c = findC(p.client);
+      return {
+        client: c.name, ref: p.ref, amount: fmt(p.amount), chip: chip(p.due === 'late' ? 'late' : p.due === 'soon' ? 'wait' : 'draft', p.dueText),
+        isOpen: s.payOpen === p.id, isClosed: s.payOpen !== p.id,
+        open: () => this.setState({ payOpen: p.id }), close: () => this.setState({ payOpen: null }),
+        methods: methods.map(m => ({ label: m, pick: () => { this.setState(x => ({ paid: x.paid.concat([{ id: p.id, method: m }]), payOpen: null })); this.toast(`Pronto! ${fmt(p.amount)} recebido.`, this.undoWith(() => this.setState(x => ({ paid: x.paid.filter(y => y.id !== p.id) })))); } })),
+      };
+    });
+    const paidList = s.paid.map(x => { const p = PAYMENTS.find(y => y.id === x.id); return { client: findC(p.client).name, amount: fmt(p.amount), method: x.method }; });
+    const money = { received: fmt((empty ? 0 : 642000) + s.paid.reduce((a, x) => a + PAYMENTS.find(y => y.id === x.id).amount, 0)), receivable: fmt(receivable), lateText: lateCount ? (lateCount + (lateCount > 1 ? ' atrasados' : ' atrasado')) : 'Tudo em dia', lateFg: lateCount ? '#B91C1C' : '#166534' };
+
+    // CTA
+    const P = (label, enabled, onPrimary, extra) => Object.assign({ label, onPrimary: enabled ? onPrimary : () => {}, bg: enabled ? purple : '#E2E8F0', fg: enabled ? '#FFFFFF' : '#64748B', hasIcon: false, icon: 'check', hasSecondary: false, hasIcon2: false, icon2: 'download', label2: '', onSecondary: () => {}, hasTotal: false, total: '', hasHint: false, hint: '' }, extra || {});
+    let cta = null;
+    if (!isLoading) {
+      if (sc === 'q1') cta = s.ncOpen ? P('Salvar e continuar', ncValid, () => saveNc('q2'), { hasHint: !ncValid, hint: 'Preencha nome e telefone' }) : P(client ? `Continuar com ${first(client.name)}` : 'Continuar', !!client, () => this.go('q2'), { hasHint: !client, hint: 'Escolha um cliente ou toque em Cliente novo' });
+      else if (sc === 'clientNew') cta = P('Salvar cliente', ncValid, () => saveNc('clients'), { hasHint: !ncValid, hint: 'Preencha nome e telefone' });
+      else if (sc === 'q2') cta = P('Continuar', s.items.length > 0, () => this.go('q3'), { hasTotal: true, total: fmt(subtotal), hasHint: !s.items.length, hint: 'Toque em um serviço para pôr no orçamento' });
+      else if (sc === 'q3') cta = P('Enviar no WhatsApp', true, () => { clearTimeout(this.tt); this.setState({ screen: 'done', doneKind: 'quote', stack: [], st: 'normal', toast: null }); this.top(); }, { hasIcon: true, icon: 'message-circle', hasSecondary: true, hasIcon2: true, icon2: 'download', label2: 'Baixar PDF', onSecondary: () => this.toast('PDF baixado. Está nos seus downloads.') });
+      else if (sc === 'sign') { const mk = s.sgMethod; const ok = mk === 'APPROVE_BUTTON' || (mk === 'TYPED_NAME' && s.sgTyped.trim().length > 1) || (mk === 'DRAWN_SIGNATURE' && s.inked) || (mk === 'PHOTO_SIGNATURE' && s.sgPhoto); cta = P(mk === 'APPROVE_BUTTON' ? 'Continuar sem assinatura' : 'Usar esta assinatura', ok, () => { let ng = null; if (mk === 'TYPED_NAME') ng = { kind: 'typed', text: s.sgTyped.trim() }; if (mk === 'DRAWN_SIGNATURE') ng = { kind: 'img', url: this.cv ? this.cv.toDataURL('image/png') : '' }; if (mk === 'PHOTO_SIGNATURE') ng = { kind: 'photo' }; this.setState(x => { const stk = x.stack.slice(); const prev = stk.pop() || 'q3'; const base = { screen: prev, stack: stk, inked: false }; if (!ng) return Object.assign(base, { signed: false }); return Object.assign(base, x.sgSave ? { signed: true, savedSig: ng } : { signed: 'once', oneSig: ng }); }); this.toast(!ng ? 'O orçamento vai sem a sua assinatura.' : s.sgSave ? 'Assinatura salva para as próximas vezes.' : 'Assinatura posta só neste orçamento.'); }, { hasSecondary: mk === 'DRAWN_SIGNATURE', hasIcon2: true, icon2: 'rotate-ccw', label2: 'Apagar e fazer de novo', onSecondary: () => this.clearCanvas(), hasHint: !ok, hint: { TYPED_NAME: 'Escreva o nome', DRAWN_SIGNATURE: 'Faça sua assinatura no quadro acima', PHOTO_SIGNATURE: 'Tire a foto ou escolha da galeria' }[mk] || '' }); }
+      else if (sc === 'done') cta = s.doneKind === 'service'
+        ? P('Voltar aos serviços', true, () => this.tab('services'), { hasSecondary: true, hasIcon2: true, icon2: 'rotate-ccw', label2: 'Desfazer', onSecondary: () => { this.setState(x => ({ svcStatus: Object.assign({}, x.svcStatus, { [svcRun.id]: 'IN_PROGRESS' }), screen: 'run', stack: ['services'] })); } })
+        : P('Voltar ao início', true, () => this.tab('home', { items: [], clientId: null, signed: !!s.savedSig }), { hasSecondary: true, label2: 'Ver orçamentos', onSecondary: () => this.tab('quotes', { items: [], clientId: null }) });
+      else if (sc === 'run') cta = P('Finalizar serviço', true, () => { this.setState(x => ({ svcStatus: Object.assign({}, x.svcStatus, { [svcRun.id]: 'DONE' }), screen: 'done', doneKind: 'service', stack: [], toast: null })); clearTimeout(this.tt); this.top(); }, { hasIcon: true, icon: 'check-circle', hasHint: left > 0, hint: left === 1 ? 'Falta 1 tarefa. Pode finalizar assim mesmo.' : `Faltam ${left} tarefas. Pode finalizar assim mesmo.` });
+      else if (sc === 'agNew') cta = P('Marcar', !!na.type, () => {
+        const id = 'a' + Date.now(); const cl = na.client && na.client !== 'none' ? na.client : null;
+        const ev = { id, day: na.day, s: na.time, e: na.time + na.dur, title: cl ? `${na.type} · ${first(findC(cl).name)}` : na.type, type: na.type, client: cl };
+        this.setState(x => ({ added: x.added.concat([ev]), screen: 'agenda', agDay: na.day, stack: [] })); this.top();
+        this.toast(`Pronto! Marcado para ${hhmm(na.time)}.`, this.undoWith(() => this.setState(x => ({ added: x.added.filter(a => a.id !== id) }))));
+      }, { hasIcon: true, icon: 'check', hasHint: !na.type, hint: 'Escolha o que é' });
+    }
+    const hasCta = !!cta;
+    if (!cta) cta = P('', false, () => {});
+
+    // Nav
+    const showNav = NAV_SCREENS.includes(sc);
+    const activeTab = TAB_OF[sc];
+    const navItems = [['home', 'Início', 'home'], ['clients', 'Clientes', 'users'], ['quotes', 'Orçamentos', 'file-text'], ['agenda', 'Agenda', 'calendar'], ['menu', 'Menu', 'menu']].map(([k, label, icon]) => {
+      const on = activeTab === k;
+      return { label, icon, go: () => this.tab(k), bg: on ? '#EDE9FE' : 'transparent', fg: on ? '#4C1D95' : '#334155', weight: on ? 700 : 500, current: on ? 'page' : undefined };
+    });
+
+    // Toast
+    let toast = s.toast;
+    if (!toast && st === 'sucesso' && SUCCESS[sc]) toast = { msg: SUCCESS[sc][0], undo: SUCCESS[sc][1] ? () => this.setState({ st: 'normal' }) : null };
+    const ctaH = hasCta ? 88 + (cta.hasTotal ? 44 : 0) + (cta.hasSecondary ? 66 : 0) + (cta.hasHint ? 30 : 0) : 0;
+    const toastBottom = (showNav ? 96 : ctaH + 12) + 'px';
+
+    const skeleton = React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      [120, 92, 92, 92].map((h, i) => React.createElement('div', { key: i, style: { height: h, borderRadius: 20, background: '#E2E8F0', animation: `orcPulse 1.2s ease-in-out ${i * 0.12}s infinite` } })));
+
+    const emp = emptyDef ? { icon: emptyDef.icon, title: emptyDef.title, text: emptyDef.text, btn: emptyDef.btn, action: () => this.go(emptyDef.to) } : { icon: 'plus', title: '', text: '', btn: '', action: () => {} };
+    const err = sc === 'q3'
+      ? { title: 'Não foi possível enviar agora.', text: 'Seu orçamento ficou guardado como rascunho. Confira a internet e toque em Tentar de novo.' }
+      : { title: `Não foi possível carregar ${ERR_WHAT[sc] || 'esta tela'}.`, text: 'Confira a internet e toque em Tentar de novo.' };
+
+    const hasBack = ['q1', 'q2', 'q3', 'sign', 'client', 'clientNew', 'run', 'agNew', 'services', 'money'].includes(sc);
+    const stepN = { q1: 1, q2: 2, q3: 3 }[sc];
+
+    return {
+      screenLabel: LABELS[sc] || sc,
+      scrollRef: (el) => { this.scrollEl = el; },
+      hasBack, back: () => this.back(),
+      hasStep: !!stepN, stepText: stepN ? `Passo ${stepN} de 3` : '', stepBars: [1, 2, 3].map(n => ({ color: stepN && n <= stepN ? purple : '#E2E8F0' })),
+      isLoading, skeleton, isError, err, retry: () => this.setState({ st: 'normal' }), isEmpty, emp,
+      hasCta, cta, showNav, navItems,
+      toastOn: !!toast, toast: toast ? { msg: toast.msg, hasUndo: !!toast.undo, undo: toast.undo || (() => {}) } : { msg: '', hasUndo: false, undo: () => {} }, toastBottom,
+
+      isHome: sc === 'home', homeBody: sc === 'home' && bodyOk, home,
+      goQ1: () => this.go('q1', { items: [], clientId: null, signed: !!s.savedSig, moreOpen: false, dDigits: '', terms: '' }),
+      goAgenda: () => this.tab('agenda'), goServices: () => this.go('services'), goQuotes: () => this.tab('quotes'), goMoney: () => this.go('money'),
+      shortcuts: [
+        { label: 'Cliente', icon: 'user-plus', go: () => this.go('clientNew', { ncName: '', ncPhone: '' }) },
+        { label: 'Serviço', icon: 'clipboard-list', go: () => this.go('services') },
+        { label: 'Agenda', icon: 'calendar', go: () => this.tab('agenda') },
+        { label: 'Recebido', icon: 'dollar-sign', go: () => this.go('money') },
+      ],
+
+      isClientNew: sc === 'clientNew',
+      isQ1: sc === 'q1', q1Body: sc === 'q1' && bodyOk, q: s.q, onQ: (e) => this.setState({ q: e.target.value }),
+      q1HasList: q1Clients.length > 0, q1ListLabel: qq ? 'Encontrados' : 'Recentes', q1Clients,
+      q1NoList: q1Clients.length === 0, q1EmptyText: empty ? 'Você ainda não tem clientes. Toque em Cliente novo: só precisa do nome e do telefone.' : 'Ninguém com esse nome ou telefone. Toque em Cliente novo.',
+      ncClosedQ1: sc === 'q1' && !s.ncOpen, openNc: () => this.setState({ ncOpen: true, clientId: null }), closeNc: () => this.setState({ ncOpen: false }),
+      showNcForm: bodyOk && ((sc === 'q1' && s.ncOpen) || sc === 'clientNew'), ncShowClose: sc === 'q1',
+      ncName: s.ncName, onNcName: (e) => this.setState({ ncName: e.target.value }), ncPhone: s.ncPhone, onNcPhone: (e) => this.setState({ ncPhone: maskPhone(e.target.value) }),
+
+      isQ2: sc === 'q2', q2Body: sc === 'q2' && bodyOk, clientName: client ? client.name : 'cliente',
+      q2HasFav: favs.length > 0, favs, q2NoFav: favs.length === 0,
+      toggleAll: () => this.setState(x => ({ showAll: !x.showAll })), allLabel: s.showAll ? 'Esconder a lista' : 'Ver todos os serviços (' + CATALOG.length + ')', showAll: s.showAll, others,
+      catQ: s.catQ, onCatQ: (e) => this.setState({ catQ: e.target.value, catLimit: 5 }), catHasQ: !!s.catQ, clearCatQ: () => this.setState({ catQ: '', catLimit: 5 }),
+      catCountText: catQn ? (catAll.length === 1 ? '1 encontrado' : catAll.length + ' encontrados') : 'Outros serviços e produtos',
+      catNoResult: catAll.length === 0, catHasResult: catAll.length > 0,
+      catHasMore: catLeft > 0, catMoreText: 'Ver mais ' + Math.min(catLeft, 5) + (catLeft > 5 ? ' de ' + catLeft : ''), catMore: () => this.setState(x => ({ catLimit: x.catLimit + 5 })),
+      approvals: APPROVALS.map(a => { const on = !!s.allowed[a.k]; const onCount = APPROVALS.filter(x => s.allowed[x.k]).length; const last = on && onCount === 1; return { label: a.label, sub: last ? a.sub + ' · única ligada' : a.sub, icon: a.icon, on, border: on ? purple : '#E2E8F0', bg: on ? '#F5F3FF' : '#FFFFFF', ring: on ? purple : '#94A3B8', dot: on ? purple : 'transparent', pick: () => { if (last) { this.toast('Deixe pelo menos uma forma ligada para o cliente aprovar.'); return; } const prev = s.allowed; const nx = Object.assign({}, prev, { [a.k]: !prev[a.k] }); this.setState({ allowed: nx }); this.toast((nx[a.k] ? 'Ligado: ' : 'Desligado: ') + a.label + '. Vale para todos os orçamentos.', this.undoWith(() => this.setState({ allowed: prev }))); } }; }),
+      niClosed: !s.niOpen, niOpen: s.niOpen, openNi: () => this.setState({ niOpen: true }), closeNi: () => this.setState({ niOpen: false }),
+      niName: s.niName, onNiName: (e) => this.setState({ niName: e.target.value }),
+      niPrice: s.niDigits ? fmt(niCents) : '', onNiPrice: (e) => this.setState({ niDigits: e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 9) }),
+      toggleNiSave: () => this.setState(x => ({ niSave: !x.niSave })), niCheckBg: s.niSave ? purple : '#FFFFFF', niCheckBorder: s.niSave ? purple : '#94A3B8',
+      niBtnBg: niValid ? purple : '#E2E8F0', niBtnFg: niValid ? '#FFFFFF' : '#64748B',
+      addNi: () => { if (!niValid) return; const it = { id: 'x' + Date.now(), name: s.niName.trim(), price: niCents }; this.addItem(it); this.setState({ niOpen: false, niName: '', niDigits: '' }); this.toast(s.niSave ? `${it.name} posto e guardado em Meus serviços e preços.` : `${it.name} posto no orçamento.`); },
+      hasLines: lines.length > 0, lines,
+
+      isQ3: sc === 'q3', q3Body: sc === 'q3' && !isLoading, q3, q3Items, editItems: () => this.back(), sig, goSign: () => this.go('sign', { inked: false, sgMethod: s.signed && s.savedSig ? ({ typed: 'TYPED_NAME', img: 'DRAWN_SIGNATURE', photo: 'PHOTO_SIGNATURE' })[s.savedSig.kind] : 'DRAWN_SIGNATURE', sgPhoto: !!s.savedSig && s.savedSig.kind === 'photo', sgSave: true }),
+      moreOpen: s.moreOpen, toggleMore: () => this.setState(x => ({ moreOpen: !x.moreOpen })), moreChevron: s.moreOpen ? 'chevron-up' : 'chevron-down', moreSummary: moreBits.join(' · '),
+      dPct: s.dType === 'PERCENT' ? { bg: purple, fg: '#FFFFFF' } : { bg: '#FFFFFF', fg: '#0A0A0F' }, dFix: s.dType === 'FIXED' ? { bg: purple, fg: '#FFFFFF' } : { bg: '#FFFFFF', fg: '#0A0A0F' },
+      setPct: () => this.setState({ dType: 'PERCENT', dDigits: '' }), setFix: () => this.setState({ dType: 'FIXED', dDigits: '' }),
+      dValue, dPlaceholder: s.dType === 'PERCENT' ? '0%' : 'R$ 0,00', onDiscount: (e) => this.setState({ dDigits: e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, s.dType === 'PERCENT' ? 2 : 8) }),
+      validityOpts: [7, 15, 30].map(d => Object.assign({ label: d + ' dias', pick: () => this.setState({ validity: d }) }, opt(s.validity === d))),
+      terms: s.terms, onTerms: (e) => this.setState({ terms: e.target.value }),
+
+      isSign: sc === 'sign' && !isLoading, sigRef: (el) => this.setupCanvas(el),
+      sgMethods: [['APPROVE_BUTTON', 'Sem assinatura', 'x-circle'], ['TYPED_NAME', 'Nome digitado', 'type'], ['DRAWN_SIGNATURE', 'Desenhar com o dedo', 'pen-line'], ['PHOTO_SIGNATURE', 'Foto da assinatura', 'camera']].map(([k, label, icon]) => { const on = s.sgMethod === k; return { label, icon, on, border: on ? purple : '#E2E8F0', bg: on ? '#F5F3FF' : '#FFFFFF', iconBg: on ? purple : '#F5F3FF', iconFg: on ? '#FFFFFF' : '#6D28D9', pick: () => this.setState({ sgMethod: k, inked: false }) }; }),
+      sgIsNone: s.sgMethod === 'APPROVE_BUTTON', sgIsTyped: s.sgMethod === 'TYPED_NAME', sgIsDraw: s.sgMethod === 'DRAWN_SIGNATURE', sgIsPhoto: s.sgMethod === 'PHOTO_SIGNATURE',
+      sgTyped: s.sgTyped, onSgTyped: (e) => this.setState({ sgTyped: e.target.value }), sgTypedPreview: s.sgTyped.trim() || 'Seu nome aqui',
+      sgNoPhoto: !s.sgPhoto, sgHasPhoto: s.sgPhoto, sgTakePhoto: () => { this.setState({ sgPhoto: true }); this.toast('Foto da assinatura pronta.'); }, sgGallery: () => { this.setState({ sgPhoto: true }); this.toast('Foto escolhida da galeria.'); }, sgRetake: () => this.setState({ sgPhoto: false }),
+      sgCanSave: s.sgMethod !== 'APPROVE_BUTTON', sgSave: s.sgSave, sgToggleSave: () => this.setState(x => ({ sgSave: !x.sgSave })), sgSaveBg: s.sgSave ? purple : '#FFFFFF', sgSaveBorder: s.sgSave ? purple : '#94A3B8',
+      isDone: sc === 'done', done,
+
+      isClients: sc === 'clients', clientsBody: sc === 'clients' && bodyOk, clientsCount: clientList.length + (clientList.length === 1 ? ' cliente' : ' clientes'),
+      goClientNew: () => this.go('clientNew', { ncName: '', ncPhone: '' }), clientsQ: s.clientsQ, onClientsQ: (e) => this.setState({ clientsQ: e.target.value }), clientCards, clientsNoMatch: !!cq && clientCards.length === 0,
+
+      isClient: sc === 'client', clientBody: sc === 'client' && bodyOk,
+      cd: { name: cdC.name, phone: cdC.phone, addr: cdC.addr, initials: initialsOf(cdC.name), first: first(cdC.name) },
+      cdNewQuote: () => this.go('q2', { clientId: cdC.id, items: [], stack: ['clients', 'client', 'q1'] }),
+      cdNewService: () => this.go('agNew', { na: { type: 'Instalação', client: CLIENTS.find(c => c.id === cdC.id) ? cdC.id : null, day: 'hoje', time: 630, dur: 60 } }),
+      cdCall: () => this.toast(`Ligando para ${first(cdC.name)}…`), cdWa: () => this.toast(`Abrindo o WhatsApp de ${first(cdC.name)}…`), cdEdit: () => this.toast('Edição completa fica no modo padrão.'),
+      cdHist, cdHasHist: cdHist.length > 0, cdNoHist: cdHist.length === 0, cdSeeAll: () => this.toast('Mostrando o histórico completo…'),
+      cdMoreOpen: s.cdMore, toggleCdMore: () => this.setState(x => ({ cdMore: !x.cdMore })), cdMoreChevron: s.cdMore ? 'chevron-up' : 'chevron-down',
+
+      isQuotes: sc === 'quotes', quotesBody: sc === 'quotes' && bodyOk, quoteSections, showHidden: () => this.toast('1 recusado e 1 vencido. Abra pelo modo padrão para corrigir.'),
+
+      isServices: sc === 'services', servicesBody: sc === 'services' && bodyOk, svcCards,
+      isRun: sc === 'run', runBody: sc === 'run' && bodyOk, run, runTasks, runPhotos: photos.map(p => ({ stage: p })), hasPhotos: photos.length > 0,
+      takePhoto: () => { const id = svcRun.id; this.setState(x => ({ photos: Object.assign({}, x.photos, { [id]: (x.photos[id] || []).concat([stage]) }) })); this.toast(`Foto guardada como "${stage}".`, this.undoWith(() => this.setState(x => ({ photos: Object.assign({}, x.photos, { [id]: (x.photos[id] || []).slice(0, -1) }) })))); },
+
+      isAgenda: sc === 'agenda', agendaTop: sc === 'agenda' && !isLoading && !isError, agendaBody: sc === 'agenda' && bodyOk, goAgNew: () => this.go('agNew', { na: { type: null, client: null, day: s.agDay, time: 630, dur: 60 } }),
+      dayChips, dayLabel: DAY_LABEL[s.agDay], agBlocks,
+      isAgNew: sc === 'agNew' && !isLoading, naTypes, naClients, naDays, naDurs, naTime: hhmm(na.time),
+      naTimeDec: () => setNa({ time: Math.max(360, na.time - 30) }), naTimeInc: () => setNa({ time: Math.min(1320, na.time + 30) }),
+
+      isMoney: sc === 'money', moneyTop: sc === 'money' && !isLoading && !isError, moneyBody: sc === 'money' && bodyOk, money, dues: duesV, hasDues: duesV.length > 0, paidList, hasPaid: paidList.length > 0,
+
+      isMenu: sc === 'menu' && !isLoading && !isError,
+      menuItems: [
+        { icon: 'clipboard-list', label: 'Serviços de hoje', sub: home.services + ' para fazer', go: () => this.go('services') },
+        { icon: 'dollar-sign', label: 'Financeiro', sub: 'Recebido e a receber', go: () => this.go('money') },
+        { icon: 'package', label: 'Meus serviços e preços', sub: CATALOG.length + ' itens', go: () => this.toast('Lista completa: abre no modo padrão.') },
+        { icon: 'settings', label: 'Minha empresa', sub: 'Nome, logo e dados do PDF', go: () => this.toast('Abre no modo padrão.') },
+        { icon: 'star', label: 'Meu plano', sub: 'Orcivo Solo', go: () => this.toast('Abre no modo padrão.') },
+      ],
+      easyText: s.easy ? 'Ligado neste aparelho' : 'Desligado', easyTrack: s.easy ? purple : '#CBD5E1', easyJustify: s.easy ? 'flex-end' : 'flex-start',
+      easyToggle: () => { const was = s.easy; this.setState({ easy: !was }); this.toast(was ? 'Modo padrão ligado neste aparelho.' : 'Modo fácil ligado neste aparelho.', this.undoWith(() => this.setState({ easy: was }))); },
+      logout: () => this.toast('Você saiu da conta.'),
+    };
+  }
+}
+</script>
+</body>
+</html>

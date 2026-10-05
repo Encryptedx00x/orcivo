@@ -3,7 +3,7 @@ import { TopBar } from '../../components/TopBar';
 import { SubscriptionBanner } from '../../components/SubscriptionBanner';
 import { AuthProvider, type AuthState } from '../../components/AuthProvider';
 import { MobileSidebarProvider } from '../../components/MobileSidebar';
-import { EasyBottomNav } from '../../components/EasyMode';
+import { EasyModeGlue } from '../../components/EasyMode';
 import { apiFetch } from '../../lib/api';
 
 interface SessionSummary {
@@ -35,7 +35,7 @@ export default async function AppLayout({
             </main>
           </div>
         </div>
-        <EasyBottomNav />
+        <EasyModeGlue />
       </MobileSidebarProvider>
     </AuthProvider>
   );

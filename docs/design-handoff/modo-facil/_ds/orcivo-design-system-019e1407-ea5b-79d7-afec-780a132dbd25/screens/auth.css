@@ -1,0 +1,251 @@
+/* Orcivo — Auth & Onboarding shared styles
+ * Builds on colors_and_type.css. Mobile + Web auth screens.
+ */
+
+/* ─────────────  Mobile auth ───────────── */
+.auth-m {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: #fff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.auth-m-top {
+  padding: 24px 24px 8px;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 48px;
+}
+.auth-m-back {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--slate-700); margin-left: -8px;
+}
+.auth-m-back:hover { background: var(--slate-100); }
+.auth-m-body { padding: 8px 24px 24px; flex: 1; overflow-y: auto; }
+
+.auth-m-logo {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--purple-700) 100%);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+}
+.auth-m-logo svg { color: #fff; }
+
+.auth-m h1 {
+  font-size: 28px; line-height: 34px; font-weight: 700;
+  letter-spacing: -0.02em; margin: 0 0 8px;
+}
+.auth-m .sub {
+  font-size: 15px; line-height: 22px; color: var(--fg-3);
+  margin: 0 0 28px;
+}
+
+.auth-field { margin-bottom: 14px; }
+.auth-field .lbl {
+  font-size: 12px; color: var(--fg-2); font-weight: 600;
+  margin-bottom: 6px; display: block;
+  letter-spacing: 0.02em;
+}
+.auth-input-wrap {
+  position: relative; display: flex; align-items: center;
+}
+.auth-input-wrap .leading,
+.auth-input-wrap .trailing {
+  position: absolute; color: var(--slate-400);
+  display: flex; align-items: center;
+}
+.auth-input-wrap .leading { left: 14px; }
+.auth-input-wrap .trailing { right: 12px; cursor: pointer; }
+.auth-input-wrap .trailing:hover { color: var(--ink); }
+.auth-input {
+  height: 52px; width: 100%;
+  border: 1px solid var(--border-1); border-radius: 12px;
+  padding: 0 14px; font-size: 16px; background: #fff;
+  font-family: inherit;
+}
+.auth-input.has-leading { padding-left: 44px; }
+.auth-input.has-trailing { padding-right: 44px; }
+.auth-input:focus { outline: none; border-color: var(--purple-600); box-shadow: var(--shadow-focus); }
+.auth-input.is-error { border-color: var(--danger); }
+.auth-helper { font-size: 12px; color: var(--fg-3); margin-top: 6px; }
+.auth-helper.error { color: var(--danger); }
+
+.auth-link {
+  color: var(--purple-700); font-weight: 600; font-size: 14px;
+  cursor: pointer;
+}
+.auth-link:hover { color: var(--purple-800); }
+
+.auth-btn {
+  height: 52px; width: 100%;
+  border-radius: 12px; border: 0; cursor: pointer;
+  font-weight: 600; font-size: 16px; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.auth-btn.primary { background: var(--purple-600); color: #fff; }
+.auth-btn.primary:hover { background: var(--purple-700); }
+.auth-btn.outline { background: #fff; color: var(--ink); border: 1px solid var(--border-1); }
+.auth-btn.ghost { background: transparent; color: var(--ink); }
+.auth-btn[disabled], .auth-btn.disabled { opacity: 0.5; pointer-events: none; }
+
+.auth-divider { display: flex; align-items: center; gap: 12px; color: var(--fg-3); font-size: 12px; margin: 16px 0; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-1); }
+
+.auth-footer-link {
+  text-align: center; font-size: 14px; color: var(--fg-2);
+  margin-top: 24px;
+}
+.auth-tos {
+  font-size: 12px; color: var(--fg-3); line-height: 18px;
+  text-align: center; padding: 16px 8px 0;
+}
+
+.pwd-strength { display: flex; gap: 4px; margin-top: 8px; }
+.pwd-bar { flex: 1; height: 3px; border-radius: 3px; background: var(--slate-200); }
+.pwd-bar.on { background: var(--success); }
+.pwd-bar.warn { background: var(--warning); }
+.pwd-bar.bad { background: var(--danger); }
+
+.auth-check {
+  display: flex; gap: 10px; padding: 8px 0; cursor: pointer;
+  font-size: 13px; color: var(--fg-2); line-height: 18px;
+}
+.auth-check .box {
+  width: 20px; height: 20px; border: 1.5px solid var(--slate-300);
+  border-radius: 6px; flex-shrink: 0; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-check.checked .box { background: var(--purple-600); border-color: var(--purple-600); color: #fff; }
+
+.company-row {
+  display: flex; gap: 14px; padding: 14px;
+  border: 1px solid var(--border-1); border-radius: 14px;
+  background: #fff; align-items: center;
+  margin-bottom: 10px; cursor: pointer;
+}
+.company-row:hover { border-color: var(--purple-300); background: var(--purple-50); }
+.company-row.selected { border-color: var(--purple-600); background: var(--purple-50); box-shadow: var(--shadow-focus); }
+.company-logo {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--purple-100); color: var(--purple-800);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px; flex-shrink: 0;
+}
+.company-logo.dark { background: var(--ink); color: #fff; }
+.company-logo.soft { background: var(--slate-100); color: var(--ink); }
+
+.add-company-row {
+  display: flex; gap: 14px; padding: 14px;
+  border: 1.5px dashed var(--border-1); border-radius: 14px;
+  background: transparent; align-items: center; cursor: pointer;
+  color: var(--purple-700);
+}
+.add-company-row:hover { border-color: var(--purple-600); background: var(--purple-50); }
+
+/* segmented toggle */
+.seg {
+  display: grid; grid-template-columns: 1fr 1fr;
+  background: var(--slate-100); border-radius: 12px; padding: 4px;
+  margin-bottom: 16px;
+}
+.seg button {
+  height: 40px; border: 0; background: transparent; border-radius: 9px;
+  font-weight: 600; font-size: 14px; color: var(--fg-2); cursor: pointer;
+  font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap; padding: 0 10px;
+}
+.seg button.active { background: #fff; color: var(--ink); box-shadow: var(--shadow-card); }
+
+/* mini "code" box for forgot-password success */
+.code-card {
+  border: 1px solid var(--border-1); border-radius: 14px;
+  background: var(--slate-50); padding: 16px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.code-card .ic {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--success-bg); color: var(--success);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* progress dots for wizards */
+.wiz-dots { display: flex; gap: 6px; justify-content: center; padding: 6px 0 20px; }
+.wiz-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate-200); }
+.wiz-dot.active { background: var(--purple-600); width: 22px; border-radius: 4px; }
+.wiz-dot.done { background: var(--purple-300); }
+
+/* ─────────────  Web auth ───────────── */
+.aw-shell {
+  display: grid; grid-template-columns: 520px 1fr;
+  width: 100%; height: 100%; background: #fff;
+  font-family: var(--font-sans); color: var(--ink);
+}
+.aw-art {
+  background: linear-gradient(155deg, #4C1D95 0%, #6D28D9 45%, #0A0A0F 100%);
+  position: relative; overflow: hidden; padding: 48px;
+  color: #fff; display: flex; flex-direction: column;
+}
+.aw-art::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(167,139,250,0.32) 0%, transparent 50%);
+  pointer-events: none;
+}
+.aw-art-mark {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: rgba(255,255,255,0.1); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1;
+}
+.aw-art-words { margin-top: auto; position: relative; z-index: 1; }
+.aw-art-words h2 { font-size: 38px; line-height: 46px; font-weight: 700; letter-spacing: -0.02em; max-width: 380px; margin: 0 0 12px; color: #fff !important; }
+.aw-art-words p { font-size: 16px; line-height: 24px; color: rgba(255,255,255,0.78) !important; max-width: 360px; margin: 0; }
+.aw-art-grid {
+  position: absolute; inset: 0; opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 75%);
+}
+.aw-art-quote {
+  position: relative; z-index: 1; margin-top: 32px;
+  padding: 18px; border-radius: 14px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(6px); max-width: 420px;
+}
+.aw-art-quote .who { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.aw-art-quote .who .av { width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.aw-art-quote p { font-size: 14px; line-height: 22px; color: rgba(255,255,255,0.92); margin: 0; }
+
+.aw-form-col { display: flex; flex-direction: column; padding: 32px 48px; overflow-y: auto; }
+.aw-form-top { display: flex; align-items: center; justify-content: space-between; }
+.aw-form-top .mini-link { font-size: 13px; color: var(--fg-3); }
+.aw-form-top .mini-link a { color: var(--purple-700); font-weight: 600; }
+.aw-form-center { max-width: 380px; width: 100%; margin: auto; padding: 32px 0; }
+.aw-form-center h1 { font-size: 30px; line-height: 36px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+.aw-form-center .sub { font-size: 15px; color: var(--fg-3); margin: 0 0 28px; }
+.aw-form-foot { font-size: 12px; color: var(--fg-3); text-align: center; padding-top: 16px; }
+
+.aw-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* wizard stepper for web "criar empresa" */
+.aw-steps { display: flex; gap: 0; align-items: center; margin-bottom: 28px; }
+.aw-step { display: flex; align-items: center; gap: 10px; }
+.aw-step .num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--slate-100); color: var(--fg-3);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 13px;
+}
+.aw-step.active .num { background: var(--purple-600); color: #fff; }
+.aw-step.done .num { background: var(--success); color: #fff; }
+.aw-step .label { font-size: 13px; color: var(--fg-3); font-weight: 500; }
+.aw-step.active .label { color: var(--ink); font-weight: 600; }
+.aw-step-sep { flex: 1; height: 1px; background: var(--border-1); margin: 0 16px; min-width: 24px; }

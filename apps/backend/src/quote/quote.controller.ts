@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,7 +11,10 @@ import {
   Query,
   Req,
   StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { MemberRole } from '@prisma/client';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { QuoteCreateSchema, QuoteUpdateSchema } from '@orcivo/shared-types';
@@ -82,6 +86,25 @@ export class QuoteController {
       applySignature === true,
       req.role,
     );
+  }
+
+  /**
+   * Send with a technician signature used only on this quote (not saved for reuse).
+   * Multipart so photo signatures fit; same 2MB/type checks as PUT /users/me/signature.
+   */
+  @Post(':id/send/signature-once')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  sendWithOneOffSignature(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Arquivo de assinatura obrigatório.');
+    return this.quoteService.send(id, req.companyId, req.user.userId, false, req.role, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+    });
   }
 
   @Patch(':id/cancel')

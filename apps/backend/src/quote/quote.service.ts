@@ -367,11 +367,25 @@ export class QuoteService {
     userId: string,
     quoteId: string,
     applySignature: boolean,
+    oneOff?: { buffer: Buffer; mimetype: string },
   ): Promise<{ key: string; dataUri: string } | null> {
     if (!applySignature) return null;
-    const buffer = await this.usersService.getSignatureBuffer(companyId, userId);
-    if (!buffer) return null;
-    const mime = imageMime(buffer);
+    let buffer: Buffer | null;
+    let mime: string;
+    if (oneOff) {
+      // "Usar só neste orçamento": validated like the reusable signature, never saved to the user.
+      this.storage.assertUploadable(oneOff.buffer, oneOff.mimetype, 2 * 1024 * 1024, [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+      ]);
+      buffer = oneOff.buffer;
+      mime = oneOff.mimetype;
+    } else {
+      buffer = await this.usersService.getSignatureBuffer(companyId, userId);
+      if (!buffer) return null;
+      mime = imageMime(buffer);
+    }
     const key = `${companyId}/quotes/${quoteId}/technician-signature`;
     await this.storage.uploadBuffer(PHOTO_BUCKET, key, buffer, mime);
     return { key, dataUri: toDataUri(buffer, mime) };
@@ -394,6 +408,7 @@ export class QuoteService {
     userId: string,
     applySignature = false,
     role?: MemberRole,
+    oneOffSignature?: { buffer: Buffer; mimetype: string },
   ) {
     const quote = await this.findOne(id, companyId);
     const fromStatus = quote.status as QuoteStatus;
@@ -405,7 +420,8 @@ export class QuoteService {
       companyId,
       userId,
       id,
-      applySignature,
+      applySignature || !!oneOffSignature,
+      oneOffSignature,
     );
 
     // Gerar PDF e salvar no MinIO. PB1-P12/AC2: o PDF anexado ao envio carimba

@@ -221,73 +221,9 @@ export default async function DashboardPage(): Promise<JSX.Element> {
     },
   ];
 
-  const next = s?.upcoming[0];
-  // Modo fácil (phones): a bento grid with few words and big targets.
-  const easy = (
-    <div className="ov-bento">
-      <div className="ov-bento-hello">
-        <strong>
-          {greet}, {firstName}
-        </strong>
-      </div>
-      <Link href="/orcamentos/novo" className="ov-bento-tile ov-bento-cta ov-bento-wide">
-        <Plus size={28} aria-hidden="true" />
-        <strong>Novo orçamento</strong>
-      </Link>
-      <Link href="/agenda" className="ov-bento-tile">
-        <Calendar size={22} aria-hidden="true" />
-        <span className="ov-bento-value">{k?.agenda_today ?? 0}</span>
-        <span className="ov-bento-label">Hoje</span>
-        {next && (
-          <span className="ov-bento-sub">
-            {new Date(next.starts_at).toLocaleTimeString('pt-BR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}{' '}
-            · {next.title}
-          </span>
-        )}
-      </Link>
-      <Link href="/ordens-de-servico" className="ov-bento-tile">
-        <ClipboardList size={22} aria-hidden="true" />
-        <span className="ov-bento-value">{k?.os_pending ?? 0}</span>
-        <span className="ov-bento-label">Serviços</span>
-      </Link>
-      <Link href="/orcamentos" className="ov-bento-tile">
-        <FileText size={22} aria-hidden="true" />
-        <span className="ov-bento-value">{k?.quotes_pending ?? 0}</span>
-        <span className="ov-bento-label">Orçamentos</span>
-      </Link>
-      <Link href="/financeiro" className={`ov-bento-tile${overdue > 0 ? ' ov-bento-alert' : ''}`}>
-        <DollarSign size={22} aria-hidden="true" />
-        <span className="ov-bento-value ov-bento-money">
-          {formatMoney(k?.receivables_pending_total ?? '0')}
-        </span>
-        <span className="ov-bento-label">
-          {overdue > 0 ? `${overdue} atrasado${overdue > 1 ? 's' : ''}` : 'A receber'}
-        </span>
-      </Link>
-      <div className="ov-bento-shortcuts ov-bento-wide">
-        {(
-          [
-            [Users, 'Cliente', '/clientes/novo'],
-            [ClipboardList, 'Serviço', '/ordens-de-servico/novo'],
-            [Calendar, 'Agenda', '/agenda'],
-            [DollarSign, 'Recebido', '/financeiro'],
-          ] as const
-        ).map(([Icon, label, href]) => (
-          <Link key={label} href={href} className="ov-bento-shortcut">
-            <Icon size={26} aria-hidden="true" />
-            {label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="ov-page" style={{ maxWidth: 1440 }}>
-      <DashboardLayout easy={easy}>
+      <DashboardLayout>
         <div className="ov-page-header">
           <div>
             <h1

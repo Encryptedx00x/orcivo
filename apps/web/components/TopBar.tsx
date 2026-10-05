@@ -469,30 +469,30 @@ export function TopBar(): JSX.Element {
                   <Icon size={16} aria-hidden="true" /> {label}
                 </button>
               ))}
-              <div className="ov-show-mobile">
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={easyOn}
-                  onClick={() => {
-                    setEasy(!easyOn);
-                    setMenuOpen(false);
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={easyOn}
+                onClick={() => {
+                  setEasy(!easyOn);
+                  setMenuOpen(false);
+                  if (!easyOn) router.push('/facil');
+                }}
+                style={menuItem}
+              >
+                <Smile size={16} aria-hidden="true" /> Modo fácil
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: easyOn ? '#6D28D9' : '#64748B',
                   }}
-                  style={menuItem}
                 >
-                  <Smile size={16} aria-hidden="true" /> Modo fácil
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: easyOn ? '#6D28D9' : '#64748B',
-                    }}
-                  >
-                    {easyOn ? 'Ligado' : 'Desligado'}
-                  </span>
-                </button>
-              </div>
+                  {easyOn ? 'Ligado' : 'Desligado'}
+                </span>
+              </button>
+
               <button
                 type="button"
                 role="menuitem"

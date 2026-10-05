@@ -1,0 +1,129 @@
+/* Orcivo — System states shared styles (Lote C) */
+
+/* full-screen modal/sheet stage to present a screen with overlay underneath */
+.st-stage {
+  position: relative;
+  height: 100%; width: 100%;
+  background: var(--slate-50);
+  display: flex; align-items: stretch; justify-content: stretch;
+  overflow: hidden;
+}
+.st-stage.dim::after {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(10,10,15,0.42);
+  pointer-events: none; z-index: 1;
+}
+
+/* Mobile bottom sheet */
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: #fff;
+  border-top-left-radius: 22px; border-top-right-radius: 22px;
+  padding: 8px 20px 28px;
+  z-index: 2;
+  box-shadow: 0 -16px 40px rgba(15,23,42,0.18);
+}
+.sheet .grabber { width: 36px; height: 4px; border-radius: 4px; background: var(--slate-300); margin: 6px auto 14px; }
+.sheet h2 { font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 6px; }
+.sheet .sub { font-size: 14px; color: var(--fg-2); line-height: 20px; margin: 0 0 16px; }
+
+/* Mobile faux behind-content for blocked plan */
+.mock-bg-list {
+  padding: 22px 16px 0; opacity: 0.5;
+  filter: blur(2px);
+  font-family: var(--font-sans);
+}
+.mock-bg-list h1 { font-size: 22px; font-weight: 700; margin: 0 0 16px; }
+.mock-bg-list .row { background: #fff; border: 1px solid var(--border-1); border-radius: 14px; padding: 14px; display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.mock-bg-list .row .av { width: 40px; height: 40px; border-radius: 50%; background: var(--slate-100); }
+.mock-bg-list .row .l1 { height: 12px; width: 60%; background: var(--slate-200); border-radius: 4px; margin-bottom: 6px; }
+.mock-bg-list .row .l2 { height: 10px; width: 40%; background: var(--slate-100); border-radius: 4px; }
+
+/* Web modal */
+.web-modal {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 480px; background: #fff; border-radius: 16px;
+  box-shadow: var(--shadow-modal); z-index: 2;
+  overflow: hidden;
+}
+.web-modal-head { padding: 24px 24px 0; display: flex; gap: 16px; align-items: flex-start; }
+.web-modal-head .ic {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.web-modal-body { padding: 16px 24px 0; }
+.web-modal-foot { padding: 16px 24px 24px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border-2); margin-top: 16px; }
+
+/* Web app mockup behind modal */
+.mock-app {
+  display: grid; grid-template-columns: 220px 1fr;
+  width: 100%; height: 100%;
+  opacity: 0.65;
+}
+.mock-app .sb { background: #fff; border-right: 1px solid var(--border-1); padding: 16px; }
+.mock-app .sb .b { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg,#0A0A0F,#6D28D9); margin-bottom: 14px; }
+.mock-app .sb .item { height: 32px; margin-bottom: 6px; background: var(--slate-100); border-radius: 8px; }
+.mock-app .sb .item.active { background: var(--purple-50); }
+.mock-app .main { background: var(--slate-50); padding: 24px; }
+.mock-app .main .tb { height: 56px; background: #fff; border: 1px solid var(--border-1); border-radius: 12px; margin-bottom: 16px; }
+.mock-app .main .card { background: #fff; border: 1px solid var(--border-1); border-radius: 12px; padding: 16px; margin-bottom: 12px; height: 80px; }
+
+/* Status hero icon container */
+.status-hero {
+  width: 80px; height: 80px; border-radius: 24px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+}
+
+/* Banner inline */
+.inline-banner {
+  display: flex; gap: 12px; padding: 14px 16px;
+  border-radius: 12px; border: 1px solid;
+  align-items: flex-start;
+}
+.inline-banner .ib-ic { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.inline-banner.warn { background: var(--warning-bg); border-color: #FBD38D; }
+.inline-banner.warn .ib-ic { background: #FBD38D; color: #92400E; }
+.inline-banner.brand { background: var(--purple-50); border-color: var(--purple-200); }
+.inline-banner.brand .ib-ic { background: var(--purple-100); color: var(--purple-800); }
+
+/* Skeleton blocks */
+@keyframes sk-shimmer {
+  0% { background-position: -240px 0; }
+  100% { background-position: 240px 0; }
+}
+.sk {
+  background: linear-gradient(90deg, var(--slate-100) 0%, var(--slate-200) 50%, var(--slate-100) 100%);
+  background-size: 480px 100%; animation: sk-shimmer 1.6s linear infinite;
+  border-radius: 6px;
+}
+.sk-circle { border-radius: 50%; }
+.sk-pill { border-radius: 9999px; }
+.sk-card {
+  background: #fff; border: 1px solid var(--border-1); border-radius: 14px;
+  padding: 14px; display: flex; gap: 12px; align-items: flex-start;
+}
+
+/* Edit-lock callout */
+.lock-banner {
+  background: var(--warning-bg); border: 1px solid #FBD38D;
+  border-radius: 12px; padding: 12px 14px;
+  display: flex; gap: 12px; align-items: center;
+}
+.lock-banner .ic { width: 32px; height: 32px; border-radius: 8px; background: #FBD38D; color: #92400E; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lock-banner .who { font-size: 13px; color: var(--slate-800); }
+.lock-banner .who strong { color: var(--ink); }
+
+/* Status web fullscreen */
+.web-fs {
+  background: var(--slate-50); width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-sans);
+}
+.web-fs-card {
+  width: 100%; max-width: 520px; background: #fff;
+  border: 1px solid var(--border-1); border-radius: 20px;
+  padding: 40px 36px; text-align: center;
+}
+.web-fs-card h1 { font-size: 24px; line-height: 30px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+.web-fs-card p { font-size: 15px; color: var(--fg-3); margin: 0 0 24px; line-height: 22px; }

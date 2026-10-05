@@ -45,15 +45,37 @@ export async function saveTechnicianSignature(
 export async function sendQuoteWithSignature(
   quoteId: string,
   applySignature: boolean,
+  /** Signature image (data URL) used only on this quote — not saved for reuse. */
+  oneOffSignature?: string,
 ): Promise<{ ok: true; quote: unknown } | { ok: false; message: string }> {
   const auth = authHeader();
   if (!auth['Authorization']) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
-  const res = await fetch(`${API_URL}/quotes/${quoteId}/send`, {
-    method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apply_signature: applySignature }),
-  });
+  let res: Response;
+  const oneOff = oneOffSignature
+    ? /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(oneOffSignature)
+    : null;
+  if (oneOffSignature && !oneOff) return { ok: false, message: 'Assinatura inválida.' };
+  if (oneOff) {
+    const form = new FormData();
+    const ext = oneOff[1] === 'image/jpeg' ? 'jpg' : oneOff[1] === 'image/webp' ? 'webp' : 'png';
+    form.append(
+      'file',
+      new Blob([Buffer.from(oneOff[2], 'base64')], { type: oneOff[1] }),
+      `assinatura.${ext}`,
+    );
+    res = await fetch(`${API_URL}/quotes/${quoteId}/send/signature-once`, {
+      method: 'POST',
+      headers: auth,
+      body: form,
+    });
+  } else {
+    res = await fetch(`${API_URL}/quotes/${quoteId}/send`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apply_signature: applySignature }),
+    });
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => null)) as { message?: string } | null;
     return { ok: false, message: err?.message ?? 'Erro ao enviar orçamento.' };
