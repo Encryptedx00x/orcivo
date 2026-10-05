@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { WorkOrderCreateDto, WorkOrderUpdateDto } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -358,19 +358,24 @@ export class WorkOrderService {
     return this.redis.incr(key);
   }
 
+  async assertCreatable(dto: WorkOrderCreateDto, companyId: string, quoteId?: string) {
+    await this.planLimitsService.enforceLimit(companyId, 'WORK_ORDERS_MONTH');
+    await this.ownership.assertCustomer(dto.customer_id, companyId);
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
+    await this.ownership.assertQuote(quoteId, companyId);
+  }
+
   async create(
     dto: WorkOrderCreateDto,
     companyId: string,
     userId: string,
     quoteId?: string,
     initialStatus: WorkOrderStatus = 'PENDING',
+    transaction?: Prisma.TransactionClient,
   ) {
-    await this.planLimitsService.enforceLimit(companyId, 'WORK_ORDERS_MONTH');
-    await this.ownership.assertCustomer(dto.customer_id, companyId);
-    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
-    await this.ownership.assertQuote(quoteId, companyId);
+    await this.assertCreatable(dto, companyId, quoteId);
     const number = await this.nextWorkOrderNumber(companyId);
-    return this.prisma.$transaction(async (tx) => {
+    const persist = async (tx: Prisma.TransactionClient) => {
       const workOrder = await tx.workOrder.create({
         data: {
           company_id: companyId,
@@ -401,7 +406,8 @@ export class WorkOrderService {
           (quoteId ? ' a partir de um orçamento aprovado' : ''),
       });
       return workOrder;
-    });
+    };
+    return transaction ? persist(transaction) : this.prisma.$transaction(persist);
   }
 
   async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole) {
@@ -426,7 +432,7 @@ export class WorkOrderService {
   }
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {
-    await this.findOne(id, companyId);
+    const workOrder = await this.findOne(id, companyId);
     await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
     const { status, ...rest } = dto;
     if (status) {
@@ -444,14 +450,22 @@ export class WorkOrderService {
         `Transição inválida via status: ${status}. Use as ações de domínio (iniciar, concluir, cancelar).`,
       );
     }
-    return this.prisma.workOrder.update({
-      where: { id },
+    if (workOrder.status === 'DONE' || workOrder.status === 'CANCELLED') {
+      throw new BadRequestException('Use a correção administrativa para alterar uma OS encerrada.');
+    }
+    if (rest.started_at !== undefined || rest.finished_at !== undefined) {
+      throw new BadRequestException(
+        'As datas de início e conclusão são definidas pelas ações da OS.',
+      );
+    }
+    const updated = await this.prisma.workOrder.updateMany({
+      where: { id, company_id: companyId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
       data: {
         ...rest,
         scheduled_at: rest.scheduled_at ? new Date(rest.scheduled_at) : undefined,
-        started_at: rest.started_at ? new Date(rest.started_at) : undefined,
-        finished_at: rest.finished_at ? new Date(rest.finished_at) : undefined,
       },
     });
+    if (updated.count !== 1) throw new ConflictException('A OS foi encerrada durante a edição.');
+    return this.findOne(id, companyId);
   }
 }

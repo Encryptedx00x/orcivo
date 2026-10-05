@@ -23,6 +23,7 @@ const mockPrisma = {
 };
 
 const mockTransaction = {
+  $queryRaw: jest.fn().mockResolvedValue([]),
   user: { update: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
 };
@@ -30,6 +31,7 @@ const mockTransaction = {
 const mockRedis = {
   setex: jest.fn(),
   get: jest.fn(),
+  getdel: jest.fn(),
   del: jest.fn(),
 };
 
@@ -106,21 +108,25 @@ describe('AuthService — forgotPassword / resetPassword', () => {
   });
 
   describe('resetPassword', () => {
-    it('Test 3: token válido — atualiza password_hash e chama redis.del', async () => {
-      mockRedis.get.mockResolvedValue('user-123');
+    it('Test 3: token válido — altera senha e revoga sessões na mesma transação', async () => {
+      mockRedis.getdel.mockResolvedValue('user-123');
       mockPrisma.user.update.mockResolvedValue({});
       mockRedis.del.mockResolvedValue(1);
 
       await service.resetPassword({ token: 'valid-uuid-token', new_password: 'NovaSenha123' });
 
-      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+      expect(mockTransaction.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'user-123' } }),
       );
-      expect(mockRedis.del).toHaveBeenCalledWith('pwd:reset:valid-uuid-token');
+      expect(mockTransaction.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { user_id: 'user-123', revoked: false },
+        data: { revoked: true },
+      });
+      expect(mockRedis.getdel).toHaveBeenCalledWith('pwd:reset:valid-uuid-token');
     });
 
     it('Test 4: token inválido (redis retorna null) — lança BadRequestException', async () => {
-      mockRedis.get.mockResolvedValue(null);
+      mockRedis.getdel.mockResolvedValue(null);
 
       await expect(
         service.resetPassword({ token: 'invalid-token', new_password: 'SenhaQualquer1' }),

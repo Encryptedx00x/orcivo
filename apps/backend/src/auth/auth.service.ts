@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import type { Prisma } from '@prisma/client';
 import {
   LEGAL_DOCS_VERSION,
   ForgotPasswordDto,
@@ -138,7 +139,17 @@ export class AuthService {
 
     if (!membership) throw new UnauthorizedException('Sem empresa associada');
 
-    const tokens = await this.issueTokens(user.id, user.email);
+    const tokens = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
+      const current = await tx.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { password_hash: true },
+      });
+      if (current.password_hash !== user.password_hash) {
+        throw new UnauthorizedException('Credenciais inválidas');
+      }
+      return this.issueTokens(user.id, user.email, tx);
+    });
     return {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
@@ -151,19 +162,25 @@ export class AuthService {
     userId: string,
     rawRefreshToken: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
-    const tokenHash = this.hashToken(rawRefreshToken);
-    const stored = await this.prisma.refreshToken.findFirst({
-      where: { user_id: userId, token_hash: tokenHash, revoked: false },
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize rotation with reset/logout. A refresh read before revocation
+      // must not issue a successor after revocation has committed.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      const stored = await tx.refreshToken.findFirst({
+        where: { user_id: userId, token_hash: this.hashToken(rawRefreshToken), revoked: false },
+      });
+      if (!stored || stored.expires_at < new Date()) throw new UnauthorizedException();
+      const claimed = await tx.refreshToken.updateMany({
+        where: { id: stored.id, revoked: false },
+        data: { revoked: true },
+      });
+      if (claimed.count !== 1) throw new UnauthorizedException();
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { email: true },
+      });
+      return this.issueTokens(userId, user.email, tx, stored.session_id);
     });
-    if (!stored || stored.expires_at < new Date()) throw new UnauthorizedException();
-
-    await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
-
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { email: true },
-    });
-    return this.issueTokens(userId, user.email);
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
@@ -185,18 +202,44 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
     const redisKey = `pwd:reset:${dto.token}`;
-    const userId = await this.redis.get(redisKey);
+    // Claim once, even when two reset requests arrive concurrently. If the DB
+    // fails, the user requests a new link rather than reusing a consumed token.
+    const userId = await this.redis.getdel(redisKey);
     if (!userId) throw new BadRequestException('Token inválido ou expirado');
 
     const hash = await argon2.hash(dto.new_password);
-    await this.prisma.user.update({ where: { id: userId }, data: { password_hash: hash } });
-    await this.redis.del(redisKey); // invalidar token após uso único
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      await tx.user.update({ where: { id: userId }, data: { password_hash: hash } });
+      await tx.refreshToken.updateMany({
+        where: { user_id: userId, revoked: false },
+        data: { revoked: true },
+      });
+    });
+  }
+
+  async logoutRefresh(userId: string, rawRefreshToken: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      const token = await tx.refreshToken.findFirst({
+        where: { user_id: userId, token_hash: this.hashToken(rawRefreshToken) },
+      });
+      if (!token || token.expires_at < new Date()) return;
+      // Include a just-rotated successor when refresh raced with logout.
+      await tx.refreshToken.updateMany({
+        where: { user_id: userId, session_id: token.session_id, revoked: false },
+        data: { revoked: true },
+      });
+    });
   }
 
   async logout(userId: string) {
-    await this.prisma.refreshToken.updateMany({
-      where: { user_id: userId, revoked: false },
-      data: { revoked: true },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      await tx.refreshToken.updateMany({
+        where: { user_id: userId, revoked: false },
+        data: { revoked: true },
+      });
     });
     await this.redis.del(`membership:${userId}`);
     await this.redis.del(`tenant:${userId}`);
@@ -282,7 +325,12 @@ export class AuthService {
     return { account, ...tokens };
   }
 
-  private async issueTokens(userId: string, email: string) {
+  private async issueTokens(
+    userId: string,
+    email: string,
+    tx: Prisma.TransactionClient = this.prisma,
+    sessionId: string = crypto.randomUUID(),
+  ) {
     const access_token = this.signAccess(userId, email);
     const refresh_token = this.signRefresh(userId, email);
     const tokenHash = this.hashToken(refresh_token);
@@ -290,8 +338,13 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    await this.prisma.refreshToken.create({
-      data: { user_id: userId, token_hash: tokenHash, expires_at: expiresAt },
+    await tx.refreshToken.create({
+      data: {
+        user_id: userId,
+        session_id: sessionId,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
     });
     return { access_token, refresh_token };
   }

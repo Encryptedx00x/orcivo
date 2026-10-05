@@ -83,6 +83,7 @@ const mockConfig = {
 const mockQueue = { add: jest.fn() };
 
 const mockStorage = {
+  deleteObject: jest.fn().mockResolvedValue(undefined),
   uploadBuffer: jest.fn((_bucket: string, objectName: string) => Promise.resolve(objectName)),
   resolveUrl: jest.fn((_bucket: string, stored: string | null) =>
     stored ? `https://minio.example.com/signed/${stored}?X-Amz-Signature=x` : null,
@@ -95,7 +96,10 @@ const mockStorage = {
   getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('PDF_BYTES')),
 };
 
-const mockWorkOrderService = { create: jest.fn().mockResolvedValue({ id: 'wo-1' }) };
+const mockWorkOrderService = {
+  assertCreatable: jest.fn().mockResolvedValue(undefined),
+  create: jest.fn().mockResolvedValue({ id: 'wo-1' }),
+};
 const mockPdfService = { generate: jest.fn().mockResolvedValue(Buffer.from('PDF')) };
 
 const ALL_STATUSES: QuoteStatus[] = [

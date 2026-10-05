@@ -41,5 +41,10 @@
   "packageManager": "pnpm@9.15.0",
   "dependencies": {
     "@prisma/client": "5.22.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@nestjs/platform-express>multer": "2.4.0"
+    }
   }
 }

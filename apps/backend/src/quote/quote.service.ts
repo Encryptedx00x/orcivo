@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  HttpException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -492,121 +493,137 @@ export class QuoteService {
 
   async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
     const quote = await this.getByApprovalToken(token);
-    // quote garantidamente tem: id, company_id, created_by_user_id, number, status, customer.id
-    // (garantido pelo select explicito em getByApprovalToken() — P05)
-
-    // Ação de domínio `aprovar` (AC1/AC5): só SENT pode ser aprovado. O link
-    // público de um orçamento já processado (aprovado, recusado, cancelado ou
-    // reaberto para edição) recebe um erro claro com a transição inválida —
-    // a condição `status: 'SENT'` no updateMany abaixo continua sendo a
-    // guarda autoritativa contra corrida concorrente.
     const approveSpec = this.assertApprovalAction(quote.status as QuoteStatus);
-
-    // Idempotencia via $transaction com count check (Pitfall 2 do RESEARCH.md)
-    const result = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.quote.updateMany({
-        where: { id: quote.id, status: 'SENT' }, // so atualiza se ainda SENT
-        data: { status: 'APPROVED' },
-      });
-      if (updated.count === 0) return null; // ja aprovado ou nao e SENT
-
-      // Registrar AuditLog dentro da mesma transaction (D2-14 / ADR-015).
-      // actorType CUSTOMER: aprovação feita pelo cliente via link público (sem sessão).
-      await this.auditService.record(tx, {
-        companyId: quote.company_id,
-        actorType: 'CUSTOMER',
-        action: 'quote.approved',
-        entityType: 'quote',
-        entityId: quote.id,
-        from: 'SENT',
-        to: 'APPROVED',
-        humanText:
-          `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente ` +
-          `via ${dto.approval_method} (IP ${ipAddress})`,
-      });
-
-      return updated;
-    });
-
-    if (!result) throw new ConflictException('Orcamento ja foi processado');
-
-    // Processar imagens de assinatura (desenhada ou foto) no mesmo storage privado.
-    let signatureKey: string | undefined;
-    if (
-      (dto.approval_method === 'DRAWN_SIGNATURE' || dto.approval_method === 'PHOTO_SIGNATURE') &&
-      dto.signature
-    ) {
-      const dataUrl = dto.signature.match(
-        /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/,
-      );
-      if (!dataUrl) throw new BadRequestException('Imagem de assinatura invÃ¡lida.');
-
-      const mimetype = dataUrl[1];
-      const buffer = Buffer.from(dataUrl[2].replace(/\s/g, ''), 'base64');
-      const allowedMimeTypes =
-        dto.approval_method === 'DRAWN_SIGNATURE'
-          ? ['image/png']
-          : ['image/png', 'image/jpeg', 'image/webp'];
-      this.storage.assertUploadable(buffer, mimetype, 2 * 1024 * 1024, allowedMimeTypes);
-      const extension = mimetype === 'image/jpeg' ? 'jpg' : mimetype.replace('image/', '');
-      const objectName = `${quote.company_id}/signatures/${crypto.randomUUID()}.${extension}`;
-      signatureKey = await this.storage.uploadBuffer(PHOTO_BUCKET, objectName, buffer, mimetype);
+    if (quote.valid_until && quote.valid_until.getTime() < Date.now()) {
+      throw new BadRequestException('O prazo de aprovação deste orçamento expirou.');
+    }
+    if (!quote.company.allowed_approval_methods.includes(dto.approval_method)) {
+      throw new BadRequestException('Método de aprovação não permitido pela empresa.');
     }
 
-    // Registrar QuoteApproval
-    await this.prisma.quoteApproval.create({
-      data: {
-        company_id: quote.company_id,
-        quote_id: quote.id,
-        approval_method: dto.approval_method,
-        typed_name: dto.typed_name,
-        signature_image_url: signatureKey,
-        ip_address: ipAddress,
-        user_agent: userAgent ?? '',
-      },
-    });
-
-    // Regenerar PDF com assinatura e sobrescrever o objeto MinIO
-    const company = await this.prisma.company.findUniqueOrThrow({
-      where: { id: quote.company_id },
-    });
-    // The PDF renderer fetches <Image src> — give it a short-lived signed URL.
-    const signatureSignedUrl = signatureKey
-      ? await this.storage.getSignedUrl(PHOTO_BUCKET, signatureKey)
-      : null;
-    const quoteForPdf = {
-      ...quote,
-      // PB1-P12/AC3: o PDF regenerado carimba o estado no instante desta
-      // geração — o orçamento acabou de ser aprovado (`aprovar` → APPROVED).
-      status: approveSpec.to,
-      customer_name: quote.customer.name,
-      approval: {
-        approval_method: dto.approval_method,
-        typed_name: dto.typed_name ?? null,
-        signature_image_url: signatureSignedUrl,
-      },
+    const workOrderInput = {
+      customer_id: quote.customer.id,
+      title: quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`,
     };
-    const pdfBuffer = await this.pdfService.generate(quoteForPdf, company);
-    const pdfObjectName = `${quote.company_id}/quotes/${quote.id}.pdf`;
-    const pdfKey = await this.storage.uploadBuffer(
-      PDF_BUCKET,
-      pdfObjectName,
-      pdfBuffer,
-      'application/pdf',
-    );
-    await this.prisma.quote.update({ where: { id: quote.id }, data: { pdf_url: pdfKey } });
+    await this.workOrderService.assertCreatable(workOrderInput, quote.company_id, quote.id);
+    const prepared: Array<{ bucket: string; key: string }> = [];
+    let transactionAttempted = false;
+    const uploadPrepared = async (bucket: string, key: string, buffer: Buffer, mime: string) => {
+      prepared.push({ bucket, key });
+      return this.storage.uploadBuffer(bucket, key, buffer, mime);
+    };
+    try {
+      // Prepare external artifacts before the database transition. Each attempt
+      // owns unique keys, so a failed/racing request cannot overwrite a valid PDF.
+      // On ambiguous commit failures retain private unreferenced artifacts rather
+      // than risk deleting an object referenced by a committed approval.
+      let signatureKey: string | undefined;
+      if (dto.approval_method === 'DRAWN_SIGNATURE' || dto.approval_method === 'PHOTO_SIGNATURE') {
+        const dataUrl = dto.signature?.match(
+          /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/,
+        );
+        if (!dataUrl) throw new BadRequestException('Imagem de assinatura inválida.');
+        const mimetype = dataUrl[1];
+        const buffer = Buffer.from(dataUrl[2].replace(/\s/g, ''), 'base64');
+        const allowedMimeTypes =
+          dto.approval_method === 'DRAWN_SIGNATURE'
+            ? ['image/png']
+            : ['image/png', 'image/jpeg', 'image/webp'];
+        this.storage.assertUploadable(buffer, mimetype, 2 * 1024 * 1024, allowedMimeTypes);
+        const extension = mimetype === 'image/jpeg' ? 'jpg' : mimetype.replace('image/', '');
+        signatureKey = await uploadPrepared(
+          PHOTO_BUCKET,
+          `${quote.company_id}/signatures/${crypto.randomUUID()}.${extension}`,
+          buffer,
+          mimetype,
+        );
+      }
 
-    // Criar WorkOrder automaticamente (D2-14)
-    const woTitle = quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`;
-    await this.workOrderService.create(
-      { customer_id: quote.customer.id, title: woTitle },
-      quote.company_id,
-      quote.created_by_user_id!,
-      quote.id,
-      'IN_PROGRESS',
-    );
+      const company = await this.prisma.company.findUniqueOrThrow({
+        where: { id: quote.company_id },
+      });
+      const signatureSignedUrl = signatureKey
+        ? await this.storage.getSignedUrl(PHOTO_BUCKET, signatureKey)
+        : null;
+      const pdfBuffer = await this.pdfService.generate(
+        {
+          ...quote,
+          status: approveSpec.to,
+          customer_name: quote.customer.name,
+          approval: {
+            approval_method: dto.approval_method,
+            typed_name: dto.typed_name ?? null,
+            signature_image_url: signatureSignedUrl,
+          },
+        },
+        company,
+      );
+      const pdfKey = await uploadPrepared(
+        PDF_BUCKET,
+        `${quote.company_id}/quotes/${quote.id}/approval-${crypto.randomUUID()}.pdf`,
+        pdfBuffer,
+        'application/pdf',
+      );
 
-    return { status: 'APPROVED' };
+      transactionAttempted = true;
+      await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.quote.updateMany({
+          where: {
+            id: quote.id,
+            company_id: quote.company_id,
+            approval_token: token,
+            status: 'SENT',
+            OR: [{ valid_until: null }, { valid_until: { gte: new Date() } }],
+            company: { allowed_approval_methods: { has: dto.approval_method } },
+          },
+          data: { status: 'APPROVED', pdf_url: pdfKey },
+        });
+        if (updated.count !== 1)
+          throw new ConflictException('Orçamento já processado ou link substituído.');
+        await tx.quoteApproval.create({
+          data: {
+            company_id: quote.company_id,
+            quote_id: quote.id,
+            approval_method: dto.approval_method,
+            typed_name: dto.typed_name,
+            signature_image_url: signatureKey,
+            ip_address: ipAddress,
+            user_agent: userAgent ?? '',
+          },
+        });
+        await this.workOrderService.create(
+          {
+            customer_id: quote.customer.id,
+            title: quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`,
+          },
+          quote.company_id,
+          quote.created_by_user_id!,
+          quote.id,
+          'IN_PROGRESS',
+          tx,
+        );
+        await this.auditService.record(tx, {
+          companyId: quote.company_id,
+          actorType: 'CUSTOMER',
+          action: 'quote.approved',
+          entityType: 'quote',
+          entityId: quote.id,
+          from: 'SENT',
+          to: 'APPROVED',
+          humanText: `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente via ${dto.approval_method} (IP ${ipAddress})`,
+        });
+      });
+      return { status: 'APPROVED' };
+    } catch (error) {
+      // Domain rejections roll back the DB transaction. An unknown commit
+      // failure can be ambiguous, so retain those objects for reconciliation.
+      if (!transactionAttempted || (error instanceof HttpException && error.getStatus() < 500)) {
+        await Promise.allSettled(
+          prepared.map(({ bucket, key }) => this.storage.deleteObject(bucket, key)),
+        );
+      }
+      throw error;
+    }
   }
 
   /**

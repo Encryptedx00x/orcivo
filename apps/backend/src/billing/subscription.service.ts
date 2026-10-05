@@ -147,6 +147,7 @@ export class SubscriptionService {
     // new charge is confirmed; the webhook then switches plans and cancels the old
     // resource. Re-subscribing to the same plan would only create a second charge.
     const isPaying = sub?.status === 'ACTIVE' || sub?.status === 'PAST_DUE';
+    const preserveEntitlement = sub !== null && sub.status !== 'TRIALING';
     if (isPaying && sub.plan_code === planCode) {
       throw new ConflictException('Você já assina este plano.');
     }
@@ -181,13 +182,17 @@ export class SubscriptionService {
           billingCycle: cycle,
           payerEmail: owner?.email,
           cardTokenId: options.cardTokenId,
-          externalReference: isPaying ? `${companyId}:${planCode}` : companyId,
+          externalReference: preserveEntitlement ? `${companyId}:${planCode}` : companyId,
           description: `Orcivo ${planCode} — ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
         });
         providerSubscriptionId = providerSubscription.id || null;
       } catch (err) {
         this.logger.error(`Falha ao criar subscription ${this.paymentProvider.provider}: ${err}`);
       }
+    }
+
+    if (!providerSubscriptionId) {
+      throw new BadGatewayException('Não foi possível criar o checkout. Tente novamente.');
     }
 
     // A previous checkout that was never paid must not keep a live charge (a card
@@ -205,8 +210,11 @@ export class SubscriptionService {
       }
     }
 
-    const updatedSub = isPaying
-      ? sub
+    const updatedSub = preserveEntitlement
+      ? await this.prisma.subscription.update({
+          where: { company_id: companyId },
+          data: { pending_provider_id: providerSubscriptionId, pending_plan_code: planCode },
+        })
       : await this.prisma.subscription.upsert({
           where: { company_id: companyId },
           create: {

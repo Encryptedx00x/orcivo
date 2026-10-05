@@ -84,6 +84,14 @@ export class AuthController {
     return this.authService.logout(user.userId);
   }
 
+  @Public()
+  @UseGuards(RefreshTokenGuard)
+  @HttpCode(200)
+  @Post('logout/refresh')
+  logoutRefresh(@Req() req: { user: { userId: string; refreshToken: string } }) {
+    return this.authService.logoutRefresh(req.user.userId, req.user.refreshToken);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('account')
   getAccount(@CurrentUser() user: { userId: string }) {

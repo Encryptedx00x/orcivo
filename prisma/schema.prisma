@@ -159,6 +159,7 @@ enum CustomerType {
 model RefreshToken {
   id         String   @id @default(uuid())
   user_id    String
+  session_id String   @default(dbgenerated("gen_random_uuid()::text"))
   token_hash String   @unique
   expires_at DateTime
   revoked    Boolean  @default(false)
@@ -403,6 +404,8 @@ model Subscription {
   status               SubscriptionStatus @default(ACTIVE)
   asaas_customer_id    String?
   asaas_sub_id         String?
+  pending_provider_id  String?
+  pending_plan_code    PlanCode?
   current_period_start DateTime?
   current_period_end   DateTime?
   grace_period_days    Int                @default(0)

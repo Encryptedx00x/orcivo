@@ -21,6 +21,7 @@ import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 
 const mockTx = {
+  quoteApproval: { create: jest.fn() },
   quote: { updateMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
   auditLog: { create: jest.fn() },
 };
@@ -72,6 +73,7 @@ const mockQueue = {
 };
 
 const mockStorage = {
+  deleteObject: jest.fn().mockResolvedValue(undefined),
   uploadBuffer: jest.fn((_bucket: string, objectName: string) => Promise.resolve(objectName)),
   resolveUrl: jest.fn((_bucket: string, stored: string | null) =>
     Promise.resolve(stored ? `https://minio.example.com/signed/${stored}?X-Amz-Signature=x` : null),
@@ -85,6 +87,7 @@ const mockStorage = {
 };
 
 const mockWorkOrderService = {
+  assertCreatable: jest.fn().mockResolvedValue(undefined),
   create: jest.fn().mockResolvedValue({ id: 'wo-1' }),
 };
 
@@ -925,6 +928,39 @@ describe('QuoteService', () => {
   });
 
   describe('approve()', () => {
+    it('recusa método não permitido antes de alterar o orçamento', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        ...quoteMock,
+        company: { allowed_approval_methods: ['DRAWN_SIGNATURE'] },
+      });
+      await expect(
+        service.approve(quoteToken, { approval_method: 'APPROVE_BUTTON' }, '127.0.0.1', 'fixture'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('assinatura inválida não muda status nem grava aprovação/auditoria', async () => {
+      await expect(
+        service.approve(
+          quoteToken,
+          { approval_method: 'DRAWN_SIGNATURE', signature: 'not-an-image' },
+          '127.0.0.1',
+          'fixture',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('falha de PDF não muda o orçamento nem cria OS', async () => {
+      mockPdfService.generate.mockRejectedValueOnce(new Error('fixture PDF failure'));
+      await expect(
+        service.approve(quoteToken, { approval_method: 'APPROVE_BUTTON' }, '127.0.0.1', 'fixture'),
+      ).rejects.toThrow('fixture PDF failure');
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+      expect(mockWorkOrderService.create).not.toHaveBeenCalled();
+    });
+
     const quoteToken = 'valid-token';
     const quoteMock = {
       id: 'q1',
@@ -935,6 +971,14 @@ describe('QuoteService', () => {
       status: 'SENT',
       valid_until: null,
       approval_token: quoteToken,
+      company: {
+        allowed_approval_methods: [
+          'APPROVE_BUTTON',
+          'TYPED_NAME',
+          'DRAWN_SIGNATURE',
+          'PHOTO_SIGNATURE',
+        ],
+      },
       total: '200.00',
       subtotal: '200.00',
       discount_type: 'PERCENT',
@@ -946,7 +990,7 @@ describe('QuoteService', () => {
     beforeEach(() => {
       mockRedis.get.mockResolvedValue('q1');
       mockPrisma.quote.findFirst.mockResolvedValue(quoteMock);
-      mockPrisma.quoteApproval.create.mockResolvedValue({ id: 'approval-1' });
+      mockTx.quoteApproval.create.mockResolvedValue({ id: 'approval-1' });
       mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
       mockTx.auditLog.create.mockResolvedValue({});
       mockPrisma.$transaction.mockImplementation(
@@ -960,7 +1004,14 @@ describe('QuoteService', () => {
 
       expect(result).toEqual({ status: 'APPROVED' });
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'q1', status: 'SENT' } }),
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'q1',
+            company_id: 'comp-1',
+            approval_token: quoteToken,
+            status: 'SENT',
+          }),
+        }),
       );
       expect(mockAudit.record).toHaveBeenCalledWith(
         mockTx,
@@ -972,7 +1023,7 @@ describe('QuoteService', () => {
           actorType: 'CUSTOMER',
         }),
       );
-      expect(mockPrisma.quoteApproval.create).toHaveBeenCalled();
+      expect(mockTx.quoteApproval.create).toHaveBeenCalled();
       expect(mockWorkOrderService.create).toHaveBeenCalled();
     });
 
@@ -1024,7 +1075,7 @@ describe('QuoteService', () => {
         expect.any(Buffer),
         'image/jpeg',
       );
-      expect(mockPrisma.quoteApproval.create).toHaveBeenCalledWith(
+      expect(mockTx.quoteApproval.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ approval_method: 'PHOTO_SIGNATURE' }),
         }),
@@ -1173,6 +1224,7 @@ describe('QuoteService', () => {
 describe('QuoteExpiryProcessor', () => {
   let prisma: typeof mockPrisma;
   const txMock = {
+    quoteApproval: { create: jest.fn() },
     quote: { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() },
     auditLog: { create: jest.fn() },
   };

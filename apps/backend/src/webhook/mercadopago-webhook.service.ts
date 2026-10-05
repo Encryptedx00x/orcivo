@@ -157,12 +157,14 @@ export class MercadoPagoWebhookService {
     switch (resource.status) {
       case 'ACTIVE': {
         // A stale resource (not the one currently tracked) must not resurrect a cancelled sub.
-        if (!isCurrentResource && sub.status === 'CANCELLED') return;
+        const isPendingCheckout =
+          sub.pending_provider_id === resource.id && !!sub.pending_plan_code;
         // Plan change checkout (`companyId:PLAN`) confirmed: adopt the new resource
         // and stop the old recurring charge.
         const refPlan = resource.externalReference?.split(':')[1] as PlanCode | undefined;
-        const switchTo =
-          !isCurrentResource && refPlan && refPlan !== sub.plan_code ? refPlan : null;
+        if (!isCurrentResource && !isPendingCheckout && (sub.status === 'CANCELLED' || refPlan))
+          return;
+        const switchTo = isPendingCheckout ? sub.pending_plan_code : null;
         if (switchTo && sub.asaas_sub_id) {
           try {
             await this.mercadoPago.cancelSubscription(sub.asaas_sub_id);
@@ -177,7 +179,15 @@ export class MercadoPagoWebhookService {
             status: 'ACTIVE',
             past_due_at: null,
             blocked_at: null,
-            ...(switchTo ? { plan_code: switchTo, asaas_sub_id: resource.id } : {}),
+            ...(switchTo
+              ? {
+                  plan_code: switchTo,
+                  asaas_sub_id: resource.id,
+                  cancelled_at: null,
+                  pending_provider_id: null,
+                  pending_plan_code: null,
+                }
+              : {}),
           },
         });
         await tx.company.update({

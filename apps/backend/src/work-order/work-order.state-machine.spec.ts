@@ -66,6 +66,7 @@ describe('WorkOrderService — state machine (P-01)', () => {
       async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx),
     );
     mockTx.workOrder.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.workOrder.updateMany.mockResolvedValue({ count: 1 });
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkOrderService,
@@ -529,6 +530,22 @@ describe('WorkOrderService — state machine (P-01)', () => {
   // ── alias legado PATCH {status} (compatibilidade mobile) ──────────────────
 
   describe('update() — dispatch de status para ações de domínio', () => {
+    it.each(['DONE', 'CANCELLED'])('nega edição genérica de OS %s', async (status) => {
+      mockPrisma.workOrder.findFirst.mockResolvedValue({ ...pendingWo, status });
+      await expect(
+        service.update('wo-1', { title: 'adulterado' }, 'comp-1', 'tech'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.workOrder.update).not.toHaveBeenCalled();
+      expect(mockPrisma.workOrder.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('não permite forjar datas de início e conclusão pelo PATCH', async () => {
+      mockPrisma.workOrder.findFirst.mockResolvedValue(pendingWo);
+      await expect(
+        service.update('wo-1', { finished_at: new Date().toISOString() }, 'comp-1', 'tech'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('status IN_PROGRESS roteia para iniciar (mesma validação + auditoria)', async () => {
       mockCurrentWo({ status: 'PENDING' });
       mockUpdatedWo('IN_PROGRESS');
@@ -568,7 +585,7 @@ describe('WorkOrderService — state machine (P-01)', () => {
 
       await service.update('wo-1', { title: 'novo título' } as never, 'comp-1', 'user-1');
 
-      expect(mockPrisma.workOrder.update).toHaveBeenCalled();
+      expect(mockPrisma.workOrder.updateMany).toHaveBeenCalled();
       expect(mockAudit.record).not.toHaveBeenCalled();
     });
   });

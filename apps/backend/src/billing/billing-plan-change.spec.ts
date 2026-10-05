@@ -23,6 +23,10 @@ function checkoutHarness(existing: Record<string, unknown> | null) {
         row = row ? { ...row, ...update } : { ...create };
         return row;
       }),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        row = { ...row, ...data };
+        return row;
+      }),
     },
     subscriptionPayment: { upsert: jest.fn() },
   };
@@ -46,6 +50,31 @@ const paidSolo = {
 };
 
 describe('Checkout de quem já paga', () => {
+  it.each(['BLOCKED', 'CANCELLED'])(
+    'preserva %s enquanto o novo checkout ainda não foi pago',
+    async (status) => {
+      const { service, provider, getRow } = checkoutHarness({ ...paidSolo, status });
+      await service.createCheckout(COMPANY_ID, 'MAIS', 'MONTHLY');
+      expect(getRow()).toMatchObject({ status, plan_code: 'SOLO', asaas_sub_id: 'old_sub' });
+      expect(provider.createSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({ externalReference: COMPANY_ID + ':MAIS' }),
+      );
+    },
+  );
+
+  it('falha do provedor não libera empresa bloqueada nem persiste checkout fictício', async () => {
+    const { service, provider, getRow, prisma } = checkoutHarness({
+      ...paidSolo,
+      status: 'BLOCKED',
+    });
+    provider.createSubscription.mockRejectedValueOnce(new Error('fixture unavailable'));
+    await expect(service.createCheckout(COMPANY_ID, 'SOLO', 'MONTHLY')).rejects.toMatchObject({
+      status: 502,
+    });
+    expect(getRow()).toMatchObject({ status: 'BLOCKED', asaas_sub_id: 'old_sub' });
+    expect(prisma.subscription.upsert).not.toHaveBeenCalled();
+  });
+
   it('recusa assinar de novo o mesmo plano (evita segunda cobrança)', async () => {
     const { service, provider } = checkoutHarness(paidSolo);
     await expect(service.createCheckout(COMPANY_ID, 'SOLO', 'MONTHLY')).rejects.toBeInstanceOf(
@@ -82,8 +111,8 @@ describe('Checkout de quem já paga', () => {
   });
 });
 
-function webhookHarness() {
-  const sub = { id: 'sub-1', ...paidSolo };
+function webhookHarness(overrides: Record<string, unknown> = {}) {
+  const sub = { id: 'sub-1', ...paidSolo, ...overrides };
   const tx = {
     subscription: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -114,8 +143,48 @@ function webhookHarness() {
 }
 
 describe('Webhook de pagamento aprovado', () => {
+  it.each(['CANCELLED', 'BLOCKED'])(
+    'reativa %s e adota o novo checkout do mesmo plano',
+    async (status) => {
+      const checkout = checkoutHarness({ ...paidSolo, status });
+      await checkout.service.createCheckout(COMPANY_ID, 'SOLO', 'MONTHLY');
+      expect(checkout.getRow()).toMatchObject({
+        status,
+        pending_provider_id: 'new_sub',
+        pending_plan_code: 'SOLO',
+      });
+      const { tx, apply } = webhookHarness({
+        ...checkout.getRow(),
+        pending_provider_id: 'new_pay',
+      });
+      await apply(COMPANY_ID + ':SOLO');
+      expect(tx.subscription.update).toHaveBeenCalledWith({
+        where: { id: 'sub-1' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          plan_code: 'SOLO',
+          asaas_sub_id: 'new_pay',
+          pending_provider_id: null,
+        }),
+      });
+    },
+  );
+
+  it('não reativa cancelada com recurso antigo que não é o checkout pendente', async () => {
+    const { tx, apply } = webhookHarness({
+      status: 'CANCELLED',
+      pending_provider_id: 'different',
+      pending_plan_code: 'MAIS',
+    });
+    await apply(COMPANY_ID + ':MAIS');
+    expect(tx.subscription.update).not.toHaveBeenCalled();
+  });
+
   it('troca de plano confirmada: adota o novo recurso, troca o plano e cancela o antigo', async () => {
-    const { tx, mercadoPago, apply } = webhookHarness();
+    const { tx, mercadoPago, apply } = webhookHarness({
+      pending_provider_id: 'new_pay',
+      pending_plan_code: 'MAIS',
+    });
     await apply(`${COMPANY_ID}:MAIS`);
 
     expect(mercadoPago.cancelSubscription).toHaveBeenCalledWith('old_sub');
