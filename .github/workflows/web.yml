@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: Lint, Typecheck & Build
@@ -23,10 +26,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm turbo run lint --filter=@orcivo/web
+        run: pnpm turbo run lint --filter=@orcivo/web --filter=@orcivo/site
 
       - name: Typecheck
-        run: pnpm turbo run typecheck --filter=@orcivo/web
+        run: pnpm turbo run typecheck --filter=@orcivo/web --filter=@orcivo/site
+
+      - name: Verify logout revocation behavior
+        run: node --test apps/web/app/api/auth/logout/route.test.cjs
 
       - name: Build
-        run: pnpm turbo run build --filter=@orcivo/web
+        run: pnpm turbo run build --filter=@orcivo/web --filter=@orcivo/site

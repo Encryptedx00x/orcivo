@@ -187,7 +187,7 @@ services:
     image: orcivo-site
     container_name: orcivo-site
     restart: unless-stopped
-    networks: [caddy]
+    networks: [site_proxy]
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3002/']
       interval: 30s
@@ -195,6 +195,10 @@ services:
       retries: 3
 
 networks:
+  # Only the public site and Caddy join this external proxy network.
+  site_proxy:
+    external: true
+    name: orcivo_site_proxy
   orcivo_internal:
     internal: true
   caddy:
