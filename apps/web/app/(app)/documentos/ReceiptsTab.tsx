@@ -127,7 +127,7 @@ export function ReceiptsTab({ onCount }: { onCount?: (n: number) => void }): Rea
         >
           {PERIODS.map((p) => (
             <option key={p.value} value={p.value}>
-              Período: {p.label.toLowerCase()}
+              {p.value === 'all' ? 'Todo o período' : p.label}
             </option>
           ))}
         </select>
@@ -137,10 +137,10 @@ export function ReceiptsTab({ onCount }: { onCount?: (n: number) => void }): Rea
           onChange={(e) => setMethod(e.target.value)}
           aria-label="Forma de pagamento"
         >
-          <option value="all">Método: todos</option>
+          <option value="all">Todos os métodos</option>
           {RECEIPT_METHODS.map((m) => (
             <option key={m.value} value={m.value}>
-              Método: {m.label}
+              {m.label}
             </option>
           ))}
         </select>
@@ -155,15 +155,27 @@ export function ReceiptsTab({ onCount }: { onCount?: (n: number) => void }): Rea
       </div>
 
       {error && (
-        <div role="alert" style={{ color: '#B91C1C', fontSize: 14 }}>
-          {error}{' '}
-          <button type="button" className="ov-btn ov-btn-ghost" onClick={() => void load()}>
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 14,
+            padding: '32px 16px',
+            textAlign: 'center',
+          }}
+        >
+          <span style={{ color: '#B91C1C', fontSize: 15, fontWeight: 500 }}>{error}</span>
+          <button type="button" className="ov-btn ov-btn-outline" onClick={() => void load()}>
             Tentar de novo
           </button>
         </div>
       )}
       {!rows && !error && (
-        <div style={{ color: '#64748B', fontSize: 14, padding: 24 }}>Carregando recibos…</div>
+        <div style={{ color: '#64748B', fontSize: 14, padding: 24, textAlign: 'center' }}>
+          Carregando recibos…
+        </div>
       )}
       {rows && list.length === 0 && (
         <div style={{ color: '#64748B', fontSize: 14, padding: '40px 8px', textAlign: 'center' }}>
@@ -213,8 +225,7 @@ export function ReceiptsTab({ onCount }: { onCount?: (n: number) => void }): Rea
                   <td data-label="Valor" className="num" style={{ fontWeight: 600 }}>
                     {formatMoney(r.amount)}
                   </td>
-                  {/* On phones the row is a grid card: actions take their own full-width line. */}
-                  <td data-label="Ações" style={{ gridColumn: '1 / -1' }}>
+                  <td data-label="">
                     <div
                       style={{
                         display: 'flex',

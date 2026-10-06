@@ -237,7 +237,6 @@ export function DocumentosContent({
             <table className="ov-table">
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}></th>
                   <th>Número</th>
                   <th>Cliente / Descrição</th>
                   <th>Gerado em</th>
@@ -248,9 +247,6 @@ export function DocumentosContent({
               <tbody>
                 {quotes.map((q) => (
                   <tr key={q.id}>
-                    <td data-label="" style={{ paddingRight: 0 }}>
-                      <PdfThumb />
-                    </td>
                     <td
                       data-label="Número"
                       style={{
@@ -260,7 +256,10 @@ export function DocumentosContent({
                         fontSize: 13,
                       }}
                     >
-                      ORÇ #{q.number}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <PdfThumb />
+                        ORÇ #{q.number}
+                      </span>
                     </td>
                     <td data-label="Cliente / Descrição" style={{ fontWeight: 500 }}>
                       {q.customer.name}
@@ -305,7 +304,6 @@ export function DocumentosContent({
             <table className="ov-table">
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}></th>
                   <th>Número</th>
                   <th>Cliente / Descrição</th>
                   <th>Finalizada em</th>
@@ -316,9 +314,6 @@ export function DocumentosContent({
               <tbody>
                 {workOrders.map((w) => (
                   <tr key={w.id}>
-                    <td data-label="" style={{ paddingRight: 0 }}>
-                      <PdfThumb />
-                    </td>
                     <td
                       data-label="Número"
                       style={{
@@ -328,7 +323,10 @@ export function DocumentosContent({
                         fontSize: 13,
                       }}
                     >
-                      OS #{w.number}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                        <PdfThumb />
+                        OS #{w.number}
+                      </span>
                     </td>
                     <td data-label="Cliente / Descrição" style={{ fontWeight: 500 }}>
                       {w.customer.name}
