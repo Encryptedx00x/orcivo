@@ -406,7 +406,7 @@ export function ReceiptNewScreen(): React.JSX.Element {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <span style={sectionTitle}>Como recebeu?</span>
             <Options
-              cols={3}
+              cols={2}
               options={RECEIPT_METHODS.map((m) => ({ value: m.value, label: m.label }))}
               value={method}
               onPick={setMethod}

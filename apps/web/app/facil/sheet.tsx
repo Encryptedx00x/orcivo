@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { C } from './ui';
+import { useIsDesktop } from './desktop';
 
 export interface SheetAction {
   label: string;
@@ -39,6 +40,8 @@ export function reasonSheet(
 export function SheetProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [sheet, setSheet] = useState<SheetSpec | null>(null);
   const close = useCallback(() => setSheet(null), []);
+  // Desktop: centered dialog instead of a bottom sheet.
+  const desktop = useIsDesktop();
 
   useEffect(() => {
     if (!sheet) return;
@@ -68,15 +71,26 @@ export function SheetProvider({ children }: { children: React.ReactNode }): Reac
             aria-label={sheet.title}
             style={{
               position: 'fixed',
-              left: 0,
-              right: 0,
-              bottom: 0,
               zIndex: 81,
-              maxWidth: 480,
-              margin: '0 auto',
               background: '#FFFFFF',
-              borderRadius: '24px 24px 0 0',
-              padding: '10px 16px max(16px, env(safe-area-inset-bottom))',
+              ...(desktop
+                ? {
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 480,
+                    borderRadius: 24,
+                    padding: '20px 16px 16px',
+                  }
+                : {
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    maxWidth: 480,
+                    margin: '0 auto',
+                    borderRadius: '24px 24px 0 0',
+                    padding: '10px 16px max(16px, env(safe-area-inset-bottom))',
+                  }),
               display: 'flex',
               flexDirection: 'column',
               gap: 6,
@@ -85,17 +99,19 @@ export function SheetProvider({ children }: { children: React.ReactNode }): Reac
               boxShadow: '0 20px 40px rgba(15,23,42,0.18)',
             }}
           >
-            <div
-              aria-hidden="true"
-              style={{
-                width: 44,
-                height: 5,
-                borderRadius: 9999,
-                background: C.borderStrong,
-                alignSelf: 'center',
-                marginBottom: 6,
-              }}
-            />
+            {!desktop && (
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 44,
+                  height: 5,
+                  borderRadius: 9999,
+                  background: C.borderStrong,
+                  alignSelf: 'center',
+                  marginBottom: 6,
+                }}
+              />
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 4px 6px' }}>
               <span style={{ fontSize: 21, lineHeight: '27px', fontWeight: 700 }}>
                 {sheet.title}

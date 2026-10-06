@@ -14,6 +14,7 @@ import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
 import { SettingsScreen, ApprovalsScreen, CatalogScreen, EditScreen } from './screens/Settings';
 import { SheetProvider } from './sheet';
+import { DesktopShell, useIsDesktop } from './desktop';
 
 export type Screen =
   | 'home'
@@ -201,112 +202,122 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
     setDraft,
   };
   const showNav = NAV_SCREENS.includes(cur.screen);
+  const desktop = useIsDesktop();
 
   return (
     <NavCtx.Provider value={nav}>
       {/* Screens without the tab bar have a bottom action bar: keep the toast above it. */}
-      <ToastProvider bottom={showNav ? 96 : 176}>
+      <ToastProvider bottom={desktop ? (showNav ? 24 : 120) : showNav ? 96 : 176}>
         <SheetProvider>
-          <div
-            style={{
-              minHeight: '100dvh',
-              background: C.bg,
-              color: C.ink,
-              fontSize: 18,
-              lineHeight: 1.4,
-              display: 'flex',
-              flexDirection: 'column',
-              maxWidth: 480,
-              margin: '0 auto',
-              WebkitFontSmoothing: 'antialiased',
-            }}
-          >
-            <div
-              ref={scrollRef}
-              style={{
-                flex: 1,
-                padding: '16px 16px 28px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 16,
-                paddingBottom: showNav ? 112 : 28,
-              }}
-            >
+          {desktop ? (
+            <DesktopShell screen={cur.screen} onTab={tab}>
               {BACK_SCREENS.includes(cur.screen) && (
                 <BackBar onBack={historyBack} step={STEP[cur.screen]} />
               )}
               <CurrentScreen screen={cur.screen} />
-            </div>
-            {showNav && (
-              <nav
-                aria-label="Navegação principal"
+            </DesktopShell>
+          ) : (
+            <div
+              style={{
+                minHeight: '100dvh',
+                background: C.bg,
+                color: C.ink,
+                fontSize: 18,
+                lineHeight: 1.4,
+                display: 'flex',
+                flexDirection: 'column',
+                maxWidth: 480,
+                margin: '0 auto',
+                WebkitFontSmoothing: 'antialiased',
+              }}
+            >
+              <div
+                ref={scrollRef}
                 style={{
-                  position: 'fixed',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 84,
-                  background: '#FFFFFF',
-                  borderTop: `1px solid ${C.border}`,
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr 1.25fr 1fr 0.9fr',
-                  padding: '0 4px env(safe-area-inset-bottom)',
-                  zIndex: 40,
+                  flex: 1,
+                  padding: '16px 16px 28px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 16,
+                  paddingBottom: showNav ? 112 : 28,
                 }}
               >
-                {TABS.map((t) => {
-                  const on = t.covers.includes(cur.screen);
-                  const Icon = t.icon;
-                  return (
-                    <button
-                      key={t.screen}
-                      type="button"
-                      onClick={() => tab(t.screen)}
-                      aria-current={on ? 'page' : undefined}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        cursor: 'pointer',
-                        color: on ? C.purple800 : C.fg2,
-                        minWidth: 0,
-                        padding: 0,
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      <span
+                {BACK_SCREENS.includes(cur.screen) && (
+                  <BackBar onBack={historyBack} step={STEP[cur.screen]} />
+                )}
+                <CurrentScreen screen={cur.screen} />
+              </div>
+              {showNav && (
+                <nav
+                  aria-label="Navegação principal"
+                  style={{
+                    position: 'fixed',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 84,
+                    background: '#FFFFFF',
+                    borderTop: `1px solid ${C.border}`,
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1.25fr 1fr 0.9fr',
+                    padding: '0 4px env(safe-area-inset-bottom)',
+                    zIndex: 40,
+                  }}
+                >
+                  {TABS.map((t) => {
+                    const on = t.covers.includes(cur.screen);
+                    const Icon = t.icon;
+                    return (
+                      <button
+                        key={t.screen}
+                        type="button"
+                        onClick={() => tab(t.screen)}
+                        aria-current={on ? 'page' : undefined}
                         style={{
-                          width: 60,
-                          height: 34,
-                          borderRadius: 9999,
-                          background: on ? C.purple100 : 'transparent',
+                          border: 'none',
+                          background: 'transparent',
                           display: 'flex',
+                          flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
+                          gap: 4,
+                          cursor: 'pointer',
+                          color: on ? C.purple800 : C.fg2,
+                          minWidth: 0,
+                          padding: 0,
+                          fontFamily: 'inherit',
                         }}
                       >
-                        <Icon size={26} aria-hidden="true" />
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 14,
-                          fontWeight: on ? 700 : 500,
-                          letterSpacing: '-0.01em',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {t.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </nav>
-            )}
-          </div>
+                        <span
+                          style={{
+                            width: 60,
+                            height: 34,
+                            borderRadius: 9999,
+                            background: on ? C.purple100 : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Icon size={26} aria-hidden="true" />
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 14,
+                            fontWeight: on ? 700 : 500,
+                            letterSpacing: '-0.01em',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {t.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              )}
+            </div>
+          )}
         </SheetProvider>
       </ToastProvider>
     </NavCtx.Provider>
@@ -371,6 +382,7 @@ export function ActionBar({
   // The spacer follows the bar's real height (1 or 2 buttons, with or without
   // total), so the last card never ends up behind the bar.
   const barRef = useRef<HTMLDivElement>(null);
+  const desktop = useIsDesktop();
   const [barH, setBarH] = useState(total ? 170 : 110);
   useEffect(() => {
     const el = barRef.current;
@@ -380,7 +392,46 @@ export function ActionBar({
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [desktop]);
+  if (desktop) {
+    return (
+      <div
+        style={{
+          position: 'sticky',
+          bottom: 16,
+          zIndex: 20,
+          marginTop: 8,
+          background: '#FFFFFF',
+          border: `1px solid ${C.border}`,
+          borderRadius: 18,
+          padding: '14px 16px',
+          boxShadow: '0 8px 24px rgba(15,23,42,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+        }}
+      >
+        {total && (
+          <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: C.fg3 }}>Total</span>
+            <span
+              style={{
+                fontSize: 28,
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {total}
+            </span>
+          </div>
+        )}
+        <div style={{ flex: 1, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       <div style={{ height: barH }} aria-hidden="true" />

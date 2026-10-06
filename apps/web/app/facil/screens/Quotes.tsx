@@ -222,14 +222,29 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     toast(`Pronto! Reenviado para ${q.customer?.name?.split(' ')[0] ?? 'o cliente'} no WhatsApp.`);
   };
   const copyLink = async () => {
-    const r = await getQuoteShare(q.id);
-    if (!r.ok || !r.data.token)
-      return toast(r.ok ? 'Este orçamento ainda não tem link de aprovação.' : r.message);
+    let problem = '';
+    const url = getQuoteShare(q.id).then((r) => {
+      if (!r.ok || !r.data.token) {
+        problem = r.ok ? 'Este orçamento ainda não tem link de aprovação.' : r.message;
+        throw new Error(problem);
+      }
+      return `${window.location.origin}/approve/${r.data.token}`;
+    });
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/approve/${r.data.token}`);
+      // The clipboard gets the pending link right away: awaiting the fetch first loses
+      // the click's user activation and Safari (iPhone) refuses the copy.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/plain': url.then((u) => new Blob([u], { type: 'text/plain' })),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(await url);
+      }
       toast('Link de aprovação copiado.');
     } catch {
-      toast('Não foi possível copiar o link.');
+      toast(problem || 'Não foi possível copiar o link.');
     }
   };
   const run = (action: DirectQuoteAction, then?: () => void) =>

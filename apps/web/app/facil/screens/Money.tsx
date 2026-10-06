@@ -413,6 +413,7 @@ export function MoneyScreen(): React.JSX.Element {
                           justifyContent: 'space-between',
                           gap: 10,
                           minHeight: 68,
+                          padding: '10px 0',
                           borderBottom: i === arr.length - 1 ? 'none' : `1px solid ${C.line}`,
                         }}
                       >

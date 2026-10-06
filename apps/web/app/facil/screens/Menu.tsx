@@ -74,6 +74,12 @@ export function MenuScreen(): React.JSX.Element {
                 { label: 'Orçamentos', icon: FileText, run: () => tab('quotes') },
                 { label: 'Serviços', icon: ClipboardList, run: () => go('services') },
                 { label: 'Recibos', icon: ReceiptText, run: () => go('receipts') },
+                {
+                  label: 'Todos os PDFs',
+                  sub: 'Lista completa para baixar',
+                  icon: FolderOpen,
+                  run: () => (window.location.href = '/documentos'),
+                },
               ],
             })
           }

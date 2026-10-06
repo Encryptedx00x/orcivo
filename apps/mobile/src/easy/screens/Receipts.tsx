@@ -491,7 +491,7 @@ export function ReceiptNewScreen() {
       />
 
       <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Como recebeu?</Text>
-      <Options cols={3} options={RECEIPT_METHODS} value={method} onPick={setMethod} />
+      <Options cols={2} options={RECEIPT_METHODS} value={method} onPick={setMethod} />
 
       <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Quando?</Text>
       <Options cols={3} options={WHENS} value={when} onPick={setWhen} />
