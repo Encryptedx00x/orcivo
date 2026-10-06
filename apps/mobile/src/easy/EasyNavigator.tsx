@@ -62,7 +62,8 @@ export type EasyStackParamList = {
   Notices: undefined;
   Receipts: undefined;
   Receipt: { id: string };
-  ReceiptNew: { link?: boolean; clientId?: string } | undefined;
+  /** due: "Cobrança para receber depois" (due date instead of how/when it was paid). */
+  ReceiptNew: { link?: boolean; clientId?: string; due?: boolean } | undefined;
   Settings: undefined;
   Approvals: undefined;
   Edit: { kind: string; id?: string; name?: string; price?: string; amount?: string; due?: string };

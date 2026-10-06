@@ -233,7 +233,7 @@ export function MoneyScreen(): React.JSX.Element {
                   label: 'Cobrança para receber depois',
                   sub: 'Com vencimento, sem recibo ainda',
                   icon: Clock,
-                  run: () => (window.location.href = '/financeiro?registrar=1'),
+                  run: () => go('receiptNew', { due: '1' }),
                 },
               ],
             })

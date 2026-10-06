@@ -133,11 +133,13 @@ export function DateField({
   value,
   onChange,
   max,
+  min,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   max?: string;
+  min?: string;
 }): React.JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -146,6 +148,7 @@ export function DateField({
         type="date"
         value={value}
         max={max}
+        min={min}
         onChange={(e) => e.target.value && onChange(e.target.value)}
         onClick={openPicker}
         style={{

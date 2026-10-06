@@ -464,6 +464,25 @@ export async function getClientFull(
 }
 
 // ── Payments edit / delete (justification required by the backend) ──
+/** "Cobrança para receber depois": a PENDING payment with a due date (no receipt yet). */
+export async function createDue(input: {
+  customer_id: string;
+  amount: string;
+  due_date: string;
+  description?: string;
+  work_order_id?: string;
+  quote_id?: string;
+}): Promise<Result<{ id: string }>> {
+  return run(
+    () =>
+      apiFetch<{ id: string }>('/payments', {
+        method: 'POST',
+        body: JSON.stringify({ ...input, status: 'PENDING' }),
+      }),
+    'Não foi possível criar a cobrança.',
+  );
+}
+
 export async function updatePayment(
   id: string,
   input: { amount?: string; due_date?: string | null; justification: string },

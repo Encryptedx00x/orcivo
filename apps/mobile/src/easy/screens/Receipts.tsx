@@ -48,7 +48,7 @@ import {
 type Params = {
   Receipts: undefined;
   Receipt: { id: string };
-  ReceiptNew: { link?: boolean; clientId?: string } | undefined;
+  ReceiptNew: { link?: boolean; clientId?: string; due?: boolean } | undefined;
   ClientNew: { forQuote?: boolean; forReceipt?: boolean } | undefined;
   QuoteSign: { standalone?: boolean } | undefined;
 };
@@ -372,6 +372,8 @@ export function ReceiptNewScreen() {
   const [when, setWhen] = useState('today');
   const [otherDay, setOtherDay] = useState(1);
   const [moreOpen, setMoreOpen] = useState(!!params?.link);
+  const due = !!params?.due;
+  const [dueIn, setDueIn] = useState(7);
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -399,6 +401,21 @@ export function ReceiptNewScreen() {
     setBusy(true);
     try {
       const [kind, linkId] = (chosen?.key ?? '').split(':');
+      if (due) {
+        const day = new Date();
+        day.setHours(12, 0, 0, 0);
+        day.setDate(day.getDate() + dueIn);
+        await easy.createDue({
+          customer_id: clientId,
+          amount,
+          due_date: day.toISOString(),
+          description: ref.trim() || undefined,
+          work_order_id: kind === 'work_order' ? linkId : undefined,
+          quote_id: kind === 'quote' ? linkId : undefined,
+        });
+        Alert.alert('Pronto!', `Cobrança de ${formatMoney(amount)} em A receber.`);
+        return nav.goBack();
+      }
       const r = await easy.createReceipt({
         customer_id: clientId,
         amount,
@@ -423,23 +440,33 @@ export function ReceiptNewScreen() {
         <>
           {!ok ? (
             <Text style={[s.muted, { textAlign: 'center' }]}>
-              {clientId ? 'Falta o valor' : 'Escolha de quem recebeu'}
+              {clientId
+                ? 'Falta o valor'
+                : due
+                  ? 'Escolha quem vai pagar'
+                  : 'Escolha de quem recebeu'}
             </Text>
           ) : null}
           <Btn disabled={!ok} busy={busy} onPress={() => void submit()}>
-            Criar recibo
+            {due ? 'Criar cobrança' : 'Criar recibo'}
           </Btn>
         </>
       }
     >
       <View style={{ gap: 4 }}>
-        <H1 size={32}>Novo recibo</H1>
-        <Sub>Para um pagamento que você já recebeu.</Sub>
+        <H1 size={32}>{due ? 'Nova cobrança' : 'Novo recibo'}</H1>
+        <Sub>
+          {due
+            ? 'Para um valor que o cliente ainda vai pagar.'
+            : 'Para um pagamento que você já recebeu.'}
+        </Sub>
       </View>
       {clients.error ? <ErrorBox message={clients.error} onRetry={clients.refresh} /> : null}
       {!clients.data && !clients.error ? <Loading /> : null}
 
-      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>De quem recebeu?</Text>
+      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>
+        {due ? 'Quem vai pagar?' : 'De quem recebeu?'}
+      </Text>
       {all.length > 3 ? <Search value={q} onChange={setQ} placeholder="Buscar cliente" /> : null}
       {shown.map((c) => {
         const on = c.id === clientId;
@@ -490,26 +517,47 @@ export function ReceiptNewScreen() {
         placeholder="Ex.: Troca de 2 tomadas"
       />
 
-      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Como recebeu?</Text>
-      <Options cols={2} options={RECEIPT_METHODS} value={method} onPick={setMethod} />
+      {due ? (
+        <>
+          <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Vence em</Text>
+          <Options
+            cols={3}
+            value={dueIn}
+            onPick={setDueIn}
+            options={[7, 15, 30].map((d) => {
+              const day = new Date();
+              day.setDate(day.getDate() + d);
+              return {
+                value: d,
+                label: `${d} dias (${day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})`,
+              };
+            })}
+          />
+        </>
+      ) : (
+        <>
+          <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Como recebeu?</Text>
+          <Options cols={2} options={RECEIPT_METHODS} value={method} onPick={setMethod} />
 
-      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Quando?</Text>
-      <Options cols={3} options={WHENS} value={when} onPick={setWhen} />
-      {when === 'other' ? (
-        <Options
-          cols={3}
-          value={otherDay}
-          onPick={setOtherDay}
-          options={[2, 3, 4, 5, 6, 7].map((d) => {
-            const day = new Date();
-            day.setDate(day.getDate() - d);
-            return {
-              value: d,
-              label: day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-            };
-          })}
-        />
-      ) : null}
+          <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Quando?</Text>
+          <Options cols={3} options={WHENS} value={when} onPick={setWhen} />
+          {when === 'other' ? (
+            <Options
+              cols={3}
+              value={otherDay}
+              onPick={setOtherDay}
+              options={[2, 3, 4, 5, 6, 7].map((d) => {
+                const day = new Date();
+                day.setDate(day.getDate() - d);
+                return {
+                  value: d,
+                  label: day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                };
+              })}
+            />
+          ) : null}
+        </>
+      )}
 
       <Card style={{ overflow: 'hidden' }}>
         <Pressable
@@ -557,7 +605,9 @@ export function ReceiptNewScreen() {
         ) : null}
       </Card>
       <Text style={[s.muted, { textAlign: 'center' }]}>
-        O valor também entra no Financeiro como recebido.
+        {due
+          ? 'Aparece em A receber no Financeiro. O recibo sai quando o cliente pagar.'
+          : 'O valor também entra no Financeiro como recebido.'}
       </Text>
     </Page>
   );

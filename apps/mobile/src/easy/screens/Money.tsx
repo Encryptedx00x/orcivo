@@ -185,7 +185,7 @@ export function MoneyScreen() {
                   label: 'Cobrança para receber depois',
                   sub: 'Com vencimento, sem recibo ainda',
                   icon: Clock,
-                  run: () => nav.navigate('Financeiro'),
+                  run: () => nav.navigate('ReceiptNew', { due: true }),
                 },
               ],
             })

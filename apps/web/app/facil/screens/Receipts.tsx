@@ -27,7 +27,7 @@ import {
   type Receipt,
 } from '../../../lib/receipts';
 import { ReceiptPaper } from '../../../components/ReceiptPaper';
-import { createClient, getCompany } from '../actions';
+import { createClient, createDue, getCompany } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import {
   Btn,
@@ -249,7 +249,7 @@ const WHENS = [
 type When = (typeof WHENS)[number]['value'];
 
 export function ReceiptNewScreen(): React.JSX.Element {
-  const { params, replace } = useNav();
+  const { params, replace, back } = useNav();
   const toast = useToast();
   const form = useLoad(receiptFormData);
   const [clientId, setClientId] = useState<string | null>(params.client ?? null);
@@ -264,6 +264,9 @@ export function ReceiptNewScreen(): React.JSX.Element {
   const [when, setWhen] = useState<When>('today');
   const [otherDay, setOtherDay] = useState(ymd(new Date()));
   const [moreOpen, setMoreOpen] = useState(params.link === '1');
+  // due=1: "Cobrança para receber depois" (same form, a due date instead of how/when paid).
+  const due = params.due === '1';
+  const [dueDay, setDueDay] = useState(ymd(new Date(Date.now() + 7 * 86_400_000)));
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -300,6 +303,20 @@ export function ReceiptNewScreen(): React.JSX.Element {
     if (!ok || busy || !clientId) return;
     setBusy(true);
     const chosen = links.find((l) => `${l.kind}:${l.id}` === link);
+    if (due) {
+      const d = await createDue({
+        customer_id: clientId,
+        amount,
+        due_date: new Date(`${dueDay}T12:00:00`).toISOString(),
+        description: ref.trim() || undefined,
+        work_order_id: chosen?.kind === 'work_order' ? chosen.id : undefined,
+        quote_id: chosen?.kind === 'quote' ? chosen.id : undefined,
+      });
+      setBusy(false);
+      if (!d.ok) return toast(d.message);
+      toast(`Pronto! Cobrança de ${formatMoney(amount)} em A receber.`);
+      return back(); // opened from Financeiro › Registrar
+    }
     const r = await createReceipt({
       customer_id: clientId,
       amount,
@@ -321,8 +338,12 @@ export function ReceiptNewScreen(): React.JSX.Element {
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <H1 size={32}>Novo recibo</H1>
-        <span style={{ fontSize: 17, color: C.fg3 }}>Para um pagamento que você já recebeu.</span>
+        <H1 size={32}>{due ? 'Nova cobrança' : 'Novo recibo'}</H1>
+        <span style={{ fontSize: 17, color: C.fg3 }}>
+          {due
+            ? 'Para um valor que o cliente ainda vai pagar.'
+            : 'Para um pagamento que você já recebeu.'}
+        </span>
       </div>
       {form.loading && !form.data ? (
         <Loading />
@@ -331,7 +352,7 @@ export function ReceiptNewScreen(): React.JSX.Element {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span style={sectionTitle}>De quem recebeu?</span>
+            <span style={sectionTitle}>{due ? 'Quem vai pagar?' : 'De quem recebeu?'}</span>
             {clients.length > 3 && (
               <Search value={q} onChange={setQ} placeholder="Buscar cliente" />
             )}
@@ -403,33 +424,39 @@ export function ReceiptNewScreen(): React.JSX.Element {
             placeholder="Ex.: Troca de 2 tomadas"
           />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span style={sectionTitle}>Como recebeu?</span>
-            <Options
-              cols={2}
-              options={RECEIPT_METHODS.map((m) => ({ value: m.value, label: m.label }))}
-              value={method}
-              onPick={setMethod}
-            />
-          </div>
+          {due ? (
+            <DateField label="Vence em" value={dueDay} onChange={setDueDay} min={ymd(new Date())} />
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <span style={sectionTitle}>Como recebeu?</span>
+                <Options
+                  cols={2}
+                  options={RECEIPT_METHODS.map((m) => ({ value: m.value, label: m.label }))}
+                  value={method}
+                  onPick={setMethod}
+                />
+              </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span style={sectionTitle}>Quando?</span>
-            <Options
-              cols={3}
-              options={WHENS.map((w) => ({ value: w.value, label: w.label }))}
-              value={when}
-              onPick={setWhen}
-            />
-            {when === 'other' && (
-              <DateField
-                label="Dia do pagamento"
-                value={otherDay}
-                onChange={setOtherDay}
-                max={ymd(new Date())}
-              />
-            )}
-          </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <span style={sectionTitle}>Quando?</span>
+                <Options
+                  cols={3}
+                  options={WHENS.map((w) => ({ value: w.value, label: w.label }))}
+                  value={when}
+                  onPick={setWhen}
+                />
+                {when === 'other' && (
+                  <DateField
+                    label="Dia do pagamento"
+                    value={otherDay}
+                    onChange={setOtherDay}
+                    max={ymd(new Date())}
+                  />
+                )}
+              </div>
+            </>
+          )}
 
           <div style={{ ...card, overflow: 'hidden' }}>
             <button
@@ -507,13 +534,25 @@ export function ReceiptNewScreen(): React.JSX.Element {
               </div>
             )}
           </div>
-          <Hint>O valor também entra no Financeiro como recebido.</Hint>
+          <Hint>
+            {due
+              ? 'Aparece em A receber no Financeiro. O recibo sai quando o cliente pagar.'
+              : 'O valor também entra no Financeiro como recebido.'}
+          </Hint>
         </div>
       )}
       <ActionBar>
-        {!ok && <Hint>{clientId ? 'Falta o valor' : 'Escolha de quem recebeu'}</Hint>}
+        {!ok && (
+          <Hint>
+            {clientId
+              ? 'Falta o valor'
+              : due
+                ? 'Escolha quem vai pagar'
+                : 'Escolha de quem recebeu'}
+          </Hint>
+        )}
         <Btn onClick={() => void submit()} disabled={!ok || busy}>
-          {busy ? 'Criando…' : 'Criar recibo'}
+          {busy ? 'Criando…' : due ? 'Criar cobrança' : 'Criar recibo'}
         </Btn>
       </ActionBar>
     </>

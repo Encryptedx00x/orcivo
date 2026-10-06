@@ -101,3 +101,18 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 | S5  | Enviar foto da galeria → "Foto guardada como Antes"; segunda → "Durante"; as duas aparecem                      | ✅                                                                                                                         |
 | S6  | Finalizar serviço → "Pronto! Serviço finalizado"                                                                | ✅                                                                                                                         |
 | S7  | OS criada pela aprovação se chamava "OS #1" (o número do orçamento, não o da OS)                                | 🔧 leva o nome do serviço: "Instalação de câmera e mais 1"                                                                 |
+
+## Financeiro e Recibos (modo fácil web; app com as mesmas correções)
+
+| #   | Teste                                                                                      | Resultado                                                                                                |
+| --- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| F1  | Registrar › "Cobrança para receber depois" abria o Financeiro do modo completo (web e app) | 🔧 tela "Nova cobrança" no modo fácil (cliente, valor, referente a, vence em, ligar a orçamento/serviço) |
+| F2  | Nova cobrança R$ 250,00 → "em A receber", aparece com "Vence 13/10"                        | ✅                                                                                                       |
+| F3  | Marcar como pago → Pix → recebido sobe para R$ 1.890,50, "O recibo já está em Recibos"     | ✅                                                                                                       |
+| F4  | Recibo nº 0005: papel com logo, valor, cliente, referente, forma e data                    | ✅                                                                                                       |
+| F5  | Pôr minha assinatura no recibo → assinatura aparece                                        | ✅                                                                                                       |
+| F6  | Enviar no WhatsApp → `wa.me/55…` com texto do recibo                                       | ✅                                                                                                       |
+| F7  | Baixar PDF → 200 `application/pdf`, `recibo-0005.pdf`                                      | ✅                                                                                                       |
+| F8  | Recibos: lista com 5, busca por nome                                                       | ✅                                                                                                       |
+| F9  | Período: Este mês / Mês passado / Últimos 3 meses / Este ano                               | ✅                                                                                                       |
+| F10 | Página pública offline: título "Link inválido" com mensagem de internet                    | 🔧 título "Sem conexão"                                                                                  |

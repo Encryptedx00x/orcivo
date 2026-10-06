@@ -273,6 +273,15 @@ export const easy = {
     });
     return api.get<EasyReceipt>(`/payments/${enc(created.id)}`);
   },
+  /** A PENDING payment with a due date (no receipt until it is paid). */
+  createDue: (input: {
+    customer_id: string;
+    amount: string;
+    due_date: string;
+    description?: string;
+    work_order_id?: string;
+    quote_id?: string;
+  }) => api.post<{ id: string }>('/payments', { ...input, status: 'PENDING' }),
   setReceiptSignature: (id: string, apply: boolean) =>
     api.patch<EasyReceipt>(`/payments/${enc(id)}/receipt-signature`, { apply }),
 

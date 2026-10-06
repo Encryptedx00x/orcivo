@@ -41,6 +41,7 @@ export default function ApprovePage(): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
     approvalService
@@ -61,6 +62,7 @@ export default function ApprovePage(): JSX.Element {
       })
       .catch((e: Error) => {
         // fetch() rejects with a TypeError ("Failed to fetch") when offline.
+        setOffline(e instanceof TypeError);
         setErrorMsg(
           e instanceof TypeError
             ? 'Não foi possível abrir agora. Confira a internet e tente de novo.'
@@ -258,7 +260,7 @@ export default function ApprovePage(): JSX.Element {
             <AlertCircle size={24} style={{ color: '#DC2626', flexShrink: 0, marginTop: 2 }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: 16, color: '#7F1D1D', marginBottom: 6 }}>
-                Link inválido ou expirado
+                {offline ? 'Sem conexão' : 'Link inválido ou expirado'}
               </div>
               <div style={{ fontSize: 14, color: '#991B1B' }}>
                 {errorMsg || 'Este link de orçamento não é válido ou expirou.'}
