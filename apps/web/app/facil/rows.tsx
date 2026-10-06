@@ -118,6 +118,15 @@ export function TextArea({
   );
 }
 
+/** Desktop browsers only open the calendar from its small icon: open it on any click. */
+export const openPicker = (e: React.MouseEvent<HTMLInputElement>) => {
+  try {
+    e.currentTarget.showPicker();
+  } catch {
+    // Older browsers: the native behaviour stays.
+  }
+};
+
 /** Native date input with the easy-mode look. */
 export function DateField({
   label,
@@ -138,6 +147,7 @@ export function DateField({
         value={value}
         max={max}
         onChange={(e) => e.target.value && onChange(e.target.value)}
+        onClick={openPicker}
         style={{
           height: 60,
           borderRadius: 14,

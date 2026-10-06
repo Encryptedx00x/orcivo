@@ -68,7 +68,24 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 
 ## Clientes (modo fácil web)
 
-| #   | Teste                                                           | Resultado                                                                    |
-| --- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| C1  | Novo cliente (nome + telefone com máscara) → salvo, lista com 3 | ✅                                                                           |
-| C2  | Toast "Paula salvo" (concordância errada para nomes femininos)  | 🔧 "Cliente salvo: Paula." (também no cliente novo do orçamento e do recibo) |
+| #   | Teste                                                                                            | Resultado                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| C1  | Novo cliente (nome + telefone com máscara) → salvo, lista com 3                                  | ✅                                                                                                                 |
+| C2  | Toast "Paula salvo" (concordância errada para nomes femininos)                                   | 🔧 "Cliente salvo: Paula." (também no cliente novo do orçamento e do recibo)                                       |
+| C3  | Cliente › Orçamento (pula para o Passo 2 com o cliente) e Serviço (Marcar horário com o cliente) | ✅                                                                                                                 |
+| C4  | Cliente › Mais opções: WhatsApp (`wa.me/55…`), Editar, Excluir                                   | ✅                                                                                                                 |
+| C5  | Editar cliente: telefone aparecia sem máscara ("11912345678"), CPF sem máscara, Cidade sem dica  | 🔧 máscaras de telefone e CPF/CNPJ (guarda só dígitos), dica "Ex.: Campinas" — também em Minha empresa (web e app) |
+| C6  | Salvar edição (cidade + CPF) → "Dados do cliente salvos."; banco com dígitos                     | ✅                                                                                                                 |
+
+## Agenda (modo fácil web; app com as mesmas correções)
+
+| #   | Teste                                                                                                  | Resultado                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| A1  | Marcar (Instalação, cliente, Amanhã, 1 h) → toast                                                      | ✅                                                                              |
+| A2  | Depois de marcar para amanhã a agenda mostrava "Hoje" (o horário novo sumia) e o toast não dizia o dia | 🔧 abre no dia marcado; "Marcado para amanhã às 10:30."                         |
+| A3  | Mais ações: Remarcar (pré-preenchido), Ligar, Ver cliente, Desmarcar                                   | ✅                                                                              |
+| A4  | Remarcar para hoje → "Remarcado para hoje às 10:30." e a agenda mostra hoje                            | ✅                                                                              |
+| A5  | Desmarcar → "desmarcado · Desfazer" → Desfazer recria                                                  | ✅ (erro no desfazer agora aparece)                                             |
+| A6  | "Outro dia" no desktop não abria o calendário (só o ícone minúsculo do navegador abre)                 | 🔧 abre o calendário no clique (também no campo de data dos recibos/financeiro) |
+| A7  | Horário padrão 10:30 mesmo às 17:40 (marcava no passado)                                               | 🔧 próximo horário cheio/meia hora a partir de agora                            |
+| A8  | Web limitava 06:00–22:00 e o app 00:00–23:30                                                           | 🔧 os dois 00:00–23:30                                                          |

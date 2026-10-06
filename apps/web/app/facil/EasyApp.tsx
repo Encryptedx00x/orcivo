@@ -87,7 +87,7 @@ interface Nav {
   go: (screen: Screen, params?: Params) => void;
   /** Swap the current screen (e.g. a finished form for its result). */
   replace: (screen: Screen, params?: Params) => void;
-  tab: (screen: Screen) => void;
+  tab: (screen: Screen, params?: Params) => void;
   back: () => void;
   draft: Draft;
   setDraft: React.Dispatch<React.SetStateAction<Draft>>;
@@ -163,8 +163,8 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
     setStack((s) => [...s.slice(0, -1), { screen, params }]);
     top();
   }, []);
-  const tab = useCallback((screen: Screen) => {
-    setStack([{ screen, params: {} }]);
+  const tab = useCallback((screen: Screen, params: Params = {}) => {
+    setStack([{ screen, params }]);
     top();
   }, []);
   const back = useCallback(() => {

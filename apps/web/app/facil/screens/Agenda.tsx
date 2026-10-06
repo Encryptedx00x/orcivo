@@ -13,6 +13,7 @@ import {
 } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import { MoreButton, useSheet } from '../sheet';
+import { openPicker } from '../rows';
 import {
   Btn,
   C,
@@ -39,6 +40,18 @@ const TYPES = [
 const typeLabel = (t: string | null) => TYPES.find((x) => x.value === t)?.label ?? 'Outro';
 
 const ymd = (d: Date) => d.toLocaleDateString('sv-SE');
+/** "hoje", "amanhã" or "qui, 08/10" for toasts. */
+const dayWord = (day: string) => {
+  const today = new Date();
+  if (day === ymd(today)) return 'hoje';
+  if (day === ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))
+    return 'amanhã';
+  return new Date(`${day}T12:00:00`).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  });
+};
 const addDays = (d: Date, n: number) => {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
@@ -60,6 +73,11 @@ function dayTitle(s: string) {
       : label.charAt(0).toUpperCase() + label.slice(1);
 }
 const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes();
+/** Next half hour from now: a booking for today never starts in the past by default. */
+const nextSlot = () => {
+  const d = new Date();
+  return Math.min(23 * 60 + 30, Math.ceil((d.getHours() * 60 + d.getMinutes() + 1) / 30) * 30);
+};
 const mm = (m: number) =>
   `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
@@ -111,6 +129,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
           aria-label="Escolher outro dia"
           value={value}
           onChange={(e) => e.target.value && onChange(e.target.value)}
+          onClick={openPicker}
           style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
         />
       </label>
@@ -119,9 +138,10 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
 }
 
 export function AgendaScreen(): JSX.Element {
-  const { go } = useNav();
+  const { go, params } = useNav();
   const toast = useToast();
-  const [day, setDay] = useState(ymd(new Date()));
+  // Opens on the day just booked (params.day) so the new appointment is in view.
+  const [day, setDay] = useState(params.day ?? ymd(new Date()));
   const range = useMemo(() => {
     const from = fromYmd(day);
     return { from: from.toISOString(), to: addDays(from, 1).toISOString() };
@@ -141,13 +161,14 @@ export function AgendaScreen(): JSX.Element {
     if (!r.ok) return toast(r.message);
     appts.reload();
     toast(`${a.title} desmarcado.`, async () => {
-      await createAppointment({
+      const back = await createAppointment({
         title: a.title,
         type: a.type ?? 'OUTRO',
         customer_id: a.customer?.id,
         starts_at: a.starts_at,
         ends_at: a.ends_at ?? a.starts_at,
       });
+      if (!back.ok) return toast(back.message);
       appts.reload();
     });
   };
@@ -333,7 +354,13 @@ export function AgendaNewScreen(): JSX.Element {
   const [clientQ, setClientQ] = useState('');
   const [day, setDay] = useState(params.day ?? (startParam ? ymd(startParam) : ymd(new Date())));
   const [time, setTime] = useState(
-    params.time ? Number(params.time) : startParam ? minutesOf(startParam) : 630,
+    params.time
+      ? Number(params.time)
+      : startParam
+        ? minutesOf(startParam)
+        : (params.day ?? ymd(new Date())) === ymd(new Date())
+          ? nextSlot()
+          : 630,
   );
   const [dur, setDur] = useState(
     params.start && params.end
@@ -378,8 +405,8 @@ export function AgendaNewScreen(): JSX.Element {
       : await createAppointment(body);
     setSaving(false);
     if (!r.ok) return toast(r.message);
-    toast(editing ? `Pronto! Remarcado para ${mm(time)}.` : `Pronto! Marcado para ${mm(time)}.`);
-    tab('agenda');
+    toast(`Pronto! ${editing ? 'Remarcado' : 'Marcado'} para ${dayWord(day)} às ${mm(time)}.`);
+    tab('agenda', { day });
   };
 
   const pill = (on: boolean): React.CSSProperties => ({
@@ -462,7 +489,7 @@ export function AgendaNewScreen(): JSX.Element {
             <button
               type="button"
               aria-label="30 minutos antes"
-              onClick={() => setTime((t) => Math.max(360, t - 30))}
+              onClick={() => setTime((t) => Math.max(0, t - 30))}
               style={{ ...stepBtn, color: C.ink }}
             >
               <Minus size={28} aria-hidden="true" />
@@ -473,7 +500,7 @@ export function AgendaNewScreen(): JSX.Element {
             <button
               type="button"
               aria-label="30 minutos depois"
-              onClick={() => setTime((t) => Math.min(1320, t + 30))}
+              onClick={() => setTime((t) => Math.min(23 * 60 + 30, t + 30))}
               style={{ ...stepBtn, color: C.purple }}
             >
               <Plus size={28} aria-hidden="true" />

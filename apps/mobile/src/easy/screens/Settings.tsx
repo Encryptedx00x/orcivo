@@ -17,7 +17,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react-native';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
 import { easy, errorText, type ApprovalMethod } from '../data';
 import { useEasyMode } from '../EasyModeContext';
 import {
@@ -344,13 +344,19 @@ function CompanyEdit() {
       <Field label="Nome da empresa" value={f.trade_name} onChange={set('trade_name')} />
       <Field
         label="CPF ou CNPJ"
-        value={f.document}
-        onChange={set('document')}
+        value={maskCpfCnpj(f.document)}
+        onChange={(v) => set('document')(onlyDigits(v).slice(0, 14))}
         keyboard="number-pad"
         placeholder="Opcional"
       />
-      <Field label="Telefone" value={f.phone} onChange={set('phone')} keyboard="phone-pad" />
-      <Field label="Cidade" value={f.city} onChange={set('city')} />
+      <Field
+        label="Telefone"
+        value={maskPhone(f.phone)}
+        onChange={(v) => set('phone')(onlyDigits(v).slice(0, 11))}
+        keyboard="phone-pad"
+        placeholder="(00) 00000-0000"
+      />
+      <Field label="Cidade" value={f.city} onChange={set('city')} placeholder="Ex.: Campinas" />
       <Field
         label="Estado (UF)"
         value={f.state}

@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { Alert, Pressable, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -16,7 +17,7 @@ import { Linking } from 'react-native';
 import { useSheet } from '../sheet';
 import { easy, errorText, type EasyAppointment } from '../data';
 import { useEasyNav } from '../draft';
-import type { EasyStackParamList } from '../EasyNavigator';
+import type { EasyStackParamList, EasyTabsParamList } from '../EasyNavigator';
 import {
   Btn,
   C,
@@ -45,6 +46,23 @@ const TYPES = [
 const typeLabel = (t: string | null) => TYPES.find((x) => x.value === t)?.label ?? 'Outro';
 const pad = (n: number) => String(n).padStart(2, '0');
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** Next half hour from now: a booking for today never starts in the past by default. */
+const nextSlot = () => {
+  const d = new Date();
+  return Math.min(23 * 60 + 30, Math.ceil((d.getHours() * 60 + d.getMinutes() + 1) / 30) * 30);
+};
+/** "hoje", "amanhã" or "qui., 08/10" for the confirmation. */
+const dayWord = (day: string) => {
+  const today = new Date();
+  if (day === ymd(today)) return 'hoje';
+  if (day === ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))
+    return 'amanhã';
+  return new Date(`${day}T12:00:00`).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  });
+};
 const fromYmd = (v: string) => {
   const [y, m, d] = v.split('-').map(Number);
   return new Date(y!, m! - 1, d!);
@@ -123,7 +141,12 @@ function Arrow({ label, onPress, left }: { label: string; onPress: () => void; l
 
 export function AgendaScreen() {
   const nav = useEasyNav();
-  const [day, setDay] = useState(ymd(new Date()));
+  const route = useRoute<RouteProp<EasyTabsParamList, 'Agenda'>>();
+  const [day, setDay] = useState(route.params?.day ?? ymd(new Date()));
+  // Coming back from "Marcar": show the day that was just booked.
+  useEffect(() => {
+    if (route.params?.day) setDay(route.params.day);
+  }, [route.params?.day]);
   const load = useCallback(() => {
     const from = fromYmd(day);
     return easy.appointments(from.toISOString(), addDays(from, 1).toISOString());
@@ -284,7 +307,15 @@ export function AgendaNewScreen({
   );
   const [clientQ, setClientQ] = useState('');
   const [day, setDay] = useState(p.day ?? (start0 ? ymd(start0) : ymd(new Date())));
-  const [time, setTime] = useState(p.time ? Number(p.time) : start0 ? minutesOf(start0) : 630);
+  const [time, setTime] = useState(
+    p.time
+      ? Number(p.time)
+      : start0
+        ? minutesOf(start0)
+        : (p.day ?? ymd(new Date())) === ymd(new Date())
+          ? nextSlot()
+          : 630,
+  );
   const [dur, setDur] = useState(
     editing?.ends_at && start0
       ? Math.max(30, Math.round((new Date(editing.ends_at).getTime() - start0.getTime()) / 60000))
@@ -316,8 +347,11 @@ export function AgendaNewScreen({
       if (editing)
         await easy.updateAppointment(editing.id, { ...body, customer_id: client?.id ?? null });
       else await easy.createAppointment({ ...body, customer_id: client?.id });
-      Alert.alert('Pronto!', `${editing ? 'Remarcado' : 'Marcado'} para ${mm(time)}.`);
-      navigation.goBack();
+      Alert.alert(
+        'Pronto!',
+        `${editing ? 'Remarcado' : 'Marcado'} para ${dayWord(day)} às ${mm(time)}.`,
+      );
+      navigation.navigate('EasyTabs', { screen: 'Agenda', params: { day } });
     } catch (err) {
       Alert.alert(
         'Não deu certo',

@@ -42,7 +42,8 @@ export type EasyTabsParamList = {
   Inicio: undefined;
   Clientes: undefined;
   Orcamentos: undefined;
-  Agenda: undefined;
+  /** day (yyyy-mm-dd): opens on the day just booked. */
+  Agenda: { day?: string } | undefined;
   Menu: undefined;
 };
 

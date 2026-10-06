@@ -14,7 +14,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
@@ -453,19 +453,19 @@ function CompanyEdit() {
         <Field label="Nome da empresa" value={f.trade_name} onChange={set('trade_name')} />
         <Field
           label="CPF ou CNPJ"
-          value={f.document}
-          onChange={set('document')}
+          value={maskCpfCnpj(f.document)}
+          onChange={(v) => set('document')(onlyDigits(v).slice(0, 14))}
           inputMode="numeric"
           placeholder="Opcional"
         />
         <Field
           label="Telefone"
-          value={f.phone}
-          onChange={set('phone')}
+          value={maskPhone(f.phone)}
+          onChange={(v) => set('phone')(onlyDigits(v).slice(0, 11))}
           inputMode="tel"
           placeholder="(00) 00000-0000"
         />
-        <Field label="Cidade" value={f.city} onChange={set('city')} />
+        <Field label="Cidade" value={f.city} onChange={set('city')} placeholder="Ex.: Campinas" />
         <Field
           label="Estado (UF)"
           value={f.state}
@@ -743,18 +743,24 @@ function ClientEdit() {
       <EditHead title="Editar cliente" sub={c?.name ?? ''} />
       <div style={fieldsGap}>
         <Field label="Nome" value={f.name} onChange={set('name')} />
-        <Field label="Telefone" value={f.phone} onChange={set('phone')} inputMode="tel" />
+        <Field
+          label="Telefone"
+          value={maskPhone(f.phone)}
+          onChange={(v) => set('phone')(onlyDigits(v).slice(0, 11))}
+          inputMode="tel"
+          placeholder="(00) 00000-0000"
+        />
         <Field
           label="Endereço"
           value={f.street}
           onChange={set('street')}
           placeholder="Rua e número"
         />
-        <Field label="Cidade" value={f.city} onChange={set('city')} />
+        <Field label="Cidade" value={f.city} onChange={set('city')} placeholder="Ex.: Campinas" />
         <Field
           label="CPF ou CNPJ"
-          value={f.tax_id}
-          onChange={set('tax_id')}
+          value={maskCpfCnpj(f.tax_id)}
+          onChange={(v) => set('tax_id')(onlyDigits(v).slice(0, 14))}
           inputMode="numeric"
           placeholder="Opcional"
         />
