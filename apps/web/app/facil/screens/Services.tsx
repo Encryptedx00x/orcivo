@@ -40,7 +40,6 @@ import {
   useToast,
   type ChipKind,
 } from '../ui';
-import { menuRow } from './Clients';
 
 const PAGE = 10;
 
@@ -107,15 +106,27 @@ export function ServicesScreen(): React.JSX.Element {
   const orders = useLoad(listWorkOrders);
   const more = useServiceMore(orders.reload);
   const today = new Date().toDateString();
-  // Today's scheduled services plus anything already in progress (it must not disappear).
-  const list = (orders.data ?? [])
+  // "Todos": every service in Modo fácil itself (open first, then the finished ones).
+  const [all, setAll] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
+  const rank = (s: string) => (s === 'IN_PROGRESS' ? 0 : s === 'PENDING' ? 1 : 2);
+  const everything = (orders.data ?? [])
     .filter((o) => o.status !== 'CANCELLED')
-    .filter(
-      (o) =>
-        o.status === 'IN_PROGRESS' ||
-        (o.scheduled_at && new Date(o.scheduled_at).toDateString() === today),
-    )
-    .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
+    .sort(
+      (a, b) =>
+        rank(a.status) - rank(b.status) ||
+        (b.scheduled_at ?? b.created_at ?? '').localeCompare(a.scheduled_at ?? a.created_at ?? ''),
+    );
+  // Today's scheduled services plus anything already in progress (it must not disappear).
+  const list = all
+    ? everything.slice(0, limit)
+    : everything
+        .filter(
+          (o) =>
+            o.status === 'IN_PROGRESS' ||
+            (o.scheduled_at && new Date(o.scheduled_at).toDateString() === today),
+        )
+        .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
 
   const open = async (o: EasyWorkOrder) => {
     if (o.status === 'PENDING') {
@@ -123,18 +134,16 @@ export function ServicesScreen(): React.JSX.Element {
       if (!r.ok) return toast(r.message);
       toast('Serviço começado.');
     }
-    if (o.status === 'DONE') {
-      window.location.href = `/ordens-de-servico/${o.id}`;
-      return;
-    }
     go('run', { id: o.id });
   };
 
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <H1>Serviços de hoje</H1>
-        <span style={{ fontSize: 16, color: C.fg3 }}>{longDate()}</span>
+        <H1>{all ? 'Todos os serviços' : 'Serviços de hoje'}</H1>
+        <span style={{ fontSize: 16, color: C.fg3 }}>
+          {all ? 'Em andamento primeiro, depois os feitos' : longDate()}
+        </span>
       </div>
       {orders.loading && !orders.data ? (
         <Loading />
@@ -171,7 +180,14 @@ export function ServicesScreen(): React.JSX.Element {
                       lineHeight: '28px',
                     }}
                   >
-                    {o.scheduled_at ? hhmm(new Date(o.scheduled_at)) : '—'}
+                    {!o.scheduled_at
+                      ? '—'
+                      : all && new Date(o.scheduled_at).toDateString() !== today
+                        ? new Date(o.scheduled_at).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })
+                        : hhmm(new Date(o.scheduled_at))}
                   </span>
                   <span
                     style={{
@@ -208,22 +224,24 @@ export function ServicesScreen(): React.JSX.Element {
           })}
         </div>
       )}
+      {all && everything.length > limit && (
+        <Btn tone="link" onClick={() => setLimit((l) => l + PAGE)}>
+          Ver mais {Math.min(PAGE, everything.length - limit)} de {everything.length - limit}
+        </Btn>
+      )}
       <Btn tone="link" onClick={() => tab('agenda')}>
         Ver outros dias na Agenda
       </Btn>
-      <a
-        href="/ordens-de-servico"
-        style={{
-          ...menuRow,
-          justifyContent: 'center',
-          border: 'none',
-          background: 'transparent',
-          color: C.purple700,
-          fontSize: 17,
+      <Btn
+        tone="link"
+        onClick={() => {
+          setAll((a) => !a);
+          setLimit(PAGE);
+          window.scrollTo({ top: 0 });
         }}
       >
-        Todos os serviços (modo completo)
-      </a>
+        {all ? 'Só os serviços de hoje' : 'Ver todos os serviços'}
+      </Btn>
     </>
   );
 }
@@ -323,18 +341,16 @@ export function RunScreen(): JSX.Element {
         </div>
         <ActionBar>
           <Btn onClick={() => tab('home')}>Voltar ao início</Btn>
-          <a
-            href={`/ordens-de-servico/${o.id}`}
-            style={{
-              ...menuRow,
-              justifyContent: 'center',
-              border: 'none',
-              color: C.purple700,
-              fontSize: 17,
+          {/* Back to this service (now Feito): "Mais ações" there reopens it. */}
+          <Btn
+            tone="link"
+            onClick={() => {
+              setDone(false);
+              order.reload();
             }}
           >
             Abrir o serviço (desfazer ou reabrir)
-          </a>
+          </Btn>
         </ActionBar>
       </>
     );
