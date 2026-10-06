@@ -146,6 +146,43 @@ export async function createQuote(
   );
 }
 
+/** Saves the guided flow over an existing draft (corrected or never sent). */
+export async function updateQuote(
+  id: string,
+  dto: QuoteCreateDto,
+): Promise<Result<{ id: string; number: number }>> {
+  return run(
+    () =>
+      apiFetch<{ id: string; number: number }>(`/quotes/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(dto),
+      }),
+    'Não foi possível guardar o orçamento.',
+  );
+}
+export interface EasyQuoteFull {
+  id: string;
+  number: number;
+  status: string;
+  notes: string | null;
+  valid_until: string | null;
+  discount_type: 'PERCENT' | 'FIXED';
+  discount_value: string;
+  customer: { id: string; name: string; phone?: string | null };
+  items: Array<{
+    catalog_item_id: string | null;
+    description: string;
+    quantity: string;
+    unit_price: string;
+  }>;
+}
+export async function getQuoteFull(id: string): Promise<Result<EasyQuoteFull>> {
+  return run(
+    () => apiFetch<EasyQuoteFull>(`/quotes/${encodeURIComponent(id)}`),
+    'Não foi possível abrir o orçamento.',
+  );
+}
+
 // ── Approval methods (company setting, admin-only in the backend) ─────
 export type ApprovalMethod =
   | 'APPROVE_BUTTON'

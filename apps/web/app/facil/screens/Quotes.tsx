@@ -15,10 +15,17 @@ import {
   XCircle,
 } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
-import { getQuoteShare, listQuotes, type EasyQuote } from '../actions';
+import {
+  getQuoteFull,
+  getQuoteShare,
+  listQuotes,
+  type EasyQuote,
+  type EasyQuoteFull,
+} from '../actions';
 import { quoteAction, type DirectQuoteAction } from '../../(app)/orcamentos/actions';
 import { buildWhatsAppLink } from '../../../lib/whatsapp';
-import { emptyDraft, useLoad, useNav } from '../EasyApp';
+import { emptyDraft, useLoad, useNav, type Draft } from '../EasyApp';
+import { centsToDecimal, decimalToDigits } from '../rows';
 import { MoreButton, reasonSheet, useSheet, type SheetAction } from '../sheet';
 import {
   Btn,
@@ -57,6 +64,34 @@ const GROUPS: Array<{ statuses: EasyQuote['status'][]; title: string; dot: strin
 ];
 const HIDDEN: EasyQuote['status'][] = ['REJECTED', 'EXPIRED', 'CANCELLED'];
 const PAGE = 5;
+
+function draftFromQuote(q: EasyQuoteFull): Draft {
+  const days = q.valid_until
+    ? Math.round((new Date(q.valid_until).getTime() - Date.now()) / 86_400_000)
+    : 0;
+  return {
+    ...emptyDraft(),
+    id: q.id,
+    number: q.number,
+    client: { id: q.customer.id, name: q.customer.name, phone: q.customer.phone ?? null },
+    items: q.items.map((i, n) => ({
+      key: i.catalog_item_id ?? `q${n}`,
+      catalog_item_id: i.catalog_item_id ?? undefined,
+      name: i.description,
+      price: centsToDecimal(decimalToDigits(i.unit_price)),
+      qty: Number(i.quantity),
+    })),
+    discountType: q.discount_type,
+    discountDigits:
+      Number(q.discount_value) === 0
+        ? ''
+        : q.discount_type === 'PERCENT'
+          ? String(Number(q.discount_value))
+          : decimalToDigits(q.discount_value),
+    validityDays: days > 0 ? days : 15,
+    terms: q.notes ?? '',
+  };
+}
 
 function ago(iso?: string) {
   if (!iso) return '';
@@ -199,7 +234,7 @@ const REASONS: Record<DirectQuoteAction, { title: string; reasons: string[]; don
 function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const toast = useToast();
   const sheet = useSheet();
-  const { go } = useNav();
+  const { go, setDraft } = useNav();
   const chip = quoteChip(q.status);
   const meta = `#${q.number} · ${q.status === 'DRAFT' ? 'criado' : q.status === 'APPROVED' ? 'aprovado' : 'atualizado'} ${ago(q.updated_at ?? q.created_at)}`;
 
@@ -220,6 +255,14 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     if (tab) tab.location.href = link;
     else window.location.href = link;
     toast(`Pronto! Reenviado para ${q.customer?.name?.split(' ')[0] ?? 'o cliente'} no WhatsApp.`);
+  };
+  // Drafts reopen in the same 3 steps (items first; back goes to the client step).
+  const edit = async () => {
+    const r = await getQuoteFull(q.id);
+    if (!r.ok) return toast(r.message);
+    setDraft(draftFromQuote(r.data));
+    go('q1');
+    go('q2');
   };
   const copyLink = async () => {
     let problem = '';
@@ -282,7 +325,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     label: 'Corrigir orçamento',
     sub: 'Volta para rascunho para mudar e reenviar',
     icon: Pencil,
-    run: () => run('corrigir', () => (window.location.href = `/orcamentos/${q.id}`)),
+    run: () => run('corrigir', () => void edit()),
   };
   const actions: SheetAction[] =
     q.status === 'SENT'
@@ -315,7 +358,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
               {
                 label: 'Continuar editando',
                 icon: Pencil,
-                run: () => (window.location.href = `/orcamentos/${q.id}`),
+                run: () => void edit(),
               },
               pdf,
               { label: 'Descartar rascunho', icon: Ban, danger: true, run: () => run('cancelar') },

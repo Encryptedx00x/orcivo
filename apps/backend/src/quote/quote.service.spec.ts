@@ -768,7 +768,7 @@ describe('QuoteService', () => {
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'q1', status: 'APPROVED' },
-          data: { status: 'DRAFT', technician_signature_key: null },
+          data: { status: 'DRAFT', technician_signature_key: null, approval_token: null },
         }),
       );
       expect(mockAudit.record).toHaveBeenCalledWith(
@@ -778,6 +778,36 @@ describe('QuoteService', () => {
           from: 'APPROVED',
           to: 'DRAFT',
           reason: 'Erro no valor de um item',
+        }),
+      );
+    });
+
+    it('Test R5a: correct() SENT→DRAFT derruba o link de aprovação em aberto', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        company_id: 'comp-1',
+        status: 'SENT',
+        approval_token: 'old-token',
+        items: [],
+        customer: { name: 'Ana' },
+        approval: null,
+      });
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+      mockTx.quote.findUnique.mockResolvedValue({
+        id: 'q1',
+        number: 12,
+        status: 'DRAFT',
+        items: [],
+        customer: { name: 'Ana' },
+        approval: null,
+      });
+
+      await service.correct('q1', 'comp-1', 'user-1', 'Mudar itens ou preços');
+
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'q1', status: 'SENT' },
+          data: { status: 'DRAFT', technician_signature_key: null, approval_token: null },
         }),
       );
     });

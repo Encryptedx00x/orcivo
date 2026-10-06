@@ -16,6 +16,22 @@ export interface EasySummary {
   };
   upcoming: Array<{ id: string; title: string; starts_at: string }>;
 }
+export interface EasyQuoteFull {
+  id: string;
+  number: number;
+  notes: string | null;
+  valid_until: string | null;
+  discount_type: 'PERCENT' | 'FIXED';
+  discount_value: string;
+  customer: { id: string; name: string; phone?: string | null };
+  items: Array<{
+    catalog_item_id: string | null;
+    description: string;
+    quantity: string;
+    unit_price: string;
+  }>;
+}
+
 export interface EasyClient {
   id: string;
   name: string;
@@ -136,6 +152,10 @@ export const easy = {
     }>(`/quotes/${enc(id)}`);
     return { token: q.approval_token ?? null, phone: q.customer?.phone ?? null, number: q.number };
   },
+  quoteFull: (id: string) => api.get<EasyQuoteFull>(`/quotes/${enc(id)}`),
+  /** Saves the 3 steps over an existing draft. */
+  updateQuote: (id: string, dto: QuoteCreateDto, idempotencyKey: string) =>
+    api.patch<{ id: string; number: number }>(`/quotes/${enc(id)}`, dto, { idempotencyKey }),
   createQuote: (dto: QuoteCreateDto, idempotencyKey: string) =>
     api.post<{ id: string; number: number }>('/quotes', dto, { idempotencyKey }),
   /** Send with the saved signature (apply=true) or none. */

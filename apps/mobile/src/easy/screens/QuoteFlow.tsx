@@ -387,7 +387,7 @@ export function QuoteReviewScreen() {
 
   useEffect(() => {
     // First visit: the company's Condições padrão fill terms and validity.
-    if (draft.terms === '') {
+    if (draft.terms === '' && !draft.id) {
       setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
       easy
         .company()
@@ -448,13 +448,15 @@ export function QuoteReviewScreen() {
       items: draft.items.map((i) => ({
         catalog_item_id: i.catalog_item_id,
         description: i.name.slice(0, 300),
-        quantity: `${i.qty}.000`,
+        quantity: i.qty.toFixed(3),
         unit_price: i.price,
       })),
     } as QuoteCreateDto;
     let created: { id: string; number: number };
     try {
-      created = await easy.createQuote(dto, createKey.current);
+      created = draft.id
+        ? await easy.updateQuote(draft.id, dto, createKey.current)
+        : await easy.createQuote(dto, createKey.current);
     } catch (err) {
       setBusy(false);
       return Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o orçamento.'));

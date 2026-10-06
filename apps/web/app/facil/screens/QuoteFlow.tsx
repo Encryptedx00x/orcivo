@@ -24,6 +24,7 @@ import {
   createCatalogItem,
   createClient,
   createQuote,
+  updateQuote,
   getApprovalMethods,
   getCompany,
   listCatalog,
@@ -845,7 +846,7 @@ function Q3() {
 
   useEffect(() => {
     // First visit: the company's "Condições padrão" (Configurações) fill terms and validity.
-    if (draft.terms === '') {
+    if (draft.terms === '' && !draft.id) {
       setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
       void getCompany().then((r) => {
         if (!r.ok) return;
@@ -894,7 +895,7 @@ function Q3() {
   };
   const create = async () => {
     if (!draft.client) return null;
-    const r = await createQuote({
+    const dto = {
       customer_id: draft.client.id,
       notes: draft.terms.trim() || undefined,
       valid_until: validUntil(),
@@ -906,15 +907,19 @@ function Q3() {
       items: draft.items.map((i) => ({
         catalog_item_id: i.catalog_item_id,
         description: i.name.slice(0, 300),
-        quantity: `${i.qty}.000`,
+        quantity: i.qty.toFixed(3),
         unit_price: i.price,
       })),
-    });
+    };
+    // Once saved, later tries (send failed, PDF first) update the same quote, never a copy.
+    const r = draft.id ? await updateQuote(draft.id, dto) : await createQuote(dto);
     if (!r.ok) {
       toast(r.message);
       return null;
     }
-    return r.data;
+    const saved = { id: r.data.id, number: r.data.number };
+    setDraft((d) => ({ ...d, ...saved }));
+    return saved;
   };
 
   const send = async () => {

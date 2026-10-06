@@ -7,6 +7,7 @@ import {
   Link2,
   MoreHorizontal,
   MessageCircle,
+  Pencil,
   Plus,
   Undo2,
   Wrench,
@@ -16,7 +17,14 @@ import {
 } from 'lucide-react-native';
 import { formatMoney } from '@orcivo/shared-types';
 import { easy, errorText, type EasyQuote, type QuoteStatus } from '../data';
-import { approvalUrl, emptyDraft, openWhatsApp, useDraft, useEasyNav } from '../draft';
+import {
+  approvalUrl,
+  draftFromQuote,
+  emptyDraft,
+  openWhatsApp,
+  useDraft,
+  useEasyNav,
+} from '../draft';
 import { reasonSheet, useSheet, type SheetAction } from '../sheet';
 import { shareQuotePdf } from '../share';
 import {
@@ -211,6 +219,8 @@ export function useQuoteMore(
   q: Pick<EasyQuote, 'id' | 'number' | 'status' | 'total' | 'customer'>,
   onChanged: () => void,
   onSchedule?: () => void,
+  /** Easy mode: reopens a draft in the 3 steps (also right after "corrigir"). */
+  onEdit?: () => void,
 ) {
   const sheet = useSheet();
 
@@ -222,8 +232,9 @@ export function useQuoteMore(
       async (reason) => {
         try {
           await easy.quoteAction(q.id, action, reason);
-          Alert.alert('Pronto', ACTIONS[action].done);
           onChanged();
+          if (action === 'correct' && onEdit) return onEdit();
+          Alert.alert('Pronto', ACTIONS[action].done);
         } catch (err) {
           Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
         }
@@ -289,7 +300,13 @@ export function useQuoteMore(
               act('cancel'),
             ]
           : q.status === 'DRAFT'
-            ? [pdfAct, { ...act('cancel'), label: 'Descartar rascunho' }]
+            ? [
+                ...(onEdit
+                  ? [{ label: 'Continuar editando', icon: Pencil, run: onEdit } as SheetAction]
+                  : []),
+                pdfAct,
+                { ...act('cancel'), label: 'Descartar rascunho' },
+              ]
             : [act('reopen'), act('correct'), pdfAct];
     sheet({
       title: q.customer?.name ?? `Orçamento #${q.number}`,
@@ -308,11 +325,26 @@ export function useQuoteMore(
 function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const nav = useEasyNav();
   const chip = quoteChip(q.status);
-  const { openMore, resend } = useQuoteMore(q, onChanged, () =>
-    nav.navigate('AgendaNew', {
-      client: { id: q.customer.id, name: q.customer.name },
-      type: 'INSTALACAO',
-    }),
+  const { setDraft } = useDraft();
+  const edit = async () => {
+    try {
+      setDraft(draftFromQuote(await easy.quoteFull(q.id)));
+      // Items first; back goes to the client step.
+      nav.push('QuoteClient');
+      nav.push('QuoteItems');
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível abrir o orçamento.'));
+    }
+  };
+  const { openMore, resend } = useQuoteMore(
+    q,
+    onChanged,
+    () =>
+      nav.navigate('AgendaNew', {
+        client: { id: q.customer.id, name: q.customer.name },
+        type: 'INSTALACAO',
+      }),
+    () => void edit(),
   );
 
   return (

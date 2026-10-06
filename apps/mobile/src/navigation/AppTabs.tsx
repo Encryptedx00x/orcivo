@@ -17,9 +17,9 @@ import type { Appointment } from '../services/appointment.service';
 import { MaisStack } from './MaisStack';
 
 export type AppTabsParamList = {
-  'Início': undefined;
+  Início: undefined;
   Clientes: NavigatorScreenParams<ClientesStackParamList>;
-  'Orçamentos': NavigatorScreenParams<QuotesStackParamList>;
+  Orçamentos: NavigatorScreenParams<QuotesStackParamList>;
   Agenda: NavigatorScreenParams<AgendaStackParamList>;
   Mais: undefined;
 };
@@ -37,7 +37,8 @@ const ClientesStack = createNativeStackNavigator<ClientesStackParamList>();
 export type QuotesStackParamList = {
   QuotesList: undefined;
   QuoteDetail: { id: string };
-  QuoteCreate: undefined;
+  /** With id: edits that draft. */
+  QuoteCreate: { id?: string } | undefined;
 };
 
 const QuotesStack = createNativeStackNavigator<QuotesStackParamList>();

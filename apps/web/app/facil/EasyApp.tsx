@@ -64,6 +64,9 @@ export interface Draft {
   terms: string;
   /** Technician signature for this quote: saved one, one-off image, or none. */
   signature: { mode: 'saved' | 'once' | 'none'; dataUrl?: string };
+  /** Set once the quote exists (editing a draft, or after the first save): saves update it. */
+  id?: string;
+  number?: number;
   result?: { id: string; number: number; total: string };
 }
 export const emptyDraft = (hasSaved = false): Draft => ({

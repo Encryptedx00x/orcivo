@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -15,11 +16,12 @@ import {
   FileText,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   XCircle,
 } from 'lucide-react-native';
 import { Switch } from 'react-native';
 import { easy } from '../easy/data';
-import { approvalUrl as approvalUrlOf } from '../easy/draft';
+import { approvalUrl as approvalUrlOf, draftFromQuote, useDraft } from '../easy/draft';
 import { useQuoteMore } from '../easy/screens/Quotes';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { formatMoney } from '@orcivo/shared-types';
@@ -55,7 +57,7 @@ function buildWhatsAppLink(phone: string, message: string): string {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
-export function QuoteDetailScreen({ route }: Props) {
+export function QuoteDetailScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,9 +90,28 @@ export function QuoteDetailScreen({ route }: Props) {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Reloads when coming back from editing.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  // Full mode edits in its form; Modo fácil (same screen in its stack) reopens the 3 steps.
+  const { setDraft } = useDraft();
+  const edit = async () => {
+    if (navigation.getState().routeNames.includes('QuoteCreate')) {
+      return navigation.navigate('QuoteCreate', { id });
+    }
+    try {
+      setDraft(draftFromQuote(await easy.quoteFull(id)));
+      const easyNav = navigation as unknown as { push: (name: string) => void };
+      easyNav.push('QuoteClient');
+      easyNav.push('QuoteItems');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o orçamento.');
+    }
+  };
 
   const handleSend = async () => {
     if (!quote) return;
@@ -226,6 +247,14 @@ export function QuoteDetailScreen({ route }: Props) {
             ) : (
               <Text style={styles.primaryBtnText}>Enviar orçamento</Text>
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={() => void edit()}
+            accessibilityRole="button"
+          >
+            <Pencil size={18} color="#6D28D9" />
+            <Text style={styles.moreBtnText}>Editar orçamento</Text>
           </TouchableOpacity>
           {savedSig ? (
             <View style={styles.sigRow}>

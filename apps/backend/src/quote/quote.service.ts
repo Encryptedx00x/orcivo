@@ -767,13 +767,14 @@ export class QuoteService {
       (quote as unknown as { approval_token?: string | null }).approval_token ?? undefined;
     const data: {
       status: 'SENT' | 'DRAFT';
-      approval_token?: string;
+      approval_token?: string | null;
       valid_until?: Date;
       technician_signature_key?: null;
     } = {
       status: to,
-      // Back to draft = content can change; the next send decides the signature again.
-      ...(to === 'DRAFT' ? { technician_signature_key: null } : {}),
+      // Back to draft = content can change: the next send decides the signature again
+      // and issues a new link, so the client's current link stops working now.
+      ...(to === 'DRAFT' ? { technician_signature_key: null, approval_token: null } : {}),
     };
     if (to === 'SENT' && newApprovalToken && newValidUntil) {
       data.approval_token = newApprovalToken;

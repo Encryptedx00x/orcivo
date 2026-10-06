@@ -59,7 +59,8 @@ export const QUOTE_ACTIONS: Record<QuoteAction, QuoteActionSpec> = {
   },
   corrigir: {
     to: 'DRAFT',
-    allowedFrom: ['APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED'],
+    // SENT too: fixing a quote the client has not answered yet (the old link stops working).
+    allowedFrom: ['SENT', 'APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED'],
     requiresReason: true,
     adminOnly: true,
   },

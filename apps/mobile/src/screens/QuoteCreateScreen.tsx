@@ -63,7 +63,8 @@ function applyDateMask(raw: string): string {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
-export function QuoteCreateScreen({ navigation }: Props) {
+export function QuoteCreateScreen({ navigation, route }: Props) {
+  const editId = route.params?.id;
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -94,8 +95,41 @@ export function QuoteCreateScreen({ navigation }: Props) {
     loadCatalog();
   }, [loadCatalog]);
 
+  // Editing a draft: start from what is saved.
+  useEffect(() => {
+    if (!editId) return;
+    navigation.setOptions({ title: 'Editar orçamento' });
+    quoteService
+      .fetchQuote(editId)
+      .then((q) => {
+        const full = q as typeof q & { valid_until?: string | null };
+        setCustomerId(q.customer.id);
+        pickedName.current = q.customer.name;
+        setCustomerSearch(q.customer.name);
+        setTitle(q.title ?? '');
+        if (full.valid_until) {
+          const [y, m, d] = full.valid_until.slice(0, 10).split('-');
+          setValidUntil(`${d}/${m}/${y}`);
+        }
+        setItems(
+          q.items.map((i) => ({
+            key: generateKey(),
+            catalog_item_id: i.catalog_item_id ?? undefined,
+            description: i.description,
+            quantity: String(i.quantity),
+            unit_price: String(i.unit_price),
+          })),
+        );
+      })
+      .catch(() => Alert.alert('Erro', 'Não foi possível abrir o orçamento.'));
+  }, [editId, navigation]);
+
+  // The name of the picked client fills the field: that text must not search again.
+  const pickedName = useRef('');
+
   // Busca clientes ao digitar (mínimo 1 caractere)
   useEffect(() => {
+    if (customerSearch === pickedName.current) return;
     if (!customerSearch.trim()) {
       setCustomers([]);
       setShowSuggestions(false);
@@ -117,6 +151,7 @@ export function QuoteCreateScreen({ navigation }: Props) {
 
   const selectCustomer = (c: Customer) => {
     setCustomerId(c.id);
+    pickedName.current = c.name;
     setCustomerSearch(c.name);
     setShowSuggestions(false);
     setErrors((e) => ({ ...e, customer: '' }));
@@ -192,6 +227,13 @@ export function QuoteCreateScreen({ navigation }: Props) {
           unit_price: i.unit_price,
         })),
       };
+      if (editId) {
+        await api.patch(`/quotes/${encodeURIComponent(editId)}`, dto, {
+          idempotencyKey: submitKey.current,
+        });
+        submitKey.current = newIdempotencyKey();
+        return navigation.goBack();
+      }
       const created = await quoteService.createQuote(dto, { idempotencyKey: submitKey.current });
       navigation.replace('QuoteDetail', { id: created.id });
     } catch (err: unknown) {
@@ -351,7 +393,9 @@ export function QuoteCreateScreen({ navigation }: Props) {
             {submitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitBtnText}>Criar orçamento</Text>
+              <Text style={styles.submitBtnText}>
+                {editId ? 'Salvar alterações' : 'Criar orçamento'}
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>

@@ -3,7 +3,7 @@ import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
-import type { EasyClient } from './data';
+import type { EasyClient, EasyQuoteFull } from './data';
 import type { EasyStackParamList } from './EasyNavigator';
 import { WEB_URL } from '../config';
 
@@ -32,6 +32,8 @@ export interface Draft {
   signature: SignatureChoice;
   /** null until the saved signature was checked on the review step. */
   savedSignature: string | null | undefined;
+  /** Editing an existing draft: sending updates it instead of creating a new quote. */
+  id?: string;
 }
 
 export const DEFAULT_TERMS =
@@ -70,6 +72,40 @@ export const centsToDecimal = (digits: string) => {
   const padded = n.padStart(3, '0');
   return `${padded.slice(0, -2)}.${padded.slice(-2)}`;
 };
+
+/** "690.5" → "69050" (digits of a money field). */
+const decimalToDigits = (v: string) => {
+  const [a, b = ''] = v.split('.');
+  return `${a}${b.padEnd(2, '0').slice(0, 2)}`.replace(/^0+/, '');
+};
+
+/** A draft quote (corrected or never sent) back in the 3 steps. */
+export function draftFromQuote(q: EasyQuoteFull): Draft {
+  const days = q.valid_until
+    ? Math.round((new Date(q.valid_until).getTime() - Date.now()) / 86_400_000)
+    : 0;
+  return {
+    ...emptyDraft(),
+    id: q.id,
+    client: { id: q.customer.id, name: q.customer.name, phone: q.customer.phone ?? null },
+    items: q.items.map((i, n) => ({
+      key: i.catalog_item_id ?? `q${n}`,
+      catalog_item_id: i.catalog_item_id ?? undefined,
+      name: i.description,
+      price: centsToDecimal(decimalToDigits(i.unit_price)),
+      qty: Number(i.quantity),
+    })),
+    discountType: q.discount_type,
+    discountDigits:
+      Number(q.discount_value) === 0
+        ? ''
+        : q.discount_type === 'PERCENT'
+          ? String(Number(q.discount_value))
+          : decimalToDigits(q.discount_value),
+    validityDays: days > 0 ? days : 15,
+    terms: q.notes ?? '',
+  };
+}
 
 /** Same math as the web Modo fácil (display only; the backend recomputes). */
 export function useTotals(draft: Draft) {
