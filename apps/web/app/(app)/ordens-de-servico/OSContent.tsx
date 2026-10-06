@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { ClipboardList, Search, ChevronRight, Plus } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
+import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
+import { loadWorkOrdersPage } from './list-actions';
 
 const SM: Record<WorkOrder['status'], [string, string]> = {
   PENDING: ['warning', 'Pendente'],
@@ -47,7 +49,9 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
+export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): JSX.Element {
+  const list = usePagedList(firstPage, loadWorkOrdersPage);
+  const orders = list.items;
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [techFilter, setTechFilter] = useState('todos');
@@ -96,7 +100,8 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
             Ordens de Serviço
           </h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
-            {activeCount} ativas · {orders.length} no total
+            {activeCount} ativas · {orders.length}
+            {list.done ? '' : '+'} no total
           </div>
         </div>
         <div>
@@ -270,6 +275,7 @@ export function OSContent({ orders }: { orders: WorkOrder[] }): JSX.Element {
           </table>
         </div>
       )}
+      <LoadMore list={list} />
     </div>
   );
 }

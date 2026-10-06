@@ -49,7 +49,8 @@ export class WorkOrderController {
     return this.workOrderService.findAll(
       req.companyId,
       Number(page) || 1,
-      Number(limit) || 20,
+      // Cap protects the API from unbounded reads; screens page with Ver mais.
+      Math.min(Number(limit) || 20, 100),
       req.role,
     );
   }

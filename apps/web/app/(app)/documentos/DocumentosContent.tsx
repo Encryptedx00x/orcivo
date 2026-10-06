@@ -2,6 +2,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { FileText, ExternalLink, Inbox } from 'lucide-react';
+import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
+import { loadQuotesPage } from '../orcamentos/list-actions';
+import { loadWorkOrdersPage } from '../ordens-de-servico/list-actions';
 
 // ── Tipos vindos do server component ──────────────────────────────────
 export interface DocQuote {
@@ -129,7 +132,38 @@ interface Props {
   workOrders: DocWorkOrder[];
 }
 
-export function DocumentosContent({ quotes, workOrders }: Props): JSX.Element {
+export function DocumentosContent({
+  quotes: firstQuotes,
+  workOrders: firstWorkOrders,
+}: Props): JSX.Element {
+  const quoteList = usePagedList(firstQuotes, async (page) => {
+    const rows = await loadQuotesPage(page);
+    return (
+      rows?.map((q) => ({
+        id: q.id,
+        number: q.number,
+        status: q.status,
+        title: q.title,
+        customer: { name: q.customer.name },
+        created_at: q.created_at,
+      })) ?? null
+    );
+  });
+  const woList = usePagedList(firstWorkOrders, async (page) => {
+    const rows = await loadWorkOrdersPage(page);
+    return (
+      rows?.map((w) => ({
+        id: w.id,
+        number: w.number,
+        title: w.title,
+        status: w.status,
+        customer: { name: w.customer.name },
+        finished_at: w.finished_at,
+      })) ?? null
+    );
+  });
+  const quotes = quoteList.items;
+  const workOrders = woList.items;
   const TABS = [
     { id: 'orc', label: 'Orçamentos', count: quotes.length },
     { id: 'os', label: 'Ordens de Serviço', count: workOrders.length },
@@ -312,6 +346,9 @@ export function DocumentosContent({ quotes, workOrders }: Props): JSX.Element {
               </tbody>
             </table>
           ))}
+
+        {tab === 'orc' && <LoadMore list={quoteList} />}
+        {tab === 'os' && <LoadMore list={woList} />}
 
         {tab === 'rec' && (
           <EmptyState label="Recibos serão gerados automaticamente ao registrar recebimentos." />

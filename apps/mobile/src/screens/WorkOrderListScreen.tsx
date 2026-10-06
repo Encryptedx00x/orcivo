@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { CheckCircle, ClipboardList, Clock } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { usePagedList } from '../hooks/usePagedList';
 import { workOrderService, WorkOrder } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 
@@ -33,22 +34,13 @@ function StatusBadge({ status }: { status: WorkOrderStatus }) {
 }
 
 export function WorkOrderListScreen({ navigation }: Props) {
-  const [orders, setOrders] = useState<WorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await workOrderService.fetchAll(1);
-      setOrders(res.data ?? []);
-    } catch {
-      setError('Não foi possível carregar as ordens de serviço.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchPage = useCallback(
+    async (page: number) => (await workOrderService.fetchAll(page)).data ?? [],
+    [],
+  );
+  const list = usePagedList(fetchPage);
+  const { items: orders, loading, refresh: load } = list;
+  const error = list.failed ? 'Não foi possível carregar as ordens de serviço.' : null;
 
   useEffect(() => {
     load();
@@ -100,6 +92,11 @@ export function WorkOrderListScreen({ navigation }: Props) {
         renderItem={renderItem}
         onRefresh={load}
         refreshing={loading}
+        onEndReached={list.loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          list.loadingMore ? <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} /> : null
+        }
         contentContainerStyle={orders.length === 0 ? styles.emptyContainer : undefined}
         ListEmptyComponent={
           <View style={styles.center}>
@@ -129,7 +126,12 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
   badgeText: { fontSize: 12, fontWeight: '500' },
   errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
-  retryBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryBtn: {
+    backgroundColor: '#6D28D9',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginTop: 16 },
 });

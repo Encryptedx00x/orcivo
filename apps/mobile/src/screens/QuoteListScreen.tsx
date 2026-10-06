@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +10,7 @@ import {
 import { CheckCircle, Clock, FileText, Plus, XCircle } from 'lucide-react-native';
 import { formatMoney } from '@orcivo/shared-types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { usePagedList } from '../hooks/usePagedList';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 
@@ -51,22 +52,13 @@ function StatusIcon({ status }: { status: QuoteStatus }) {
 }
 
 export function QuoteListScreen({ navigation }: Props) {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await quoteService.fetchQuotes(1);
-      setQuotes(res.data ?? []);
-    } catch {
-      setError('Não foi possível carregar os orçamentos.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchPage = useCallback(
+    async (page: number) => (await quoteService.fetchQuotes(page)).data ?? [],
+    [],
+  );
+  const list = usePagedList(fetchPage);
+  const { items: quotes, loading, refresh: load } = list;
+  const error = list.failed ? 'Não foi possível carregar os orçamentos.' : null;
 
   useEffect(() => {
     load();
@@ -126,6 +118,11 @@ export function QuoteListScreen({ navigation }: Props) {
         renderItem={renderItem}
         onRefresh={load}
         refreshing={loading}
+        onEndReached={list.loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          list.loadingMore ? <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} /> : null
+        }
         contentContainerStyle={quotes.length === 0 ? styles.emptyContainer : undefined}
         ListEmptyComponent={
           <View style={styles.center}>
@@ -177,10 +174,20 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 12, fontWeight: '500' },
   errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
-  retryBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryBtn: {
+    backgroundColor: '#6D28D9',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginBottom: 16 },
-  addBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  addBtn: {
+    backgroundColor: '#6D28D9',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   addBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   fab: {
     position: 'absolute',

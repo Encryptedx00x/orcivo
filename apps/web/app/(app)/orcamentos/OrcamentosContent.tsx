@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Plus, FileText, ChevronRight } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import type { Quote } from '../../../lib/quote.service';
+import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
+import { loadQuotesPage } from './list-actions';
 
 const TABS = [
   { id: 'todos', label: 'Todos' },
@@ -66,7 +68,9 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OrcamentosContent({ quotes }: { quotes: Quote[] }): JSX.Element {
+export function OrcamentosContent({ quotes: firstPage }: { quotes: Quote[] }): JSX.Element {
+  const list = usePagedList(firstPage, loadQuotesPage);
+  const quotes = list.items;
   const [tab, setTab] = useState('todos');
   const filtered = tab === 'todos' ? quotes : quotes.filter((q) => q.status === tab);
 
@@ -86,7 +90,8 @@ export function OrcamentosContent({ quotes }: { quotes: Quote[] }): JSX.Element 
             Orçamentos
           </h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
-            {quotes.length} no total
+            {quotes.length}
+            {list.done ? '' : '+'} no total
           </div>
         </div>
         <div className="row-flex">
@@ -205,6 +210,7 @@ export function OrcamentosContent({ quotes }: { quotes: Quote[] }): JSX.Element 
           </table>
         </div>
       )}
+      <LoadMore list={list} />
     </div>
   );
 }
