@@ -191,7 +191,8 @@ export class PaymentService {
     if (p.status !== 'PAID' || p.receipt_number === null) {
       throw new NotFoundException('Este recebimento ainda não foi pago, então não tem recibo.');
     }
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    const row = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    const company = { ...row, logo_url: await this.storage.inlineImage(row.logo_url) };
     let signatureDataUri: string | null = null;
     if (p.receipt_signature_key) {
       try {

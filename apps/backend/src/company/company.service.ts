@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CompanyProfileUpdateDto } from './company-profile-update.schema';
 import { PrismaService } from '../prisma/prisma.service';
+import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuditJsonValue } from '../audit/audit.types';
 
@@ -53,6 +54,7 @@ export class CompanyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   async findCurrent(companyId: string) {
@@ -61,7 +63,66 @@ export class CompanyService {
       select: COMPANY_SELECT,
     });
     if (!company) throw new NotFoundException();
-    return company;
+    // logo_url holds a storage key; screens get a short-lived URL to show it.
+    return { ...company, logo_url: await this.logoUrl(company.logo_url) };
+  }
+
+  private async logoUrl(stored: string | null): Promise<string | null> {
+    if (!stored) return null;
+    if (/^https?:/i.test(stored)) return stored;
+    return this.storage.getSignedUrl(PHOTO_BUCKET, stored).catch(() => null);
+  }
+
+  /** Logo used on quote, receipt and service PDFs (PNG, JPEG or WebP up to 2 MB). */
+  async uploadLogo(
+    companyId: string,
+    file: { buffer: Buffer; mimetype: string } | undefined,
+    userId: string,
+  ) {
+    if (!file) throw new BadRequestException('Envie a imagem do logo.');
+    this.storage.assertUploadable(file.buffer, file.mimetype, 2 * 1024 * 1024, [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+    ]);
+    const key = `${companyId}/branding/logo`;
+    await this.storage.uploadBuffer(PHOTO_BUCKET, key, file.buffer, file.mimetype);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.company.update({ where: { id: companyId }, data: { logo_url: key } });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.logo_updated',
+        entityType: 'company',
+        entityId: companyId,
+        humanText: 'Logo da empresa atualizado',
+      });
+    });
+    return this.findCurrent(companyId);
+  }
+
+  async removeLogo(companyId: string, userId: string) {
+    const before = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { logo_url: true },
+    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.company.update({ where: { id: companyId }, data: { logo_url: null } });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.logo_removed',
+        entityType: 'company',
+        entityId: companyId,
+        humanText: 'Logo da empresa removido',
+      });
+    });
+    if (before?.logo_url && !/^https?:/i.test(before.logo_url)) {
+      await this.storage.deleteObject(PHOTO_BUCKET, before.logo_url).catch(() => undefined);
+    }
+    return this.findCurrent(companyId);
   }
 
   async getDashboard(companyId: string) {

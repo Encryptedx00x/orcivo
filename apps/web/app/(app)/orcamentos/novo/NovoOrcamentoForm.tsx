@@ -12,6 +12,9 @@ import {
 } from '@orcivo/shared-types';
 import { maskPhone } from '@orcivo/shared-types';
 
+const DEFAULT_TERMS =
+  'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.';
+
 // ── Token aliases ─────────────────────────────────────────────────────
 const T = {
   ink: '#0A0A0F',
@@ -172,9 +175,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [validUntil, setValidUntil] = useState('');
   const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [discountValue, setDiscountValue] = useState('0');
-  const [terms, setTerms] = useState(
-    'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.',
-  );
+  const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
     { description: '', quantity: '1.000', unit_price: '0.00' },
@@ -190,6 +191,23 @@ export default function NovoOrcamentoForm(): JSX.Element {
     fetch('/api/catalog')
       .then((r) => r.json())
       .then((d) => setCatalog(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    // Configurações > Condições padrão fill terms and validity (unless already edited).
+    fetch('/api/company/me')
+      .then((r) => r.json())
+      .then(
+        (c: {
+          quote_default_terms?: string | null;
+          quote_default_validity_days?: number | null;
+        }) => {
+          if (c.quote_default_terms)
+            setTerms((t) => (t === DEFAULT_TERMS ? c.quote_default_terms! : t));
+          const days = c.quote_default_validity_days ?? 15;
+          const d = new Date();
+          d.setDate(d.getDate() + days);
+          setValidUntil((v) => v || d.toLocaleDateString('sv-SE'));
+        },
+      )
       .catch(() => {});
   }, []);
 

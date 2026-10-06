@@ -24,15 +24,13 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 describe('QuoteService.send — assinatura do técnico só neste orçamento', () => {
   const tx = {
     quote: {
-      update: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'q1',
-          number: 7,
-          status: 'SENT',
-          approval_token: 'tok',
-          valid_until: null,
-        }),
+      update: jest.fn().mockResolvedValue({
+        id: 'q1',
+        number: 7,
+        status: 'SENT',
+        approval_token: 'tok',
+        valid_until: null,
+      }),
     },
   };
   const prisma = {
@@ -57,6 +55,7 @@ describe('QuoteService.send — assinatura do técnico só neste orçamento', ()
     uploadBuffer: jest.fn((_b: string, key: string) => Promise.resolve(key)),
     assertUploadable: jest.fn(),
     getObjectBuffer: jest.fn(),
+    inlineImage: jest.fn(async (v: string | null | undefined) => v ?? null),
     resolveUrl: jest.fn().mockResolvedValue(null),
     extractKey: jest.fn().mockReturnValue(null),
   };

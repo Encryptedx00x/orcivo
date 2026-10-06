@@ -25,12 +25,12 @@ import {
   createClient,
   createQuote,
   getApprovalMethods,
+  getCompany,
   listCatalog,
   listClients,
-  setApprovalMethods,
-  type ApprovalMethod,
   type EasyCatalogItem,
 } from '../actions';
+import { approvalsSummary } from './Settings';
 import {
   getTechnicianSignature,
   saveTechnicianSignature,
@@ -832,20 +832,6 @@ function CheckRow({
 }
 
 // ── 3. Revisar e enviar ───────────────────────────────────────────────
-const APPROVALS: Array<{ k: ApprovalMethod; label: string; sub: string }> = [
-  { k: 'APPROVE_BUTTON', label: 'Botão Aprovar', sub: 'O cliente só toca em Aprovar' },
-  { k: 'TYPED_NAME', label: 'Nome digitado', sub: 'O cliente escreve o nome completo' },
-  {
-    k: 'DRAWN_SIGNATURE',
-    label: 'Assinatura com o dedo',
-    sub: 'O cliente assina na tela do celular',
-  },
-  {
-    k: 'PHOTO_SIGNATURE',
-    label: 'Foto da assinatura',
-    sub: 'O cliente manda a foto da assinatura no papel',
-  },
-];
 
 function Q3() {
   const { draft, setDraft, go, back, tab } = useNav();
@@ -858,7 +844,18 @@ function Q3() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (draft.terms === '') setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
+    // First visit: the company's "Condições padrão" (Configurações) fill terms and validity.
+    if (draft.terms === '') {
+      setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
+      void getCompany().then((r) => {
+        if (!r.ok) return;
+        setDraft((d) => ({
+          ...d,
+          terms: r.data.quote_default_terms ?? d.terms,
+          validityDays: r.data.quote_default_validity_days ?? d.validityDays,
+        }));
+      });
+    }
     getTechnicianSignature()
       .then((r) => {
         setSaved(r.signature_url);
@@ -888,18 +885,6 @@ function Q3() {
         : saved
           ? 'Não vai neste orçamento.'
           : 'Ainda não assinou. É opcional.';
-
-  const toggleApproval = async (k: ApprovalMethod) => {
-    const cur = approvals.data ?? [];
-    const next = cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k];
-    if (next.length === 0) return toast('Pelo menos uma forma fica ligada.');
-    approvals.setData(next);
-    const r = await setApprovalMethods(next);
-    if (!r.ok) {
-      approvals.setData(cur);
-      toast(r.message);
-    }
-  };
 
   const validUntil = () => {
     const d = new Date();
@@ -1151,75 +1136,34 @@ function Q3() {
           </Btn>
         </div>
 
-        <div
+        <button
+          type="button"
+          onClick={() => go('approvals')}
           style={{
             ...card,
-            padding: '14px 16px',
+            minHeight: 76,
             display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 16px',
+            textAlign: 'left',
+            cursor: 'pointer',
+            color: C.ink,
+            width: '100%',
+            fontFamily: 'inherit',
           }}
         >
-          <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: 18, fontWeight: 700 }}>Como o cliente aprova</span>
             <span style={{ fontSize: 15, lineHeight: '20px', color: C.fg3 }}>
-              O cliente escolhe no link do WhatsApp. Pelo menos uma fica ligada. Vale para todos os
+              {approvals.data ? approvalsSummary(approvals.data) : '…'}. Vale para todos os
               orçamentos.
             </span>
           </span>
-          {APPROVALS.map((a) => {
-            const on = (approvals.data ?? []).includes(a.k);
-            const last = on && (approvals.data ?? []).length === 1;
-            return (
-              <button
-                key={a.k}
-                type="button"
-                role="checkbox"
-                aria-checked={on}
-                onClick={() => void toggleApproval(a.k)}
-                style={{
-                  minHeight: 68,
-                  width: '100%',
-                  borderRadius: 16,
-                  border: `2px solid ${on ? C.purple : C.border}`,
-                  background: on ? C.purple50 : '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  color: C.ink,
-                  fontFamily: 'inherit',
-                }}
-              >
-                <span
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 9,
-                    border: `2px solid ${on ? C.purple : '#94A3B8'}`,
-                    background: on ? C.purple : '#FFFFFF',
-                    color: '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {on && <Check size={18} aria-hidden="true" />}
-                </span>
-                <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 17, fontWeight: 600 }}>{a.label}</span>
-                  <span style={{ fontSize: 15, color: C.fg3 }}>
-                    {a.sub}
-                    {last ? ' · única ligada' : ''}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          <span style={{ fontSize: 17, fontWeight: 600, color: C.purple700, flexShrink: 0 }}>
+            Mudar
+          </span>
+        </button>
 
         <div style={{ ...card, overflow: 'hidden' }}>
           <button
@@ -1431,7 +1375,9 @@ function typedToDataUrl(name: string): string {
 }
 
 function Sign() {
-  const { setDraft, back } = useNav();
+  const { setDraft, back, params } = useNav();
+  // Opened from Configurações or a receipt: only saves the reusable signature.
+  const standalone = params.standalone === '1';
   const toast = useToast();
   const [method, setMethod] = useState<SigMethod>('DRAWN_SIGNATURE');
   const [typed, setTyped] = useState('');
@@ -1469,7 +1415,7 @@ function Sign() {
         : method === 'DRAWN_SIGNATURE'
           ? drawn
           : photo;
-    if (!save) {
+    if (!save && !standalone) {
       setDraft((d) => ({ ...d, signature: { mode: 'once', dataUrl } }));
       toast('Assinatura pronta. Vai só neste orçamento.');
       return back();
@@ -1482,8 +1428,10 @@ function Sign() {
     const r = await saveTechnicianSignature(form);
     setBusy(false);
     if (!r.ok) return toast(r.message);
-    setDraft((d) => ({ ...d, signature: { mode: 'saved' } }));
-    toast('Assinatura guardada.');
+    if (!standalone) setDraft((d) => ({ ...d, signature: { mode: 'saved' } }));
+    toast(
+      standalone ? 'Assinatura salva. Vale para orçamentos e recibos.' : 'Assinatura guardada.',
+    );
     back();
   };
 
@@ -1491,10 +1439,14 @@ function Sign() {
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <H1 size={32}>Sua assinatura</H1>
-        <span style={{ fontSize: 17, color: C.fg3 }}>Escolha como quer assinar.</span>
+        <span style={{ fontSize: 17, color: C.fg3 }}>
+          {standalone
+            ? 'Fica salva para usar nos orçamentos e recibos.'
+            : 'Escolha como quer assinar.'}
+        </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {SIG_METHODS.map((m) => {
+        {SIG_METHODS.filter((m) => !standalone || m.k !== 'APPROVE_BUTTON').map((m) => {
           const on = method === m.k;
           const Icon = m.icon;
           return (
@@ -1683,7 +1635,7 @@ function Sign() {
           </div>
         ))}
 
-      {method !== 'APPROVE_BUTTON' && (
+      {method !== 'APPROVE_BUTTON' && !standalone && (
         <div style={{ ...card, padding: '8px 16px' }}>
           <CheckRow
             on={save}
@@ -1708,7 +1660,9 @@ function Sign() {
             ? 'Guardando…'
             : method === 'APPROVE_BUTTON'
               ? 'Enviar sem assinatura'
-              : 'Usar esta assinatura'}
+              : standalone
+                ? 'Salvar assinatura'
+                : 'Usar esta assinatura'}
         </Btn>
       </ActionBar>
     </>

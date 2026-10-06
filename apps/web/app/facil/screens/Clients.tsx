@@ -361,9 +361,21 @@ export function ClientScreen(): JSX.Element {
                   WhatsApp
                 </a>
               )}
-              <a href={`/clientes/${c.id}/editar`} style={menuRow}>
+              <button
+                type="button"
+                onClick={() => go('edit', { kind: 'client', id: c.id })}
+                style={{
+                  ...menuRow,
+                  border: 'none',
+                  borderBottom: `1px solid ${C.line}`,
+                  background: '#FFFFFF',
+                  width: '100%',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
                 <PenLine size={22} color={C.purple} aria-hidden="true" /> Editar dados do cliente
-              </a>
+              </button>
               <button
                 type="button"
                 onClick={() => void remove()}

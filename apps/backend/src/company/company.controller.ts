@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Patch,
+  Put,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApprovalMethodsSchema, CompanyProfileUpdateSchema } from './company-profile-update.schema';
 import { CompanyService } from './company.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
@@ -33,6 +44,19 @@ export class CompanyController {
     @Body(new ZodValidationPipe(CompanyProfileUpdateSchema)) body: unknown,
   ) {
     return this.companyService.updateProfile(req.companyId, body as never, req.user.userId);
+  }
+
+  @AdminOnly()
+  @Put('logo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  uploadLogo(@Req() req: TenantRequest, @UploadedFile() file: Express.Multer.File) {
+    return this.companyService.uploadLogo(req.companyId, file, req.user.userId);
+  }
+
+  @AdminOnly()
+  @Delete('logo')
+  removeLogo(@Req() req: TenantRequest) {
+    return this.companyService.removeLogo(req.companyId, req.user.userId);
   }
 
   @AdminOnly()

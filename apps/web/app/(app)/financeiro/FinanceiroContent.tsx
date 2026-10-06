@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Inbox, Pencil, Plus, ReceiptText, Trash2 } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
 import { PaymentDeleteModal, PaymentEditModal, type EditablePayment } from './PaymentEditModal';
@@ -103,7 +104,8 @@ export function FinanceiroContent({
   customers,
 }: Props): JSX.Element {
   const [statusFilter, setStatusFilter] = useState('todos');
-  const [showModal, setShowModal] = useState(false);
+  // ?registrar=1 opens the form directly (link from Modo fácil > Financeiro > Registrar).
+  const [showModal, setShowModal] = useState(useSearchParams().get('registrar') === '1');
   const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<EditablePayment | null>(null);
   const [historyRevision, setHistoryRevision] = useState(0);

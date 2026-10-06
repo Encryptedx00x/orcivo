@@ -9,14 +9,14 @@ describe('CompanyService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new CompanyService(mockPrisma as never, mockAudit as never);
+    service = new CompanyService(mockPrisma as never, mockAudit as never, {} as never);
   });
 
   it('retorna a empresa quando existe', async () => {
     const company = { id: 'c1', trade_name: 'Elétrica Silva', plan_code: 'LIVRE' };
     mockPrisma.company.findUnique.mockResolvedValue(company);
     const result = await service.findCurrent('c1');
-    expect(result).toEqual(company);
+    expect(result).toEqual({ ...company, logo_url: null });
     expect(mockPrisma.company.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'c1' } }),
     );
@@ -38,7 +38,7 @@ describe('CompanyService.updateProfile', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new CompanyService(txMockPrisma as never, mockAudit as never);
+    service = new CompanyService(txMockPrisma as never, mockAudit as never, {} as never);
   });
 
   it('lança NotFoundException quando empresa não existe', async () => {

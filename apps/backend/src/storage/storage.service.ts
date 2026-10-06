@@ -130,6 +130,27 @@ export class StorageService implements OnModuleInit {
     return this.getSignedUrl(bucket, key, maxTtl);
   }
 
+  /**
+   * Image stored as a PHOTO_BUCKET key (e.g. the company logo) as an inline data URI,
+   * so PDFs never fetch over the network. Legacy URLs / data URIs pass through.
+   */
+  async inlineImage(stored: string | null | undefined): Promise<string | null> {
+    if (!stored) return null;
+    if (/^(https?:|data:)/i.test(stored)) return stored;
+    try {
+      const buf = await this.getObjectBuffer(PHOTO_BUCKET, stored);
+      const mime =
+        buf[0] === 0xff && buf[1] === 0xd8
+          ? 'image/jpeg'
+          : buf.toString('ascii', 8, 12) === 'WEBP'
+            ? 'image/webp'
+            : 'image/png';
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    } catch {
+      return null;
+    }
+  }
+
   async deleteObject(bucket: string, objectName: string): Promise<void> {
     await this.client.removeObject(bucket, objectName);
   }

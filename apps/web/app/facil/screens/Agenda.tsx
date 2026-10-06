@@ -1,16 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Calendar, Check, Minus, Plus } from 'lucide-react';
+import { Calendar, Check, Minus, MoreHorizontal, Phone, Plus, User, XCircle } from 'lucide-react';
 import {
   createAppointment,
   deleteAppointment,
+  getClient,
   listAppointments,
   listClients,
   updateAppointment,
   type EasyAppointment,
 } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
+import { MoreButton, useSheet } from '../sheet';
 import {
   Btn,
   C,
@@ -127,6 +129,13 @@ export function AgendaScreen(): JSX.Element {
   const appts = useLoad(() => listAppointments(range.from, range.to), [range.from]);
   const events = (appts.data ?? []).slice().sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
+  const sheet = useSheet();
+  const call = async (clientId: string) => {
+    const r = await getClient(clientId);
+    const digits = r.ok ? (r.data.phone ?? '').replace(/\D/g, '') : '';
+    if (!digits) return toast('Este cliente não tem telefone.');
+    window.location.href = `tel:${digits}`;
+  };
   const unmark = async (a: EasyAppointment) => {
     const r = await deleteAppointment(a.id);
     if (!r.ok) return toast(r.message);
@@ -203,27 +212,47 @@ export function AgendaScreen(): JSX.Element {
           >
             {typeLabel(e.type)}
           </span>
-          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-            <Btn
-              tone="link"
-              onClick={() =>
-                go('agNew', {
-                  edit: e.id,
-                  type: e.type ?? 'OUTRO',
-                  client: e.customer?.id,
-                  clientName: e.customer?.name,
-                  start: e.starts_at,
-                  end: e.ends_at ?? undefined,
-                  title: e.title,
-                })
-              }
-            >
-              Remarcar
-            </Btn>
-            <Btn tone="link" onClick={() => void unmark(e)} style={{ color: '#B91C1C' }}>
-              Desmarcar
-            </Btn>
-          </div>
+          <MoreButton
+            icon={MoreHorizontal}
+            onClick={() =>
+              sheet({
+                title: e.title,
+                sub: end ? `${hhmm(start)} até ${hhmm(end)}` : hhmm(start),
+                actions: [
+                  {
+                    label: 'Remarcar',
+                    sub: 'Escolher outro dia ou hora',
+                    icon: Calendar,
+                    run: () =>
+                      go('agNew', {
+                        edit: e.id,
+                        type: e.type ?? 'OUTRO',
+                        client: e.customer?.id,
+                        clientName: e.customer?.name,
+                        start: e.starts_at,
+                        end: e.ends_at ?? undefined,
+                        title: e.title,
+                      }),
+                  },
+                  ...(e.customer
+                    ? [
+                        {
+                          label: 'Ligar para o cliente',
+                          icon: Phone,
+                          run: () => void call(e.customer!.id),
+                        },
+                        {
+                          label: 'Ver cliente',
+                          icon: User,
+                          run: () => go('client', { id: e.customer!.id }),
+                        },
+                      ]
+                    : []),
+                  { label: 'Desmarcar', icon: XCircle, danger: true, run: () => void unmark(e) },
+                ],
+              })
+            }
+          />
         </div>
       </div>,
     );

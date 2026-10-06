@@ -203,9 +203,7 @@ export class QuoteService {
    */
   async generatePdf(id: string, companyId: string): Promise<Buffer> {
     const quote = await this.findOne(id, companyId);
-    const company = await this.prisma.company.findUniqueOrThrow({
-      where: { id: companyId },
-    });
+    const company = await this.pdfCompany(companyId);
     return this.pdfService.generate(
       {
         ...quote,
@@ -392,6 +390,12 @@ export class QuoteService {
     return { key, dataUri: toDataUri(buffer, mime) };
   }
 
+  /** Company row for PDFs, with the stored logo inlined as a data URI. */
+  private async pdfCompany(companyId: string) {
+    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    return { ...company, logo_url: await this.storage.inlineImage(company.logo_url) };
+  }
+
   /** Inline data URI of a quote's frozen technician signature (no network fetch at render). */
   private async technicianSignatureDataUri(key: string | null | undefined): Promise<string | null> {
     if (!key) return null;
@@ -428,7 +432,7 @@ export class QuoteService {
     // Gerar PDF e salvar no MinIO. PB1-P12/AC2: o PDF anexado ao envio carimba
     // o destino da ação (`enviar` → SENT) — o estado que se torna verdadeiro
     // neste momento. Um PDF enviado nunca exibe 'Rascunho'.
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    const company = await this.pdfCompany(companyId);
     const pdfBuffer = await this.pdfService.generate(
       {
         ...quote,
@@ -539,9 +543,7 @@ export class QuoteService {
         );
       }
 
-      const company = await this.prisma.company.findUniqueOrThrow({
-        where: { id: quote.company_id },
-      });
+      const company = await this.pdfCompany(quote.company_id);
       const signatureSignedUrl = signatureKey
         ? await this.storage.getSignedUrl(PHOTO_BUCKET, signatureKey)
         : null;

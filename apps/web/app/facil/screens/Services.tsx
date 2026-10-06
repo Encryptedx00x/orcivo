@@ -10,6 +10,10 @@ import {
   FileText,
   Image as ImageIcon,
   Play,
+  Ban,
+  Calendar,
+  MoreHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import {
   completeWorkOrder,
@@ -19,6 +23,8 @@ import {
   type EasyWorkOrder,
 } from '../actions';
 import { uploadWorkOrderPhoto } from '../../../lib/upload-photo';
+import { workOrderAction } from '../../(app)/ordens-de-servico/actions';
+import { MoreButton, reasonSheet, useSheet, type SheetAction } from '../sheet';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import {
   Btn,
@@ -44,10 +50,60 @@ const STATUS: Record<EasyWorkOrder['status'], { kind: ChipKind; label: string }>
 };
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
 
-export function ServicesScreen(): JSX.Element {
+/** "Mais ações" of a service: remarcar, abrir completo, cancelar ou reabrir (motivo obrigatório). */
+function useServiceMore(onChanged: () => void) {
+  const sheet = useSheet();
+  const toast = useToast();
+  const { go } = useNav();
+  const act = (o: EasyWorkOrder, action: 'cancelar' | 'reabrir') =>
+    reasonSheet(
+      sheet,
+      action === 'cancelar' ? 'Por que cancelar?' : 'Por que reabrir?',
+      action === 'cancelar'
+        ? ['Cliente desistiu', 'Cliente remarcou', 'Feito por engano', 'Outro motivo']
+        : ['Faltou terminar', 'Cliente pediu ajuste', 'Finalizado por engano', 'Outro motivo'],
+      async (reason) => {
+        const r = await workOrderAction(o.id, { action, reason });
+        if (r.error) return toast(r.error);
+        toast(action === 'cancelar' ? 'Serviço cancelado.' : 'Serviço reaberto.');
+        onChanged();
+      },
+      action === 'cancelar' ? Ban : RotateCcw,
+    );
+  return (o: EasyWorkOrder) => {
+    const open = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
+    const actions: SheetAction[] = [
+      {
+        label: 'Remarcar',
+        sub: 'Escolher outro dia ou hora',
+        icon: Calendar,
+        run: () =>
+          go('agNew', { client: o.customer?.id, clientName: o.customer?.name, type: 'INSTALACAO' }),
+      },
+      {
+        label: 'Abrir serviço completo',
+        sub: 'Itens, fotos, histórico e correções',
+        icon: FileText,
+        run: () => (window.location.href = `/ordens-de-servico/${o.id}`),
+      },
+      open
+        ? { label: 'Cancelar serviço', icon: Ban, danger: true, run: () => act(o, 'cancelar') }
+        : {
+            label: 'Reabrir serviço',
+            sub: 'Para serviço já finalizado ou cancelado',
+            icon: RotateCcw,
+            run: () => act(o, 'reabrir'),
+          },
+    ];
+    sheet({ title: o.title, sub: o.customer?.name ?? `Serviço #${o.number}`, actions });
+  };
+}
+
+export function ServicesScreen(): React.JSX.Element {
   const { go, tab } = useNav();
   const toast = useToast();
   const orders = useLoad(listWorkOrders);
+  const more = useServiceMore(orders.reload);
   const today = new Date().toDateString();
   // Today's scheduled services plus anything already in progress (it must not disappear).
   const list = (orders.data ?? [])
@@ -144,6 +200,7 @@ export function ServicesScreen(): JSX.Element {
                       ? 'Continuar'
                       : 'Ver'}
                 </Btn>
+                <MoreButton icon={MoreHorizontal} onClick={() => more(o)} />
               </div>
             );
           })}
@@ -174,6 +231,7 @@ export function RunScreen(): JSX.Element {
   const toast = useToast();
   const id = params.id ?? '';
   const order = useLoad(() => getWorkOrder(id), [id]);
+  const more = useServiceMore(order.reload);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -401,12 +459,7 @@ export function RunScreen(): JSX.Element {
           <ImageIcon size={22} aria-hidden="true" /> Escolher da galeria
         </span>
       </label>
-      <a
-        href={`/ordens-de-servico/${o.id}`}
-        style={{ ...menuRow, ...card, justifyContent: 'center', color: C.purple700, fontSize: 17 }}
-      >
-        Mais opções do serviço (cancelar, reabrir, editar)
-      </a>
+      <MoreButton icon={MoreHorizontal} onClick={() => more(o)} />
       {o.status !== 'DONE' && o.status !== 'CANCELLED' && (
         <ActionBar>
           {o.status === 'PENDING' && <Hint>Toque em Finalizar quando terminar.</Hint>}

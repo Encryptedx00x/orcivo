@@ -84,6 +84,7 @@ const mockStorage = {
   extractKey: jest.fn((_bucket: string, stored: string | null) => stored ?? null),
   assertUploadable: jest.fn(),
   getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('PDF_BYTES')),
+  inlineImage: jest.fn(async (v: string | null | undefined) => v ?? null),
 };
 
 const mockWorkOrderService = {
