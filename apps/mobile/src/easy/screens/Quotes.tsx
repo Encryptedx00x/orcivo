@@ -326,12 +326,13 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const nav = useEasyNav();
   const chip = quoteChip(q.status);
   const { setDraft } = useDraft();
-  const edit = async () => {
+  const edit = async (review = false) => {
     try {
       setDraft(draftFromQuote(await easy.quoteFull(q.id)));
-      // Items first; back goes to the client step.
+      // Items first (or the review); back walks the client and items steps.
       nav.push('QuoteClient');
       nav.push('QuoteItems');
+      if (review) nav.push('QuoteReview');
     } catch (err) {
       Alert.alert('Não deu certo', errorText(err, 'Não foi possível abrir o orçamento.'));
     }
@@ -378,7 +379,9 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
         tone="outline"
         icon={FileText}
         height={52}
-        onPress={() => nav.navigate('QuoteDetail', { id: q.id })}
+        onPress={() =>
+          q.status === 'DRAFT' ? void edit(true) : nav.navigate('QuoteDetail', { id: q.id })
+        }
       >
         Abrir
       </Btn>

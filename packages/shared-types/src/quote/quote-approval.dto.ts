@@ -20,3 +20,10 @@ export const ApproveQuoteSchema = z
   );
 
 export type ApproveQuoteDto = z.infer<typeof ApproveQuoteSchema>;
+
+/** Recusa pelo cliente no link público: o motivo é opcional (só vai para o histórico). */
+export const RejectQuotePublicSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});
+
+export type RejectQuotePublicDto = z.infer<typeof RejectQuotePublicSchema>;

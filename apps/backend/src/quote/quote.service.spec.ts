@@ -1142,6 +1142,60 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('rejectByToken()', () => {
+    const publicQuote = (status: string) => ({
+      id: 'q1',
+      company_id: 'comp-1',
+      number: 7,
+      status,
+      approval_token: 'tok',
+      customer: { id: 'cust-1', name: 'Ana', phone: null },
+      items: [],
+    });
+
+    it('Test RJ1: cliente recusa pelo link — SENT→REJECTED com auditoria CUSTOMER', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue(publicQuote('SENT'));
+      mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(service.rejectByToken('tok', '  Achei caro ')).resolves.toEqual({
+        status: 'REJECTED',
+      });
+
+      expect(mockTx.quote.updateMany).toHaveBeenCalledWith({
+        where: { id: 'q1', status: 'SENT', approval_token: 'tok' },
+        data: { status: 'REJECTED' },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          actorType: 'CUSTOMER',
+          action: 'quote.rejected',
+          reason: 'Achei caro',
+          companyId: 'comp-1',
+        }),
+      );
+    });
+
+    it('Test RJ2: orçamento já aprovado não pode ser recusado pelo link', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue(publicQuote('APPROVED'));
+
+      await expect(service.rejectByToken('tok')).rejects.toThrow(ConflictException);
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test RJ3: corrida (já processado) → 409 sem auditoria', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue(publicQuote('SENT'));
+      mockTx.quote.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.rejectByToken('tok')).rejects.toThrow(ConflictException);
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getByApprovalToken()', () => {
     it('Test 7: getByApprovalToken() retorna quote com campos obrigatórios', async () => {
       mockRedis.get.mockResolvedValue('q1');

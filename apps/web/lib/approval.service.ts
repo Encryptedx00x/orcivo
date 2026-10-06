@@ -49,6 +49,20 @@ export const approvalService = {
     return `${API_URL}/quotes/public/${token}/pdf`;
   },
 
+  /** The client declines on the public link; the reason is optional. */
+  async rejectQuote(token: string, reason?: string): Promise<{ status: string }> {
+    const res = await fetch(`${API_URL}/quotes/public/${token}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(body.message ?? 'Não foi possível registrar agora.');
+    }
+    return res.json() as Promise<{ status: string }>;
+  },
+
   async approveQuote(token: string, dto: ApproveDto): Promise<{ status: string }> {
     const res = await fetch(`${API_URL}/quotes/public/${token}/approve`, {
       method: 'POST',

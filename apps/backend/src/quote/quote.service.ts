@@ -629,6 +629,41 @@ export class QuoteService {
   }
 
   /**
+   * Recusa pelo próprio cliente no link público (mesmo escopo de acesso do
+   * approve): SENT → REJECTED. O motivo é opcional para o cliente e vai só
+   * para a auditoria, que também avisa o técnico (notificações).
+   */
+  async rejectByToken(token: string, reason?: string) {
+    const quote = await this.getByApprovalToken(token);
+    try {
+      assertValidQuoteAction('recusar', quote.status as QuoteStatus);
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
+    }
+    const why = reason?.trim() || undefined;
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.updateMany({
+        where: { id: quote.id, status: 'SENT', approval_token: token },
+        data: { status: 'REJECTED' },
+      });
+      if (updated.count !== 1)
+        throw new ConflictException('Orçamento já processado ou link substituído.');
+      await this.auditService.record(tx, {
+        companyId: quote.company_id,
+        actorType: 'CUSTOMER',
+        action: 'quote.rejected',
+        entityType: 'quote',
+        entityId: quote.id,
+        from: 'SENT',
+        to: 'REJECTED',
+        reason: why,
+        humanText: `Orçamento #${quote.number} (${quote.customer.name}) recusado pelo cliente${why ? `: ${why}` : ''}`,
+      });
+    });
+    return { status: 'REJECTED' };
+  }
+
+  /**
    * cancelar (PB1-P01 / ADR-016 / T17): DRAFT/SENT → CANCELLED. Motivo
    * obrigatório (AC1) — e o motivo vai SÓ para a trilha de auditoria:
    * `notes` NUNCA é sobrescrito (AC3). A mudança de status usa updateMany

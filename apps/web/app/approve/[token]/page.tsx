@@ -4,17 +4,26 @@ import { useParams } from 'next/navigation';
 import {
   FileText,
   Calendar,
-  Clock,
   ShieldCheck,
   CheckCircle,
   AlertCircle,
+  Camera,
   Download,
+  XCircle,
 } from 'lucide-react';
 import { approvalService, type PublicQuote } from '../../../lib/approval.service';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
+import { downscaleToDataUrl } from '../../../lib/image';
 
-type PageState = 'loading' | 'show_quote' | 'show_form' | 'approved' | 'rejected' | 'error';
+type PageState =
+  | 'loading'
+  | 'show_quote'
+  | 'show_form'
+  | 'rejecting'
+  | 'approved'
+  | 'rejected'
+  | 'error';
 type ApproveTab = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
 
 const PHOTO_MAX_SIZE = 1_500_000;
@@ -31,6 +40,7 @@ export default function ApprovePage(): JSX.Element {
   const [signature, setSignature] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     approvalService
@@ -40,13 +50,32 @@ export default function ApprovePage(): JSX.Element {
         if (q.company.allowed_approval_methods.length > 0) {
           setActiveTab(q.company.allowed_approval_methods[0]);
         }
+        // Opening the link again after answering shows the answer, not the buttons.
+        if (q.status === 'APPROVED') return setPageState('approved');
+        if (q.status === 'REJECTED') return setPageState('rejected');
+        if (q.status !== 'SENT') {
+          setErrorMsg('Este orçamento não está mais disponível para resposta.');
+          return setPageState('error');
+        }
         setPageState('show_quote');
       })
       .catch((e: Error) => {
-        setErrorMsg(e.message);
+        // fetch() rejects with a TypeError ("Failed to fetch") when offline.
+        setErrorMsg(
+          e instanceof TypeError
+            ? 'Não foi possível abrir agora. Confira a internet e tente de novo.'
+            : e.message,
+        );
         setPageState('error');
       });
   }, [token]);
+
+  // The answer forms open below the quote: bring them into view on tap.
+  useEffect(() => {
+    if (pageState === 'show_form' || pageState === 'rejecting') {
+      document.getElementById('pub-answer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [pageState]);
 
   const handleApprove = async () => {
     if (!token) return;
@@ -83,23 +112,36 @@ export default function ApprovePage(): JSX.Element {
     }
   };
 
+  const handleReject = async () => {
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await approvalService.rejectQuote(token, rejectReason.trim() || undefined);
+      setPageState('rejected');
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : 'Não foi possível registrar agora.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   function handlePhotoSignature(file: File | undefined): void {
     if (!file) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setSubmitError('Envie uma imagem PNG, JPG ou WEBP.');
       return;
     }
-    if (file.size > PHOTO_MAX_SIZE) {
-      setSubmitError('A foto da assinatura deve ter no máximo 1,5 MB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSignature(typeof reader.result === 'string' ? reader.result : '');
-      setSubmitError('');
-    };
-    reader.onerror = () => setSubmitError('Não foi possível ler a foto da assinatura.');
-    reader.readAsDataURL(file);
+    // Camera photos are several MB: shrink to a 1200px JPEG instead of refusing them.
+    downscaleToDataUrl(file)
+      .then((dataUrl) => {
+        if (dataUrl.length > PHOTO_MAX_SIZE) {
+          setSubmitError('A foto ficou grande demais. Tente uma foto mais próxima da assinatura.');
+          return;
+        }
+        setSignature(dataUrl);
+        setSubmitError('');
+      })
+      .catch(() => setSubmitError('Não foi possível ler a foto da assinatura.'));
   }
 
   // ─── Company initials from name ───
@@ -151,6 +193,40 @@ export default function ApprovePage(): JSX.Element {
           </p>
           <p style={{ fontSize: 13, color: '#94A3B8', maxWidth: 400, margin: '0 auto' }}>
             Uma ordem de serviço foi gerada automaticamente.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Rejected state ───
+  if (pageState === 'rejected') {
+    return (
+      <div className="pub">
+        <div className="pub-bar">
+          <div className="biz">{companyInitials}</div>
+          <div>
+            <div className="biz-name">{companyName}</div>
+          </div>
+          <div className="powered">
+            Enviado via <strong>Orcivo</strong>
+          </div>
+        </div>
+        <div className="pub-body" style={{ textAlign: 'center', paddingTop: 80 }}>
+          <XCircle size={64} style={{ color: '#64748B', margin: '0 auto 20px' }} />
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: '-0.015em',
+              color: '#0A0A0F',
+              margin: '0 0 12px',
+            }}
+          >
+            Orçamento recusado
+          </h1>
+          <p style={{ fontSize: 15, color: '#64748B', maxWidth: 400, margin: '0 auto' }}>
+            Avisamos {companyName}. Se mudar de ideia, é só falar com eles.
           </p>
         </div>
       </div>
@@ -249,6 +325,7 @@ export default function ApprovePage(): JSX.Element {
               color: 'var(--ink)',
               cursor: 'pointer',
               fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
             }}
           >
             <Download size={14} /> Baixar PDF
@@ -265,8 +342,8 @@ export default function ApprovePage(): JSX.Element {
           <div className="ic">
             <FileText size={28} strokeWidth={1.8} />
           </div>
-          <div style={{ flex: 1 }}>
-            <h1>Olá, {quote?.customer.name} 👋</h1>
+          <div className="pub-hero-text">
+            <h1>Olá, {quote?.customer.name}</h1>
             <div className="sub">
               Aqui está o orçamento #{quote?.number}, preparado por <strong>{companyName}</strong>.
               Confira os itens, valores e condições — você pode aprovar ou recusar abaixo.
@@ -297,10 +374,6 @@ export default function ApprovePage(): JSX.Element {
         <div className="pub-meta-row">
           <span>
             <Calendar size={14} /> Validade:{' '}
-            <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
-          </span>
-          <span>
-            <Clock size={14} /> Válido até{' '}
             <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
           </span>
           <span>
@@ -354,7 +427,9 @@ export default function ApprovePage(): JSX.Element {
                 <span>
                   Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
                 </span>
-                <span>- {formatMoney(quote.discount_value)}</span>
+                <span>
+                  - {formatMoney(sumDecimal([quote.subtotal, multiplyDecimal(quote.total, '-1')]))}
+                </span>
               </div>
             )}
             <div className="grand">
@@ -372,17 +447,102 @@ export default function ApprovePage(): JSX.Element {
           </div>
         )}
 
+        {pageState === 'rejecting' && (
+          <div className="pub-card" id="pub-answer">
+            <h2>Recusar orçamento</h2>
+            <label
+              htmlFor="reject-reason"
+              style={{
+                display: 'block',
+                fontSize: 14,
+                fontWeight: 600,
+                color: '#334155',
+                marginBottom: 8,
+              }}
+            >
+              Quer contar o motivo? (opcional)
+            </label>
+            <textarea
+              id="reject-reason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Ex.: achei caro, fechei com outro"
+              style={{
+                width: '100%',
+                border: '1px solid #E2E8F0',
+                borderRadius: 12,
+                padding: '12px 14px',
+                fontSize: 15,
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPageState('show_quote');
+                  setSubmitError('');
+                }}
+                style={{
+                  flex: '1 1 140px',
+                  height: 52,
+                  borderRadius: 14,
+                  border: '1px solid #E2E8F0',
+                  background: '#fff',
+                  color: '#0A0A0F',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReject()}
+                disabled={submitting}
+                style={{
+                  flex: '1 1 140px',
+                  height: 52,
+                  borderRadius: 14,
+                  border: 'none',
+                  background: '#B91C1C',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  opacity: submitting ? 0.6 : 1,
+                }}
+              >
+                {submitting ? 'Enviando...' : 'Confirmar recusa'}
+              </button>
+            </div>
+            {submitError && (
+              <p role="alert" style={{ marginTop: 14, fontSize: 14, color: '#991B1B' }}>
+                {submitError}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Approval form */}
         {pageState === 'show_form' && (
-          <div className="pub-card">
+          <div className="pub-card" id="pub-answer">
             <h2>Como deseja aprovar?</h2>
 
             {/* Method tabs */}
             <div
               style={{
                 display: 'flex',
-                gap: 0,
-                borderBottom: '1px solid #E2E8F0',
+                flexWrap: 'wrap',
+                gap: 8,
                 marginBottom: 20,
               }}
             >
@@ -398,6 +558,8 @@ export default function ApprovePage(): JSX.Element {
                 .map((t) => (
                   <button
                     key={t.key}
+                    type="button"
+                    aria-pressed={activeTab === t.key}
                     onClick={() => {
                       setActiveTab(t.key);
                       if (t.key === 'DRAWN_SIGNATURE' || t.key === 'PHOTO_SIGNATURE') {
@@ -406,15 +568,15 @@ export default function ApprovePage(): JSX.Element {
                       setSubmitError('');
                     }}
                     style={{
-                      padding: '10px 16px',
-                      fontSize: 13,
+                      minHeight: 44,
+                      padding: '10px 14px',
+                      fontSize: 14,
                       fontWeight: activeTab === t.key ? 600 : 500,
-                      color: activeTab === t.key ? '#0A0A0F' : '#64748B',
-                      border: 'none',
-                      background: 'transparent',
+                      color: activeTab === t.key ? '#4C1D95' : '#334155',
+                      border: `1.5px solid ${activeTab === t.key ? '#6D28D9' : '#E2E8F0'}`,
+                      borderRadius: 9999,
+                      background: activeTab === t.key ? '#F5F3FF' : '#fff',
                       cursor: 'pointer',
-                      borderBottom: `2px solid ${activeTab === t.key ? '#6D28D9' : 'transparent'}`,
-                      marginBottom: -1,
                       fontFamily: 'inherit',
                       whiteSpace: 'nowrap',
                     }}
@@ -446,7 +608,7 @@ export default function ApprovePage(): JSX.Element {
                     opacity: submitting ? 0.6 : 1,
                   }}
                 >
-                  {submitting ? 'Processando...' : 'Aprovar orçamento ✓'}
+                  {submitting ? 'Processando...' : 'Aprovar orçamento'}
                 </button>
               </div>
             )}
@@ -536,14 +698,34 @@ export default function ApprovePage(): JSX.Element {
             {activeTab === 'PHOTO_SIGNATURE' && (
               <div>
                 <p style={{ fontSize: 14, color: '#64748B', marginBottom: 12 }}>
-                  Envie uma foto nítida da sua assinatura (PNG, JPG ou WEBP, até 1,5 MB).
+                  Tire ou escolha uma foto nítida da sua assinatura num papel claro.
                 </p>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => handlePhotoSignature(event.target.files?.[0])}
-                  style={{ marginBottom: 16 }}
-                />
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    minHeight: 48,
+                    padding: '0 18px',
+                    borderRadius: 12,
+                    border: '1.5px solid #CBD5E1',
+                    background: '#fff',
+                    color: '#0A0A0F',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginBottom: 16,
+                  }}
+                >
+                  <Camera size={18} aria-hidden="true" />
+                  {signature ? 'Trocar foto' : 'Tirar ou escolher foto'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => handlePhotoSignature(event.target.files?.[0])}
+                    style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
+                  />
+                </label>
                 {signature && (
                   <img
                     src={signature}
@@ -611,16 +793,11 @@ export default function ApprovePage(): JSX.Element {
               <div className="v">{formatMoney(quote?.total ?? '0')}</div>
             </div>
             <div className="actions">
-              <button
-                className="btn-reject"
-                onClick={() => {
-                  /* reject flow TBD */
-                }}
-              >
+              <button className="btn-reject" onClick={() => setPageState('rejecting')}>
                 Recusar
               </button>
               <button className="btn-accept" onClick={() => setPageState('show_form')}>
-                Revisar e aprovar →
+                Revisar e aprovar
               </button>
             </div>
           </div>

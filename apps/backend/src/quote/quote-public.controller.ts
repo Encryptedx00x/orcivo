@@ -10,7 +10,8 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { ApproveQuoteSchema } from '@orcivo/shared-types';
+import { ApproveQuoteSchema, RejectQuotePublicSchema } from '@orcivo/shared-types';
+import type { RejectQuotePublicDto } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { Request } from 'express';
@@ -48,5 +49,14 @@ export class QuotePublicController {
     const ipAddress = (req.ip ?? req.socket?.remoteAddress ?? 'unknown') as string;
     const userAgent = (req.headers['user-agent'] ?? '') as string;
     return this.quoteService.approve(token, body as never, ipAddress, userAgent);
+  }
+
+  @Post(':token/reject')
+  @HttpCode(200)
+  reject(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(RejectQuotePublicSchema)) body: RejectQuotePublicDto,
+  ) {
+    return this.quoteService.rejectByToken(token, body.reason);
   }
 }

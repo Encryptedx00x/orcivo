@@ -257,13 +257,19 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     toast(`Pronto! Reenviado para ${q.customer?.name?.split(' ')[0] ?? 'o cliente'} no WhatsApp.`);
   };
   // Drafts reopen in the same 3 steps (items first; back goes to the client step).
-  const edit = async () => {
+  const edit = async (review = false) => {
     const r = await getQuoteFull(q.id);
     if (!r.ok) return toast(r.message);
     setDraft(draftFromQuote(r.data));
     go('q1');
     go('q2');
+    if (review) go('q3');
   };
+  // Stays in Modo fácil: a draft opens on its review step, the others as the PDF.
+  const open = () =>
+    q.status === 'DRAFT'
+      ? void edit(true)
+      : window.open(`/api/quotes/${q.id}/pdf`, '_blank', 'noopener');
   const copyLink = async () => {
     let problem = '';
     const url = getQuoteShare(q.id).then((r) => {
@@ -409,9 +415,12 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
           Reenviar
         </Btn>
       )}
-      <a
-        href={`/orcamentos/${q.id}`}
+      <button
+        type="button"
+        onClick={open}
         style={{
+          cursor: 'pointer',
+          fontFamily: 'inherit',
           height: 56,
           borderRadius: 16,
           fontSize: 18,
@@ -427,7 +436,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
         }}
       >
         <FileText size={22} aria-hidden="true" /> Abrir
-      </a>
+      </button>
       <MoreButton
         icon={MoreHorizontal}
         onClick={() =>
