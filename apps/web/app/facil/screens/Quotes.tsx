@@ -1,11 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Link2, MessageCircle, Plus } from 'lucide-react';
+import {
+  Ban,
+  ClipboardList,
+  Download,
+  FileText,
+  Link2,
+  MessageCircle,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RotateCcw,
+  XCircle,
+} from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { getQuoteShare, listQuotes, type EasyQuote } from '../actions';
+import { quoteAction, type DirectQuoteAction } from '../../(app)/orcamentos/actions';
 import { buildWhatsAppLink } from '../../../lib/whatsapp';
 import { emptyDraft, useLoad, useNav } from '../EasyApp';
+import { MoreButton, reasonSheet, useSheet, type SheetAction } from '../sheet';
 import {
   Btn,
   C,
@@ -50,7 +64,7 @@ function ago(iso?: string) {
   return days <= 0 ? 'hoje' : days === 1 ? 'ontem' : `há ${days} dias`;
 }
 
-export function QuotesScreen(): JSX.Element {
+export function QuotesScreen(): React.JSX.Element {
   const { go, setDraft } = useNav();
   const quotes = useLoad(listQuotes);
   const [showHidden, setShowHidden] = useState(false);
@@ -89,11 +103,17 @@ export function QuotesScreen(): JSX.Element {
               title={g.title}
               dot={g.dot}
               items={all.filter((q) => g.statuses.includes(q.status))}
+              onChanged={quotes.reload}
             />
           ))}
           {hidden.length > 0 &&
             (showHidden ? (
-              <Section title="Recusados, vencidos e cancelados" dot="#DC2626" items={hidden} />
+              <Section
+                title="Recusados, vencidos e cancelados"
+                dot="#DC2626"
+                items={hidden}
+                onChanged={quotes.reload}
+              />
             ) : (
               <Btn tone="link" onClick={() => setShowHidden(true)}>
                 Ver recusados e vencidos ({hidden.length})
@@ -105,7 +125,17 @@ export function QuotesScreen(): JSX.Element {
   );
 }
 
-function Section({ title, dot, items }: { title: string; dot: string; items: EasyQuote[] }) {
+function Section({
+  title,
+  dot,
+  items,
+  onChanged,
+}: {
+  title: string;
+  dot: string;
+  items: EasyQuote[];
+  onChanged: () => void;
+}) {
   const [limit, setLimit] = useState(PAGE);
   if (items.length === 0) return null;
   return (
@@ -132,7 +162,7 @@ function Section({ title, dot, items }: { title: string; dot: string; items: Eas
         </span>
       </div>
       {items.slice(0, limit).map((q) => (
-        <QuoteCard key={q.id} q={q} />
+        <QuoteCard key={q.id} q={q} onChanged={onChanged} />
       ))}
       {items.length > limit && (
         <Btn tone="link" onClick={() => setLimit((l) => l + PAGE)}>
@@ -143,10 +173,36 @@ function Section({ title, dot, items }: { title: string; dot: string; items: Eas
   );
 }
 
-function QuoteCard({ q }: { q: EasyQuote }) {
+const REASONS: Record<DirectQuoteAction, { title: string; reasons: string[]; done: string }> = {
+  recusar: {
+    title: 'Por que o cliente recusou?',
+    reasons: ['Achou caro', 'Fechou com outro', 'Desistiu do serviço', 'Outro motivo'],
+    done: 'Marcado como recusado.',
+  },
+  cancelar: {
+    title: 'Por que cancelar?',
+    reasons: ['Cliente desistiu', 'Feito por engano', 'Itens ou valor errados', 'Outro motivo'],
+    done: 'Orçamento cancelado.',
+  },
+  reabrir: {
+    title: 'Por que reabrir?',
+    reasons: ['Cliente pediu de novo', 'Renovar a validade', 'Outro motivo'],
+    done: 'Orçamento reaberto e esperando resposta.',
+  },
+  corrigir: {
+    title: 'O que vai corrigir?',
+    reasons: ['Mudar itens ou preços', 'Mudar condições ou validade', 'Outro motivo'],
+    done: 'Orçamento voltou para rascunho.',
+  },
+};
+
+function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const toast = useToast();
+  const sheet = useSheet();
+  const { go } = useNav();
   const chip = quoteChip(q.status);
   const meta = `#${q.number} · ${q.status === 'DRAFT' ? 'criado' : q.status === 'APPROVED' ? 'aprovado' : 'atualizado'} ${ago(q.updated_at ?? q.created_at)}`;
+
   const resend = async () => {
     // Open synchronously inside the tap so mobile browsers allow it, then point it at WhatsApp.
     const tab = window.open('', '_blank');
@@ -176,6 +232,90 @@ function QuoteCard({ q }: { q: EasyQuote }) {
       toast('Não foi possível copiar o link.');
     }
   };
+  const run = (action: DirectQuoteAction, then?: () => void) =>
+    reasonSheet(
+      sheet,
+      REASONS[action].title,
+      REASONS[action].reasons,
+      async (reason) => {
+        const r = await quoteAction(q.id, { action, reason });
+        if (r.error) return toast(r.error);
+        toast(REASONS[action].done);
+        onChanged();
+        then?.();
+      },
+      action === 'cancelar' || action === 'recusar' ? Ban : RotateCcw,
+    );
+
+  const pdf: SheetAction = {
+    label: 'Baixar PDF',
+    icon: Download,
+    run: () => window.open(`/api/quotes/${q.id}/pdf`, '_blank', 'noopener'),
+  };
+  const link: SheetAction = {
+    label: 'Copiar link de aprovação',
+    icon: Link2,
+    run: () => void copyLink(),
+  };
+  const cancel: SheetAction = {
+    label: 'Cancelar orçamento',
+    icon: Ban,
+    danger: true,
+    run: () => run('cancelar'),
+  };
+  const correct: SheetAction = {
+    label: 'Corrigir orçamento',
+    sub: 'Volta para rascunho para mudar e reenviar',
+    icon: Pencil,
+    run: () => run('corrigir', () => (window.location.href = `/orcamentos/${q.id}`)),
+  };
+  const actions: SheetAction[] =
+    q.status === 'SENT'
+      ? [
+          link,
+          correct,
+          pdf,
+          { label: 'Cliente recusou', icon: XCircle, run: () => run('recusar') },
+          cancel,
+        ]
+      : q.status === 'APPROVED'
+        ? [
+            {
+              label: 'Criar serviço',
+              sub: 'Marcar na agenda',
+              icon: ClipboardList,
+              run: () =>
+                go('agNew', {
+                  client: q.customer?.id,
+                  clientName: q.customer?.name,
+                  type: 'INSTALACAO',
+                }),
+            },
+            pdf,
+            link,
+            cancel,
+          ]
+        : q.status === 'DRAFT'
+          ? [
+              {
+                label: 'Continuar editando',
+                icon: Pencil,
+                run: () => (window.location.href = `/orcamentos/${q.id}`),
+              },
+              pdf,
+              { label: 'Descartar rascunho', icon: Ban, danger: true, run: () => run('cancelar') },
+            ]
+          : [
+              {
+                label: 'Reabrir e mandar de novo',
+                sub: 'Volta a esperar a resposta do cliente',
+                icon: RotateCcw,
+                run: () => run('reabrir'),
+              },
+              correct,
+              pdf,
+            ];
+
   return (
     <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -206,53 +346,40 @@ function QuoteCard({ q }: { q: EasyQuote }) {
         </span>
         <Chip kind={chip.kind} label={chip.label} />
       </div>
-      {q.status === 'SENT' ? (
-        <>
-          <Btn tone="soft" icon={MessageCircle} height={56} onClick={() => void resend()}>
-            Reenviar
-          </Btn>
-          <Btn tone="link" icon={Link2} onClick={() => void copyLink()}>
-            Copiar link de aprovação
-          </Btn>
-          <a
-            href={`/orcamentos/${q.id}`}
-            style={{
-              ...actionLink,
-              height: 48,
-              border: 'none',
-              color: C.purple700,
-              fontSize: 17,
-              fontWeight: 600,
-            }}
-          >
-            Abrir orçamento
-          </a>
-        </>
-      ) : (
-        <a
-          href={`/orcamentos/${q.id}`}
-          style={{
-            ...actionLink,
-            background: '#FFFFFF',
-            color: C.ink,
-            border: `1.5px solid ${C.borderStrong}`,
-          }}
-        >
-          <FileText size={22} aria-hidden="true" /> Abrir
-        </a>
+      {q.status === 'SENT' && (
+        <Btn tone="soft" icon={MessageCircle} height={56} onClick={() => void resend()}>
+          Reenviar
+        </Btn>
       )}
+      <a
+        href={`/orcamentos/${q.id}`}
+        style={{
+          height: 56,
+          borderRadius: 16,
+          fontSize: 18,
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+          textDecoration: 'none',
+          background: '#FFFFFF',
+          color: C.ink,
+          border: `1.5px solid ${C.borderStrong}`,
+        }}
+      >
+        <FileText size={22} aria-hidden="true" /> Abrir
+      </a>
+      <MoreButton
+        icon={MoreHorizontal}
+        onClick={() =>
+          sheet({
+            title: q.customer?.name ?? `Orçamento #${q.number}`,
+            sub: `#${q.number} · ${formatMoney(q.total)}`,
+            actions,
+          })
+        }
+      />
     </div>
   );
 }
-
-const actionLink: React.CSSProperties = {
-  height: 56,
-  borderRadius: 16,
-  fontSize: 18,
-  fontWeight: 700,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  textDecoration: 'none',
-};

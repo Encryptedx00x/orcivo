@@ -1,10 +1,32 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, CheckCircle, Clock, DollarSign } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Calendar,
+  Check,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  FileText,
+  MessageCircle,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  ReceiptText,
+  Trash2,
+} from 'lucide-react';
 import { formatMoney, sumDecimal } from '@orcivo/shared-types';
-import { listPayments, settlePayment, type EasyPayment } from '../actions';
-import { useLoad } from '../EasyApp';
+import {
+  deletePayment,
+  getClient,
+  getCompany,
+  listPayments,
+  settlePayment,
+  type EasyPayment,
+} from '../actions';
+import { useLoad, useNav } from '../EasyApp';
+import { MoreButton, reasonSheet, useSheet } from '../sheet';
 import {
   Btn,
   C,
@@ -17,7 +39,6 @@ import {
   useToast,
   type ChipKind,
 } from '../ui';
-import { menuRow } from './Clients';
 
 const METHODS = [
   { value: 'PIX', label: 'Pix' },
@@ -29,6 +50,27 @@ const METHODS = [
 ];
 const methodLabel = (m: string | null) => METHODS.find((x) => x.value === m)?.label ?? '—';
 const PAGE = 10;
+
+const PERIODS = [
+  { value: 'month', label: 'Este mês' },
+  { value: 'last', label: 'Mês passado' },
+  { value: '3m', label: 'Últimos 3 meses' },
+  { value: 'year', label: 'Este ano' },
+] as const;
+type Period = (typeof PERIODS)[number]['value'];
+
+function inPeriod(iso: string, period: Period): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  if (period === 'month')
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  if (period === 'last') {
+    const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getMonth() === last.getMonth() && d.getFullYear() === last.getFullYear();
+  }
+  if (period === '3m') return d >= new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  return d.getFullYear() === now.getFullYear();
+}
 
 function dueChip(p: EasyPayment): { kind: ChipKind; label: string } {
   if (!p.due_date) return { kind: 'draft', label: 'Sem vencimento' };
@@ -58,27 +100,43 @@ const ref = (p: EasyPayment) =>
       ? `Orçamento #${p.quote.number}`
       : p.description || 'Recebimento';
 
-export function MoneyScreen(): JSX.Element {
+const kpiIcon = (bg: string, fg: string): React.CSSProperties => ({
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  background: bg,
+  color: fg,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 6,
+});
+const kpiValue: React.CSSProperties = {
+  fontSize: 22,
+  lineHeight: '28px',
+  fontWeight: 800,
+  letterSpacing: '-0.02em',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+export function MoneyScreen(): React.JSX.Element {
+  const { go } = useNav();
   const toast = useToast();
+  const sheet = useSheet();
   const payments = useLoad(listPayments);
   const [open, setOpen] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
+  const [paidLimit, setPaidLimit] = useState(PAGE);
+  const [period, setPeriod] = useState<Period>('month');
+  const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? 'Este mês';
 
-  const all = payments.data ?? [];
+  const all = useMemo(() => payments.data ?? [], [payments.data]);
   const dues = all.filter(
     (p) => p.status === 'PENDING' || p.status === 'OVERDUE' || p.status === 'PARTIAL',
   );
-  const now = new Date();
-  const paidMonth = all.filter(
-    (p) =>
-      p.status === 'PAID' &&
-      p.paid_at &&
-      new Date(p.paid_at).getMonth() === now.getMonth() &&
-      new Date(p.paid_at).getFullYear() === now.getFullYear(),
-  );
-  const paidToday = paidMonth.filter(
-    (p) => new Date(p.paid_at as string).toDateString() === now.toDateString(),
-  );
+  const paid = all
+    .filter((p) => p.status === 'PAID' && p.paid_at && inPeriod(p.paid_at, period))
+    .sort((a, b) => (b.paid_at ?? '').localeCompare(a.paid_at ?? ''));
   const late = dues.filter((p) => dueChip(p).kind === 'late').length;
   const sum = (list: EasyPayment[]) =>
     list.length ? sumDecimal(list.map((p) => p.amount)) : '0.00';
@@ -87,13 +145,127 @@ export function MoneyScreen(): JSX.Element {
     const r = await settlePayment(p.id, method);
     if (!r.ok) return toast(r.message);
     setOpen(null);
-    toast(`Pronto! ${formatMoney(p.amount)} recebido.`);
+    toast(`Pronto! ${formatMoney(p.amount)} recebido. O recibo já está em Recibos.`);
     payments.reload();
   };
 
+  const charge = async (p: EasyPayment) => {
+    if (!p.customer) return toast('Este recebimento não tem cliente.');
+    const [client, company] = await Promise.all([getClient(p.customer.id), getCompany()]);
+    const digits = client.ok ? (client.data.phone ?? '').replace(/\D/g, '') : '';
+    if (!digits) return toast('Este cliente não tem telefone.');
+    const due = p.due_date ? new Date(p.due_date).toLocaleDateString('pt-BR') : null;
+    const late = dueChip(p).kind === 'late';
+    const pix = company.ok && company.data.pix_key ? `\nChave Pix: ${company.data.pix_key}` : '';
+    const text =
+      `Olá, ${p.customer.name.split(' ')[0]}! Passando para lembrar do pagamento de ${formatMoney(p.amount)}` +
+      (due ? (late ? `, que venceu em ${due}.` : `, com vencimento em ${due}.`) : '.') +
+      pix;
+    window.open(
+      `https://wa.me/55${digits.replace(/^55(?=\d{10,11}$)/, '')}?text=${encodeURIComponent(text)}`,
+      '_blank',
+      'noopener',
+    );
+  };
+
+  const remove = (p: EasyPayment) =>
+    reasonSheet(
+      sheet,
+      'Por que excluir?',
+      ['Lançado errado', 'Cliente desistiu', 'Valor duplicado', 'Outro motivo'],
+      async (reason) => {
+        const r = await deletePayment(p.id, reason);
+        if (!r.ok) return toast(r.message);
+        toast(`Recebimento excluído: ${reason.toLowerCase()}.`);
+        payments.reload();
+      },
+      Trash2,
+    );
+
+  const dueMore = (p: EasyPayment) =>
+    sheet({
+      title: p.customer?.name ?? 'Recebimento',
+      sub: formatMoney(p.amount),
+      actions: [
+        { label: 'Cobrar no WhatsApp', icon: MessageCircle, run: () => void charge(p) },
+        {
+          label: 'Mudar valor ou vencimento',
+          icon: Pencil,
+          run: () =>
+            go('edit', {
+              kind: 'payment',
+              id: p.id,
+              amount: p.amount,
+              due: p.due_date ?? undefined,
+              name: p.customer?.name,
+            }),
+        },
+        { label: 'Excluir recebimento', icon: Trash2, danger: true, run: () => remove(p) },
+      ],
+    });
+
   return (
     <>
-      <H1>Financeiro</H1>
+      <div style={{ padding: '8px 4px 0' }}>
+        <H1>Financeiro</H1>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Btn
+          icon={Plus}
+          height={56}
+          onClick={() =>
+            sheet({
+              title: 'Registrar recebimento',
+              sub: 'Gera o recibo junto',
+              actions: [
+                {
+                  label: 'De um orçamento ou serviço',
+                  icon: FileText,
+                  run: () => go('receiptNew', { link: '1' }),
+                },
+                {
+                  label: 'Avulso',
+                  sub: 'Sem orçamento nem serviço',
+                  icon: Plus,
+                  run: () => go('receiptNew'),
+                },
+                {
+                  label: 'Cobrança para receber depois',
+                  sub: 'Com vencimento, sem recibo ainda',
+                  icon: Clock,
+                  run: () => (window.location.href = '/financeiro?registrar=1'),
+                },
+              ],
+            })
+          }
+          style={{ fontSize: 17 }}
+        >
+          Registrar
+        </Btn>
+        <Btn
+          tone="outline"
+          icon={Calendar}
+          iconColor={C.purple}
+          height={56}
+          onClick={() =>
+            sheet({
+              title: 'Ver qual período?',
+              sub: 'Muda o recebido e a lista de recebidos',
+              actions: PERIODS.map((pp) => ({
+                label: pp.value === period ? `${pp.label} · atual` : pp.label,
+                icon: pp.value === period ? CheckCircle : Calendar,
+                run: () => {
+                  setPeriod(pp.value);
+                  setPaidLimit(PAGE);
+                },
+              })),
+            })
+          }
+          style={{ fontSize: 17 }}
+        >
+          {periodLabel}
+        </Btn>
+      </div>
       {payments.loading && !payments.data ? (
         <Loading />
       ) : payments.error ? (
@@ -111,36 +283,12 @@ export function MoneyScreen(): JSX.Element {
                 gap: 4,
               }}
             >
-              <span
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: '#DCFCE7',
-                  color: C.green,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 6,
-                }}
-              >
+              <span style={kpiIcon('#DCFCE7', C.green)}>
                 <CheckCircle size={22} aria-hidden="true" />
               </span>
               <span style={{ fontSize: 17, fontWeight: 700 }}>Recebido</span>
-              <span
-                style={{
-                  fontSize: 22,
-                  lineHeight: '28px',
-                  fontWeight: 800,
-                  letterSpacing: '-0.02em',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatMoney(sum(paidMonth))}
-              </span>
-              <span style={{ fontSize: 15, color: C.fg3 }}>
-                em {now.toLocaleDateString('pt-BR', { month: 'long' })}
-              </span>
+              <span style={kpiValue}>{formatMoney(sum(paid))}</span>
+              <span style={{ fontSize: 15, color: C.fg3 }}>{periodLabel.toLowerCase()}</span>
             </div>
             <div
               style={{
@@ -152,44 +300,22 @@ export function MoneyScreen(): JSX.Element {
                 gap: 4,
               }}
             >
-              <span
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: '#FEF3C7',
-                  color: '#B45309',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 6,
-                }}
-              >
+              <span style={kpiIcon('#FEF3C7', '#B45309')}>
                 <Clock size={22} aria-hidden="true" />
               </span>
               <span style={{ fontSize: 17, fontWeight: 700 }}>A receber</span>
-              <span
-                style={{
-                  fontSize: 22,
-                  lineHeight: '28px',
-                  fontWeight: 800,
-                  letterSpacing: '-0.02em',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatMoney(sum(dues))}
-              </span>
+              <span style={kpiValue}>{formatMoney(sum(dues))}</span>
               <span style={{ fontSize: 15, fontWeight: 600, color: late ? '#B91C1C' : '#166534' }}>
                 {late ? `${late} ${late > 1 ? 'atrasados' : 'atrasado'}` : 'Tudo em dia'}
               </span>
             </div>
           </div>
 
-          {dues.length === 0 && paidToday.length === 0 ? (
+          {dues.length === 0 && paid.length === 0 ? (
             <EmptyBox
               icon={DollarSign}
-              title="Nada para receber."
-              text="Quando um serviço tiver valor a receber, ele aparece aqui."
+              title="Nada por aqui neste período."
+              text="Quando um serviço tiver valor a receber, ele aparece aqui. Toque em Registrar para lançar um pagamento."
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -226,15 +352,7 @@ export function MoneyScreen(): JSX.Element {
                         gap: '8px 12px',
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 22,
-                          fontWeight: 800,
-                          letterSpacing: '-0.01em',
-                          fontVariantNumeric: 'tabular-nums',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
+                      <span style={{ ...kpiValue, whiteSpace: 'nowrap' }}>
                         {formatMoney(p.amount)}
                       </span>
                       <Chip kind={chip.kind} label={chip.label} />
@@ -256,24 +374,14 @@ export function MoneyScreen(): JSX.Element {
                         <span style={{ fontSize: 17, fontWeight: 700 }}>Como recebeu?</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           {METHODS.map((m) => (
-                            <button
+                            <Btn
                               key={m.value}
-                              type="button"
+                              height={56}
                               onClick={() => void settle(p, m.value)}
-                              style={{
-                                height: 56,
-                                borderRadius: 14,
-                                border: 'none',
-                                background: C.purple,
-                                color: '#FFFFFF',
-                                fontSize: 17,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                fontFamily: 'inherit',
-                              }}
+                              style={{ fontSize: 17 }}
                             >
                               {m.label}
-                            </button>
+                            </Btn>
                           ))}
                         </div>
                         <Btn tone="link" onClick={() => setOpen(null)} style={{ color: C.fg2 }}>
@@ -281,6 +389,7 @@ export function MoneyScreen(): JSX.Element {
                         </Btn>
                       </div>
                     )}
+                    <MoreButton icon={MoreHorizontal} onClick={() => dueMore(p)} />
                   </div>
                 );
               })}
@@ -289,13 +398,13 @@ export function MoneyScreen(): JSX.Element {
                   Ver mais {Math.min(PAGE, dues.length - limit)} de {dues.length - limit}
                 </Btn>
               )}
-              {paidToday.length > 0 && (
+              {paid.length > 0 && (
                 <>
                   <span style={{ fontSize: 20, fontWeight: 700, margin: '10px 4px 0' }}>
-                    Recebidos hoje
+                    Recebidos · {periodLabel.toLowerCase()}
                   </span>
                   <div style={{ ...card, padding: '4px 16px' }}>
-                    {paidToday.slice(0, 10).map((p) => (
+                    {paid.slice(0, paidLimit).map((p, i, arr) => (
                       <div
                         key={p.id}
                         style={{
@@ -303,8 +412,8 @@ export function MoneyScreen(): JSX.Element {
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           gap: 10,
-                          minHeight: 64,
-                          borderBottom: `1px solid ${C.line}`,
+                          minHeight: 68,
+                          borderBottom: i === arr.length - 1 ? 'none' : `1px solid ${C.line}`,
                         }}
                       >
                         <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -312,29 +421,54 @@ export function MoneyScreen(): JSX.Element {
                             {p.customer?.name ?? 'Cliente'}
                           </span>
                           <span style={{ fontSize: 15, color: C.fg3 }}>
-                            {formatMoney(p.amount)} · {methodLabel(p.method)}
+                            {formatMoney(p.amount)} · {methodLabel(p.method)} ·{' '}
+                            {new Date(p.paid_at as string).toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                            })}
                           </span>
                         </span>
-                        <Chip kind="ok" label="Pago" small />
+                        <button
+                          type="button"
+                          onClick={() => go('receipt', { id: p.id })}
+                          style={{
+                            height: 48,
+                            padding: '0 4px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: C.purple700,
+                            fontSize: 16,
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          <ReceiptText size={20} aria-hidden="true" /> Recibo
+                        </button>
                       </div>
                     ))}
                   </div>
+                  {paid.length > paidLimit && (
+                    <Btn tone="link" onClick={() => setPaidLimit((l) => l + PAGE)}>
+                      Ver mais {Math.min(PAGE, paid.length - paidLimit)} de{' '}
+                      {paid.length - paidLimit}
+                    </Btn>
+                  )}
                 </>
               )}
             </div>
           )}
-          <a
-            href="/financeiro"
-            style={{
-              ...menuRow,
-              ...card,
-              justifyContent: 'center',
-              color: C.purple700,
-              fontSize: 17,
-            }}
+          <Btn
+            tone="link"
+            icon={ChevronRight}
+            onClick={() => (window.location.href = '/financeiro')}
           >
-            Mais opções (recebimento avulso, editar, período)
-          </a>
+            Financeiro completo (tabela, filtros e histórico)
+          </Btn>
         </>
       )}
     </>
