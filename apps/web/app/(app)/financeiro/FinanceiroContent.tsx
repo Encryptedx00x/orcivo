@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Inbox, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Inbox, Pencil, Plus, ReceiptText, Trash2 } from 'lucide-react';
 import { PaymentRegistrationModal } from './PaymentRegistrationModal';
 import { PaymentDeleteModal, PaymentEditModal, type EditablePayment } from './PaymentEditModal';
 import { EntityHistory } from '../../../lib/EntityHistory';
@@ -452,6 +452,21 @@ export function FinanceiroContent({
                           label={`${row.customer} · ${row.description || 'Recebimento'} · ${row.amount}`}
                           revision={`${row.revision}:${historyRevision}`}
                         />
+                        {row.status === 'PAID' && (
+                          <a
+                            href={`/documentos?recibo=${row.id}`}
+                            className="ov-btn ov-btn-outline"
+                            style={{
+                              height: 30,
+                              fontSize: 12,
+                              gap: 6,
+                              padding: '0 10px',
+                              marginLeft: 6,
+                            }}
+                          >
+                            <ReceiptText size={13} /> Recibo
+                          </a>
+                        )}
                         <button
                           type="button"
                           onClick={() => setEditingPayment(editablePayment(row))}

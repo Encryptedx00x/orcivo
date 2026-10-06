@@ -1,10 +1,12 @@
 'use client';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FileText, ExternalLink, Inbox } from 'lucide-react';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { loadQuotesPage } from '../orcamentos/list-actions';
 import { loadWorkOrdersPage } from '../ordens-de-servico/list-actions';
+import { ReceiptsTab } from './ReceiptsTab';
 
 // ── Tipos vindos do server component ──────────────────────────────────
 export interface DocQuote {
@@ -164,14 +166,20 @@ export function DocumentosContent({
   });
   const quotes = quoteList.items;
   const workOrders = woList.items;
+  const [receiptCount, setReceiptCount] = useState(0);
   const TABS = [
     { id: 'orc', label: 'Orçamentos', count: quotes.length },
     { id: 'os', label: 'Ordens de Serviço', count: workOrders.length },
-    { id: 'rec', label: 'Recibos', count: 0 },
+    { id: 'rec', label: 'Recibos', count: receiptCount },
     { id: 'con', label: 'Contratos', count: 0 },
   ];
-  const [tab, setTab] = useState('orc');
-  const total = quotes.length + workOrders.length;
+  const params = useSearchParams();
+  const [tab, setTab] = useState(
+    params.get('recibo') || params.get('novo-recibo') || params.get('tab') === 'recibos'
+      ? 'rec'
+      : 'orc',
+  );
+  const total = quotes.length + workOrders.length + receiptCount;
 
   return (
     <div>
@@ -350,9 +358,10 @@ export function DocumentosContent({
         {tab === 'orc' && <LoadMore list={quoteList} />}
         {tab === 'os' && <LoadMore list={woList} />}
 
-        {tab === 'rec' && (
-          <EmptyState label="Recibos serão gerados automaticamente ao registrar recebimentos." />
-        )}
+        {/* Kept mounted so the tab count is right before the tab is opened. */}
+        <div hidden={tab !== 'rec'}>
+          <ReceiptsTab onCount={setReceiptCount} />
+        </div>
         {tab === 'con' && <EmptyState label="Contratos estarão disponíveis em breve." />}
       </div>
     </div>

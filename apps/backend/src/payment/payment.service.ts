@@ -160,7 +160,12 @@ export class PaymentService {
     });
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
     const [withOrigin] = await this.withOrigins(companyId, [payment]);
-    return withOrigin;
+    const receipt_signature_url = payment.receipt_signature_key
+      ? await this.storage
+          .getSignedUrl(PHOTO_BUCKET, payment.receipt_signature_key)
+          .catch(() => null)
+      : null;
+    return { ...withOrigin, receipt_signature_url };
   }
 
   /** "Referente a": description, origin, or a generic fallback. */
