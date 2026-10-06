@@ -318,3 +318,132 @@ export async function getQuoteShare(
     return { token: q.approval_token ?? null, phone: q.customer?.phone ?? null, number: q.number };
   }, 'Não foi possível preparar o reenvio.');
 }
+
+// ── Settings / company ────────────────────────────────────────────────
+export interface EasyCompany {
+  trade_name: string;
+  document_type: 'CPF' | 'CNPJ' | null;
+  document: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  pix_key: string | null;
+  plan_code: string;
+  allowed_approval_methods?: ApprovalMethod[];
+  quote_default_terms: string | null;
+  quote_default_validity_days: number | null;
+}
+export async function getCompany(): Promise<Result<EasyCompany>> {
+  return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');
+}
+/** PATCH /company/me (admin-only); the backend validates Pix key format. */
+export async function updateCompany(
+  body: Partial<Omit<EasyCompany, 'plan_code' | 'allowed_approval_methods'>> & {
+    pix_key_type?: string | null;
+  },
+): Promise<Result<EasyCompany>> {
+  try {
+    return {
+      ok: true,
+      data: await apiFetch<EasyCompany>('/company/me', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    };
+  } catch (err) {
+    const status = err instanceof Error ? /\s(\d{3})$/.exec(err.message)?.[1] : undefined;
+    if (status === '403') return { ok: false, message: 'Só o dono da empresa pode mudar isso.' };
+    if (status === '400') return { ok: false, message: 'Confira os campos e tente de novo.' };
+    return { ok: false, message: 'Não foi possível salvar.' };
+  }
+}
+
+// ── Catalog edit ──────────────────────────────────────────────────────
+export async function updateCatalogItem(
+  id: string,
+  input: { name: string; price: string },
+): Promise<Result<EasyCatalogItem>> {
+  return run(
+    () =>
+      apiFetch<EasyCatalogItem>(`/catalog/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: input.name.trim(), sale_price: input.price }),
+      }),
+    'Não foi possível salvar o item.',
+  );
+}
+/** Deactivates the item (it stays on old quotes). */
+export async function deleteCatalogItem(id: string): Promise<Result<true>> {
+  return run(async () => {
+    await apiFetch(`/catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch((e: Error) => {
+      // 204 has no JSON body; only real HTTP errors carry a status suffix.
+      if (!/\s\d{3}$/.test(e.message)) return null;
+      throw e;
+    });
+    return true as const;
+  }, 'Não foi possível excluir o item.');
+}
+
+// ── Client edit ───────────────────────────────────────────────────────
+export interface EasyClientEdit {
+  name: string;
+  phone: string;
+  tax_id?: string;
+  email?: string;
+  street?: string;
+  city?: string;
+  notes?: string;
+}
+export async function updateClient(id: string, input: EasyClientEdit): Promise<Result<EasyClient>> {
+  const clean = (v?: string) => (v && v.trim() ? v.trim() : undefined);
+  return run(
+    () =>
+      apiFetch<EasyClient>(`/customers/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: input.name.trim(),
+          phone: input.phone.replace(/\D/g, ''),
+          tax_id: clean(input.tax_id)?.replace(/\D/g, ''),
+          email: clean(input.email),
+          street: clean(input.street),
+          city: clean(input.city),
+          notes: clean(input.notes),
+        }),
+      }),
+    'Não foi possível salvar o cliente.',
+  );
+}
+export async function getClientFull(
+  id: string,
+): Promise<
+  Result<EasyClient & { tax_id?: string | null; email?: string | null; notes?: string | null }>
+> {
+  return run(
+    () => apiFetch(`/customers/${encodeURIComponent(id)}`),
+    'Não foi possível carregar este cliente.',
+  );
+}
+
+// ── Payments edit / delete (justification required by the backend) ──
+export async function updatePayment(
+  id: string,
+  input: { amount?: string; due_date?: string | null; justification: string },
+): Promise<Result<EasyPayment>> {
+  return run(
+    () =>
+      apiFetch<EasyPayment>(`/payments/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    'Não foi possível mudar o recebimento.',
+  );
+}
+export async function deletePayment(id: string, justification: string): Promise<Result<true>> {
+  return run(async () => {
+    await apiFetch(`/payments/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ justification }),
+    });
+    return true as const;
+  }, 'Não foi possível excluir o recebimento.');
+}

@@ -1,104 +1,37 @@
 'use client';
 
 import {
-  ChevronRight,
+  CheckCircle,
   ClipboardList,
   DollarSign,
+  FileText,
   FolderOpen,
   LogOut,
   Package,
+  ReceiptText,
   Settings,
-  Smile,
   Star,
-  UserPlus,
-  type LucideIcon,
 } from 'lucide-react';
-import { setEasyMode } from '../../../components/EasyMode';
 import { loadSummary } from '../actions';
 import { useLoad, useNav } from '../EasyApp';
-import { C, H1, Toggle } from '../ui';
+import { H1 } from '../ui';
+import { MenuRow, box } from '../rows';
+import { useSheet } from '../sheet';
 
-const PLAN: Record<string, string> = {
-  LIVRE: 'Orcivo Livre',
-  SOLO: 'Orcivo Solo',
-  MAIS: 'Orcivo Mais',
-  EQUIPE: 'Orcivo Equipe',
-};
+const PLANS: Array<[string, string]> = [
+  ['LIVRE', 'Orcivo Livre'],
+  ['SOLO', 'Orcivo Solo'],
+  ['MAIS', 'Orcivo Mais'],
+  ['EQUIPE', 'Orcivo Equipe'],
+];
 
-function Row({
-  icon: Icon,
-  label,
-  sub,
-  onClick,
-  href,
-}: {
-  icon: LucideIcon;
-  label: string;
-  sub: string;
-  onClick?: () => void;
-  href?: string;
-}) {
-  const inner = (
-    <>
-      <span
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 14,
-          background: C.purple50,
-          color: C.purple,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon size={24} aria-hidden="true" />
-      </span>
-      <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 18, fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 15, color: C.fg3 }}>{sub}</span>
-      </span>
-      <ChevronRight size={24} color={C.fg4} aria-hidden="true" />
-    </>
-  );
-  const style: React.CSSProperties = {
-    width: '100%',
-    minHeight: 76,
-    border: 'none',
-    borderBottom: `1px solid ${C.line}`,
-    background: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    padding: '10px 16px',
-    textAlign: 'left',
-    cursor: 'pointer',
-    color: C.ink,
-    textDecoration: 'none',
-    fontFamily: 'inherit',
-  };
-  return href ? (
-    <a href={href} style={style}>
-      {inner}
-    </a>
-  ) : (
-    <button type="button" onClick={onClick} style={style}>
-      {inner}
-    </button>
-  );
-}
-
-export function MenuScreen(): JSX.Element {
-  const { go } = useNav();
+export function MenuScreen(): React.JSX.Element {
+  const { go, tab } = useNav();
+  const sheet = useSheet();
   const summary = useLoad(loadSummary);
   const pending = summary.data?.kpis.os_pending;
-  const box: React.CSSProperties = {
-    borderRadius: 24,
-    background: '#FFFFFF',
-    border: `1px solid ${C.border}`,
-    overflow: 'hidden',
-  };
+  const plan = summary.data?.company.plan_code ?? 'LIVRE';
+  const planName = PLANS.find(([k]) => k === plan)?.[1] ?? 'Orcivo Livre';
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -111,112 +44,72 @@ export function MenuScreen(): JSX.Element {
         <H1>Menu</H1>
       </div>
       <div style={box}>
-        <Row
+        <MenuRow
           icon={ClipboardList}
           label="Serviços de hoje"
           sub={pending !== undefined ? `${pending} para fazer` : 'O que fazer hoje'}
           onClick={() => go('services')}
         />
-        <Row
+        <MenuRow
           icon={DollarSign}
           label="Financeiro"
           sub="Recebido e a receber"
           onClick={() => go('money')}
         />
-        <Row icon={Package} label="Meus serviços e preços" sub="Lista completa" href="/catalogo" />
-        <Row
+        <MenuRow
+          icon={ReceiptText}
+          label="Recibos"
+          sub="Gerados ao receber um pagamento"
+          onClick={() => go('receipts')}
+        />
+        <MenuRow
           icon={FolderOpen}
           label="Documentos"
-          sub="Orçamentos e serviços em PDF"
-          href="/documentos"
+          sub="Orçamentos, serviços e recibos"
+          onClick={() =>
+            sheet({
+              title: 'Documentos',
+              sub: 'Escolha o tipo',
+              actions: [
+                { label: 'Orçamentos', icon: FileText, run: () => tab('quotes') },
+                { label: 'Serviços', icon: ClipboardList, run: () => go('services') },
+                { label: 'Recibos', icon: ReceiptText, run: () => go('receipts') },
+              ],
+            })
+          }
         />
-        <Row icon={UserPlus} label="Equipe" sub="Membros e convites" href="/equipe" />
-        <Row
+        <MenuRow
+          icon={Package}
+          label="Meus serviços e preços"
+          sub="Itens e preços dos orçamentos"
+          onClick={() => go('catalog')}
+        />
+        <MenuRow
           icon={Settings}
-          label="Minha empresa e configurações"
-          sub="Nome, logo, Pix, aprovação e mais"
-          href="/configuracoes"
+          label="Configurações"
+          sub="Modo fácil, empresa, Pix, aprovação"
+          onClick={() => go('settings')}
         />
-        <Row
+        <MenuRow
           icon={Star}
           label="Meu plano"
-          sub={
-            summary.data
-              ? (PLAN[summary.data.company.plan_code] ?? 'Orcivo Livre')
-              : 'Plano e assinatura'
+          sub={planName}
+          last
+          onClick={() =>
+            sheet({
+              title: 'Meu plano',
+              sub: `Você está no ${planName}`,
+              actions: PLANS.map(([k, name]) => ({
+                label: k === plan ? `${name} · atual` : name,
+                icon: k === plan ? CheckCircle : Star,
+                run: () => (window.location.href = '/plano'),
+              })),
+            })
           }
-          href="/plano"
         />
       </div>
       <div style={box}>
-        <div
-          style={{
-            padding: '10px 16px',
-            borderBottom: `1px solid ${C.line}`,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-          }}
-        >
-          <span
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: C.purple50,
-              color: C.purple,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Smile size={24} aria-hidden="true" />
-          </span>
-          <Toggle
-            on
-            label="Modo fácil"
-            sub="Ligado neste aparelho"
-            onClick={() => {
-              setEasyMode(false);
-              window.location.href = '/dashboard';
-            }}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => void logout()}
-          style={{
-            width: '100%',
-            minHeight: 72,
-            border: 'none',
-            background: '#FFFFFF',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            padding: '10px 16px',
-            textAlign: 'left',
-            cursor: 'pointer',
-            color: '#B91C1C',
-            fontFamily: 'inherit',
-          }}
-        >
-          <span
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: '#FEF2F2',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <LogOut size={24} aria-hidden="true" />
-          </span>
-          <span style={{ fontSize: 18, fontWeight: 600 }}>Sair</span>
-        </button>
+        <MenuRow icon={LogOut} label="Sair" danger last onClick={() => void logout()} />
       </div>
     </>
   );

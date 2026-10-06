@@ -11,6 +11,9 @@ import { ServicesScreen, RunScreen } from './screens/Services';
 import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
 import { MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
+import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
+import { SettingsScreen, ApprovalsScreen, CatalogScreen, EditScreen } from './screens/Settings';
+import { SheetProvider } from './sheet';
 
 export type Screen =
   | 'home'
@@ -28,7 +31,14 @@ export type Screen =
   | 'agenda'
   | 'agNew'
   | 'money'
-  | 'menu';
+  | 'menu'
+  | 'receipts'
+  | 'receipt'
+  | 'receiptNew'
+  | 'settings'
+  | 'approvals'
+  | 'catalog'
+  | 'edit';
 
 type Params = Record<string, string | undefined>;
 interface Entry {
@@ -69,6 +79,8 @@ interface Nav {
   screen: Screen;
   params: Params;
   go: (screen: Screen, params?: Params) => void;
+  /** Swap the current screen (e.g. a finished form for its result). */
+  replace: (screen: Screen, params?: Params) => void;
   tab: (screen: Screen) => void;
   back: () => void;
   draft: Draft;
@@ -86,7 +98,12 @@ const TABS: Array<{ screen: Screen; label: string; icon: LucideIcon; covers: Scr
   { screen: 'clients', label: 'Clientes', icon: Users, covers: ['clients', 'client'] },
   { screen: 'quotes', label: 'Orçamentos', icon: FileText, covers: ['quotes'] },
   { screen: 'agenda', label: 'Agenda', icon: Calendar, covers: ['agenda'] },
-  { screen: 'menu', label: 'Menu', icon: MenuIcon, covers: ['menu'] },
+  {
+    screen: 'menu',
+    label: 'Menu',
+    icon: MenuIcon,
+    covers: ['menu', 'receipts', 'settings', 'catalog'],
+  },
 ];
 const NAV_SCREENS: Screen[] = [
   'home',
@@ -97,6 +114,9 @@ const NAV_SCREENS: Screen[] = [
   'agenda',
   'money',
   'menu',
+  'receipts',
+  'settings',
+  'catalog',
 ];
 const BACK_SCREENS: Screen[] = [
   'q1',
@@ -109,6 +129,13 @@ const BACK_SCREENS: Screen[] = [
   'agNew',
   'services',
   'money',
+  'receipts',
+  'receipt',
+  'receiptNew',
+  'settings',
+  'approvals',
+  'catalog',
+  'edit',
 ];
 const STEP: Partial<Record<Screen, number>> = { q1: 1, q2: 2, q3: 3 };
 
@@ -122,6 +149,10 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
   const go = useCallback((screen: Screen, params: Params = {}) => {
     setStack((s) => [...s, { screen, params }]);
     window.history.pushState({ easy: true }, '');
+    top();
+  }, []);
+  const replace = useCallback((screen: Screen, params: Params = {}) => {
+    setStack((s) => [...s.slice(0, -1), { screen, params }]);
     top();
   }, []);
   const tab = useCallback((screen: Screen) => {
@@ -149,6 +180,7 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
     screen: cur.screen,
     params: cur.params,
     go,
+    replace,
     tab,
     back: historyBack,
     draft,
@@ -159,106 +191,108 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
   return (
     <NavCtx.Provider value={nav}>
       <ToastProvider bottom={showNav ? 96 : 24}>
-        <div
-          style={{
-            minHeight: '100dvh',
-            background: C.bg,
-            color: C.ink,
-            fontSize: 18,
-            lineHeight: 1.4,
-            display: 'flex',
-            flexDirection: 'column',
-            maxWidth: 480,
-            margin: '0 auto',
-            WebkitFontSmoothing: 'antialiased',
-          }}
-        >
+        <SheetProvider>
           <div
-            ref={scrollRef}
             style={{
-              flex: 1,
-              padding: '16px 16px 28px',
+              minHeight: '100dvh',
+              background: C.bg,
+              color: C.ink,
+              fontSize: 18,
+              lineHeight: 1.4,
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
-              paddingBottom: showNav ? 112 : 28,
+              maxWidth: 480,
+              margin: '0 auto',
+              WebkitFontSmoothing: 'antialiased',
             }}
           >
-            {BACK_SCREENS.includes(cur.screen) && (
-              <BackBar onBack={historyBack} step={STEP[cur.screen]} />
-            )}
-            <CurrentScreen screen={cur.screen} />
-          </div>
-          {showNav && (
-            <nav
-              aria-label="Navegação principal"
+            <div
+              ref={scrollRef}
               style={{
-                position: 'fixed',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 84,
-                background: '#FFFFFF',
-                borderTop: `1px solid ${C.border}`,
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1.25fr 1fr 0.9fr',
-                padding: '0 4px env(safe-area-inset-bottom)',
-                zIndex: 40,
+                flex: 1,
+                padding: '16px 16px 28px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                paddingBottom: showNav ? 112 : 28,
               }}
             >
-              {TABS.map((t) => {
-                const on = t.covers.includes(cur.screen);
-                const Icon = t.icon;
-                return (
-                  <button
-                    key={t.screen}
-                    type="button"
-                    onClick={() => tab(t.screen)}
-                    aria-current={on ? 'page' : undefined}
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                      color: on ? C.purple800 : C.fg2,
-                      minWidth: 0,
-                      padding: 0,
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    <span
+              {BACK_SCREENS.includes(cur.screen) && (
+                <BackBar onBack={historyBack} step={STEP[cur.screen]} />
+              )}
+              <CurrentScreen screen={cur.screen} />
+            </div>
+            {showNav && (
+              <nav
+                aria-label="Navegação principal"
+                style={{
+                  position: 'fixed',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 84,
+                  background: '#FFFFFF',
+                  borderTop: `1px solid ${C.border}`,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1.25fr 1fr 0.9fr',
+                  padding: '0 4px env(safe-area-inset-bottom)',
+                  zIndex: 40,
+                }}
+              >
+                {TABS.map((t) => {
+                  const on = t.covers.includes(cur.screen);
+                  const Icon = t.icon;
+                  return (
+                    <button
+                      key={t.screen}
+                      type="button"
+                      onClick={() => tab(t.screen)}
+                      aria-current={on ? 'page' : undefined}
                       style={{
-                        width: 60,
-                        height: 34,
-                        borderRadius: 9999,
-                        background: on ? C.purple100 : 'transparent',
+                        border: 'none',
+                        background: 'transparent',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        gap: 4,
+                        cursor: 'pointer',
+                        color: on ? C.purple800 : C.fg2,
+                        minWidth: 0,
+                        padding: 0,
+                        fontFamily: 'inherit',
                       }}
                     >
-                      <Icon size={26} aria-hidden="true" />
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: on ? 700 : 500,
-                        letterSpacing: '-0.01em',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {t.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-        </div>
+                      <span
+                        style={{
+                          width: 60,
+                          height: 34,
+                          borderRadius: 9999,
+                          background: on ? C.purple100 : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Icon size={26} aria-hidden="true" />
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: on ? 700 : 500,
+                          letterSpacing: '-0.01em',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {t.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
+        </SheetProvider>
       </ToastProvider>
     </NavCtx.Provider>
   );
@@ -294,6 +328,20 @@ function CurrentScreen({ screen }: { screen: Screen }) {
       return <MoneyScreen />;
     case 'menu':
       return <MenuScreen />;
+    case 'receipts':
+      return <ReceiptsScreen />;
+    case 'receipt':
+      return <ReceiptScreen />;
+    case 'receiptNew':
+      return <ReceiptNewScreen />;
+    case 'settings':
+      return <SettingsScreen />;
+    case 'approvals':
+      return <ApprovalsScreen />;
+    case 'catalog':
+      return <CatalogScreen />;
+    case 'edit':
+      return <EditScreen />;
   }
 }
 
