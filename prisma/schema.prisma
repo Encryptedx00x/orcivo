@@ -48,6 +48,9 @@ model Company {
   brand_color              String?
   logo_url                 String?
   pix_key                  String?
+  /// Default "Condições" text and validity (days) prefilled on new quotes.
+  quote_default_terms         String?
+  quote_default_validity_days Int?
   plan_code                PlanCode         @default(LIVRE)
   allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE])
 

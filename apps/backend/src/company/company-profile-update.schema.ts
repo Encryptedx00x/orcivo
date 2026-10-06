@@ -34,6 +34,8 @@ export const CompanyProfileUpdateSchema = z
     state: z.string().max(2).nullable().optional(),
     pix_key_type: PixKeyTypeEnum.nullable().optional(),
     pix_key: z.string().max(140).nullable().optional(),
+    quote_default_terms: z.string().max(2000).nullable().optional(),
+    quote_default_validity_days: z.number().int().min(1).max(365).nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;
@@ -69,3 +71,12 @@ export const CompanyProfileUpdateSchema = z
   });
 
 export type CompanyProfileUpdateDto = z.infer<typeof CompanyProfileUpdateSchema>;
+
+/** At least one method stays on; only the methods the approval page supports. */
+export const ApprovalMethodsSchema = z.object({
+  methods: z
+    .array(z.enum(['APPROVE_BUTTON', 'TYPED_NAME', 'DRAWN_SIGNATURE', 'PHOTO_SIGNATURE']))
+    .min(1, 'Pelo menos uma forma de aprovação fica ligada.')
+    .max(4)
+    .transform((m) => [...new Set(m)]),
+});

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
-import { CompanyProfileUpdateSchema } from './company-profile-update.schema';
+import { ApprovalMethodsSchema, CompanyProfileUpdateSchema } from './company-profile-update.schema';
 import { CompanyService } from './company.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { SubscriptionService } from '../billing/subscription.service';
@@ -45,9 +45,12 @@ export class CompanyController {
   @Patch('approval-methods')
   updateApprovalMethods(
     @Req() req: TenantRequest,
-    @Body() body: { methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[] },
+    @Body(new ZodValidationPipe(ApprovalMethodsSchema)) body: unknown,
   ) {
-    return this.companyService.updateApprovalMethods(req.companyId, body.methods, req.user.userId);
+    const { methods } = body as {
+      methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE')[];
+    };
+    return this.companyService.updateApprovalMethods(req.companyId, methods, req.user.userId);
   }
 
   @Get('me/plan-limits')

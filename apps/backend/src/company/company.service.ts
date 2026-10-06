@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuditJsonValue } from '../audit/audit.types';
 
-type ApprovalMethod = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
+type ApprovalMethod = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
 
 const COMPANY_SELECT = {
   id: true,
@@ -17,6 +17,8 @@ const COMPANY_SELECT = {
   brand_color: true,
   logo_url: true,
   pix_key: true,
+  quote_default_terms: true,
+  quote_default_validity_days: true,
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
@@ -24,7 +26,15 @@ const COMPANY_SELECT = {
 // pix_key_type is validation-only input (see company-profile-update.schema.ts) —
 // there is no matching Company column, so it is stripped before persistence/audit.
 const PROFILE_FIELD_LABELS: Record<
-  'trade_name' | 'document_type' | 'document' | 'phone' | 'city' | 'state' | 'pix_key',
+  | 'trade_name'
+  | 'document_type'
+  | 'document'
+  | 'phone'
+  | 'city'
+  | 'state'
+  | 'pix_key'
+  | 'quote_default_terms'
+  | 'quote_default_validity_days',
   string
 > = {
   trade_name: 'nome fantasia',
@@ -34,6 +44,8 @@ const PROFILE_FIELD_LABELS: Record<
   city: 'cidade',
   state: 'estado',
   pix_key: 'chave Pix',
+  quote_default_terms: 'condições padrão',
+  quote_default_validity_days: 'validade padrão',
 };
 
 @Injectable()
