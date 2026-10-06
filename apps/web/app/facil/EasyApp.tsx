@@ -145,7 +145,8 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const cur = stack[stack.length - 1];
 
-  const top = () => scrollRef.current?.scrollTo({ top: 0 });
+  // The page (not an inner box) scrolls: every new screen starts at the top.
+  const top = () => window.scrollTo({ top: 0 });
   const go = useCallback((screen: Screen, params: Params = {}) => {
     setStack((s) => [...s, { screen, params }]);
     window.history.pushState({ easy: true }, '');
@@ -163,6 +164,19 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
     setStack((s) => (s.length > 1 ? s.slice(0, -1) : [{ screen: 'home', params: {} }]));
     top();
   }, []);
+
+  // Each screen opens at the top. The browser must not restore the old scroll on
+  // "back" (it would run after ours), so restoration is manual while here.
+  useEffect(() => {
+    const prev = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    return () => {
+      window.history.scrollRestoration = prev;
+    };
+  }, []);
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [stack]);
 
   // Phone back button / browser back walks the in-app stack.
   useEffect(() => {
@@ -190,7 +204,8 @@ export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
 
   return (
     <NavCtx.Provider value={nav}>
-      <ToastProvider bottom={showNav ? 96 : 24}>
+      {/* Screens without the tab bar have a bottom action bar: keep the toast above it. */}
+      <ToastProvider bottom={showNav ? 96 : 176}>
         <SheetProvider>
           <div
             style={{
@@ -352,11 +367,25 @@ export function ActionBar({
 }: {
   children: React.ReactNode;
   total?: string;
-}): JSX.Element {
+}): React.JSX.Element {
+  // The spacer follows the bar's real height (1 or 2 buttons, with or without
+  // total), so the last card never ends up behind the bar.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barH, setBarH] = useState(total ? 170 : 110);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const sync = () => setBarH(el.offsetHeight + 16);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <>
-      <div style={{ height: total ? 170 : 110 }} aria-hidden="true" />
+      <div style={{ height: barH }} aria-hidden="true" />
       <div
+        ref={barRef}
         style={{
           position: 'fixed',
           left: 0,

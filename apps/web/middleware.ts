@@ -45,19 +45,29 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // API proxies (/api/*) answer for themselves (401 JSON, never a redirect); the
+  // middleware only renews an expiring token so browser calls keep working after
+  // the 15-minute access token runs out. Auth routes manage their own cookies.
+  const isApi = pathname.startsWith('/api/');
+  if (isApi && (pathname.startsWith('/api/auth/') || !req.cookies.get('refresh_token'))) {
+    return NextResponse.next();
+  }
+
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     if (accessToken) return NextResponse.redirect(new URL('/dashboard', req.url));
     return NextResponse.next();
   }
 
-  if (!accessToken) return NextResponse.redirect(new URL('/login', req.url));
+  if (!accessToken && !isApi) return NextResponse.redirect(new URL('/login', req.url));
 
-  // Se o token expira nos próximos 60s, tenta renovar proativamente
-  const exp = jwtExpiresAt(accessToken);
+  // Se o token expira nos próximos 60s (ou já sumiu), tenta renovar proativamente
+  const exp = accessToken ? jwtExpiresAt(accessToken) : 0;
   const nowSec = Math.floor(Date.now() / 1000);
   if (exp - nowSec < 60) {
     const refreshed = await tryRefresh(req);
-    if (!refreshed) return NextResponse.redirect(new URL('/login', req.url));
+    if (!refreshed) {
+      return isApi ? NextResponse.next() : NextResponse.redirect(new URL('/login', req.url));
+    }
 
     // Hand the fresh token to this same request too: pages and server actions read the
     // request cookies, so setting it only on the response left them with the expired one.
@@ -79,5 +89,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

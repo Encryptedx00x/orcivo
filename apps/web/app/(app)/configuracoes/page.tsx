@@ -873,7 +873,7 @@ export default function ConfiguracoesPage(): JSX.Element {
                 }}
                 style={{ maxWidth: 240, marginBottom: 20 }}
               >
-                {[7, 15, 30, 45, 60].map((d) => (
+                {[7, 15, 30].map((d) => (
                   <option key={d} value={d}>
                     {d} dias
                   </option>
