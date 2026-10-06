@@ -30,6 +30,62 @@ const GRACE_PERIOD_DAYS: Record<PlanCode, number> = {
   EQUIPE: 7,
 };
 
+const PLAN_NAME: Record<PlanCode, string> = {
+  LIVRE: 'Orcivo Livre',
+  SOLO: 'Orcivo Solo',
+  MAIS: 'Orcivo Mais',
+  EQUIPE: 'Orcivo Equipe',
+};
+
+/** Provider refused to cancel because the charge is no longer pending (expired, paid, cancelled). */
+const isAlreadyFinal = (err: unknown) =>
+  /2018|not valid for the current payment state/i.test(String(err));
+
+/**
+ * Ends a paid subscription and puts the company back on Orcivo Livre — the same
+ * shape as a company that never paid (LIVRE + ACTIVE, no provider resource). Data
+ * is never touched; only plan limits change. Leaves a notice in the company feed.
+ */
+export async function downgradeToLivre(
+  prisma: PrismaService,
+  sub: { id: string; company_id: string; plan_code: PlanCode },
+  reason: 'cancelled' | 'unpaid',
+): Promise<void> {
+  const from = sub.plan_code;
+  const humanText =
+    reason === 'unpaid'
+      ? `O pagamento do ${PLAN_NAME[from]} não foi confirmado. Sua conta voltou para o Orcivo Livre; seus dados continuam guardados.`
+      : `Assinatura do ${PLAN_NAME[from]} cancelada. Sua conta voltou para o Orcivo Livre; seus dados continuam guardados.`;
+  await prisma.$transaction(async (tx) => {
+    await tx.subscription.update({
+      where: { id: sub.id },
+      data: {
+        plan_code: 'LIVRE',
+        status: 'ACTIVE',
+        asaas_sub_id: null,
+        cancelled_at: new Date(),
+        past_due_at: null,
+        blocked_at: null,
+        pending_provider_id: null,
+        pending_plan_code: null,
+        grace_period_days: 0,
+      },
+    });
+    await tx.company.update({ where: { id: sub.company_id }, data: { plan_code: 'LIVRE' } });
+    await tx.auditLog.create({
+      data: {
+        company_id: sub.company_id,
+        actor_type: 'SYSTEM',
+        actor_user_id: null,
+        action: 'company.plan_downgraded',
+        entity_type: 'company',
+        entity_id: sub.company_id,
+        metadata: { from, to: 'LIVRE', reason, humanText },
+      },
+    });
+  });
+}
+
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
@@ -304,37 +360,41 @@ export class SubscriptionService {
   }
 
   /**
-   * Cancela a assinatura paga: encerra a cobrança recorrente no provedor e
-   * marca a assinatura local como CANCELLED (mesmo estado do webhook de
-   * cancelamento). Se o provedor falhar, nada é alterado localmente.
+   * Cancela a assinatura paga: encerra a cobrança no provedor e volta a empresa
+   * para o Orcivo Livre. Se o provedor recusar porque a cobrança já não está
+   * pendente (Pix vencido/pago), não há nada a encerrar e o cancelamento segue.
+   * Qualquer outra falha do provedor numa assinatura ativa não altera nada.
    */
   async cancelSubscription(
     companyId: string,
   ): Promise<{ status: SubscriptionStatus; plan_code: PlanCode }> {
     const sub = await this.prisma.subscription.findUnique({ where: { company_id: companyId } });
+    // Already back on Livre after a cancel: answer the same thing again (idempotent).
+    if (sub?.plan_code === 'LIVRE' && sub.cancelled_at) {
+      return { status: sub.status, plan_code: sub.plan_code };
+    }
     if (!sub || sub.plan_code === 'LIVRE') {
       throw new BadRequestException('Não há assinatura paga para cancelar.');
     }
-    if (sub.status === 'CANCELLED') {
-      return { status: sub.status, plan_code: sub.plan_code };
-    }
 
-    if (sub.asaas_sub_id) {
+    if (sub.asaas_sub_id && sub.status !== 'CANCELLED') {
       try {
         await this.paymentProvider.cancelSubscription(sub.asaas_sub_id);
       } catch (err) {
-        this.logger.error(
-          `Falha ao cancelar subscription ${this.paymentProvider.provider}: ${err}`,
-        );
-        throw new BadGatewayException('Não foi possível cancelar agora. Tente novamente.');
+        const nothingToStop =
+          isAlreadyFinal(err) || sub.status === 'PAST_DUE' || sub.status === 'BLOCKED';
+        if (!nothingToStop) {
+          this.logger.error(
+            `Falha ao cancelar subscription ${this.paymentProvider.provider}: ${err}`,
+          );
+          throw new BadGatewayException('Não foi possível cancelar agora. Tente novamente.');
+        }
+        this.logger.warn(`Cobrança ${sub.asaas_sub_id} já encerrada no provedor: ${err}`);
       }
     }
 
-    const updated = await this.prisma.subscription.update({
-      where: { company_id: companyId },
-      data: { status: 'CANCELLED', cancelled_at: new Date() },
-    });
-    return { status: updated.status, plan_code: updated.plan_code };
+    await downgradeToLivre(this.prisma, sub, 'cancelled');
+    return { status: 'ACTIVE' as SubscriptionStatus, plan_code: 'LIVRE' as PlanCode };
   }
 
   async isBlocked(companyId: string): Promise<boolean> {
@@ -345,25 +405,29 @@ export class SubscriptionService {
     return sub.status === 'BLOCKED';
   }
 
-  /** Cron diário: promove PAST_DUE → BLOCKED após carência */
+  /**
+   * Cron diário: pagamento não confirmado depois da carência volta a empresa para
+   * o Orcivo Livre (com aviso) — nunca bloqueia a conta. Também recupera contas que
+   * a regra antiga deixou BLOCKED por falta de pagamento (têm past_due_at); bloqueio
+   * por chargeback (sem past_due_at) continua como está.
+   */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async checkGracePeriods(): Promise<void> {
     const now = new Date();
-    const pastDueSubs = await this.prisma.subscription.findMany({
-      where: { status: 'PAST_DUE' },
+    const subs = await this.prisma.subscription.findMany({
+      where: {
+        OR: [{ status: 'PAST_DUE' }, { status: 'BLOCKED', past_due_at: { not: null } }],
+      },
     });
 
-    for (const sub of pastDueSubs) {
-      if (!sub.past_due_at) continue;
+    for (const sub of subs) {
+      if (!sub.past_due_at || sub.plan_code === 'LIVRE') continue;
       const graceEnd = new Date(sub.past_due_at);
       graceEnd.setDate(graceEnd.getDate() + sub.grace_period_days);
-      if (now > graceEnd) {
-        await this.prisma.subscription.update({
-          where: { id: sub.id },
-          data: { status: 'BLOCKED', blocked_at: now },
-        });
+      if (sub.status === 'BLOCKED' || now > graceEnd) {
+        await downgradeToLivre(this.prisma, sub, 'unpaid');
         this.logger.warn(
-          `Subscription ${sub.id} (company ${sub.company_id}) bloqueada após ${sub.grace_period_days}d de carência`,
+          `Subscription ${sub.id} (company ${sub.company_id}) voltou para LIVRE: pagamento não confirmado`,
         );
       }
     }

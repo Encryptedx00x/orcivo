@@ -11,8 +11,20 @@ const req = { companyId: COMPANY_ID } as unknown as TenantRequest;
 function buildHarness() {
   let row: Record<string, unknown> | null = null;
 
+  const audit: Array<Record<string, unknown>> = [];
+  const prismaRef: { current: unknown } = { current: null };
   const prisma = {
+    $transaction: jest.fn(
+      async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(prismaRef.current),
+    ),
+    auditLog: {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        audit.push(data);
+        return data;
+      }),
+    },
     company: {
+      update: jest.fn(async () => ({})),
       findUniqueOrThrow: jest.fn(async () => ({
         id: COMPANY_ID,
         trade_name: 'Ribeiro Elétrica',
@@ -43,8 +55,11 @@ function buildHarness() {
         row = { ...row, ...data };
         return row;
       }),
+      findMany: jest.fn(async () => (row ? [row] : [])),
     },
   };
+
+  prismaRef.current = prisma;
 
   const provider = {
     provider: 'test-provider',
@@ -63,7 +78,15 @@ function buildHarness() {
 
   const service = new SubscriptionService(prisma as never, provider as unknown as PaymentProvider);
   const controller = new BillingController(service);
-  return { controller, service, prisma, provider, getRow: () => row };
+  return {
+    controller,
+    service,
+    prisma,
+    provider,
+    audit,
+    getRow: () => row,
+    setRow: (patch: Record<string, unknown>) => (row = { ...row, ...patch }),
+  };
 }
 
 describe('Billing checkout flow (plan_code sem sufixo + billing_cycle)', () => {
@@ -77,7 +100,11 @@ describe('Billing checkout flow (plan_code sem sufixo + billing_cycle)', () => {
     });
 
     expect(provider.createSubscription).toHaveBeenCalledWith(
-      expect.objectContaining({ billingCycle: 'YEARLY', paymentMethod: 'CREDIT_CARD', amount: '79.90' }),
+      expect.objectContaining({
+        billingCycle: 'YEARLY',
+        paymentMethod: 'CREDIT_CARD',
+        amount: '79.90',
+      }),
     );
     expect(result.checkout_url).toBe('https://pay.example/checkout/sub_1');
 
@@ -108,15 +135,59 @@ describe('Billing checkout flow (plan_code sem sufixo + billing_cycle)', () => {
     expect(provider.createSubscription).not.toHaveBeenCalled();
   });
 
-  it('cancelar: encerra no provedor e marca a assinatura como CANCELLED', async () => {
-    const { controller, provider, getRow } = buildHarness();
+  it('cancelar: encerra no provedor e volta a empresa para o Orcivo Livre', async () => {
+    const { controller, provider, prisma, audit, getRow } = buildHarness();
     await controller.createCheckout(req, { plan_code: 'SOLO', billing_cycle: 'MONTHLY' });
 
     const result = await controller.cancelSubscription(req);
 
     expect(provider.cancelSubscription).toHaveBeenCalledWith('sub_1');
-    expect(result.status).toBe('CANCELLED');
+    expect(result).toEqual({ status: 'ACTIVE', plan_code: 'LIVRE' });
+    expect(getRow()?.['plan_code']).toBe('LIVRE');
     expect(getRow()?.['cancelled_at']).toBeInstanceOf(Date);
+    expect(prisma.company.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { plan_code: 'LIVRE' } }),
+    );
+    expect(audit[0]?.['action']).toBe('company.plan_downgraded');
+  });
+
+  it('cancelar segue quando o Pix já venceu no provedor (erro 2018)', async () => {
+    const { controller, provider, getRow } = buildHarness();
+    await controller.createCheckout(req, { plan_code: 'SOLO', billing_cycle: 'MONTHLY' });
+    provider.cancelSubscription.mockRejectedValueOnce(
+      new Error('Mercado Pago error 400: {"cause":[{"code":2018}]}'),
+    );
+
+    const result = await controller.cancelSubscription(req);
+    expect(result.plan_code).toBe('LIVRE');
+    expect(getRow()?.['plan_code']).toBe('LIVRE');
+  });
+
+  it('cancelar uma assinatura bloqueada por falta de pagamento sempre funciona', async () => {
+    const { controller, provider, setRow, getRow } = buildHarness();
+    await controller.createCheckout(req, { plan_code: 'SOLO', billing_cycle: 'MONTHLY' });
+    setRow({ status: 'BLOCKED', past_due_at: new Date() });
+    provider.cancelSubscription.mockRejectedValueOnce(new Error('provider down'));
+
+    await expect(controller.cancelSubscription(req)).resolves.toEqual({
+      status: 'ACTIVE',
+      plan_code: 'LIVRE',
+    });
+    expect(getRow()?.['blocked_at']).toBeNull();
+  });
+
+  it('carência vencida volta para o Livre em vez de bloquear', async () => {
+    const { controller, service, setRow, getRow, audit } = buildHarness();
+    await controller.createCheckout(req, { plan_code: 'SOLO', billing_cycle: 'MONTHLY' });
+    setRow({ status: 'PAST_DUE', past_due_at: new Date('2026-01-01'), grace_period_days: 2 });
+
+    await service.checkGracePeriods();
+
+    expect(getRow()?.['status']).toBe('ACTIVE');
+    expect(getRow()?.['plan_code']).toBe('LIVRE');
+    expect(
+      String(audit[0]?.['metadata'] && (audit[0]['metadata'] as { humanText: string }).humanText),
+    ).toContain('voltou para o Orcivo Livre');
   });
 
   it('cancelar sem assinatura paga retorna 400', async () => {
@@ -140,7 +211,7 @@ describe('Billing checkout flow (plan_code sem sufixo + billing_cycle)', () => {
     await controller.cancelSubscription(req);
     const again = await controller.cancelSubscription(req);
 
-    expect(again.status).toBe('CANCELLED');
+    expect(again).toEqual({ status: 'ACTIVE', plan_code: 'LIVRE' });
     expect(provider.cancelSubscription).toHaveBeenCalledTimes(1);
   });
 });

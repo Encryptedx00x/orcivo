@@ -228,11 +228,20 @@ export class MercadoPagoWebhookService {
         }
         return;
       case 'CANCELED':
-        if (isCurrentResource && sub.status !== 'CANCELLED') {
+        // Cancelled/refunded at the provider: back to Orcivo Livre, same as a cancel here.
+        if (isCurrentResource && sub.plan_code !== 'LIVRE') {
           await tx.subscription.update({
             where: { id: sub.id },
-            data: { status: 'CANCELLED', cancelled_at: now },
+            data: {
+              plan_code: 'LIVRE',
+              status: 'ACTIVE',
+              asaas_sub_id: null,
+              cancelled_at: now,
+              past_due_at: null,
+              blocked_at: null,
+            },
           });
+          await tx.company.update({ where: { id: sub.company_id }, data: { plan_code: 'LIVRE' } });
         }
         return;
       case 'PENDING':
