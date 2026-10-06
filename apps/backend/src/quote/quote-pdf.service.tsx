@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 38 / 19,
   },
-  logo: { width: 110, height: 40, objectFit: 'contain' },
+  logo: { height: 40, maxWidth: 140, objectFit: 'contain' },
   companyName: {
     fontSize: 13,
     fontFamily: SANS,
@@ -235,6 +235,8 @@ const styles = StyleSheet.create({
   signSection: { marginTop: 46, flexDirection: 'row', justifyContent: 'space-between', gap: 32 },
   signBox: { flex: 1 },
   signLine: { borderTopWidth: 1, borderTopColor: C.fg2, marginTop: 42, marginBottom: 5 },
+  // Same line under a signature image, so both columns read the same way.
+  signLineUnder: { borderTopWidth: 1, borderTopColor: C.fg2, marginTop: 2, marginBottom: 5 },
   signLabel: { fontSize: 9, color: C.fg3, textAlign: 'center' },
   signSub: { fontSize: 8, color: C.fg4, textAlign: 'center', marginTop: 1, fontFamily: MONO },
   signImage: {
@@ -431,13 +433,12 @@ export class QuotePdfService {
                   <Text style={styles.brandLetter}>{initial}</Text>
                 </View>
               )}
-              {!company.logo_url && (
-                <View>
-                  <Text style={styles.companyName}>{company.trade_name}</Text>
-                  {company.phone ? <Text style={styles.companyInfo}>{company.phone}</Text> : null}
-                  {location ? <Text style={styles.companyInfo}>{location}</Text> : null}
-                </View>
-              )}
+              {/* Name and contacts stay next to the logo too (same as the receipt). */}
+              <View>
+                <Text style={styles.companyName}>{company.trade_name}</Text>
+                {company.phone ? <Text style={styles.companyInfo}>{company.phone}</Text> : null}
+                {location ? <Text style={styles.companyInfo}>{location}</Text> : null}
+              </View>
             </View>
 
             <View style={styles.headRight}>
@@ -541,7 +542,10 @@ export class QuotePdfService {
           <View style={styles.signSection} wrap={false}>
             <View style={styles.signBox}>
               {q.technician_signature_url ? (
-                <Image style={styles.signImage} src={q.technician_signature_url} />
+                <>
+                  <Image style={styles.signImage} src={q.technician_signature_url} />
+                  <View style={styles.signLineUnder} />
+                </>
               ) : (
                 <View style={styles.signLine} />
               )}
@@ -553,7 +557,10 @@ export class QuotePdfService {
                 {['DRAWN_SIGNATURE', 'PHOTO_SIGNATURE'].includes(
                   q.approval?.approval_method ?? '',
                 ) && q.approval?.signature_image_url ? (
-                  <Image style={styles.signImage} src={q.approval.signature_image_url} />
+                  <>
+                    <Image style={styles.signImage} src={q.approval.signature_image_url} />
+                    <View style={styles.signLineUnder} />
+                  </>
                 ) : (
                   <View style={styles.signLine} />
                 )}

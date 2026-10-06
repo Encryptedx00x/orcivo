@@ -63,6 +63,14 @@ export async function updateCompanyPix(body: {
   return patchCompanyMe(body);
 }
 
+/** Configurações > Condições padrão (prefilled on every new quote). */
+export async function updateQuoteDefaults(body: {
+  quote_default_terms: string | null;
+  quote_default_validity_days: number;
+}): Promise<Result> {
+  return patchCompanyMe(body);
+}
+
 export async function getAccountSettings(): Promise<AccountResult> {
   const token = cookies().get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };

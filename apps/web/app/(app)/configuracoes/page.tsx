@@ -12,12 +12,17 @@ import {
   Bell,
   FileOutput,
   UserRound,
+  FileText,
+  Smile,
 } from 'lucide-react';
+import { LogoField } from '../../../components/LogoField';
+import { setEasyMode } from '../../../components/EasyMode';
 import {
   getAccountSettings,
   updateAccountSettings,
   updateCompanyProfile,
   updateCompanyPix,
+  updateQuoteDefaults,
 } from './actions';
 
 type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
@@ -52,7 +57,13 @@ interface CompanyMeResponse {
   state?: string | null;
   pix_key?: string | null;
   allowed_approval_methods?: Method[];
+  logo_url?: string | null;
+  quote_default_terms?: string | null;
+  quote_default_validity_days?: number | null;
 }
+
+const DEFAULT_TERMS =
+  'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.';
 
 const EMPTY_EMPRESA: EmpresaForm = { trade_name: '', document: '', phone: '', city: '', state: '' };
 const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
@@ -142,6 +153,8 @@ const TABS = [
   { id: 'users', label: 'Usuários', icon: Users },
   { id: 'plano', label: 'Plano e assinatura', icon: CreditCard },
   { id: 'aprovacao', label: 'Aprovação', icon: CheckSquare },
+  { id: 'condicoes', label: 'Condições padrão', icon: FileText },
+  { id: 'modo', label: 'Modo fácil', icon: Smile },
   { id: 'seg', label: 'Segurança', icon: Shield },
   { id: 'notif', label: 'Notificações', icon: Bell },
   { id: 'exp', label: 'Exportação', icon: FileOutput },
@@ -159,6 +172,13 @@ export default function ConfiguracoesPage(): JSX.Element {
   const [empresaSaving, setEmpresaSaving] = useState(false);
   const [empresaSaved, setEmpresaSaved] = useState(false);
   const [empresaError, setEmpresaError] = useState('');
+
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [terms, setTerms] = useState(DEFAULT_TERMS);
+  const [validity, setValidity] = useState(15);
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [termsSaved, setTermsSaved] = useState(false);
+  const [termsError, setTermsError] = useState('');
 
   const [pix, setPix] = useState<PixForm>(EMPTY_PIX);
   const [pixSaving, setPixSaving] = useState(false);
@@ -179,6 +199,9 @@ export default function ConfiguracoesPage(): JSX.Element {
       .then((r) => r.json())
       .then((d: CompanyMeResponse) => {
         if (d.allowed_approval_methods?.length) setMethods(d.allowed_approval_methods);
+        setLogoUrl(d.logo_url ?? null);
+        setTerms(d.quote_default_terms ?? DEFAULT_TERMS);
+        setValidity(d.quote_default_validity_days ?? 15);
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -810,51 +833,102 @@ export default function ConfiguracoesPage(): JSX.Element {
                 Identidade visual
               </h3>
               <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
-                Logo e cor usados nos PDFs e link público.
+                Logo usado nos PDFs de orçamentos, ordens de serviço e recibos.
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 24 }}>
-                <div
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 14,
-                    background: '#F5F3FF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#6D28D9',
-                    fontWeight: 700,
-                    fontSize: 24,
+              {!loading && <LogoField initialUrl={logoUrl} tradeName={empresa.trade_name} />}
+            </div>
+          )}
+
+          {tab === 'condicoes' && (
+            <div className="ov-card ov-card-body" style={{ padding: 24 }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Condições padrão</h3>
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+                Entram em todo orçamento novo. Dá para mudar em cada um.
+              </div>
+              <label className="ov-label" htmlFor="cfg-terms">
+                Condições
+              </label>
+              <textarea
+                id="cfg-terms"
+                className="ov-textarea"
+                rows={5}
+                value={terms}
+                maxLength={2000}
+                onChange={(e) => {
+                  setTerms(e.target.value);
+                  setTermsSaved(false);
+                }}
+                style={{ width: '100%', marginBottom: 16 }}
+              />
+              <label className="ov-label" htmlFor="cfg-validity">
+                Validade padrão
+              </label>
+              <select
+                id="cfg-validity"
+                className="ov-input"
+                value={validity}
+                onChange={(e) => {
+                  setValidity(Number(e.target.value));
+                  setTermsSaved(false);
+                }}
+                style={{ maxWidth: 240, marginBottom: 20 }}
+              >
+                {[7, 15, 30, 45, 60].map((d) => (
+                  <option key={d} value={d}>
+                    {d} dias
+                  </option>
+                ))}
+              </select>
+              {termsError && (
+                <p role="alert" style={{ color: '#B91C1C', fontSize: 13, margin: '0 0 12px' }}>
+                  {termsError}
+                </p>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-primary"
+                  disabled={termsSaving}
+                  onClick={async () => {
+                    setTermsSaving(true);
+                    const r = await updateQuoteDefaults({
+                      quote_default_terms: terms.trim() || null,
+                      quote_default_validity_days: validity,
+                    });
+                    setTermsSaving(false);
+                    if (!r.ok) return setTermsError(r.message);
+                    setTermsError('');
+                    setTermsSaved(true);
                   }}
                 >
-                  OR
-                </div>
-                <div>
-                  <button className="ov-btn ov-btn-primary">Trocar logo</button>
-                  <div style={{ fontSize: 12, color: '#64748B', marginTop: 8 }}>
-                    PNG ou SVG, recomendado 512×512px.
-                  </div>
-                </div>
+                  {termsSaving ? 'Salvando…' : 'Salvar condições'}
+                </button>
+                {termsSaved && (
+                  <span role="status" style={{ color: '#166534', fontSize: 13 }}>
+                    Condições salvas.
+                  </span>
+                )}
               </div>
-              <label className="ov-label">Cor principal</label>
-              <div style={{ display: 'flex', gap: 12 }}>
-                {['#6D28D9', '#0F172A', '#16A34A', '#DC2626', '#0891B2', '#EA580C'].map((c, i) => (
-                  <div
-                    key={c}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 10,
-                      background: c,
-                      cursor: 'pointer',
-                      boxShadow:
-                        i === 0
-                          ? '0 0 0 3px #fff, 0 0 0 5px #6D28D9'
-                          : 'inset 0 0 0 1px rgba(0,0,0,.08)',
-                    }}
-                  />
-                ))}
+            </div>
+          )}
+
+          {tab === 'modo' && (
+            <div className="ov-card ov-card-body" style={{ padding: 24 }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 600 }}>Modo fácil</h3>
+              <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+                Botões grandes e só o essencial, com tudo do modo completo a um toque. Vale para
+                este aparelho; você pode trocar quando quiser, nada se perde.
               </div>
+              <button
+                type="button"
+                className="ov-btn ov-btn-primary"
+                onClick={() => {
+                  setEasyMode(true);
+                  window.location.href = '/facil';
+                }}
+              >
+                Ligar o Modo fácil neste aparelho
+              </button>
             </div>
           )}
 

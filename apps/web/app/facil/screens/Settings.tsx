@@ -5,6 +5,7 @@ import {
   Building2,
   Check,
   FileText,
+  Image as ImageIcon,
   PenLine,
   Plus,
   QrCode,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
+import { LogoField } from '../../../components/LogoField';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 import {
   createCatalogItem,
@@ -117,6 +119,12 @@ export function SettingsScreen(): React.JSX.Element {
             label="Minha empresa"
             sub="Nome, CPF ou CNPJ, telefone, cidade"
             onClick={() => go('edit', { kind: 'company' })}
+          />
+          <MenuRow
+            icon={ImageIcon}
+            label="Logo"
+            sub="Aparece no topo dos PDFs"
+            onClick={() => go('edit', { kind: 'logo' })}
           />
           <MenuRow
             icon={QrCode}
@@ -350,6 +358,8 @@ export function EditScreen(): React.JSX.Element {
       return <CompanyEdit />;
     case 'pix':
       return <PixEdit />;
+    case 'logo':
+      return <LogoEdit />;
     case 'terms':
       return <TermsEdit />;
     case 'catalogItem':
@@ -482,6 +492,27 @@ function CompanyEdit() {
           )
         }
       />
+    </>
+  );
+}
+
+function LogoEdit() {
+  const company = useLoad(getCompany);
+  const toast = useToast();
+  if (company.loading && !company.data) return <Loading />;
+  if (!company.data)
+    return <ErrorBox title="Não foi possível carregar a empresa." onRetry={company.reload} />;
+  return (
+    <>
+      <EditHead title="Logo" sub="Aparece no topo dos orçamentos, serviços e recibos." />
+      <div style={{ ...card, padding: 18 }}>
+        <LogoField
+          large
+          initialUrl={company.data.logo_url ?? null}
+          tradeName={company.data.trade_name}
+          onMessage={toast}
+        />
+      </div>
     </>
   );
 }

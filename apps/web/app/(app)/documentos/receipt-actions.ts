@@ -131,6 +131,7 @@ export interface ReceiptCompany {
   document?: string | null;
   document_type?: string | null;
   pix_key?: string | null;
+  logo_url?: string | null;
 }
 
 export async function receiptCompany(): Promise<Result<ReceiptCompany>> {

@@ -11,6 +11,7 @@ export function ReceiptPaper({
   receipt: Receipt;
   company: {
     trade_name: string;
+    logo_url?: string | null;
     document?: string | null;
     document_type?: string | null;
     pix_key?: string | null;
@@ -44,24 +45,33 @@ export function ReceiptPaper({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div
-          aria-hidden="true"
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: '#0A0A0F',
-            color: '#FFFFFF',
-            fontSize: 15,
-            fontWeight: 800,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
+        {company.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={company.logo_url}
+            alt=""
+            style={{ height: 44, maxWidth: 120, objectFit: 'contain', flexShrink: 0 }}
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: '#0A0A0F',
+              color: '#FFFFFF',
+              fontSize: 15,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <span style={{ fontSize: large ? 17 : 15, fontWeight: 700, lineHeight: 1.3 }}>
             {company.trade_name}

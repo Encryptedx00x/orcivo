@@ -29,7 +29,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   tileText: { color: C.white, fontSize: 15, fontWeight: 700, textAlign: 'center' },
-  logo: { width: 110, height: 44, objectFit: 'contain' },
+  logo: { height: 44, maxWidth: 140, objectFit: 'contain' },
   company: { fontSize: 15, fontWeight: 700 },
   small: { fontSize: 10, color: C.fg3 },
   smallStrong: { fontSize: 10, color: C.fg3, fontWeight: 600 },

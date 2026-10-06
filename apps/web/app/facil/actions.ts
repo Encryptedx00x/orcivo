@@ -328,6 +328,7 @@ export interface EasyCompany {
   city: string | null;
   state: string | null;
   pix_key: string | null;
+  logo_url?: string | null;
   plan_code: string;
   allowed_approval_methods?: ApprovalMethod[];
   quote_default_terms: string | null;
