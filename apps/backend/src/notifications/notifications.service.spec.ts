@@ -13,7 +13,7 @@ describe('NotificationsService', () => {
       findMany: jest.fn(),
       count: jest.fn(),
     },
-    notificationRead: { upsert: jest.fn() },
+    notificationRead: { upsert: jest.fn(), createMany: jest.fn() },
   };
   const service = new NotificationsService(prisma as never);
 
@@ -73,6 +73,33 @@ describe('NotificationsService', () => {
       update: {},
       select: { read_at: true },
     });
+  });
+
+  it('marks every unread tenant notification of the user as read at once', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([{ id: auditLogId }, { id: 'other-id' }]);
+
+    await expect(service.markAllRead(companyId, userId)).resolves.toEqual({ marked: 2 });
+
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        company_id: companyId,
+        notification_reads: { none: { user_id: userId } },
+      }),
+      select: { id: true },
+    });
+    expect(prisma.notificationRead.createMany).toHaveBeenCalledWith({
+      data: [
+        { company_id: companyId, user_id: userId, audit_log_id: auditLogId },
+        { company_id: companyId, user_id: userId, audit_log_id: 'other-id' },
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('marking all with nothing unread writes nothing', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    await expect(service.markAllRead(companyId, userId)).resolves.toEqual({ marked: 0 });
+    expect(prisma.notificationRead.createMany).not.toHaveBeenCalled();
   });
 
   it('does not permit marking an audit event from another tenant as read', async () => {

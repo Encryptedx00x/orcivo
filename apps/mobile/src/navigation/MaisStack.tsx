@@ -15,6 +15,7 @@ import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 import type { CatalogItem } from '../services/catalog.service';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from '../easy/screens/Receipts';
+import { NoticesScreen } from '../easy/screens/Notices';
 import { ApprovalsScreen, EditScreen } from '../easy/screens/Settings';
 import { QuoteSignScreen } from '../easy/screens/QuoteFlow';
 import { ClientNewScreen } from '../easy/screens/Clients';
@@ -32,6 +33,7 @@ export type MaisStackParamList = {
   Documentos: undefined;
   Plano: undefined;
   EmBreve: { title: string };
+  Notices: undefined;
   Receipts: undefined;
   Receipt: { id: string };
   ReceiptNew: { link?: boolean; clientId?: string } | undefined;
@@ -63,6 +65,7 @@ type MaisMenuItem =
         | 'Equipe'
         | 'Financeiro'
         | 'Receipts'
+        | 'Notices'
         | 'Documentos'
         | 'Plano';
     }
@@ -73,6 +76,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'Financeiro' },
   { label: 'Recibos', screen: 'Receipts' },
+  { label: 'Avisos', screen: 'Notices' },
   { label: 'Documentos', screen: 'Documentos' },
   { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
@@ -155,6 +159,7 @@ export function MaisStack() {
       />
 
       {/* Recibos, assinatura, aprovação e edições — same screens as the easy mode. */}
+      <Stack.Screen name="Notices" component={NoticesScreen} options={{ title: 'Avisos' }} />
       <Stack.Screen name="Receipts" component={ReceiptsScreen} options={{ title: 'Recibos' }} />
       <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Recibo' }} />
       <Stack.Screen

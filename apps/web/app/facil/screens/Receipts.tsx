@@ -287,7 +287,7 @@ export function ReceiptNewScreen(): React.JSX.Element {
     setNcOpen(false);
     setNcName('');
     setNcPhone('');
-    toast(`Pronto! ${r.data.name.split(' ')[0]} salvo.`);
+    toast(`Pronto! Cliente salvo: ${r.data.name.split(' ')[0]}.`);
   };
 
   const paidAt = () => {

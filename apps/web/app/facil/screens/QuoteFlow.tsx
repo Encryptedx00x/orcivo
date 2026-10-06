@@ -122,7 +122,7 @@ function Q1() {
     setSaving(false);
     if (!r.ok) return toast(r.message);
     setDraft((d) => ({ ...d, client: { id: r.data.id, name: r.data.name, phone: r.data.phone } }));
-    toast(`Pronto! ${firstName(r.data.name)} salvo.`);
+    toast(`Pronto! Cliente salvo: ${firstName(r.data.name)}.`);
     go('q2');
   };
 

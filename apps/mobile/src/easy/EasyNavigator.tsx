@@ -20,6 +20,7 @@ import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
 import { MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
+import { NoticesScreen } from './screens/Notices';
 import { SettingsScreen, ApprovalsScreen, EditScreen } from './screens/Settings';
 // Full screens reused behind "Mais opções" — Modo fácil never removes a capability.
 import { QuoteDetailScreen } from '../screens/QuoteDetailScreen';
@@ -57,6 +58,7 @@ export type EasyStackParamList = {
   Services: undefined;
   Run: { id: string };
   Money: undefined;
+  Notices: undefined;
   Receipts: undefined;
   Receipt: { id: string };
   ReceiptNew: { link?: boolean; clientId?: string } | undefined;
@@ -187,6 +189,7 @@ export function EasyNavigator() {
         <Stack.Screen name="Services" component={ServicesScreen} options={{ title: 'Serviços' }} />
         <Stack.Screen name="Run" component={RunScreen} options={{ title: 'Serviço' }} />
         <Stack.Screen name="Money" component={MoneyScreen} options={{ title: 'Financeiro' }} />
+        <Stack.Screen name="Notices" component={NoticesScreen} options={{ title: 'Avisos' }} />
         <Stack.Screen name="Receipts" component={ReceiptsScreen} options={{ title: 'Recibos' }} />
         <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Recibo' }} />
         <Stack.Screen

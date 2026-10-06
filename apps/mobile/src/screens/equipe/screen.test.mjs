@@ -292,6 +292,7 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
   modules['../easy/screens/Receipts'] = { ReceiptsScreen: () => null, ReceiptScreen: () => null, ReceiptNewScreen: () => null };
+  modules['../easy/screens/Notices'] = { NoticesScreen: () => null };
   modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
   modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
   modules['../easy/screens/Clients'] = { ClientNewScreen: () => null };

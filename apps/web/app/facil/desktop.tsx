@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { BrandMark } from '../../components/BrandMark';
 import { C } from './ui';
+import { NoticesBell } from './screens/Notices';
 import type { Screen } from './EasyApp';
 
 /** Modo fácil uses a sidebar layout from this width on (design "Recibos Desktop"). */
@@ -85,6 +86,7 @@ const LABELS: Record<Screen, string> = {
   approvals: 'Configurações · Como o cliente aprova',
   catalog: 'Meus serviços e preços',
   edit: 'Configurações · Editar',
+  notices: 'Avisos',
 };
 
 /** Desktop frame: sidebar + header + wide content (the phone layout stays as is). */
@@ -179,6 +181,7 @@ export function DesktopShell({
         >
           <span style={{ fontSize: 15, color: C.fg4 }}>{LABELS[screen]}</span>
           <span style={{ flex: 1 }} />
+          <NoticesBell size={40} />
           <span
             style={{
               height: 32,

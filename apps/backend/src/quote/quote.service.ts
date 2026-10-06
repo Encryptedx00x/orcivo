@@ -34,6 +34,14 @@ import { UsersService } from '../users/users.service';
 const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
 
+/** How the client approved, as the technician reads it in Atividades. */
+const APPROVAL_METHOD_TEXT: Record<string, string> = {
+  APPROVE_BUTTON: 'botão Aprovar',
+  TYPED_NAME: 'nome digitado',
+  DRAWN_SIGNATURE: 'assinatura desenhada',
+  PHOTO_SIGNATURE: 'foto da assinatura',
+};
+
 @Injectable()
 export class QuoteService {
   constructor(
@@ -507,7 +515,7 @@ export class QuoteService {
 
     const workOrderInput = {
       customer_id: quote.customer.id,
-      title: quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`,
+      title: quote.title ? `OS — ${quote.title}` : `Orçamento #${quote.number}`,
     };
     await this.workOrderService.assertCreatable(workOrderInput, quote.company_id, quote.id);
     const prepared: Array<{ bucket: string; key: string }> = [];
@@ -596,7 +604,7 @@ export class QuoteService {
         await this.workOrderService.create(
           {
             customer_id: quote.customer.id,
-            title: quote.title ? `OS — ${quote.title}` : `OS #${quote.number}`,
+            title: quote.title ? `OS — ${quote.title}` : `Orçamento #${quote.number}`,
           },
           quote.company_id,
           quote.created_by_user_id!,
@@ -612,7 +620,7 @@ export class QuoteService {
           entityId: quote.id,
           from: 'SENT',
           to: 'APPROVED',
-          humanText: `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente via ${dto.approval_method} (IP ${ipAddress})`,
+          humanText: `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente (${APPROVAL_METHOD_TEXT[dto.approval_method]})`,
         });
       });
       return { status: 'APPROVED' };

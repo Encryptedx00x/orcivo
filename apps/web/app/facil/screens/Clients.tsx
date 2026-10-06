@@ -440,7 +440,7 @@ export function ClientNewScreen(): JSX.Element {
     const r = await createClient({ name, phone });
     setSaving(false);
     if (!r.ok) return toast(r.message);
-    toast(`Pronto! ${firstName(r.data.name)} salvo nos clientes.`);
+    toast(`Pronto! Cliente salvo: ${firstName(r.data.name)}.`);
     tab('clients');
   };
   return (

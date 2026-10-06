@@ -52,3 +52,23 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 | P9  | Formulário de resposta abre fora da tela                                                             | 🔧 rola até ele                                                                                                                                                        |
 | P10 | Sem internet mostrava "Failed to fetch"                                                              | 🔧 mensagem em pt-BR                                                                                                                                                   |
 | P11 | Baixar PDF público                                                                                   | ✅ 200 `application/pdf`                                                                                                                                               |
+
+## Notificações / Avisos
+
+| #   | Teste                                                                                             | Resultado                                                                                                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| N1  | Completo web: sino abre "Atividades" com 26 não lidas                                             | ✅                                                                                                                                                                                             |
+| N2  | Completo web: "Marcar como lida" (clique real) → 26 → 25, `PATCH /api/notifications/:id/read` 200 | ✅ (o 401 relatado foi o middleware que não renovava a sessão em `/api/*`, corrigido antes)                                                                                                    |
+| N3  | Com muitas não lidas só dava para marcar uma a uma                                                | 🔧 "Marcar todas como lidas" (`PATCH /notifications/read-all`) no sino do completo e em Avisos                                                                                                 |
+| N4  | Texto das atividades: "via PHOTO_SIGNATURE (IP ::1)" e "OS #1 "OS #1""                            | 🔧 "aprovado pelo cliente (foto da assinatura)"; OS criada de orçamento passa a se chamar "Orçamento #N" (eventos antigos mantêm o texto antigo)                                               |
+| N5  | **Modo fácil web e app (fácil e completo) não tinham notificações**                               | 🔧 tela "Avisos" (lista, marcar um, marcar todos, ver mais) + sino com contador no Início (celular) e no cabeçalho (desktop); app: sino no Início do fácil e "Avisos" no menu Mais do completo |
+| N6  | Fácil web: sino 25 → Avisos → marcar todos → "Tudo em dia", sino sem contador                     | ✅                                                                                                                                                                                             |
+| N7  | Novo cliente gera aviso; sino "1 novo" → marcar como lido → "Tudo em dia"                         | ✅                                                                                                                                                                                             |
+| N8  | Desktop: sino no cabeçalho, sem sino duplicado no Início                                          | ✅                                                                                                                                                                                             |
+
+## Clientes (modo fácil web)
+
+| #   | Teste                                                           | Resultado                                                                    |
+| --- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| C1  | Novo cliente (nome + telefone com máscara) → salvo, lista com 3 | ✅                                                                           |
+| C2  | Toast "Paula salvo" (concordância errada para nomes femininos)  | 🔧 "Cliente salvo: Paula." (também no cliente novo do orçamento e do recibo) |

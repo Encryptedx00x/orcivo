@@ -12,6 +12,7 @@ import {
 } from 'lucide-react-native';
 import { formatMoney } from '@orcivo/shared-types';
 import { easy } from '../data';
+import { NoticesBell } from './Notices';
 import { emptyDraft, useDraft, useEasyNav } from '../draft';
 import {
   C,
@@ -47,12 +48,15 @@ export function HomeScreen() {
 
   return (
     <Page top>
-      <View style={{ gap: 2, paddingHorizontal: 4, paddingTop: 8 }}>
-        <Text style={[s.muted, { fontSize: 16 }]}>{longDate(now)}</Text>
-        <Text accessibilityRole="header" style={[s.h1, { fontSize: 30, lineHeight: 36 }]}>
-          {greet}
-          {data ? `, ${firstName(data.user.name)}` : ''}
-        </Text>
+      <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 4, paddingTop: 8 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={[s.muted, { fontSize: 16 }]}>{longDate(now)}</Text>
+          <Text accessibilityRole="header" style={[s.h1, { fontSize: 30, lineHeight: 36 }]}>
+            {greet}
+            {data ? `, ${firstName(data.user.name)}` : ''}
+          </Text>
+        </View>
+        <NoticesBell />
       </View>
 
       {!data && !error ? <Loading /> : null}

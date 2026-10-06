@@ -17,6 +17,12 @@ export class NotificationsController {
     return this.notificationsService.findAll(req.companyId, req.user.userId, query);
   }
 
+  @Patch('read-all')
+  @Header('Cache-Control', 'private, no-store')
+  markAllRead(@Req() req: TenantRequest) {
+    return this.notificationsService.markAllRead(req.companyId, req.user.userId);
+  }
+
   @Patch(':auditLogId/read')
   @Header('Cache-Control', 'private, no-store')
   markRead(

@@ -13,6 +13,8 @@ import { formatMoney } from '@orcivo/shared-types';
 import { loadSummary } from '../actions';
 import { emptyDraft, useLoad, useNav } from '../EasyApp';
 import { C, ErrorBox, Loading, firstName, hhmm, longDate } from '../ui';
+import { NoticesBell } from './Notices';
+import { useIsDesktop } from '../desktop';
 
 const tile: React.CSSProperties = {
   border: `1px solid ${C.border}`,
@@ -40,6 +42,7 @@ const iconBox: React.CSSProperties = {
 
 export function HomeScreen(): JSX.Element {
   const { go, tab, setDraft } = useNav();
+  const desktop = useIsDesktop();
   const { data, error, loading, reload } = useLoad(loadSummary);
   const now = new Date();
   const greet = now.getHours() < 12 ? 'Bom dia' : now.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
@@ -56,20 +59,24 @@ export function HomeScreen(): JSX.Element {
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 4px 0' }}>
-        <span style={{ fontSize: 16, fontWeight: 500, color: C.fg3 }}>{longDate(now)}</span>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 30,
-            lineHeight: '36px',
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {greet}
-          {data ? `, ${firstName(data.user.name)}` : ''}
-        </h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 4px 0' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 16, fontWeight: 500, color: C.fg3 }}>{longDate(now)}</span>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+              lineHeight: '36px',
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            {greet}
+            {data ? `, ${firstName(data.user.name)}` : ''}
+          </h1>
+        </div>
+        {/* Desktop shows the bell in the header. */}
+        {!desktop && <NoticesBell />}
       </div>
 
       {loading && !data ? (

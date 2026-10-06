@@ -136,6 +136,21 @@ export function TopBar(): JSX.Element {
     }
   };
 
+  const markAllRead = async () => {
+    try {
+      const response = await fetch('/api/notifications/read-all', { method: 'PATCH' });
+      if (!response.ok) throw new Error('Não foi possível marcar as notificações como lidas.');
+      const now = new Date().toISOString();
+      setNotifications((current) => current.map((n) => (n.read_at ? n : { ...n, read_at: now })));
+      setUnreadCount(0);
+      setError('');
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'Não foi possível atualizar as notificações.',
+      );
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
@@ -272,6 +287,27 @@ export function TopBar(): JSX.Element {
                   {unreadCount
                     ? `${unreadCount} não lida${unreadCount === 1 ? '' : 's'}`
                     : 'Tudo em dia'}
+                  {unreadCount > 0 && (
+                    <>
+                      {' · '}
+                      <button
+                        type="button"
+                        onClick={() => void markAllRead()}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          padding: 0,
+                          color: '#6D28D9',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        Marcar todas como lidas
+                      </button>
+                    </>
+                  )}
                 </span>
               </div>
               <div style={{ maxHeight: 420, overflowY: 'auto', minHeight: 0 }}>

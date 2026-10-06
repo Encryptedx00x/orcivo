@@ -14,6 +14,7 @@ import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
 import { SettingsScreen, ApprovalsScreen, CatalogScreen, EditScreen } from './screens/Settings';
 import { SheetProvider } from './sheet';
+import { NoticesScreen } from './screens/Notices';
 import { DesktopShell, useIsDesktop } from './desktop';
 
 export type Screen =
@@ -39,7 +40,8 @@ export type Screen =
   | 'settings'
   | 'approvals'
   | 'catalog'
-  | 'edit';
+  | 'edit'
+  | 'notices';
 
 type Params = Record<string, string | undefined>;
 interface Entry {
@@ -123,6 +125,7 @@ const NAV_SCREENS: Screen[] = [
   'catalog',
 ];
 const BACK_SCREENS: Screen[] = [
+  'notices',
   'q1',
   'q2',
   'q3',
@@ -371,6 +374,8 @@ function CurrentScreen({ screen }: { screen: Screen }) {
       return <CatalogScreen />;
     case 'edit':
       return <EditScreen />;
+    case 'notices':
+      return <NoticesScreen />;
   }
 }
 

@@ -16,6 +16,12 @@ export interface EasySummary {
   };
   upcoming: Array<{ id: string; title: string; starts_at: string }>;
 }
+export interface NoticePage {
+  data: Array<{ id: string; human_text: string; created_at: string; read_at: string | null }>;
+  next_cursor: string | null;
+  unread_count: number;
+}
+
 export interface EasyQuoteFull {
   id: string;
   number: number;
@@ -152,6 +158,14 @@ export const easy = {
     }>(`/quotes/${enc(id)}`);
     return { token: q.approval_token ?? null, phone: q.customer?.phone ?? null, number: q.number };
   },
+  /** Avisos (same feed as the web bell). */
+  notices: (cursor?: string, limit = 20) =>
+    api.get<NoticePage>(
+      `/notifications?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+    ),
+  noticeRead: (id: string) =>
+    api.patch<{ id: string; read_at: string }>(`/notifications/${enc(id)}/read`, {}),
+  noticesReadAll: () => api.patch<{ marked: number }>('/notifications/read-all', {}),
   quoteFull: (id: string) => api.get<EasyQuoteFull>(`/quotes/${enc(id)}`),
   /** Saves the 3 steps over an existing draft. */
   updateQuote: (id: string, dto: QuoteCreateDto, idempotencyKey: string) =>

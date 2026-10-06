@@ -86,6 +86,21 @@ export class NotificationsService {
     };
   }
 
+  /** "Marcar todas como lidas": one read row per unread notification of this user. */
+  async markAllRead(companyId: string, userId: string) {
+    const unread = await this.prisma.auditLog.findMany({
+      where: { ...this.scope(companyId), notification_reads: { none: { user_id: userId } } },
+      select: { id: true },
+    });
+    if (unread.length) {
+      await this.prisma.notificationRead.createMany({
+        data: unread.map((n) => ({ company_id: companyId, user_id: userId, audit_log_id: n.id })),
+        skipDuplicates: true,
+      });
+    }
+    return { marked: unread.length };
+  }
+
   async markRead(companyId: string, userId: string, auditLogId: string) {
     const notification = await this.prisma.auditLog.findFirst({
       where: { ...this.scope(companyId), id: auditLogId },
