@@ -15,6 +15,7 @@ import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 import type { CatalogItem } from '../services/catalog.service';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useEasyMode } from '../easy/EasyModeContext';
 
 export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
@@ -70,8 +71,20 @@ const MAIS_ITEMS: MaisMenuItem[] = [
 type MaisMenuProps = NativeStackScreenProps<MaisStackParamList, 'MaisMenu'>;
 
 function MaisMenuScreen({ navigation }: MaisMenuProps) {
+  const { setEasy } = useEasyMode();
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        accessibilityRole="button"
+        style={[styles.row, styles.easyRow]}
+        onPress={() => setEasy(true)}
+      >
+        <View>
+          <Text style={[styles.label, styles.easyLabel]}>Modo fácil</Text>
+          <Text style={styles.easySub}>Botões grandes e só o essencial</Text>
+        </View>
+        <Text style={[styles.arrow, styles.easyLabel]}>›</Text>
+      </TouchableOpacity>
       {MAIS_ITEMS.map((item) => (
         <TouchableOpacity
           key={item.label}
@@ -168,4 +181,7 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 16, color: '#0A0A0F' },
   arrow: { fontSize: 20, color: '#6B7280' },
+  easyRow: { backgroundColor: '#F5F3FF' },
+  easyLabel: { color: '#6D28D9', fontWeight: '700' },
+  easySub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
 });

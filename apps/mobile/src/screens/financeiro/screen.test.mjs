@@ -362,6 +362,7 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
   modules['../screens/configuracoes/ConfiguracoesScreen'] = { ConfiguracoesScreen: () => null };
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../screens/equipe/EquipeScreen'] = { EquipeScreen: () => null };
+  modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Financeiro').props.component, FinanceiroScreen);

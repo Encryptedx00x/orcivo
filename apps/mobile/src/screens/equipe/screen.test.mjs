@@ -290,6 +290,10 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };
   modules['../screens/configuracoes/ConfiguracoesScreen'] = { ConfiguracoesScreen: () => null };
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
+  modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
+  modules['../screens/financeiro/FinanceiroScreen'] = { FinanceiroScreen: () => null };
+  modules['../screens/documentos/DocumentosScreen'] = { DocumentosScreen: () => null };
+  modules['../screens/plano/PlanoScreen'] = { PlanoScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Equipe').props.component, EquipeScreen);
@@ -300,6 +304,5 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
   row('Configurações').props.onPress();
   row('Financeiro').props.onPress();
   assert.deepEqual(navigations.slice(0, 2), [['Equipe'], ['Configuracoes']]);
-  assert.equal(navigations[2][0], 'EmBreve');
-  assert.equal(navigations[2][1].title, 'Financeiro');
+  assert.deepEqual(navigations[2], ['Financeiro']);
 });

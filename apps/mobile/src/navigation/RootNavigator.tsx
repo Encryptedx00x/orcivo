@@ -6,20 +6,30 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthStack } from './AuthStack';
 import { AppTabs } from './AppTabs';
 import { SubscriptionBanner } from '../components/SubscriptionBanner';
+import { useEasyMode } from '../easy/EasyModeContext';
+import { EasyNavigator } from '../easy/EasyNavigator';
 
 enableScreens();
 
 export function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color="#6D28D9" size="large" /></View>;
+  const { easy, ready } = useEasyMode();
+  if (isLoading || !ready)
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color="#6D28D9" size="large" />
+      </View>
+    );
   return (
     <NavigationContainer>
       {isAuthenticated ? (
         <View style={{ flex: 1 }}>
           <SubscriptionBanner />
-          <AppTabs />
+          {easy ? <EasyNavigator /> : <AppTabs />}
         </View>
-      ) : <AuthStack />}
+      ) : (
+        <AuthStack />
+      )}
     </NavigationContainer>
   );
 }

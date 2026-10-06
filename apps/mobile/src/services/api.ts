@@ -69,22 +69,35 @@ export const api = {
     return mutate<T>('DELETE', path, undefined, opts);
   },
 
-  async postFormData<T>(path: string, formData: FormData, opts?: WriteOptions): Promise<T> {
-    const requestId = opts?.idempotencyKey ?? Crypto.randomUUID();
-    const token = await SecureStore.getItemAsync('access_token');
-    // Omit Content-Type so fetch sets the multipart boundary itself.
-    const headers: Record<string, string> = {
-      'X-Client-Request-Id': requestId,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: formData });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(`POST ${path} ${res.status}`), {
-        status: res.status,
-        data: err,
-      });
-    }
-    return res.json();
+  postFormData<T>(path: string, formData: FormData, opts?: WriteOptions): Promise<T> {
+    return sendFormData<T>('POST', path, formData, opts);
+  },
+
+  putFormData<T>(path: string, formData: FormData, opts?: WriteOptions): Promise<T> {
+    return sendFormData<T>('PUT', path, formData, opts);
   },
 };
+
+async function sendFormData<T>(
+  method: 'POST' | 'PUT',
+  path: string,
+  formData: FormData,
+  opts?: WriteOptions,
+): Promise<T> {
+  const requestId = opts?.idempotencyKey ?? Crypto.randomUUID();
+  const token = await SecureStore.getItemAsync('access_token');
+  // Omit Content-Type so fetch sets the multipart boundary itself.
+  const headers: Record<string, string> = {
+    'X-Client-Request-Id': requestId,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const res = await fetch(`${BASE_URL}${path}`, { method, headers, body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(`${method} ${path} ${res.status}`), {
+      status: res.status,
+      data: err,
+    });
+  }
+  return res.json();
+}

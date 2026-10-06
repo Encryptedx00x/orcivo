@@ -273,6 +273,7 @@ test('Mais menu opens the real documentos screen instead of EmBreve', () => {
   modules['../screens/configuracoes/ConfiguracoesScreen'] = { ConfiguracoesScreen: () => null };
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../screens/equipe/EquipeScreen'] = { EquipeScreen: () => null };
+  modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Documentos').props.component, DocumentosScreen);
