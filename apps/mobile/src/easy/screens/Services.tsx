@@ -11,12 +11,14 @@ import {
   ClipboardList,
   FileText,
   Image as ImageIcon,
+  MoreHorizontal,
   Play,
   Undo2,
   X,
 } from 'lucide-react-native';
 import { easy, errorText, type EasyWorkOrder } from '../data';
 import { useEasyNav } from '../draft';
+import { reasonSheet, useSheet, type SheetAction } from '../sheet';
 import type { EasyStackParamList } from '../EasyNavigator';
 import {
   Btn,
@@ -47,22 +49,89 @@ const STATUS: Record<EasyWorkOrder['status'], { kind: ChipKind; label: string }>
 };
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
 
+const PAGE = 10;
+
+/** "Mais ações" of a service card (same as the web): remarcar, abrir completo, cancelar/reabrir. */
+function useServiceMore(onChanged: () => void) {
+  const nav = useEasyNav();
+  const sheet = useSheet();
+  const act = (o: EasyWorkOrder, action: 'cancel' | 'reopen') =>
+    reasonSheet(
+      sheet,
+      action === 'cancel' ? 'Por que cancelar?' : 'Por que reabrir?',
+      action === 'cancel'
+        ? ['Cliente desistiu', 'Cliente remarcou', 'Feito por engano', 'Outro motivo']
+        : ['Faltou terminar', 'Cliente pediu ajuste', 'Finalizado por engano', 'Outro motivo'],
+      async (reason) => {
+        try {
+          await easy.workOrderAction(o.id, action, reason);
+          onChanged();
+        } catch (err) {
+          Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
+        }
+      },
+      action === 'cancel' ? X : Undo2,
+    );
+  return (o: EasyWorkOrder) => {
+    const open = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
+    const actions: SheetAction[] = [
+      {
+        label: 'Remarcar',
+        sub: 'Escolher outro dia ou hora',
+        icon: CalendarIcon,
+        run: () =>
+          nav.navigate('AgendaNew', {
+            client: { id: o.customer.id, name: o.customer.name },
+            type: 'INSTALACAO',
+          }),
+      },
+      {
+        label: 'Abrir serviço completo',
+        sub: 'Itens, fotos, histórico e correções',
+        icon: FileText,
+        run: () => nav.navigate('WorkOrderDetail', { id: o.id }),
+      },
+      open
+        ? { label: 'Cancelar serviço', icon: X, danger: true, run: () => act(o, 'cancel') }
+        : {
+            label: 'Reabrir serviço',
+            sub: 'Para serviço já finalizado ou cancelado',
+            icon: Undo2,
+            run: () => act(o, 'reopen'),
+          },
+    ];
+    sheet({ title: o.title, sub: o.customer?.name ?? `Serviço #${o.number}`, actions });
+  };
+}
+
 export function ServicesScreen() {
   const nav = useEasyNav();
   const orders = useLoad(easy.workOrders, 'Não foi possível carregar os serviços de hoje.');
+  const more = useServiceMore(() => void orders.refresh());
   const today = new Date().toDateString();
-  // Today's scheduled services plus anything already in progress (it must not disappear).
-  const list = (orders.data ?? [])
+  // "Todos": every service without leaving Modo fácil (open first, then the finished ones).
+  const [all, setAll] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
+  const rank = (st: string) => (st === 'IN_PROGRESS' ? 0 : st === 'PENDING' ? 1 : 2);
+  const everything = (orders.data ?? [])
     .filter((o) => o.status !== 'CANCELLED')
-    .filter(
-      (o) =>
-        o.status === 'IN_PROGRESS' ||
-        (o.scheduled_at && new Date(o.scheduled_at).toDateString() === today),
-    )
-    .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
+    .sort(
+      (a, b) =>
+        rank(a.status) - rank(b.status) ||
+        (b.scheduled_at ?? b.created_at ?? '').localeCompare(a.scheduled_at ?? a.created_at ?? ''),
+    );
+  // Today's scheduled services plus anything already in progress (it must not disappear).
+  const list = all
+    ? everything.slice(0, limit)
+    : everything
+        .filter(
+          (o) =>
+            o.status === 'IN_PROGRESS' ||
+            (o.scheduled_at && new Date(o.scheduled_at).toDateString() === today),
+        )
+        .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
 
   const open = async (o: EasyWorkOrder) => {
-    if (o.status === 'DONE') return nav.navigate('WorkOrderDetail', { id: o.id });
     if (o.status === 'PENDING') {
       try {
         await easy.startWorkOrder(o.id);
@@ -76,8 +145,8 @@ export function ServicesScreen() {
   return (
     <Page>
       <View style={{ gap: 2 }}>
-        <H1>Serviços de hoje</H1>
-        <Sub>{longDate(new Date())}</Sub>
+        <H1>{all ? 'Todos os serviços' : 'Serviços de hoje'}</H1>
+        <Sub>{all ? 'Em andamento primeiro, depois os feitos' : longDate(new Date())}</Sub>
       </View>
       {orders.error ? <ErrorBox message={orders.error} onRetry={orders.refresh} /> : null}
       {!orders.data && !orders.error ? <Loading /> : null}
@@ -103,7 +172,14 @@ export function ServicesScreen() {
           <Card key={o.id} style={{ padding: 16, gap: 12 }}>
             <View style={{ flexDirection: 'row', gap: 14 }}>
               <Text style={{ fontSize: 22, fontWeight: '800', width: 64, color: C.ink }}>
-                {o.scheduled_at ? hhmm(o.scheduled_at) : '—'}
+                {!o.scheduled_at
+                  ? '—'
+                  : all && new Date(o.scheduled_at).toDateString() !== today
+                    ? new Date(o.scheduled_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })
+                    : hhmm(o.scheduled_at)}
               </Text>
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={[s.body, { fontWeight: '600', fontSize: 19 }]}>{o.title}</Text>
@@ -123,14 +199,28 @@ export function ServicesScreen() {
                   ? 'Continuar'
                   : 'Ver'}
             </Btn>
+            <Btn tone="link" icon={MoreHorizontal} onPress={() => more(o)}>
+              Mais ações
+            </Btn>
           </Card>
         );
       })}
+      {all && everything.length > limit ? (
+        <Btn tone="link" onPress={() => setLimit((l) => l + PAGE)}>
+          Ver mais {Math.min(PAGE, everything.length - limit)} de {everything.length - limit}
+        </Btn>
+      ) : null}
       <Btn tone="link" onPress={() => nav.navigate('EasyTabs', { screen: 'Agenda' })}>
         Ver outros dias na Agenda
       </Btn>
-      <Btn tone="outline" icon={FileText} height={56} onPress={() => nav.navigate('WorkOrderList')}>
-        Todas as ordens de serviço
+      <Btn
+        tone="link"
+        onPress={() => {
+          setAll((a) => !a);
+          setLimit(PAGE);
+        }}
+      >
+        {all ? 'Só os serviços de hoje' : 'Ver todos os serviços'}
       </Btn>
     </Page>
   );

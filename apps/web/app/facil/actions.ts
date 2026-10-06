@@ -215,6 +215,7 @@ export interface EasyWorkOrder {
   notes?: string | null;
   status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
   scheduled_at?: string | null;
+  created_at?: string;
   customer: { id: string; name: string };
   photos?: Array<{ id: string; photo_stage: 'BEFORE' | 'DURING' | 'AFTER'; file_url: string }>;
 }

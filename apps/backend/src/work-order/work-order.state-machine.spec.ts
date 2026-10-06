@@ -6,6 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
 
 // PB1-P01 — WorkOrder domain-action state machine (unit, mocked Prisma/Audit).
 
@@ -78,6 +79,10 @@ describe('WorkOrderService — state machine (P-01)', () => {
         },
         { provide: TenantOwnershipService, useValue: mockOwnership },
         { provide: AuditService, useValue: mockAudit },
+        {
+          provide: StorageService,
+          useValue: { resolveUrl: jest.fn(async (_b: string, key: string) => `signed:${key}`) },
+        },
       ],
     }).compile();
     service = module.get<WorkOrderService>(WorkOrderService);
@@ -620,5 +625,16 @@ describe('WorkOrderService — state machine (P-01)', () => {
       expect(result.data[0].allowed_actions).toEqual(['iniciar', 'cancelar']);
       expect(result.data[1].allowed_actions).toEqual([]);
     });
+  });
+
+  it('detail returns signed photo URLs instead of the stored object keys', async () => {
+    mockPrisma.workOrder.findFirst.mockResolvedValue({
+      ...pendingWo,
+      photos: [{ id: 'ph1', photo_stage: 'BEFORE', file_url: 'comp/work-orders/wo/before/a.jpeg' }],
+    });
+    const wo = (await service.findOne('wo-1', 'comp-1')) as unknown as {
+      photos: Array<{ file_url: string }>;
+    };
+    expect(wo.photos[0].file_url).toBe('signed:comp/work-orders/wo/before/a.jpeg');
   });
 });

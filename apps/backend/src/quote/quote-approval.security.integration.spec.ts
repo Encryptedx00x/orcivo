@@ -33,7 +33,9 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     getSignedUrl: jest.fn(async (_bucket: string, key: string) => `https://fixture.invalid/${key}`),
     assertUploadable: jest.fn(),
   };
-  const workOrders = new WorkOrderService(db, redis, limits as never, ownership, audit);
+  const workOrders = new WorkOrderService(db, redis, limits as never, ownership, audit, {
+    resolveUrl: async (_b: string, key: string) => key,
+  } as never);
   const quotes = new QuoteService(
     db,
     redis,

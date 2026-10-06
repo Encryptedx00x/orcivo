@@ -42,6 +42,8 @@ import {
 } from '../ui';
 import { menuRow } from './Clients';
 
+const PAGE = 10;
+
 const STATUS: Record<EasyWorkOrder['status'], { kind: ChipKind; label: string }> = {
   PENDING: { kind: 'wait', label: 'Para fazer' },
   IN_PROGRESS: { kind: 'doing', label: 'Fazendo' },

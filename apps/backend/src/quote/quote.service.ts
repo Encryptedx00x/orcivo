@@ -513,9 +513,17 @@ export class QuoteService {
       throw new BadRequestException('Método de aprovação não permitido pela empresa.');
     }
 
+    // The work order is named after the job ("Instalação de câmera e mais 1"), not a number.
+    const firstItem = quote.items[0]?.description;
+    const jobTitle = firstItem
+      ? `${firstItem}${quote.items.length > 1 ? ` e mais ${quote.items.length - 1}` : ''}`.slice(
+          0,
+          300,
+        )
+      : `Orçamento #${quote.number}`;
     const workOrderInput = {
       customer_id: quote.customer.id,
-      title: quote.title ? `OS — ${quote.title}` : `Orçamento #${quote.number}`,
+      title: quote.title ? `OS — ${quote.title}` : jobTitle,
     };
     await this.workOrderService.assertCreatable(workOrderInput, quote.company_id, quote.id);
     const prepared: Array<{ bucket: string; key: string }> = [];
@@ -604,7 +612,7 @@ export class QuoteService {
         await this.workOrderService.create(
           {
             customer_id: quote.customer.id,
-            title: quote.title ? `OS — ${quote.title}` : `Orçamento #${quote.number}`,
+            title: workOrderInput.title,
           },
           quote.company_id,
           quote.created_by_user_id!,

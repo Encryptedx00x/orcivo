@@ -12,6 +12,7 @@ import { RedisService } from '../redis/redis.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService, PHOTO_BUCKET } from '../storage/storage.service';
 
 export type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
@@ -73,7 +74,22 @@ export class WorkOrderService {
     private readonly planLimitsService: PlanLimitsService,
     private readonly ownership: TenantOwnershipService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Photos are stored as object keys (P03-T07): readers get short-lived signed URLs. */
+  private async withPhotoUrls<T extends { photos?: Array<{ file_url: string }> }>(
+    wo: T,
+  ): Promise<T> {
+    if (!wo.photos?.length) return wo;
+    const photos = await Promise.all(
+      wo.photos.map(async (p) => ({
+        ...p,
+        file_url: (await this.storage.resolveUrl(PHOTO_BUCKET, p.file_url)) ?? p.file_url,
+      })),
+    );
+    return { ...wo, photos };
+  }
 
   // ── Máquina de ações de domínio (P-01 / ADR-016) ───────────────────────────
 
@@ -418,7 +434,8 @@ export class WorkOrderService {
       take: limit,
       include: { customer: { select: { id: true, name: true } }, photos: true },
     });
-    return { data: data.map((wo) => this.withAllowedActions(wo, role)), page, limit };
+    const signed = await Promise.all(data.map((wo) => this.withPhotoUrls(wo)));
+    return { data: signed.map((wo) => this.withAllowedActions(wo, role)), page, limit };
   }
 
   /** Detalhe da OS com as ações permitidas para o papel do chamador (AC4). */
@@ -428,7 +445,7 @@ export class WorkOrderService {
       include: WO_DETAIL_INCLUDE,
     });
     if (!wo) throw new NotFoundException();
-    return this.withAllowedActions(wo, role);
+    return this.withAllowedActions(await this.withPhotoUrls(wo), role);
   }
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {

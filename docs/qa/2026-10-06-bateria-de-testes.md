@@ -89,3 +89,15 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 | A6  | "Outro dia" no desktop não abria o calendário (só o ícone minúsculo do navegador abre)                 | 🔧 abre o calendário no clique (também no campo de data dos recibos/financeiro) |
 | A7  | Horário padrão 10:30 mesmo às 17:40 (marcava no passado)                                               | 🔧 próximo horário cheio/meia hora a partir de agora                            |
 | A8  | Web limitava 06:00–22:00 e o app 00:00–23:30                                                           | 🔧 os dois 00:00–23:30                                                          |
+
+## Serviços (modo fácil web; app com as mesmas correções)
+
+| #   | Teste                                                                                                           | Resultado                                                                                                                  |
+| --- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| S1  | Serviços de hoje: OS em andamento aparece mesmo sem horário                                                     | ✅                                                                                                                         |
+| S2  | "Todos os serviços (modo completo)" tirava o usuário do modo fácil; serviço feito abria a tela do modo completo | 🔧 "Ver todos os serviços" dentro do modo fácil (em andamento primeiro, paginado, com data); feito abre na tela do serviço |
+| S3  | App: cartões da lista sem "Mais ações" (a web tinha)                                                            | 🔧 mesma folha: Remarcar, Abrir serviço completo, Cancelar/Reabrir com motivo                                              |
+| S4  | Foto do serviço aparecia quebrada (web fácil e **modo completo**)                                               | 🔧 o detalhe da OS devolvia a chave do arquivo em vez de URL assinada → `GET /work-orders/:id` e a lista assinam as fotos  |
+| S5  | Enviar foto da galeria → "Foto guardada como Antes"; segunda → "Durante"; as duas aparecem                      | ✅                                                                                                                         |
+| S6  | Finalizar serviço → "Pronto! Serviço finalizado"                                                                | ✅                                                                                                                         |
+| S7  | OS criada pela aprovação se chamava "OS #1" (o número do orçamento, não o da OS)                                | 🔧 leva o nome do serviço: "Instalação de câmera e mais 1"                                                                 |

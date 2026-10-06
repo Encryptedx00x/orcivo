@@ -1058,6 +1058,34 @@ describe('QuoteService', () => {
       expect(mockWorkOrderService.create).toHaveBeenCalled();
     });
 
+    it('Test A1b: OS de orçamento sem título leva o nome do serviço (itens), não um número', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        ...quoteMock,
+        title: null,
+        items: [
+          {
+            id: 'i1',
+            description: 'Instalação de câmera',
+            quantity: '1',
+            unit_price: '150',
+            total: '150',
+          },
+          { id: 'i2', description: 'Cabo', quantity: '10', unit_price: '5', total: '50' },
+        ],
+      });
+
+      await service.approve(quoteToken, { approval_method: 'APPROVE_BUTTON' }, '1.2.3.4', 'ua');
+
+      expect(mockWorkOrderService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Instalação de câmera e mais 1' }),
+        'comp-1',
+        'user-1',
+        'q1',
+        'IN_PROGRESS',
+        mockTx,
+      );
+    });
+
     it('Test A2: approve() chamado 2x com mesmo token retorna ConflictException', async () => {
       mockTx.quote.updateMany.mockResolvedValue({ count: 0 }); // ja aprovado
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
