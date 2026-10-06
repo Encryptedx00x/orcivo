@@ -13,9 +13,17 @@ import {
   Phone,
   UserPlus,
   Users,
+  Trash2,
 } from 'lucide-react';
 import { formatMoney, maskPhone, onlyDigits } from '@orcivo/shared-types';
-import { createClient, getClient, listClients, listQuotes, type EasyQuote } from '../actions';
+import {
+  createClient,
+  deleteClient,
+  getClient,
+  listClients,
+  listQuotes,
+  type EasyQuote,
+} from '../actions';
 import { ActionBar, Hint, emptyDraft, useLoad, useNav } from '../EasyApp';
 import {
   Avatar,
@@ -178,7 +186,8 @@ const linkBtn: React.CSSProperties = {
 };
 
 export function ClientScreen(): JSX.Element {
-  const { params, go, setDraft } = useNav();
+  const { params, go, tab, setDraft } = useNav();
+  const toast = useToast();
   const id = params.id ?? '';
   const client = useLoad(() => getClient(id), [id]);
   const quotes = useLoad(listQuotes);
@@ -197,6 +206,16 @@ export function ClientScreen(): JSX.Element {
     .filter(Boolean)
     .join(' · ');
   const hist: EasyQuote[] = (quotes.data ?? []).filter((q) => q.customer?.id === c.id);
+  const remove = async () => {
+    if (
+      !window.confirm(`Excluir ${c.name}? O histórico de orçamentos e serviços continua guardado.`)
+    )
+      return;
+    const r = await deleteClient(c.id);
+    if (!r.ok) return toast(r.message);
+    toast(`${firstName(c.name)} excluído.`);
+    tab('clients');
+  };
 
   return (
     <>
@@ -342,9 +361,25 @@ export function ClientScreen(): JSX.Element {
                   WhatsApp
                 </a>
               )}
-              <a href={`/clientes/${c.id}/editar`} style={{ ...menuRow, borderBottom: 'none' }}>
+              <a href={`/clientes/${c.id}/editar`} style={menuRow}>
                 <PenLine size={22} color={C.purple} aria-hidden="true" /> Editar dados do cliente
               </a>
+              <button
+                type="button"
+                onClick={() => void remove()}
+                style={{
+                  ...menuRow,
+                  borderBottom: 'none',
+                  border: 'none',
+                  background: '#FFFFFF',
+                  color: C.red,
+                  width: '100%',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <Trash2 size={22} color={C.red} aria-hidden="true" /> Excluir cliente
+              </button>
             </div>
           )}
         </div>

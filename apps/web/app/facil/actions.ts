@@ -81,6 +81,14 @@ export async function createClient(input: {
   );
 }
 
+/** Soft delete — quotes, services and audit history stay. */
+export async function deleteClient(id: string): Promise<Result<true>> {
+  return run(async () => {
+    await apiFetch(`/customers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return true as const;
+  }, 'Não foi possível excluir o cliente.');
+}
+
 // ── Catalog ("Meus serviços e preços") ────────────────────────────────
 export interface EasyCatalogItem {
   id: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, MessageCircle, Plus } from 'lucide-react';
+import { FileText, Link2, MessageCircle, Plus } from 'lucide-react';
 import { formatMoney } from '@orcivo/shared-types';
 import { getQuoteShare, listQuotes, type EasyQuote } from '../actions';
 import { buildWhatsAppLink } from '../../../lib/whatsapp';
@@ -165,6 +165,17 @@ function QuoteCard({ q }: { q: EasyQuote }) {
     else window.location.href = link;
     toast(`Pronto! Reenviado para ${q.customer?.name?.split(' ')[0] ?? 'o cliente'} no WhatsApp.`);
   };
+  const copyLink = async () => {
+    const r = await getQuoteShare(q.id);
+    if (!r.ok || !r.data.token)
+      return toast(r.ok ? 'Este orçamento ainda não tem link de aprovação.' : r.message);
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/approve/${r.data.token}`);
+      toast('Link de aprovação copiado.');
+    } catch {
+      toast('Não foi possível copiar o link.');
+    }
+  };
   return (
     <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -199,6 +210,9 @@ function QuoteCard({ q }: { q: EasyQuote }) {
         <>
           <Btn tone="soft" icon={MessageCircle} height={56} onClick={() => void resend()}>
             Reenviar
+          </Btn>
+          <Btn tone="link" icon={Link2} onClick={() => void copyLink()}>
+            Copiar link de aprovação
           </Btn>
           <a
             href={`/orcamentos/${q.id}`}
