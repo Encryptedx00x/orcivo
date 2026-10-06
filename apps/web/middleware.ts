@@ -59,7 +59,11 @@ export async function middleware(req: NextRequest) {
     const refreshed = await tryRefresh(req);
     if (!refreshed) return NextResponse.redirect(new URL('/login', req.url));
 
-    const res = NextResponse.next();
+    // Hand the fresh token to this same request too: pages and server actions read the
+    // request cookies, so setting it only on the response left them with the expired one.
+    req.cookies.set('access_token', refreshed.accessToken);
+    req.cookies.set('refresh_token', refreshed.refreshToken);
+    const res = NextResponse.next({ request: { headers: req.headers } });
     const cookieOpts = {
       httpOnly: true,
       sameSite: 'strict' as const,
