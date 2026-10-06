@@ -9,7 +9,9 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { PaymentService } from './payment.service';
@@ -19,7 +21,9 @@ import {
   PaymentListQuerySchema,
   PaymentSettleSchema,
   PaymentUpdateSchema,
+  ReceiptSignatureSchema,
 } from './payment.dto';
+import { receiptNumber } from './receipt-pdf.service';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 // GET is open to any active member; writes are admin-only.
@@ -38,6 +42,39 @@ export class PaymentController {
     @Query(new ZodValidationPipe(PaymentListQuerySchema)) query: unknown,
   ) {
     return this.paymentService.findAll(req.companyId, query as never);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.paymentService.findOne(id, req.companyId);
+  }
+
+  /** Recibo em PDF (só para recebimento pago). */
+  @Get(':id/receipt')
+  async receipt(@Param('id') id: string, @Req() req: TenantRequest, @Res() res: Response) {
+    const { buffer, number } = await this.paymentService.receiptPdfBuffer(id, req.companyId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="recibo-${receiptNumber(number)}.pdf"`,
+      'Cache-Control': 'no-store',
+    });
+    res.send(buffer);
+  }
+
+  @AdminOnly()
+  @Patch(':id/receipt-signature')
+  @HttpCode(200)
+  receiptSignature(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(ReceiptSignatureSchema)) body: unknown,
+  ) {
+    return this.paymentService.setReceiptSignature(
+      id,
+      req.companyId,
+      req.user.userId,
+      (body as { apply: boolean }).apply,
+    );
   }
 
   @AdminOnly()

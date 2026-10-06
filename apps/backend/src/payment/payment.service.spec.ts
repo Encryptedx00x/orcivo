@@ -8,8 +8,12 @@ describe('PaymentService', () => {
       findFirst: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      aggregate: jest.fn(),
     },
     auditLog: { create: jest.fn() },
+    $executeRaw: jest.fn(),
   };
   const prisma = {
     $transaction: jest.fn(),
@@ -25,7 +29,15 @@ describe('PaymentService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new PaymentService(prisma as never, ownership as never, audit as never);
+    service = new PaymentService(
+      prisma as never,
+      ownership as never,
+      audit as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    tx.payment.findUnique.mockResolvedValue({ status: 'PENDING', receipt_number: null });
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
@@ -109,7 +121,11 @@ describe('PaymentService', () => {
     expect(tx.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'payment-1' },
-        data: expect.objectContaining({ amount: '1300.00', status: 'PAID', paid_at: expect.any(Date) }),
+        data: expect.objectContaining({
+          amount: '1300.00',
+          status: 'PAID',
+          paid_at: expect.any(Date),
+        }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
@@ -136,7 +152,12 @@ describe('PaymentService', () => {
     });
     tx.payment.update.mockResolvedValue({ id: 'payment-1', deleted_at: new Date() });
 
-    await service.remove('payment-1', 'company-1', { justification: 'Recebimento duplicado' }, 'user-1');
+    await service.remove(
+      'payment-1',
+      'company-1',
+      { justification: 'Recebimento duplicado' },
+      'user-1',
+    );
 
     expect(tx.payment.update).toHaveBeenCalledWith({
       where: { id: 'payment-1' },
@@ -155,5 +176,85 @@ describe('PaymentService', () => {
       tx,
       expect.objectContaining({ action: 'work_order.payment_deleted', entityId: 'work-order-1' }),
     );
+  });
+
+  describe('receipt number (recibo nº)', () => {
+    it('numbers a payment created as PAID after the highest number in the tenant', async () => {
+      tx.payment.create.mockResolvedValue({
+        id: 'payment-9',
+        amount: { toString: () => '350.00' },
+        customer: { id: 'customer-1', name: 'Ana' },
+      });
+      tx.payment.findUnique.mockResolvedValue({ status: 'PAID', receipt_number: null });
+      tx.payment.aggregate.mockResolvedValue({ _max: { receipt_number: 8 } });
+
+      await service.create(
+        { customer_id: 'customer-1', amount: '350.00', method: 'DINHEIRO', status: 'PAID' },
+        'company-1',
+        'user-1',
+      );
+
+      expect(tx.$executeRaw).toHaveBeenCalled();
+      expect(tx.payment.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { company_id: 'company-1' } }),
+      );
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 'payment-9' },
+        data: { receipt_number: 9 },
+      });
+    });
+
+    it('starts at 1 and never renumbers an already numbered payment', async () => {
+      prisma.payment.findFirst.mockResolvedValue({
+        id: 'payment-1',
+        method: 'PIX',
+        status: 'PENDING',
+        amount: { toString: () => '10.00' },
+        customer: { id: 'customer-1', name: 'Ana' },
+      });
+      tx.payment.update.mockResolvedValue({ id: 'payment-1', status: 'PAID' });
+      tx.payment.findUnique.mockResolvedValueOnce({ status: 'PAID', receipt_number: null });
+      tx.payment.aggregate.mockResolvedValue({ _max: { receipt_number: null } });
+
+      await service.settle('payment-1', 'company-1', {}, 'user-1');
+      expect(tx.payment.update).toHaveBeenLastCalledWith({
+        where: { id: 'payment-1' },
+        data: { receipt_number: 1 },
+      });
+
+      tx.payment.update.mockClear();
+      tx.payment.findUnique.mockResolvedValueOnce({ status: 'PAID', receipt_number: 1 });
+      await service.settle('payment-1', 'company-1', {}, 'user-1');
+      expect(tx.payment.update).toHaveBeenCalledTimes(1); // only the settle itself
+    });
+
+    it('does not number a payment created as pending', async () => {
+      tx.payment.create.mockResolvedValue({
+        id: 'payment-2',
+        amount: { toString: () => '10.00' },
+        customer: { id: 'customer-1', name: 'Ana' },
+      });
+      await service.create(
+        { customer_id: 'customer-1', amount: '10.00', status: 'PENDING' },
+        'company-1',
+        'user-1',
+      );
+      expect(tx.payment.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('lists only numbered paid payments when receipts=true', async () => {
+      prisma.payment.findMany.mockResolvedValue([]);
+      await service.findAll('company-1', { receipts: true });
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            company_id: 'company-1',
+            status: 'PAID',
+            receipt_number: { not: null },
+          }),
+          orderBy: { receipt_number: 'desc' },
+        }),
+      );
+    });
   });
 });

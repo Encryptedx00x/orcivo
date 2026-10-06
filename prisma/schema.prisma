@@ -592,10 +592,16 @@ model Payment {
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
   deleted_at    DateTime?
+  /// Sequential per company, assigned when the payment becomes PAID (recibo nº).
+  receipt_number        Int?
+  /// Frozen copy of the technician signature applied to the receipt (storage key).
+  receipt_signature_key String?
+  receipt_signer_name   String?
 
   company  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
   customer Customer @relation(fields: [customer_id], references: [id])
 
+  @@unique([company_id, receipt_number])
   @@index([company_id])
   @@index([company_id, status])
   @@index([company_id, deleted_at])

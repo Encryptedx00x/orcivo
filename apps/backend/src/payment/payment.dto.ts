@@ -63,5 +63,14 @@ export const PaymentListQuerySchema = z.object({
   status: PaymentStatusEnum.optional(),
   method: PaymentMethodEnum.optional(),
   work_order_id: z.string().uuid().optional(),
+  /** Only paid payments that carry a receipt number (Recibos). */
+  receipts: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
 });
-export type PaymentListQueryDto = z.infer<typeof PaymentListQuerySchema>;
+export type PaymentListQueryDto = Omit<z.infer<typeof PaymentListQuerySchema>, 'receipts'> & {
+  receipts?: boolean;
+};
+
+export const ReceiptSignatureSchema = z.object({ apply: z.boolean() });
