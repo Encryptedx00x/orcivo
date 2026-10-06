@@ -365,6 +365,7 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 entityId={order.id}
                 label={`OS #${order.number}`}
                 revision={historyRevision}
+                size="md"
               />
               <label style={{ fontSize: 13 }}>
                 Alterar status

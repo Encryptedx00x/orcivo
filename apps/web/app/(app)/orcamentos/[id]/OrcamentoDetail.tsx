@@ -354,29 +354,16 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             {STATUS_LABEL[quote.status]}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <EntityHistory
             entityType="quote"
             entityId={quote.id}
             label={`Orçamento #${quote.number}`}
             revision={`${quote.status}-${historyRevision}`}
+            size="md"
           />
           {quote.status === 'DRAFT' && (
-            <button
-              onClick={openEdit}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'none',
-                border: '1px solid #E2E8F0',
-                borderRadius: 8,
-                padding: '6px 14px',
-                cursor: 'pointer',
-                fontSize: 13,
-                color: '#334155',
-              }}
-            >
+            <button onClick={openEdit} style={headerBtn}>
               <Pencil size={15} /> Editar
             </button>
           )}
@@ -384,52 +371,15 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
             onClick={() =>
               window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')
             }
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'none',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              padding: '6px 14px',
-              cursor: 'pointer',
-              fontSize: 13,
-              color: '#334155',
-            }}
+            style={headerBtn}
           >
             <Download size={15} /> Baixar PDF
           </button>
-          <button
-            onClick={() => router.back()}
-            style={{
-              background: 'none',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              padding: '6px 14px',
-              cursor: 'pointer',
-              fontSize: 13,
-              color: '#334155',
-            }}
-          >
+          <button onClick={() => router.back()} style={headerBtn}>
             Voltar
           </button>
         </div>
       </div>
-
-      {error && (
-        <div
-          style={{
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: 8,
-            padding: '12px 16px',
-            color: '#DC2626',
-            marginBottom: 16,
-          }}
-        >
-          {error}
-        </div>
-      )}
 
       {/* Client info */}
       <div style={card}>
@@ -449,20 +399,18 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
           <thead>
             <tr style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
               <th style={th}>Descrição</th>
-              <th style={{ ...th, textAlign: 'right' }}>Qtd</th>
-              <th style={{ ...th, textAlign: 'right' }}>Preço unit.</th>
-              <th style={{ ...th, textAlign: 'right' }}>Total</th>
+              <th style={thNum}>Qtd</th>
+              <th style={thNum}>Preço unit.</th>
+              <th style={thNum}>Total</th>
             </tr>
           </thead>
           <tbody>
             {quote.items.map((item) => (
               <tr key={item.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                 <td style={td}>{item.description}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{item.quantity}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{formatMoney(item.unit_price)}</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: 500 }}>
-                  {formatMoney(item.total)}
-                </td>
+                <td style={tdNum}>{item.quantity}</td>
+                <td style={tdNum}>{formatMoney(item.unit_price)}</td>
+                <td style={{ ...tdNum, fontWeight: 500 }}>{formatMoney(item.total)}</td>
               </tr>
             ))}
           </tbody>
@@ -739,7 +687,24 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            {/* Send errors show next to the button that caused them. */}
+            {error && (
+              <p
+                role="alert"
+                style={{
+                  margin: 0,
+                  backgroundColor: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  color: '#B91C1C',
+                  fontSize: 14,
+                }}
+              >
+                {error}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 onClick={handleSend}
                 disabled={loading || !!approvalUrl}
@@ -1208,12 +1173,43 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
 
 const th: React.CSSProperties = {
   textAlign: 'left',
-  padding: '10px 12px',
+  padding: '10px 8px',
   fontSize: 13,
   color: '#64748B',
   fontWeight: 600,
 };
-const td: React.CSSProperties = { padding: '10px 12px', fontSize: 14, color: '#0A0A0F' };
+const td: React.CSSProperties = { padding: '10px 8px', fontSize: 14, color: '#0A0A0F' };
+// Money and quantities never break across lines ("R$" / "150,00").
+const tdNum: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+const thNum: React.CSSProperties = { ...th, textAlign: 'right', whiteSpace: 'nowrap' };
+const headerBtn: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  height: 36,
+  background: '#fff',
+  border: '1px solid #E2E8F0',
+  borderRadius: 8,
+  padding: '0 14px',
+  cursor: 'pointer',
+  fontSize: 13,
+  color: '#334155',
+  whiteSpace: 'nowrap',
+};
+/** Action buttons share size and grow to full width when they wrap (phones). */
+const actionBase: React.CSSProperties = {
+  flex: '1 1 200px',
+  minHeight: 44,
+  borderRadius: 10,
+  padding: '10px 16px',
+  fontWeight: 600,
+  fontSize: 14,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+};
 const card: React.CSSProperties = {
   backgroundColor: '#fff',
   borderRadius: 12,
@@ -1227,47 +1223,28 @@ const sectionTitle: React.CSSProperties = {
   color: '#0A0A0F',
 };
 const btnPrimary: React.CSSProperties = {
+  ...actionBase,
   backgroundColor: '#6D28D9',
   color: '#fff',
-  borderRadius: 12,
-  padding: '10px 20px',
-  fontWeight: 600,
-  fontSize: 14,
   border: 'none',
-  cursor: 'pointer',
 };
 const btnSecondary: React.CSSProperties = {
+  ...actionBase,
   backgroundColor: '#fff',
   color: '#334155',
-  borderRadius: 12,
-  padding: '10px 20px',
-  fontWeight: 600,
-  fontSize: 14,
   border: '1px solid #E2E8F0',
-  cursor: 'pointer',
 };
 const btnDanger: React.CSSProperties = {
-  backgroundColor: '#FEE2E2',
+  ...actionBase,
+  backgroundColor: '#FEF2F2',
   color: '#991B1B',
-  borderRadius: 8,
-  padding: '10px 20px',
-  fontWeight: 600,
-  fontSize: 14,
   border: '1px solid #FECACA',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
 };
 const btnGreen: React.CSSProperties = {
+  ...actionBase,
   backgroundColor: '#25D366',
   color: '#fff',
-  borderRadius: 8,
-  padding: '10px 20px',
-  fontWeight: 600,
-  fontSize: 14,
   border: 'none',
-  cursor: 'pointer',
 };
 const editLabel: React.CSSProperties = {
   display: 'block',

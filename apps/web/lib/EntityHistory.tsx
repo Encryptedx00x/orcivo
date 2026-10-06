@@ -182,12 +182,15 @@ export function EntityHistory({
   entityId,
   label,
   revision = '',
+  size = 'sm',
 }: {
   entityType: EntityType;
   entityId: string;
   label: string;
   revision?: string | number;
-}): JSX.Element {
+  /** 'md' matches the 36px buttons of page headers; 'sm' fits table rows. */
+  size?: 'sm' | 'md';
+}): React.JSX.Element {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -198,7 +201,11 @@ export function EntityHistory({
         className="ov-btn ov-btn-outline"
         aria-haspopup="dialog"
         aria-label={`Histórico — ${label}`}
-        style={{ height: 30, fontSize: 12, gap: 6, padding: '0 10px' }}
+        style={
+          size === 'md'
+            ? { height: 36, fontSize: 13, gap: 6, padding: '0 14px', whiteSpace: 'nowrap' }
+            : { height: 30, fontSize: 12, gap: 6, padding: '0 10px' }
+        }
         onClick={() => {
           dialog.current?.showModal();
           setOpen(true);
