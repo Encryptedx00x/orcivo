@@ -394,11 +394,7 @@ export default function ApprovePage(): JSX.Element {
                   { key: 'PHOTO_SIGNATURE', label: 'Foto da assinatura' },
                 ] as const
               )
-                .filter(
-                  (t) =>
-                    t.key === 'PHOTO_SIGNATURE' ||
-                    quote?.company.allowed_approval_methods.includes(t.key),
-                )
+                .filter((t) => quote?.company.allowed_approval_methods.includes(t.key))
                 .map((t) => (
                   <button
                     key={t.key}

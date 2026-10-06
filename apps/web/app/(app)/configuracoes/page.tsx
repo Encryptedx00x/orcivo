@@ -20,7 +20,7 @@ import {
   updateCompanyPix,
 } from './actions';
 
-type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE';
+type Method = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
 type PixKeyType = 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'RANDOM';
 
 interface EmpresaForm {
@@ -122,8 +122,17 @@ const METHOD_LABELS: Record<Method, { label: string; desc: string }> = {
     label: 'Assinar com desenho',
     desc: 'Cliente desenha a assinatura com o dedo ou mouse.',
   },
+  PHOTO_SIGNATURE: {
+    label: 'Foto da assinatura',
+    desc: 'Cliente envia uma foto da assinatura feita no papel.',
+  },
 };
-const ALL_METHODS: Method[] = ['APPROVE_BUTTON', 'TYPED_NAME', 'DRAWN_SIGNATURE'];
+const ALL_METHODS: Method[] = [
+  'APPROVE_BUTTON',
+  'TYPED_NAME',
+  'DRAWN_SIGNATURE',
+  'PHOTO_SIGNATURE',
+];
 
 const TABS = [
   { id: 'conta', label: 'Minha conta', icon: UserRound },

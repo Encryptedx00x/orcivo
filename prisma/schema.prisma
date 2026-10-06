@@ -52,7 +52,7 @@ model Company {
   quote_default_terms         String?
   quote_default_validity_days Int?
   plan_code                PlanCode         @default(LIVRE)
-  allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE])
+  allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

@@ -22,7 +22,12 @@ export interface PublicQuote {
   items: PublicQuoteItem[];
   company: {
     trade_name: string;
-    allowed_approval_methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE')[];
+    allowed_approval_methods: (
+      | 'APPROVE_BUTTON'
+      | 'TYPED_NAME'
+      | 'DRAWN_SIGNATURE'
+      | 'PHOTO_SIGNATURE'
+    )[];
   };
 }
 
