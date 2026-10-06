@@ -8,9 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { easy, methodLabel, receiptNo, receiptOrigin, type EasyReceipt } from '../../easy/data';
+import { shareReceiptPdf } from '../../easy/share';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ClipboardList, Download, FileText, Inbox } from 'lucide-react-native';
+import { ClipboardList, Download, FileText, Inbox, Plus, ReceiptText } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
@@ -48,7 +51,7 @@ function Pill({ config }: { config: { label: string; bg: string; color: string }
   );
 }
 
-type Tab = 'orc' | 'os';
+type Tab = 'orc' | 'os' | 'rec';
 
 export function DocumentosScreen() {
   const insets = useSafeAreaInsets();
@@ -57,6 +60,9 @@ export function DocumentosScreen() {
   const [loadError, setLoadError] = useState('');
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [receipts, setReceipts] = useState<EasyReceipt[]>([]);
+  const navigation =
+    useNavigation<NativeStackNavigationProp<{ Receipt: { id: string }; ReceiptNew: undefined }>>();
   const [tab, setTab] = useState<Tab>('orc');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const downloadLock = useRef(false);
@@ -66,11 +72,16 @@ export function DocumentosScreen() {
       let active = true;
       setLoading(true);
       setLoadError('');
-      Promise.all([quoteService.fetchQuotes(), workOrderService.fetchAll()])
-        .then(([quotesRes, workOrdersRes]) => {
+      Promise.all([
+        quoteService.fetchQuotes(),
+        workOrderService.fetchAll(),
+        easy.receipts().catch(() => [] as EasyReceipt[]),
+      ])
+        .then(([quotesRes, workOrdersRes, receiptRows]) => {
           if (!active) return;
           setQuotes(quotesRes.data ?? []);
           setWorkOrders(workOrdersRes.data ?? []);
+          setReceipts(receiptRows);
         })
         .catch((error: unknown) => {
           if (active) setLoadError(documentosError(error, 'load'));
@@ -158,6 +169,16 @@ export function DocumentosScreen() {
             Ordens de Serviço ({workOrders.length})
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityState={{ selected: tab === 'rec' }}
+          style={[styles.tab, tab === 'rec' && styles.tabActive]}
+          onPress={() => setTab('rec')}
+        >
+          <Text style={[styles.tabLabel, tab === 'rec' && styles.tabLabelActive]}>
+            Recibos ({receipts.length})
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -220,6 +241,63 @@ export function DocumentosScreen() {
               </View>
             ))
           ))}
+        {tab === 'rec' && (
+          <>
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={[styles.button, { flexDirection: 'row', gap: 8 }]}
+              onPress={() => navigation.navigate('ReceiptNew')}
+            >
+              <Plus size={16} color="#FFFFFF" />
+              <Text style={styles.buttonText}>Novo recibo</Text>
+            </TouchableOpacity>
+            {receipts.length === 0 ? (
+              <View style={styles.empty}>
+                <Inbox size={32} color="#94A3B8" strokeWidth={1.5} />
+                <Text style={styles.emptyText}>
+                  Nenhum recibo ainda. Ele é gerado quando um recebimento é marcado como pago.
+                </Text>
+              </View>
+            ) : (
+              receipts.map((r) => (
+                <View key={r.id} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <ReceiptText size={16} color="#6D28D9" />
+                    <Text style={styles.cardNumber}>nº {receiptNo(r.receipt_number)}</Text>
+                  </View>
+                  <Text style={styles.cardTitle}>{r.customer.name}</Text>
+                  <Text style={styles.cardMeta}>
+                    {formatMoney(r.amount)} · {receiptOrigin(r)} · {methodLabel(r.method)} ·{' '}
+                    {new Date(r.paid_at ?? r.created_at).toLocaleDateString('pt-BR')}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      style={styles.downloadBtn}
+                      onPress={() => navigation.navigate('Receipt', { id: r.id })}
+                    >
+                      <ReceiptText size={14} color="#6D28D9" />
+                      <Text style={styles.downloadBtnText}>Abrir</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      style={styles.downloadBtn}
+                      onPress={() =>
+                        void shareReceiptPdf(r.id, receiptNo(r.receipt_number)).catch(
+                          (error: unknown) =>
+                            Alert.alert('Erro', documentosError(error, 'download')),
+                        )
+                      }
+                    >
+                      <Download size={14} color="#6D28D9" />
+                      <Text style={styles.downloadBtnText}>Baixar / compartilhar PDF</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </>
+        )}
       </ScrollView>
     </View>
   );

@@ -2,24 +2,36 @@ import React from 'react';
 import { Alert, Text, View } from 'react-native';
 import {
   ClipboardList,
-  CreditCard,
-  FileStack,
+  DollarSign,
+  FileText,
+  FolderOpen,
   LogOut,
+  Package,
+  ReceiptText,
   Settings,
-  Tag,
-  User,
-  Users,
-  Wallet,
+  Star,
 } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
-import { useEasyMode } from '../EasyModeContext';
+import { easy } from '../data';
 import { useEasyNav } from '../draft';
-import { C, Card, H1, Page, Row, SectionLabel, Toggle, s } from '../ui';
+import { useSheet } from '../sheet';
+import { Card, H1, Page, Row, s, useLoad } from '../ui';
+
+const PLAN: Record<string, string> = {
+  LIVRE: 'Orcivo Livre',
+  SOLO: 'Orcivo Solo',
+  MAIS: 'Orcivo Mais',
+  EQUIPE: 'Orcivo Equipe',
+};
 
 export function MenuScreen() {
   const nav = useEasyNav();
+  const sheet = useSheet();
   const { user, company, logout } = useAuth();
-  const { setEasy } = useEasyMode();
+  const summary = useLoad(easy.summary, 'Não foi possível carregar o resumo.');
+  const pending = summary.data?.kpis.os_pending;
+  const companyInfo = useLoad(easy.company, 'Não foi possível carregar a empresa.');
+  const plan = PLAN[companyInfo.data?.plan_code ?? 'LIVRE'] ?? 'Orcivo Livre';
 
   return (
     <Page top>
@@ -29,44 +41,64 @@ export function MenuScreen() {
         <Text style={s.muted}>{company?.trade_name}</Text>
       </View>
 
-      <SectionLabel>Trabalho</SectionLabel>
       <Card style={{ overflow: 'hidden' }}>
         <Row
           icon={ClipboardList}
-          label="Serviços"
-          sub="Hoje e em andamento"
+          label="Serviços de hoje"
+          sub={pending !== undefined ? `${pending} para fazer` : 'O que fazer hoje'}
           onPress={() => nav.navigate('Services')}
         />
         <Row
-          icon={Wallet}
+          icon={DollarSign}
           label="Financeiro"
-          sub="Receber e ver o que entrou"
+          sub="Recebido e a receber"
           onPress={() => nav.navigate('Money')}
         />
-        <Row icon={Tag} label="Meus serviços e preços" onPress={() => nav.navigate('Catalog')} />
-        <Row icon={FileStack} label="Documentos" onPress={() => nav.navigate('Documentos')} />
-      </Card>
-
-      <SectionLabel>Conta e empresa</SectionLabel>
-      <Card style={{ overflow: 'hidden' }}>
-        <Row icon={User} label="Minha conta" onPress={() => nav.navigate('Conta')} />
-        <Row icon={Users} label="Equipe" onPress={() => nav.navigate('Equipe')} />
+        <Row
+          icon={ReceiptText}
+          label="Recibos"
+          sub="Gerados ao receber um pagamento"
+          onPress={() => nav.navigate('Receipts')}
+        />
+        <Row
+          icon={FolderOpen}
+          label="Documentos"
+          sub="Orçamentos, serviços e recibos"
+          onPress={() =>
+            sheet({
+              title: 'Documentos',
+              sub: 'Escolha o tipo',
+              actions: [
+                {
+                  label: 'Orçamentos',
+                  icon: FileText,
+                  run: () => nav.navigate('EasyTabs', { screen: 'Orcamentos' }),
+                },
+                { label: 'Serviços', icon: ClipboardList, run: () => nav.navigate('Services') },
+                { label: 'Recibos', icon: ReceiptText, run: () => nav.navigate('Receipts') },
+                {
+                  label: 'Todos os PDFs',
+                  sub: 'Lista completa para baixar',
+                  icon: FolderOpen,
+                  run: () => nav.navigate('Documentos'),
+                },
+              ],
+            })
+          }
+        />
+        <Row
+          icon={Package}
+          label="Meus serviços e preços"
+          sub="Itens e preços dos orçamentos"
+          onPress={() => nav.navigate('Catalog')}
+        />
         <Row
           icon={Settings}
           label="Configurações"
-          sub="Dados da empresa, Pix, aprovação"
-          onPress={() => nav.navigate('Configuracoes')}
+          sub="Modo fácil, empresa, Pix, aprovação"
+          onPress={() => nav.navigate('Settings')}
         />
-        <Row icon={CreditCard} label="Plano e assinatura" onPress={() => nav.navigate('Plano')} />
-      </Card>
-
-      <Card style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
-        <Toggle
-          on
-          onChange={(on) => !on && setEasy(false)}
-          label="Modo fácil"
-          sub="Desligue para ver o app completo. Dá para voltar pelo menu Mais."
-        />
+        <Row icon={Star} label="Meu plano" sub={plan} onPress={() => nav.navigate('Plano')} />
       </Card>
 
       <Card style={{ overflow: 'hidden' }}>
@@ -82,7 +114,6 @@ export function MenuScreen() {
           }
         />
       </Card>
-      <Text style={[s.muted, { textAlign: 'center', color: C.fg4 }]}>Orcivo</Text>
     </Page>
   );
 }

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Alert, Share, Text, View } from 'react-native';
 import {
+  ClipboardList,
+  Download,
   FileText,
   Link2,
+  MoreHorizontal,
   MessageCircle,
   Plus,
   Undo2,
@@ -14,6 +17,8 @@ import {
 import { formatMoney } from '@orcivo/shared-types';
 import { easy, errorText, type EasyQuote, type QuoteStatus } from '../data';
 import { approvalUrl, emptyDraft, openWhatsApp, useDraft, useEasyNav } from '../draft';
+import { reasonSheet, useSheet, type SheetAction } from '../sheet';
+import { shareQuotePdf } from '../share';
 import {
   Btn,
   C,
@@ -23,10 +28,7 @@ import {
   ErrorBox,
   H1,
   Loading,
-  More,
   Page,
-  ReasonModal,
-  Row,
   s,
   useLoad,
   type ChipKind,
@@ -90,12 +92,23 @@ const ACTIONS: Record<
   },
 };
 // Same transitions the full screen offers (backend validates them again).
-const ACTIONS_BY_STATUS: Partial<Record<QuoteStatus, Action[]>> = {
-  DRAFT: ['cancel'],
-  SENT: ['reject', 'cancel'],
-  REJECTED: ['reopen', 'correct'],
-  CANCELLED: ['reopen', 'correct'],
-  EXPIRED: ['reopen', 'correct'],
+const REASONS: Record<Action, { title: string; reasons: string[] }> = {
+  reject: {
+    title: 'Por que o cliente recusou?',
+    reasons: ['Achou caro', 'Fechou com outro', 'Desistiu do serviço', 'Outro motivo'],
+  },
+  cancel: {
+    title: 'Por que cancelar?',
+    reasons: ['Cliente desistiu', 'Feito por engano', 'Itens ou valor errados', 'Outro motivo'],
+  },
+  reopen: {
+    title: 'Por que reabrir?',
+    reasons: ['Cliente pediu de novo', 'Renovar a validade', 'Outro motivo'],
+  },
+  correct: {
+    title: 'O que vai corrigir?',
+    reasons: ['Mudar itens ou preços', 'Mudar condições ou validade', 'Outro motivo'],
+  },
 };
 
 export function QuotesScreen() {
@@ -189,11 +202,41 @@ function Section({
   );
 }
 
-function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
-  const nav = useEasyNav();
-  const chip = quoteChip(q.status);
-  const [action, setAction] = useState<Action | null>(null);
-  const actions = ACTIONS_BY_STATUS[q.status] ?? [];
+/**
+ * Quote "Mais ações" (link, PDF, recusar, cancelar, reabrir, corrigir with reason).
+ * Shared by the easy list and the full-mode quote detail. `onSchedule` adds
+ * "Criar serviço" for approved quotes where the caller has an agenda form.
+ */
+export function useQuoteMore(
+  q: Pick<EasyQuote, 'id' | 'number' | 'status' | 'total' | 'customer'>,
+  onChanged: () => void,
+  onSchedule?: () => void,
+) {
+  const sheet = useSheet();
+
+  const run = (action: Action) =>
+    reasonSheet(
+      sheet,
+      REASONS[action].title,
+      REASONS[action].reasons,
+      async (reason) => {
+        try {
+          await easy.quoteAction(q.id, action, reason);
+          Alert.alert('Pronto', ACTIONS[action].done);
+          onChanged();
+        } catch (err) {
+          Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
+        }
+      },
+      ACTIONS[action].icon,
+    );
+  const pdf = async () => {
+    try {
+      await shareQuotePdf(q.id, q.number);
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível preparar o PDF.'));
+    }
+  };
 
   const link = async () => {
     try {
@@ -209,11 +252,68 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
       return Alert.alert('Atenção', 'Este orçamento não tem telefone ou link para reenviar.');
     void openWhatsApp(share.phone, share.url, `#${share.number}`);
   };
+  const openMore = () => {
+    const pdfAct: SheetAction = {
+      label: 'Baixar ou compartilhar PDF',
+      icon: Download,
+      run: () => void pdf(),
+    };
+    const linkAct: SheetAction = {
+      label: 'Copiar ou compartilhar link',
+      icon: Link2,
+      run: () => void shareLink(),
+    };
+    const act = (a: Action): SheetAction => ({
+      label: ACTIONS[a].label,
+      icon: ACTIONS[a].icon,
+      danger: ACTIONS[a].danger,
+      run: () => run(a),
+    });
+    const actions: SheetAction[] =
+      q.status === 'SENT'
+        ? [linkAct, act('correct'), pdfAct, act('reject'), act('cancel')]
+        : q.status === 'APPROVED'
+          ? [
+              ...(onSchedule
+                ? [
+                    {
+                      label: 'Criar serviço',
+                      sub: 'Marcar na agenda',
+                      icon: ClipboardList,
+                      run: onSchedule,
+                    },
+                  ]
+                : []),
+              pdfAct,
+              linkAct,
+              act('cancel'),
+            ]
+          : q.status === 'DRAFT'
+            ? [pdfAct, { ...act('cancel'), label: 'Descartar rascunho' }]
+            : [act('reopen'), act('correct'), pdfAct];
+    sheet({
+      title: q.customer?.name ?? `Orçamento #${q.number}`,
+      sub: `#${q.number} · ${formatMoney(q.total)}`,
+      actions,
+    });
+  };
   const shareLink = async () => {
     const share = await link();
     if (!share) return Alert.alert('Atenção', 'Este orçamento ainda não tem link de aprovação.');
     void Share.share({ message: share.url });
   };
+  return { openMore, resend, shareLink };
+}
+
+function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
+  const nav = useEasyNav();
+  const chip = quoteChip(q.status);
+  const { openMore, resend } = useQuoteMore(q, onChanged, () =>
+    nav.navigate('AgendaNew', {
+      client: { id: q.customer.id, name: q.customer.name },
+      type: 'INSTALACAO',
+    }),
+  );
 
   return (
     <Card style={{ padding: 16, gap: 12 }}>
@@ -250,45 +350,9 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
       >
         Abrir
       </Btn>
-      {q.status === 'SENT' || actions.length ? (
-        <More>
-          <Card style={{ overflow: 'hidden' }}>
-            {q.status === 'SENT' ? (
-              <Row
-                icon={Link2}
-                label="Copiar ou compartilhar link"
-                onPress={() => void shareLink()}
-              />
-            ) : null}
-            {actions.map((a) => (
-              <Row
-                key={a}
-                icon={ACTIONS[a].icon}
-                label={ACTIONS[a].label}
-                danger={ACTIONS[a].danger}
-                onPress={() => setAction(a)}
-              />
-            ))}
-          </Card>
-        </More>
-      ) : null}
-      <ReasonModal
-        title={action ? ACTIONS[action].title : null}
-        confirm={action ? ACTIONS[action].title : ''}
-        danger={action ? ACTIONS[action].danger : false}
-        onClose={() => setAction(null)}
-        onConfirm={async (reason) => {
-          if (!action) return;
-          try {
-            await easy.quoteAction(q.id, action, reason);
-            Alert.alert('Pronto', ACTIONS[action].done);
-            setAction(null);
-            onChanged();
-          } catch (err) {
-            Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
-          }
-        }}
-      />
+      <Btn tone="link" icon={MoreHorizontal} onPress={openMore}>
+        Mais ações
+      </Btn>
     </Card>
   );
 }

@@ -20,13 +20,7 @@ import {
 } from 'lucide-react-native';
 import { formatMoney, maskPhone, multiplyDecimal, type QuoteCreateDto } from '@orcivo/shared-types';
 import { newIdempotencyKey } from '../../services/api';
-import {
-  easy,
-  errorText,
-  type ApprovalMethod,
-  type EasyCatalogItem,
-  type EasyClient,
-} from '../data';
+import { easy, errorText, type EasyCatalogItem, type EasyClient } from '../data';
 import {
   DEFAULT_TERMS,
   approvalUrl,
@@ -58,7 +52,9 @@ import {
   useLoad,
 } from '../ui';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { EasyStackParamList } from '../EasyNavigator';
+import { approvalsSummary } from './Settings';
 
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const key = () => Math.random().toString(36).slice(2);
@@ -376,16 +372,6 @@ function StepBtn({
 }
 
 // ── 3. Revisar e enviar ───────────────────────────────────────────────
-const APPROVALS: Array<{ k: ApprovalMethod; label: string; sub: string }> = [
-  { k: 'APPROVE_BUTTON', label: 'Botão Aprovar', sub: 'O cliente só toca em Aprovar' },
-  { k: 'TYPED_NAME', label: 'Nome digitado', sub: 'O cliente escreve o nome completo' },
-  {
-    k: 'DRAWN_SIGNATURE',
-    label: 'Assinatura com o dedo',
-    sub: 'O cliente assina na tela do celular',
-  },
-  { k: 'PHOTO_SIGNATURE', label: 'Foto da assinatura', sub: 'O cliente manda foto da assinatura' },
-];
 
 export function QuoteReviewScreen() {
   const nav = useEasyNav();
@@ -400,7 +386,20 @@ export function QuoteReviewScreen() {
   const saved = draft.savedSignature;
 
   useEffect(() => {
-    if (draft.terms === '') setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
+    // First visit: the company's Condições padrão fill terms and validity.
+    if (draft.terms === '') {
+      setDraft((d) => ({ ...d, terms: DEFAULT_TERMS }));
+      easy
+        .company()
+        .then((c) =>
+          setDraft((d) => ({
+            ...d,
+            terms: c.quote_default_terms ?? d.terms,
+            validityDays: c.quote_default_validity_days ?? d.validityDays,
+          })),
+        )
+        .catch(() => undefined);
+    }
     if (draft.savedSignature !== undefined) return;
     easy
       .signature()
@@ -430,22 +429,6 @@ export function QuoteReviewScreen() {
       : draft.signature.mode === 'saved'
         ? saved
         : null;
-
-  const toggleApproval = async (k: ApprovalMethod) => {
-    const cur = approvals.data ?? [];
-    const next = cur.includes(k) ? cur.filter((m) => m !== k) : [...cur, k];
-    if (!next.length) return Alert.alert('Atenção', 'Pelo menos uma forma fica ligada.');
-    approvals.setData(next);
-    try {
-      await easy.setApprovalMethods(next);
-    } catch (err) {
-      approvals.setData(cur);
-      Alert.alert(
-        'Não deu certo',
-        errorText(err, 'Não foi possível salvar as formas de aprovação.'),
-      );
-    }
-  };
 
   const send = async () => {
     if (busy || !draft.client) return;
@@ -595,56 +578,19 @@ export function QuoteReviewScreen() {
         </Btn>
       </Card>
 
-      <Card style={{ padding: 16, gap: 10 }}>
-        <Text style={[s.body, { fontWeight: '700', fontSize: 18 }]}>Como o cliente aprova</Text>
-        <Text style={s.muted}>
-          O cliente escolhe no link do WhatsApp. Pelo menos uma fica ligada. Vale para todos os
-          orçamentos.
-        </Text>
-        {approvals.error ? (
-          <ErrorBox message={approvals.error} onRetry={approvals.refresh} />
-        ) : null}
-        {APPROVALS.map((a) => {
-          const on = (approvals.data ?? []).includes(a.k);
-          return (
-            <Pressable
-              key={a.k}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: on }}
-              onPress={() => void toggleApproval(a.k)}
-              style={{
-                minHeight: 68,
-                borderRadius: 16,
-                borderWidth: 2,
-                borderColor: on ? C.purple : C.border,
-                backgroundColor: on ? C.purple50 : '#FFFFFF',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                padding: 12,
-              }}
-            >
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 9,
-                  borderWidth: 2,
-                  borderColor: on ? C.purple : '#94A3B8',
-                  backgroundColor: on ? C.purple : '#FFFFFF',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {on ? <Check size={18} color="#FFFFFF" /> : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.body, { fontWeight: '600' }]}>{a.label}</Text>
-                <Text style={s.muted}>{a.sub}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
+      <Card
+        onPress={() => nav.navigate('Approvals')}
+        label="Mudar como o cliente aprova"
+        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[s.body, { fontWeight: '700', fontSize: 18 }]}>Como o cliente aprova</Text>
+          <Text style={s.muted}>
+            {approvals.data ? approvalsSummary(approvals.data) : '…'}. Vale para todos os
+            orçamentos.
+          </Text>
+        </View>
+        <Text style={{ fontSize: 17, fontWeight: '600', color: C.purple700 }}>Mudar</Text>
       </Card>
 
       <More>
@@ -727,6 +673,9 @@ function svgToFile(svg: Svg | null): Promise<string> {
 
 export function QuoteSignScreen() {
   const nav = useEasyNav();
+  const route = useRoute<RouteProp<EasyStackParamList, 'QuoteSign'>>();
+  // From Configurações or a receipt: only saves the reusable signature.
+  const standalone = !!route.params?.standalone;
   const { setDraft } = useDraft();
   const [method, setMethod] = useState<SigMethod>('DRAWN');
   const [typed, setTyped] = useState('');
@@ -772,11 +721,17 @@ export function QuoteSignScreen() {
         method === 'PHOTO'
           ? photo
           : await svgToFile(method === 'TYPED' ? typedRef.current : drawnRef.current);
-      if (!save) {
+      if (!save && !standalone) {
         setDraft((d) => ({ ...d, signature: { mode: 'once', uri } }));
       } else {
         const r = await easy.saveSignature(uri);
-        setDraft((d) => ({ ...d, savedSignature: r.signature_url, signature: { mode: 'saved' } }));
+        if (standalone) Alert.alert('Pronto', 'Assinatura salva. Vale para orçamentos e recibos.');
+        else
+          setDraft((d) => ({
+            ...d,
+            savedSignature: r.signature_url,
+            signature: { mode: 'saved' },
+          }));
       }
       nav.goBack();
     } catch (err) {
@@ -790,16 +745,24 @@ export function QuoteSignScreen() {
     <Page
       bar={
         <Btn disabled={!ok} busy={busy} onPress={() => void confirm()}>
-          {method === 'NONE' ? 'Enviar sem assinatura' : 'Usar esta assinatura'}
+          {method === 'NONE'
+            ? 'Enviar sem assinatura'
+            : standalone
+              ? 'Salvar assinatura'
+              : 'Usar esta assinatura'}
         </Btn>
       }
     >
       <View style={{ gap: 4 }}>
         <H1 size={32}>Sua assinatura</H1>
-        <Sub>Escolha como quer assinar.</Sub>
+        <Sub>
+          {standalone
+            ? 'Fica salva para usar nos orçamentos e recibos.'
+            : 'Escolha como quer assinar.'}
+        </Sub>
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-        {SIG_METHODS.map((m) => {
+        {SIG_METHODS.filter((m) => !standalone || m.k !== 'NONE').map((m) => {
           const on = method === m.k;
           const Icon = m.icon;
           return (
@@ -890,7 +853,7 @@ export function QuoteSignScreen() {
         </>
       ) : null}
 
-      {method !== 'NONE' ? (
+      {method !== 'NONE' && !standalone ? (
         <Toggle
           on={save}
           onChange={setSave}

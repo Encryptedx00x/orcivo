@@ -14,6 +14,10 @@ import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
 import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 import type { CatalogItem } from '../services/catalog.service';
+import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from '../easy/screens/Receipts';
+import { ApprovalsScreen, EditScreen } from '../easy/screens/Settings';
+import { QuoteSignScreen } from '../easy/screens/QuoteFlow';
+import { ClientNewScreen } from '../easy/screens/Clients';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEasyMode } from '../easy/EasyModeContext';
 
@@ -28,6 +32,13 @@ export type MaisStackParamList = {
   Documentos: undefined;
   Plano: undefined;
   EmBreve: { title: string };
+  Receipts: undefined;
+  Receipt: { id: string };
+  ReceiptNew: { link?: boolean; clientId?: string } | undefined;
+  QuoteSign: { standalone?: boolean } | undefined;
+  Approvals: undefined;
+  Edit: { kind: string; id?: string; name?: string; price?: string; amount?: string; due?: string };
+  ClientNew: { forReceipt?: boolean } | undefined;
   Catalog: undefined;
   CatalogItemForm: { item?: CatalogItem } | undefined;
   WorkOrderList: undefined;
@@ -51,6 +62,7 @@ type MaisMenuItem =
         | 'Conta'
         | 'Equipe'
         | 'Financeiro'
+        | 'Receipts'
         | 'Documentos'
         | 'Plano';
     }
@@ -60,6 +72,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Ordens de Serviço', screen: 'WorkOrderList' },
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'Financeiro' },
+  { label: 'Recibos', screen: 'Receipts' },
   { label: 'Documentos', screen: 'Documentos' },
   { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
@@ -139,6 +152,31 @@ export function MaisStack() {
         name="EmBreve"
         component={EmBreveScreen}
         options={({ route }) => ({ title: route.params.title ?? 'Em breve' })}
+      />
+
+      {/* Recibos, assinatura, aprovação e edições — same screens as the easy mode. */}
+      <Stack.Screen name="Receipts" component={ReceiptsScreen} options={{ title: 'Recibos' }} />
+      <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Recibo' }} />
+      <Stack.Screen
+        name="ReceiptNew"
+        component={ReceiptNewScreen}
+        options={{ title: 'Novo recibo' }}
+      />
+      <Stack.Screen
+        name="QuoteSign"
+        component={QuoteSignScreen as React.ComponentType<object>}
+        options={{ title: 'Minha assinatura' }}
+      />
+      <Stack.Screen
+        name="Approvals"
+        component={ApprovalsScreen}
+        options={{ title: 'Como o cliente aprova' }}
+      />
+      <Stack.Screen name="Edit" component={EditScreen} options={{ title: 'Editar' }} />
+      <Stack.Screen
+        name="ClientNew"
+        component={ClientNewScreen as React.ComponentType<object>}
+        options={{ title: 'Cliente novo' }}
       />
 
       {/* Catálogo */}

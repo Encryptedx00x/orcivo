@@ -306,6 +306,7 @@ export function ClientNewScreen({
 }: NativeStackScreenProps<EasyStackParamList, 'ClientNew'>) {
   const edit = route.params?.edit;
   const forQuote = route.params?.forQuote;
+  const forReceipt = route.params?.forReceipt;
   const { setDraft } = useDraft();
   const [name, setName] = useState(edit?.name ?? '');
   const [phone, setPhone] = useState(maskPhone(edit?.phone ?? ''));
@@ -319,7 +320,10 @@ export function ClientNewScreen({
       const saved: EasyClient = edit
         ? await easy.updateClient(edit.id, name, phone)
         : await easy.createClient(name, phone);
-      if (forQuote) {
+      if (forReceipt) {
+        // Back to Novo recibo; its client list reloads on focus.
+        navigation.goBack();
+      } else if (forQuote) {
         setDraft((d) => ({ ...d, client: saved }));
         navigation.replace('QuoteItems');
       } else if (edit) {

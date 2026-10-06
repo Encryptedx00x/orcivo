@@ -65,8 +65,9 @@ export const api = {
     return mutate<T>('PATCH', path, body, opts);
   },
 
-  delete<T>(path: string, opts?: WriteOptions): Promise<T> {
-    return mutate<T>('DELETE', path, undefined, opts);
+  /** `body` for deletes the backend audits with a reason (e.g. payments). */
+  delete<T>(path: string, opts?: WriteOptions, body?: unknown): Promise<T> {
+    return mutate<T>('DELETE', path, body, opts);
   },
 
   postFormData<T>(path: string, formData: FormData, opts?: WriteOptions): Promise<T> {

@@ -19,6 +19,8 @@ import { ServicesScreen, RunScreen } from './screens/Services';
 import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
 import { MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
+import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
+import { SettingsScreen, ApprovalsScreen, EditScreen } from './screens/Settings';
 // Full screens reused behind "Mais opções" — Modo fácil never removes a capability.
 import { QuoteDetailScreen } from '../screens/QuoteDetailScreen';
 import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
@@ -48,13 +50,19 @@ export type EasyStackParamList = {
   QuoteClient: undefined;
   QuoteItems: undefined;
   QuoteReview: undefined;
-  QuoteSign: undefined;
+  QuoteSign: { standalone?: boolean } | undefined;
   QuoteDone: { number: number; total: string; name: string };
   ClientDetail: { id: string };
-  ClientNew: { forQuote?: boolean; edit?: EasyClient } | undefined;
+  ClientNew: { forQuote?: boolean; forReceipt?: boolean; edit?: EasyClient } | undefined;
   Services: undefined;
   Run: { id: string };
   Money: undefined;
+  Receipts: undefined;
+  Receipt: { id: string };
+  ReceiptNew: { link?: boolean; clientId?: string } | undefined;
+  Settings: undefined;
+  Approvals: undefined;
+  Edit: { kind: string; id?: string; name?: string; price?: string; amount?: string; due?: string };
   AgendaNew:
     | {
         edit?: EasyAppointment;
@@ -179,6 +187,24 @@ export function EasyNavigator() {
         <Stack.Screen name="Services" component={ServicesScreen} options={{ title: 'Serviços' }} />
         <Stack.Screen name="Run" component={RunScreen} options={{ title: 'Serviço' }} />
         <Stack.Screen name="Money" component={MoneyScreen} options={{ title: 'Financeiro' }} />
+        <Stack.Screen name="Receipts" component={ReceiptsScreen} options={{ title: 'Recibos' }} />
+        <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Recibo' }} />
+        <Stack.Screen
+          name="ReceiptNew"
+          component={ReceiptNewScreen}
+          options={{ title: 'Novo recibo' }}
+        />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ title: 'Configurações' }}
+        />
+        <Stack.Screen
+          name="Approvals"
+          component={ApprovalsScreen}
+          options={{ title: 'Como o cliente aprova' }}
+        />
+        <Stack.Screen name="Edit" component={EditScreen} options={{ title: 'Editar' }} />
         <Stack.Screen
           name="AgendaNew"
           component={AgendaNewScreen}

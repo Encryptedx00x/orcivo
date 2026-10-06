@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,12 +9,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CheckCircle, Clock, FileText, MessageCircle, XCircle } from 'lucide-react-native';
+import {
+  CheckCircle,
+  Clock,
+  FileText,
+  MessageCircle,
+  MoreHorizontal,
+  XCircle,
+} from 'lucide-react-native';
+import { Switch } from 'react-native';
+import { easy } from '../easy/data';
+import { approvalUrl as approvalUrlOf } from '../easy/draft';
+import { useQuoteMore } from '../easy/screens/Quotes';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { formatMoney } from '@orcivo/shared-types';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
-import { newIdempotencyKey } from '../services/api';
 
 import { AuditHistorySection } from './WorkOrderDetailScreen';
 
@@ -45,15 +55,25 @@ function buildWhatsAppLink(phone: string, message: string): string {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
-export function QuoteDetailScreen({ route, navigation }: Props) {
-  const sendKey = useRef(newIdempotencyKey());
-  const cancelKey = useRef(newIdempotencyKey());
+export function QuoteDetailScreen({ route }: Props) {
   const { id } = route.params;
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
+  const [sentUrl, setApprovalUrl] = useState<string | null>(null);
+  const [savedSig, setSavedSig] = useState<string | null>(null);
+  const [applySig, setApplySig] = useState(true);
+  // A quote sent earlier still has its link: rebuild it from the approval token.
+  const approvalUrl =
+    sentUrl ?? (quote?.approval_token ? approvalUrlOf(quote.approval_token) : null);
+
+  useEffect(() => {
+    easy
+      .signature()
+      .then((r) => setSavedSig(r.signature_url))
+      .catch(() => setSavedSig(null));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -76,8 +96,8 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
     if (!quote) return;
     try {
       setSending(true);
-      const result = await quoteService.sendQuote(quote.id, { idempotencyKey: sendKey.current });
-      setApprovalUrl(result.approvalUrl);
+      const result = await easy.sendQuote(quote.id, !!savedSig && applySig);
+      setApprovalUrl(result.approvalUrl ?? null);
       // Recarrega para atualizar status para SENT
       await load();
     } catch {
@@ -87,26 +107,10 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
     }
   };
 
-  const handleCancel = () => {
-    if (!quote) return;
-    Alert.alert('Cancelar orçamento', 'Tem certeza que deseja cancelar este orçamento?', [
-      { text: 'Voltar', style: 'cancel' },
-      {
-        text: 'Cancelar orçamento',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await quoteService.cancelQuote(quote.id, undefined, {
-              idempotencyKey: cancelKey.current,
-            });
-            navigation.goBack();
-          } catch {
-            Alert.alert('Erro', 'Não foi possível cancelar o orçamento.');
-          }
-        },
-      },
-    ]);
-  };
+  const { openMore } = useQuoteMore(
+    quote ?? { id, number: 0, status: 'DRAFT', total: '0', customer: { id: '', name: '' } },
+    () => void load(),
+  );
 
   const handleWhatsApp = () => {
     if (!quote) return;
@@ -223,9 +227,22 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
               <Text style={styles.primaryBtnText}>Enviar orçamento</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.dangerBtn} onPress={handleCancel}>
-            <Text style={styles.dangerBtnText}>Cancelar orçamento</Text>
-          </TouchableOpacity>
+          {savedSig ? (
+            <View style={styles.sigRow}>
+              <Text style={styles.sigLabel}>Aplicar minha assinatura salva</Text>
+              <Switch
+                value={applySig}
+                onValueChange={setApplySig}
+                trackColor={{ true: '#6D28D9', false: '#CBD5E1' }}
+                thumbColor="#FFFFFF"
+                accessibilityLabel="Aplicar minha assinatura salva ao enviar"
+              />
+            </View>
+          ) : (
+            <Text style={styles.sigHint}>
+              Sem assinatura salva. Salve uma em Mais › Configurações › Minha assinatura.
+            </Text>
+          )}
         </View>
       )}
 
@@ -252,12 +269,36 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
           <Text style={styles.approvedText}>Aprovado — OS criada</Text>
         </View>
       )}
+      <TouchableOpacity accessibilityRole="button" style={styles.moreBtn} onPress={openMore}>
+        <MoreHorizontal size={20} color="#6D28D9" />
+        <Text style={styles.moreBtnText}>Mais ações</Text>
+      </TouchableOpacity>
       <AuditHistorySection key={`${id}:${quote.status}`} entityType="quote" entityId={id} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  sigRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  sigLabel: { fontSize: 14, color: '#0A0A0F', flex: 1 },
+  sigHint: { fontSize: 13, color: '#6B7280' },
+  moreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  moreBtnText: { fontSize: 15, fontWeight: '600', color: '#6D28D9' },
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   content: { padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },

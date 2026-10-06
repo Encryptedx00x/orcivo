@@ -1,7 +1,19 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react-native';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  User,
+  XCircle,
+} from 'lucide-react-native';
+import { Linking } from 'react-native';
+import { useSheet } from '../sheet';
 import { easy, errorText, type EasyAppointment } from '../data';
 import { useEasyNav } from '../draft';
 import type { EasyStackParamList } from '../EasyNavigator';
@@ -119,6 +131,17 @@ export function AgendaScreen() {
   const appts = useLoad(load, 'Não foi possível carregar a agenda.');
   const events = (appts.data ?? []).slice().sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
+  const sheet = useSheet();
+  const call = async (clientId: string) => {
+    try {
+      const c = await easy.client(clientId);
+      const digits = (c.phone ?? '').replace(/\D/g, '');
+      if (!digits) return Alert.alert('Atenção', 'Este cliente não tem telefone.');
+      await Linking.openURL(`tel:${digits}`);
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível ligar.'));
+    }
+  };
   const unmark = (a: EasyAppointment) =>
     Alert.alert('Desmarcar', `Desmarcar ${a.title}?`, [
       { text: 'Voltar', style: 'cancel' },
@@ -169,18 +192,41 @@ export function AgendaScreen() {
             {e.customer?.name ?? 'Sem cliente'}
           </Text>
           <Text style={s.muted}>{typeLabel(e.type)}</Text>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            <Btn
-              tone="link"
-              style={{ flex: 1, width: undefined }}
-              onPress={() => nav.navigate('AgendaNew', { edit: e })}
-            >
-              Remarcar
-            </Btn>
-            <Btn tone="link" style={{ flex: 1, width: undefined }} onPress={() => unmark(e)}>
-              <Text style={{ color: '#B91C1C' }}>Desmarcar</Text>
-            </Btn>
-          </View>
+          <Btn
+            tone="link"
+            icon={MoreHorizontal}
+            onPress={() =>
+              sheet({
+                title: e.title,
+                sub: e.ends_at ? `${hhmm(e.starts_at)} até ${hhmm(e.ends_at)}` : hhmm(e.starts_at),
+                actions: [
+                  {
+                    label: 'Remarcar',
+                    sub: 'Escolher outro dia ou hora',
+                    icon: CalendarIcon,
+                    run: () => nav.navigate('AgendaNew', { edit: e }),
+                  },
+                  ...(e.customer
+                    ? [
+                        {
+                          label: 'Ligar para o cliente',
+                          icon: Phone,
+                          run: () => void call(e.customer!.id),
+                        },
+                        {
+                          label: 'Ver cliente',
+                          icon: User,
+                          run: () => nav.navigate('ClientDetail', { id: e.customer!.id }),
+                        },
+                      ]
+                    : []),
+                  { label: 'Desmarcar', icon: XCircle, danger: true, run: () => unmark(e) },
+                ],
+              })
+            }
+          >
+            Mais
+          </Btn>
         </Card>
       </View>,
     );

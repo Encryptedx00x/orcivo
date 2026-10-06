@@ -73,6 +73,9 @@ export interface EasyPayment {
   due_date: string | null;
   paid_at: string | null;
   customer?: { id: string; name: string } | null;
+  receipt_number?: number | null;
+  work_order?: { id: string; number: number } | null;
+  quote?: { id: string; number: number } | null;
 }
 
 const list = <T>(res: { data: T[] } | T[]): T[] => (Array.isArray(res) ? res : res.data);
@@ -208,4 +211,112 @@ export const easy = {
       method,
       paid_at: new Date().toISOString(),
     }),
+  /** Value / due date change; the backend requires a justification (audit). */
+  updatePayment: (
+    id: string,
+    input: { amount?: string; due_date?: string | null; method?: string; justification: string },
+  ) => api.patch<EasyPayment>(`/payments/${enc(id)}`, input),
+  deletePayment: (id: string, justification: string) =>
+    api.delete(`/payments/${enc(id)}`, undefined, { justification }),
+
+  // ── Recibos (a paid payment with receipt_number) ──
+  receipts: async () => list(await api.get<{ data: EasyReceipt[] }>('/payments?receipts=true')),
+  receipt: (id: string) => api.get<EasyReceipt>(`/payments/${enc(id)}`),
+  createReceipt: async (input: {
+    customer_id: string;
+    amount: string;
+    method: string;
+    paid_at: string;
+    description?: string;
+    work_order_id?: string;
+    quote_id?: string;
+  }) => {
+    const created = await api.post<{ id: string }>('/payments', {
+      ...input,
+      status: 'PAID',
+      description: input.description?.trim() || undefined,
+    });
+    return api.get<EasyReceipt>(`/payments/${enc(created.id)}`);
+  },
+  setReceiptSignature: (id: string, apply: boolean) =>
+    api.patch<EasyReceipt>(`/payments/${enc(id)}/receipt-signature`, { apply }),
+
+  // ── Empresa / Configurações ──
+  company: () => api.get<EasyCompany>('/company/me'),
+  updateCompany: (body: Record<string, unknown>) => api.patch<EasyCompany>('/company/me', body),
+  uploadLogo: (uri: string) => {
+    const form = new FormData();
+    const png = uri.toLowerCase().endsWith('.png');
+    form.append('file', {
+      uri,
+      type: png ? 'image/png' : 'image/jpeg',
+      name: png ? 'logo.png' : 'logo.jpg',
+    } as unknown as Blob);
+    return api.putFormData<EasyCompany>('/company/logo', form);
+  },
+  removeLogo: () => api.delete<EasyCompany>('/company/logo'),
+
+  updateCatalogItem: (id: string, name: string, price: string) =>
+    api.patch<EasyCatalogItem>(`/catalog/${enc(id)}`, { name: name.trim(), sale_price: price }),
+  deleteCatalogItem: (id: string) => api.delete(`/catalog/${enc(id)}`),
+  workOrders100: async () =>
+    list(await api.get<{ data: EasyWorkOrder[] }>('/work-orders?page=1&limit=100')),
 };
+
+export interface EasyReceipt {
+  id: string;
+  receipt_number: number;
+  amount: string;
+  method: string | null;
+  description: string | null;
+  paid_at: string | null;
+  created_at: string;
+  receipt_signature_key: string | null;
+  receipt_signer_name: string | null;
+  receipt_signature_url?: string | null;
+  customer: { id: string; name: string; phone?: string | null };
+  work_order: { id: string; number: number; title?: string | null } | null;
+  quote: { id: string; number: number; title?: string | null } | null;
+}
+
+export interface EasyCompany {
+  trade_name: string;
+  document_type: 'CPF' | 'CNPJ' | null;
+  document: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  pix_key: string | null;
+  logo_url: string | null;
+  plan_code: string;
+  allowed_approval_methods?: ApprovalMethod[];
+  quote_default_terms: string | null;
+  quote_default_validity_days: number | null;
+}
+
+export const RECEIPT_METHODS = [
+  { value: 'PIX', label: 'Pix' },
+  { value: 'DINHEIRO', label: 'Dinheiro' },
+  { value: 'CARTAO', label: 'Cartão' },
+  { value: 'TRANSFERENCIA', label: 'Transferência' },
+  { value: 'BOLETO', label: 'Boleto' },
+  { value: 'OUTRO', label: 'Outro' },
+];
+export const methodLabel = (m: string | null) =>
+  RECEIPT_METHODS.find((x) => x.value === m)?.label ?? 'Não informado';
+export const receiptNo = (n: number) => String(n).padStart(4, '0');
+export function receiptRef(r: Pick<EasyReceipt, 'description' | 'work_order' | 'quote'>): string {
+  const origin = r.work_order
+    ? `Serviço #${r.work_order.number}`
+    : r.quote
+      ? `Orçamento #${r.quote.number}`
+      : null;
+  if (r.description && origin) return `${r.description} (${origin})`;
+  return r.description || origin || 'serviços prestados';
+}
+export const receiptOrigin = (r: Pick<EasyReceipt, 'work_order' | 'quote'>) =>
+  r.work_order
+    ? `Serviço #${r.work_order.number}`
+    : r.quote
+      ? `Orçamento #${r.quote.number}`
+      : 'Avulso';

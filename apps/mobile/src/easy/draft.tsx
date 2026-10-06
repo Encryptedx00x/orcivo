@@ -27,7 +27,7 @@ export interface Draft {
   items: DraftItem[];
   discountType: 'PERCENT' | 'FIXED';
   discountDigits: string;
-  validityDays: 7 | 15 | 30;
+  validityDays: number;
   terms: string;
   signature: SignatureChoice;
   /** null until the saved signature was checked on the review step. */
@@ -58,10 +58,11 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
   return <Ctx.Provider value={{ draft, setDraft }}>{children}</Ctx.Provider>;
 }
 
+const NO_DRAFT = { draft: emptyDraft(), setDraft: () => {} };
+
+/** Outside the easy stack (e.g. the signature screen opened from the full app) there is no draft. */
 export function useDraft() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useDraft outside DraftProvider');
-  return v;
+  return useContext(Ctx) ?? NO_DRAFT;
 }
 
 export const centsToDecimal = (digits: string) => {

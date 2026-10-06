@@ -70,7 +70,7 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
   const nativeWithAlert = { ...native, Alert: { alert: (...args) => alerts.push(args) } };
   const { FinanceiroScreen } = compile('./FinanceiroScreen.tsx', {
     react, 'react-native': nativeWithAlert,
-    '@react-navigation/native': { useFocusEffect(callback) {
+    '@react-navigation/native': { useNavigation: () => ({ navigate() {} }), useFocusEffect(callback) {
       const slot = index++;
       focus = () => { cleanups.get(slot)?.(); cleanups.set(slot, callback()); };
       if (slots[slot] !== callback) {
@@ -79,7 +79,12 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
       }
     } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
-    'lucide-react-native': { Check: 'Check', CircleDollarSign: 'CircleDollarSign', Receipt: 'Receipt', X: 'X' },
+    'lucide-react-native': {
+      Check: 'Check', CircleDollarSign: 'CircleDollarSign', MoreHorizontal: 'MoreHorizontal', Pencil: 'Pencil',
+      Receipt: 'Receipt', ReceiptText: 'ReceiptText', Trash2: 'Trash2', X: 'X',
+    },
+    '../../easy/data': { easy: { deletePayment: async () => undefined }, errorText: (_e, f) => f },
+    '../../easy/sheet': { useSheet: () => () => {}, reasonSheet: () => {} },
     '@orcivo/shared-types': shared,
     '../../services/api': { newIdempotencyKey: () => `request-${++key}` },
     '../../services/payment.service': { paymentService: {
@@ -363,6 +368,10 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../screens/equipe/EquipeScreen'] = { EquipeScreen: () => null };
   modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
+  modules['../easy/screens/Receipts'] = { ReceiptsScreen: () => null, ReceiptScreen: () => null, ReceiptNewScreen: () => null };
+  modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
+  modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
+  modules['../easy/screens/Clients'] = { ClientNewScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Financeiro').props.component, FinanceiroScreen);

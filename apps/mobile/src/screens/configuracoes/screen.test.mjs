@@ -48,6 +48,9 @@ function mount(api) {
   const modules = {
     react, 'react-native': native, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '../../services/api': { api, newIdempotencyKey: () => `request-${++key}` }, './company-form': form,
+    '@react-navigation/native': { useNavigation: () => ({ navigate() {} }) },
+    '../../easy/screens/Settings': { ApprovalMethodsPicker: () => null, LogoPicker: () => null },
+    '../../easy/EasyModeContext': { useEasyMode: () => ({ setEasy() {} }) },
   };
   const exports = {};
   runInNewContext(compiled.outputText, { exports, require: (name) => {

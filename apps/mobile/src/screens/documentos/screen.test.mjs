@@ -68,7 +68,7 @@ function mount({ getQuotes, getWorkOrders, downloadAsync, isAvailableAsync, shar
   const nativeWithAlert = { ...native, Alert: { alert: (...args) => alerts.push(args) } };
   const { DocumentosScreen } = compile('./DocumentosScreen.tsx', {
     react, 'react-native': nativeWithAlert,
-    '@react-navigation/native': { useFocusEffect(callback) {
+    '@react-navigation/native': { useNavigation: () => ({ navigate() {} }), useFocusEffect(callback) {
       const slot = index++;
       focus = () => { cleanups.get(slot)?.(); cleanups.set(slot, callback()); };
       if (slots[slot] !== callback) {
@@ -77,7 +77,12 @@ function mount({ getQuotes, getWorkOrders, downloadAsync, isAvailableAsync, shar
       }
     } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
-    'lucide-react-native': { ClipboardList: 'ClipboardList', Download: 'Download', FileText: 'FileText', Inbox: 'Inbox' },
+    'lucide-react-native': { ClipboardList: 'ClipboardList', Download: 'Download', FileText: 'FileText', Inbox: 'Inbox', Plus: 'Plus', ReceiptText: 'ReceiptText' },
+    '../../easy/data': {
+      easy: { receipts: async () => [] },
+      methodLabel: () => 'Pix', receiptNo: (n) => String(n).padStart(4, '0'), receiptOrigin: () => 'Avulso',
+    },
+    '../../easy/share': { shareReceiptPdf: async () => undefined },
     'expo-file-system/legacy': {
       cacheDirectory: 'file:///cache/',
       downloadAsync: downloadAsync ?? (async (uri, fileUri) => ({ status: 200, uri: fileUri })),
@@ -274,6 +279,10 @@ test('Mais menu opens the real documentos screen instead of EmBreve', () => {
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../screens/equipe/EquipeScreen'] = { EquipeScreen: () => null };
   modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
+  modules['../easy/screens/Receipts'] = { ReceiptsScreen: () => null, ReceiptScreen: () => null, ReceiptNewScreen: () => null };
+  modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
+  modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
+  modules['../easy/screens/Clients'] = { ClientNewScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Documentos').props.component, DocumentosScreen);

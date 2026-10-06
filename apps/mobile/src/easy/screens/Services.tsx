@@ -3,6 +3,7 @@ import { Alert, Image, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  Calendar as CalendarIcon,
   Camera,
   Check,
   CheckCircle,
@@ -295,6 +296,17 @@ export function RunScreen({
       </Card>
       <More>
         <Card style={{ overflow: 'hidden' }}>
+          <Row
+            icon={CalendarIcon}
+            label="Remarcar"
+            sub="Escolher outro dia ou hora"
+            onPress={() =>
+              navigation.navigate('AgendaNew', {
+                client: { id: o.customer.id, name: o.customer.name },
+                type: 'INSTALACAO',
+              })
+            }
+          />
           <Row
             icon={FileText}
             label="Abrir ordem de serviço completa"

@@ -12,9 +12,21 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { easy, errorText } from '../../easy/data';
+import { reasonSheet, useSheet } from '../../easy/sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, CircleDollarSign, Receipt, X } from 'lucide-react-native';
+import {
+  Check,
+  CircleDollarSign,
+  MoreHorizontal,
+  Pencil,
+  Receipt,
+  ReceiptText,
+  Trash2,
+  X,
+} from 'lucide-react-native';
 import { formatMoney, parseMoneyInput, sumDecimal } from '@orcivo/shared-types';
 import { newIdempotencyKey } from '../../services/api';
 import { paymentService } from '../../services/payment.service';
@@ -100,7 +112,63 @@ const EMPTY_FORM = {
   date: '',
 };
 
+type MoreNav = NativeStackNavigationProp<{
+  Receipt: { id: string };
+  Edit: { kind: string; id?: string; amount?: string; due?: string; name?: string };
+}>;
+
 export function FinanceiroScreen() {
+  const navigation = useNavigation<MoreNav>();
+  const sheet = useSheet();
+  // Ver recibo (pagos), mudar valor/vencimento e excluir — the backend audits both with a reason.
+  const openMore = (payment: Payment) =>
+    sheet({
+      title: payment.customer.name,
+      sub: formatMoney(payment.amount),
+      actions: [
+        ...(payment.status === 'PAID'
+          ? [
+              {
+                label: 'Ver recibo',
+                icon: ReceiptText,
+                run: () => navigation.navigate('Receipt', { id: payment.id }),
+              },
+            ]
+          : []),
+        {
+          label: 'Mudar valor ou vencimento',
+          icon: Pencil,
+          run: () =>
+            navigation.navigate('Edit', {
+              kind: 'payment',
+              id: payment.id,
+              amount: payment.amount,
+              due: payment.due_date ?? undefined,
+              name: payment.customer.name,
+            }),
+        },
+        {
+          label: 'Excluir recebimento',
+          icon: Trash2,
+          danger: true,
+          run: () =>
+            reasonSheet(
+              sheet,
+              'Por que excluir?',
+              ['Lançado errado', 'Cliente desistiu', 'Valor duplicado', 'Outro motivo'],
+              async (reason) => {
+                try {
+                  await easy.deletePayment(payment.id, reason);
+                  setPayments((prev) => prev.filter((p) => p.id !== payment.id));
+                } catch (err) {
+                  Alert.alert('Erro', errorText(err, 'Não foi possível excluir o recebimento.'));
+                }
+              },
+              Trash2,
+            ),
+        },
+      ],
+    });
   const insets = useSafeAreaInsets();
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -445,6 +513,15 @@ export function FinanceiroScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Mais ações do recebimento de ${payment.customer.name}`}
+                    onPress={() => openMore(payment)}
+                    style={styles.settleBtn}
+                  >
+                    <MoreHorizontal size={14} color="#6D28D9" />
+                    <Text style={styles.settleBtnText}>Mais ações</Text>
+                  </TouchableOpacity>
                 </View>
               );
             })
