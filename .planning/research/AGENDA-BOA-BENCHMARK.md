@@ -1,7 +1,7 @@
 # Benchmark Agenda Boa → backlog Orcivo
 
 **Data:** 2026-10-07 · **Fonte:** conta de teste autorizada em web.agendaboa.com (plano intermediário), só leitura/criação, nada existente editado ou apagado.
-**Cobertura:** Home, Preferências de Documentos, Preferências de Pedidos (status, campos principais, campos do segmento), Preferências de Financeiro. A sessão caiu antes de Agenda, Clientes, Produtos/estoque, Outras configurações e Planos; esses módulos ficam para uma segunda rodada (com o dono logando de novo).
+**Cobertura:** todos os módulos — Home, Pedidos, Documentos, Financeiro, Agenda, Clientes, Produtos & estoque, Serviços, Gerenciar (relatórios), Outras configurações e Planos. Duas rodadas (2026-10-07). Registros criados na conta de teste: 1 compromisso "Teste benchmark Orcivo". Termo de privacidade deles **não** foi aceito (precisa do dono).
 
 Ordem sugerida: **depois** de fechar os bugs abertos da bateria (`docs/qa/2026-10-06-bateria-de-testes.md`). Cada item abaixo é um candidato a fase/plano GSD; o que já existe no Orcivo está marcado.
 
@@ -95,5 +95,49 @@ Hoje: Para fazer / Em execução / Concluída / Cancelada. Agenda Boa: pendente,
 
 ---
 
-## Segunda rodada (pendente)
-Agenda, Clientes, Produtos & estoque, Serviços, aba Gerenciar, Outras configurações (exportação, notificações, segurança) e Planos. Precisa que o dono logue de novo na conta de teste — não digitamos senha.
+## P5 — Agenda, clientes, catálogo e relatórios (2ª rodada)
+
+### AB-14 · Agenda: período em vez de hora, lembrete e status
+- Horário por **período** (manhã 9–12, tarde 13–18, noite 19–22, horário comercial) **ou** início/fim; horas de cada período configuráveis. Técnico raramente promete hora exata — combina "de manhã".
+- **Lembrete** por compromisso: 5 min, 15 min, 30 min, 1 h, 1 dia antes (push no app; no web, notificação do sino).
+- Status do compromisso: não confirmado / agendado / concluído (cor na lista).
+- Lista agrupada por dia (Hoje, Amanhã…) + calendário mensal com pontinho nos dias com compromisso; aviso "você tem compromissos pendentes" (passados sem concluir).
+- **Repetir** (recorrência) — lá aparece como "ainda não implementado": oportunidade de sair na frente (casa com AB-11, manutenção semestral).
+
+### AB-15 · Cliente: origem, aniversário, custos e contatos do celular
+- **"Como conseguiu esse cliente?"** indicação / Instagram / Google / Facebook / outro → alimenta relatório "novos clientes por origem".
+- **Aniversário** (lembrete opcional para mandar parabéns/oferta) e observações internas marcadas "o cliente não vê".
+- Pessoa física/jurídica, até 2 telefones (já temos quase tudo).
+- Página do cliente: **receitas e custos** do cliente (recebido / a receber / vencido; pago / previsto / vencido) e atalhos (nova receita, novo custo, novo compromisso, novo orçamento). Nossa página do cliente já mostra recebimentos; falta custo por cliente (depende de AB-10).
+- App mobile: **salvar cliente nos contatos do celular** (sempre / nunca / perguntar) — cliente aparece com nome no WhatsApp. Expo Contacts.
+
+### AB-16 · Catálogo: baixa automática de estoque, margem/markup, nome do catálogo
+- Hoje temos quantidade e alerta de estoque baixo, **sem baixa automática**. Lá: assistente "baixar estoque quando o pedido estiver…" e a empresa marca os status (aprovado, em andamento, concluído…). Para nós: baixar quando o orçamento é aprovado **ou** quando a OS é concluída (escolha da empresa), devolver ao cancelar. Movimento registrado (auditoria).
+- **Custo, margem (%) e markup (%)** calculando o preço de venda — é o backlog 999.13; adotar o mesmo trio de campos.
+- Código interno e marca no produto; código de barras e foto ficam no plano mais alto lá (nós já temos foto).
+- Unidades de medida editáveis pela empresa; renomear o catálogo ("Produtos" → "Peças").
+
+### AB-17 · Duplicar orçamento, produto e serviço
+- Está em todos os planos deles. Nós não temos. Botão "Duplicar" no orçamento (novo rascunho com os mesmos itens, cliente em branco ou o mesmo) e no item do catálogo.
+
+### AB-18 · Relatórios (aba Gerenciar)
+Filtro por período e, todos no plano mais alto deles: receitas × custos; recebido × custos pagos; recebido por forma de pagamento; recebido × vencido; custos pagos; a receber × custos previstos; top 5 clientes (por pedidos concluídos); novos clientes; novos clientes por origem.
+- Nosso Financeiro já tem recebido por dia. Sugestão: relatórios no **Orcivo Mais/Equipe** com os 4 mais úteis primeiro (recebido × a receber, por forma de pagamento, top clientes, clientes por origem).
+
+### AB-19 · Configurações gerais
+- **Exportar todos os dados** (o usuário recebe tudo o que salvou) — também ajuda em LGPD (portabilidade). Nível C para o desenho jurídico; a exportação CSV em si é simples.
+- Excluir conta ("medidas irreversíveis") separado do resto.
+- Aceite de privacidade antes do 1º cadastro de cliente ("não repassamos dados dos seus clientes") — avaliar com LGPD (Nível C).
+
+### Lições de UX (o que NÃO copiar)
+- Formulário de cliente: ao fechar pergunta "salvar alterações?" mas **não tem "descartar"** — o usuário fica preso até salvar. No Orcivo: sempre oferecer "Descartar".
+- Abrir um endereço direto ou recarregar desloga/perde estado (app Flutter). Nossas rotas web precisam continuar funcionando com link direto.
+- Muitas funções aparecem com selo do plano superior no meio do formulário (foto, código de barras) — poluição; preferimos esconder ou mostrar uma vez com "Ver planos".
+
+### Planos deles (referência de preço, mensal)
+| Plano | Preço | Destaques |
+|---|---|---|
+| Básico | R$ 12,90 | pedidos, orçamentos e documentos, textos padronizados, agenda com lembrete, catálogos, recibos, financeiro com filtros, duplicar, versão PC |
+| Intermediário | R$ 29,90 | + estoque, logo e cor nos documentos, fotos nos pedidos, assinar documentos, relatório do pedido, busca |
+| Superior | R$ 54,90 | + contratos, assinatura do cliente, foto de produto, código de barras, gráficos do financeiro, novidades antes |
+Teste grátis de 7 dias sem cartão; indicação dá 30 dias do plano superior. Comparar com nossos Orcivo Livre/Solo/Mais/Equipe ao revisar preços (dono já delegou a decisão).
