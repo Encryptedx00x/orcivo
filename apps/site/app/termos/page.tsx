@@ -10,16 +10,6 @@ export const metadata = pageMetadata(
 );
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
-
-// Dados que só o owner fornece: sempre visíveis e marcados no texto.
-function Ph({ children }: { children: ReactNode }) {
-  return (
-    <mark data-placeholder className="bg-yellow-200 text-slate-900 px-1 rounded font-semibold">
-      {children}
-    </mark>
-  );
-}
 
 export default function TermosPage() {
   const plans = getPlans();
@@ -44,11 +34,11 @@ export default function TermosPage() {
 
         <h2>1. Quem somos e aceitação</h2>
         <p>
-          O Orcivo é um serviço de software oferecido por <Ph>[RAZÃO SOCIAL]</Ph>, inscrita no CNPJ
-          sob o nº <Ph>[CNPJ]</Ph>, com sede em <Ph>[ENDEREÇO]</Ph> (&ldquo;Orcivo&rdquo;). Ao criar
-          uma conta, marcar a caixa de aceite no cadastro (site, aplicativo web ou aplicativo móvel)
-          ou usar o serviço, você (&ldquo;Usuário&rdquo;) declara ter lido e concordado com estes
-          Termos de Uso e com a <Link href="/privacidade">Política de Privacidade</Link>.
+          O Orcivo é um serviço de software oferecido por Dyogo Henrique de Oliveira Ortega, pessoa
+          física inscrita no CPF sob o nº 146.013.439-76 (&ldquo;Orcivo&rdquo;). Ao criar uma conta,
+          marcar a caixa de aceite no cadastro (site, aplicativo web ou aplicativo móvel) ou usar o
+          serviço, você (&ldquo;Usuário&rdquo;) declara ter lido e concordado com estes Termos de
+          Uso e com a <Link href="/privacidade">Política de Privacidade</Link>.
         </p>
         <p>
           Para aceitar, você precisa ter capacidade civil para contratar. Se contratar em nome de
@@ -246,23 +236,21 @@ export default function TermosPage() {
         <h2>13. Lei aplicável e foro</h2>
         <p>
           Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro do domicílio do Usuário
-          consumidor, ou, nas demais hipóteses, o foro da comarca de <Ph>[ENDEREÇO]</Ph>, para
+          consumidor, ou, nas demais hipóteses, o foro do domicílio do responsável pelo Orcivo, para
           dirimir controvérsias.
         </p>
 
         <h2>14. Contato</h2>
         <p>
-          Dúvidas sobre estes Termos: suporte@orcivo.com.br. Dados do responsável:{' '}
-          <Ph>[RAZÃO SOCIAL]</Ph>, CNPJ <Ph>[CNPJ]</Ph>, <Ph>[ENDEREÇO]</Ph>. Questões de
-          privacidade: encarregado pelo tratamento de dados — <Ph>[E-MAIL DO ENCARREGADO]</Ph>.
+          Dúvidas sobre estes Termos: suporte@orcivo.com.br. Dados do responsável: Dyogo Henrique de
+          Oliveira Ortega, CPF 146.013.439-76. Questões de privacidade: encarregado pelo tratamento
+          de dados — o próprio responsável, pelo e-mail suporte@orcivo.com.br.
         </p>
 
         <p className="text-sm text-slate-500 mt-12" data-legal-review-notice>
           <strong>Aviso:</strong> este texto é uma base e passa por revisão jurídica formal antes do
-          lançamento público. O Orcivo decidiu publicar o conteúdo completo desde já; trechos
-          marcados em destaque (como <Ph>[RAZÃO SOCIAL]</Ph>, <Ph>[CNPJ]</Ph>, <Ph>[ENDEREÇO]</Ph> e{' '}
-          <Ph>[E-MAIL DO ENCARREGADO]</Ph>) serão preenchidos pelo responsável pelo Orcivo, e o
-          documento poderá mudar após a revisão, com nova versão e novo aceite quando necessário.
+          lançamento público. O Orcivo decidiu publicar o conteúdo completo desde já, e o documento
+          poderá mudar após a revisão, com nova versão e novo aceite quando necessário.
         </p>
       </article>
     </div>

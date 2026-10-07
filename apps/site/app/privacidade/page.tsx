@@ -9,16 +9,6 @@ export const metadata = pageMetadata(
 );
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
-
-// Dados que só o owner fornece: sempre visíveis e marcados no texto.
-function Ph({ children }: { children: ReactNode }) {
-  return (
-    <mark data-placeholder className="bg-yellow-200 text-slate-900 px-1 rounded font-semibold">
-      {children}
-    </mark>
-  );
-}
 
 export default function PrivacidadePage() {
   return (
@@ -42,8 +32,8 @@ export default function PrivacidadePage() {
         <h2>1. Introdução e quem é o responsável</h2>
         <p>
           Esta Política explica como o Orcivo trata dados pessoais, em conformidade com a Lei Geral
-          de Proteção de Dados (Lei nº 13.709/2018 — LGPD). O serviço é oferecido por{' '}
-          <Ph>[RAZÃO SOCIAL]</Ph>, CNPJ <Ph>[CNPJ]</Ph>, com sede em <Ph>[ENDEREÇO]</Ph>
+          de Proteção de Dados (Lei nº 13.709/2018 — LGPD). O serviço é oferecido por Dyogo Henrique
+          de Oliveira Ortega, pessoa física inscrita no CPF sob o nº 146.013.439-76
           (&ldquo;Orcivo&rdquo;). Ela complementa os <Link href="/termos">Termos de Uso</Link>.
         </p>
         <p>O Orcivo atua em dois papéis distintos:</p>
@@ -145,7 +135,8 @@ export default function PrivacidadePage() {
           <li>
             <strong>Hospedagem e armazenamento de arquivos</strong> — servidores (VPS) que executam
             a aplicação e o banco de dados, e armazenamento de objetos compatível com S3 (MinIO)
-            para fotos, PDFs e assinaturas. <Ph>[PROVEDOR DE HOSPEDAGEM E REGIÃO]</Ph>
+            para fotos, PDFs e assinaturas. Provedor: OVHcloud (OVH SAS), com servidores em
+            Gravelines, França — transferência internacional amparada no art. 33 da LGPD.
           </li>
         </ul>
         <p>
@@ -167,10 +158,10 @@ export default function PrivacidadePage() {
           suas consequências; revogação do consentimento; e revisão de decisões automatizadas.
         </p>
         <p>
-          Para exercer seus direitos, escreva ao nosso encarregado pelo tratamento de dados (DPO):{' '}
-          <Ph>[E-MAIL DO ENCARREGADO]</Ph>, ou para suporte@orcivo.com.br. Responderemos em prazo
-          razoável, conforme a regulamentação aplicável. Você também pode peticionar à Autoridade
-          Nacional de Proteção de Dados (ANPD).
+          Para exercer seus direitos, escreva ao nosso encarregado pelo tratamento de dados (DPO),
+          Dyogo Henrique de Oliveira Ortega: suporte@orcivo.com.br. Responderemos em prazo razoável,
+          conforme a regulamentação aplicável. Você também pode peticionar à Autoridade Nacional de
+          Proteção de Dados (ANPD).
         </p>
         <p>
           <strong>Se você é cliente final de um técnico que usa o Orcivo:</strong> o controlador dos
@@ -240,17 +231,14 @@ export default function PrivacidadePage() {
 
         <h2>11. Contato e encarregado</h2>
         <p>
-          Controlador: <Ph>[RAZÃO SOCIAL]</Ph>, CNPJ <Ph>[CNPJ]</Ph>, <Ph>[ENDEREÇO]</Ph>.
-          Encarregado pelo tratamento de dados (DPO): <Ph>[E-MAIL DO ENCARREGADO]</Ph>. Suporte
-          geral: suporte@orcivo.com.br.
+          Controlador: Dyogo Henrique de Oliveira Ortega, CPF 146.013.439-76. Encarregado pelo
+          tratamento de dados (DPO): o próprio controlador, pelo e-mail suporte@orcivo.com.br.
         </p>
 
         <p className="text-sm text-slate-500 mt-12" data-legal-review-notice>
           <strong>Aviso:</strong> este texto é uma base e passa por revisão jurídica formal antes do
-          lançamento público. O Orcivo decidiu publicar o conteúdo completo desde já; trechos
-          marcados em destaque (como <Ph>[RAZÃO SOCIAL]</Ph>, <Ph>[CNPJ]</Ph>, <Ph>[ENDEREÇO]</Ph> e{' '}
-          <Ph>[E-MAIL DO ENCARREGADO]</Ph>) serão preenchidos pelo responsável pelo Orcivo, e o
-          documento poderá mudar após a revisão, com nova versão e novo aceite quando necessário.
+          lançamento público. O Orcivo decidiu publicar o conteúdo completo desde já, e o documento
+          poderá mudar após a revisão, com nova versão e novo aceite quando necessário.
         </p>
       </article>
     </div>
