@@ -259,7 +259,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): JSX.E
                       color: '#0A0A0F',
                     }}
                   >
-                    {fmtMoney(order.total)}
+                    {fmtMoney(order.total ?? order.quote?.total)}
                   </td>
                   <td data-label="" style={{ textAlign: 'right' }}>
                     <Link

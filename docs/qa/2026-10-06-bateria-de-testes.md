@@ -185,3 +185,15 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 | K9  | Agenda semanal: compromisso de terça aparece às 10:30                                                                                                 | ✅                                                                                                                                                               |
 | K10 | Plano no celular: cartões em 2 colunas quebravam o preço ("R$" / "9,90/mês")                                                                          | 🔧 um cartão por linha no celular                                                                                                                                |
 | K11 | Equipe: enquanto carregava dizia "0 membros · Nenhum membro ainda"                                                                                    | 🔧 "Carregando…" até terminar; depois "1 membro" com o dono                                                                                                      |
+
+## Modo completo web — Catálogo, OS e Documentos (375 px)
+
+| #   | Teste                                                                                                | Resultado                                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| C1  | Catálogo, Novo item, Importar, OS, Nova OS, Documentos: abrem sem erro                               | ✅                                                                                                                |
+| C2  | Lista de OS: "Total" sempre "—" (a lista não trazia o orçamento vinculado)                           | 🔧 backend inclui o total do orçamento na lista; card mostra R$ 150,00                                            |
+| C3  | Foto do item e Importar: botão nativo "Choose File / No file chosen" em inglês                       | 🔧 botões "Escolher foto"/"Trocar foto" e "Escolher arquivo"/"Trocar arquivo" com o nome do arquivo               |
+| C4  | Importar no celular: card passava da borda direita                                                   | 🔧 coluna com `minmax(0, 1fr)`; sem rolagem lateral                                                               |
+| C5  | Nova OS: seletor de cliente carrega a lista                                                          | ✅                                                                                                                |
+| C6  | `/conta` não existe (Minha conta é o item 999.10 do backlog)                                         | ⏭ backlog                                                                                                        |
+| C7  | Specs de isolamento (`*.isolation.spec.ts`) davam 401 localmente, inclusive em módulos não alterados | ⚠ ambiente: signup dos testes barrado pelo limitador no Redis compartilhado com o backend de dev; não é regressão |

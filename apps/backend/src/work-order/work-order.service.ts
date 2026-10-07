@@ -433,7 +433,11 @@ export class WorkOrderService {
       orderBy: { created_at: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
-      include: { customer: { select: { id: true, name: true } }, photos: true },
+      include: {
+        customer: { select: { id: true, name: true } },
+        photos: true,
+        quote: WO_DETAIL_INCLUDE.quote,
+      },
     });
     const signed = await Promise.all(data.map((wo) => this.withPhotoUrls(wo)));
     return { data: signed.map((wo) => this.withAllowedActions(wo, role)), page, limit };

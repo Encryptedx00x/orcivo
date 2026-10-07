@@ -1,10 +1,19 @@
+'use client';
+
+import { useState } from 'react';
+import { ImagePlus } from 'lucide-react';
+
 interface CatalogPhotoFieldProps {
   photoUrl?: string | null;
   itemName?: string;
 }
 
 /** Optional image input shared by the create and edit catalog item forms. */
-export function CatalogPhotoField({ photoUrl, itemName }: CatalogPhotoFieldProps): JSX.Element {
+export function CatalogPhotoField({
+  photoUrl,
+  itemName,
+}: CatalogPhotoFieldProps): React.JSX.Element {
+  const [fileName, setFileName] = useState('');
   return (
     <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <legend style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
@@ -45,13 +54,22 @@ export function CatalogPhotoField({ photoUrl, itemName }: CatalogPhotoFieldProps
           </label>
         </div>
       ) : null}
-      <input
-        id="photo"
-        name="photo"
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        style={{ display: 'block', maxWidth: '100%', fontSize: 14, color: '#475569' }}
-      />
+      {/* Native file input is hidden: its button text follows the browser language. */}
+      <label
+        className="ov-btn ov-btn-secondary"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+      >
+        <ImagePlus size={16} />
+        {fileName || (photoUrl ? 'Trocar foto' : 'Escolher foto')}
+        <input
+          id="photo"
+          name="photo"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')}
+          style={{ display: 'none' }}
+        />
+      </label>
       <p style={{ fontSize: 12, color: '#64748B', margin: '8px 0 0' }}>
         JPEG, PNG ou WebP, com no máximo 10 MB. Enviar outra foto substitui a atual.
       </p>
