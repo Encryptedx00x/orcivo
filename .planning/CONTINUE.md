@@ -5,13 +5,13 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-07 19:20 BRT)
+## 1. Estado agora (atualizado 2026-10-07 19:25 BRT)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `2d7d2c0` + commit de docs desta atualização |
-| Produção (app/site/api.orcivo.com.br) | `d2f0cf9` (segurança do Codex) — **R5a (`2d7d2c0`) em deploy agora**; conferir com §6 |
-| Última rodada concluída | R4 + sobras de R3 em produção; R5a pronta (testada local web + app) |
+| `main` / `origin/main` | último commit de docs após `2d7d2c0` (ver `git log`) |
+| Produção (app/site/api.orcivo.com.br) | `ffe0291` = código de `2d7d2c0` (R5a) — deploy 2026-10-07 22:15 UTC, saudável, migration `20261009100000_work_order_segment_fields` aplicada |
+| Última rodada concluída | R5a em produção. **Próxima tarefa: R5b → "Status extras da OS" (§3)** |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
 Antes de qualquer coisa: `git status --short`, `git log --oneline -5`, `git fetch && git status -sb`.
@@ -102,20 +102,22 @@ limite do Orcivo Livre (10 orçamentos/mês) bloqueia criar/duplicar na conta de
 ## 6. Deploy de produção (Nível A, autorizado pelo dono)
 
 ```bash
-git archive --format=tar.gz -o /tmp/orcivo.tar.gz HEAD
+git archive --format=tar.gz -o /tmp/orcivo-src.tar.gz HEAD
 tr -d '\r' < infra/vps/deploy.sh > /tmp/deploy.sh
-scp -q /tmp/orcivo.tar.gz /tmp/deploy.sh ubuntu@54.38.241.158:/tmp/
+scp -q /tmp/orcivo-src.tar.gz /tmp/deploy.sh ubuntu@54.38.241.158:/tmp/
 ssh ubuntu@54.38.241.158 'bash /tmp/deploy.sh'
 ```
 O script faz backup do banco e `.env`, tag `prev-<ts>`, build completo antes de trocar, migrate + seed,
 health check (falha com `DEPLOY_FAILED` e mantém rollback) e limpeza de imagens antigas. Sucesso = `HEALTH: healthy healthy healthy` + `DEPLOY_DONE`.
+**O nome do pacote precisa ser `orcivo-src.tar.gz`** (o script extrai esse arquivo; outro nome = deploy de pacote velho ou erro no `tar`).
+Conferir migrations em produção: copiar um `.sql` para o container `orcivo-db` e rodar `psql -U $POSTGRES_USER -d $POSTGRES_DB -At -f`.
 Depois: abrir https://app.orcivo.com.br e a tela mexida (conta do dono já logada no navegador do app; nunca digitar senha real).
 
 ## 7. Registro de entregas (mais recente em cima)
 
 | Data | Commit | Entrega | Produção |
 | --- | --- | --- | --- |
-| 2026-10-07 | `2d7d2c0` | R5a: campos da OS por segmento (Configurações → Ordem de serviço; Nova OS e "Dados do equipamento" no web e app completo) | em deploy |
+| 2026-10-07 | `2d7d2c0` | R5a: campos da OS por segmento (Configurações → Ordem de serviço; Nova OS e "Dados do equipamento" no web e app completo) | ✅ 22:15 UTC |
 | 2026-10-07 | `be77dda`…`d2f0cf9` | Codex: segurança (capacidades públicas expiram, throttling), deploy falha se não saudável, dependências | ✅ |
 | 2026-10-07 | `beab4c9` | R3: formas de pagamento aceitas no PDF/link; laudo; campo morto removido | ✅ |
 | 2026-10-07 | `a15c654` | R4: custos e lucro por OS (web); resultado do mês no app completo | ✅ |
