@@ -227,7 +227,11 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
     }
   }
 
-  const webUrl = process.env['NEXT_PUBLIC_WEB_URL'] ?? '';
+  // Full link for the client: env when set, else this page's origin (set after mount to keep SSR stable).
+  const [webUrl, setWebUrl] = useState(process.env['NEXT_PUBLIC_WEB_URL'] ?? '');
+  useEffect(() => {
+    if (!webUrl) setWebUrl(window.location.origin);
+  }, [webUrl]);
 
   useEffect(() => {
     if (initialQuote.status !== 'DRAFT') return;

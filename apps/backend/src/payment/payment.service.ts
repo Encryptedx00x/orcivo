@@ -6,6 +6,7 @@ import { UsersService } from '../users/users.service';
 import { ReceiptPdfService } from './receipt-pdf.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
+import { formatMoney } from '@orcivo/shared-types';
 import type {
   PaymentCreateDto,
   PaymentDeleteDto,
@@ -26,6 +27,15 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 type Tx = Prisma.TransactionClient;
+
+/** Payment status as people read it in the activity feed. */
+const STATUS_TEXT: Record<string, string> = {
+  PENDING: 'a receber',
+  PAID: 'recebido',
+  OVERDUE: 'atrasado',
+  PARTIAL: 'parcial',
+  CANCELLED: 'cancelado',
+};
 
 @Injectable()
 export class PaymentService {
@@ -123,7 +133,7 @@ export class PaymentService {
         from: null,
         to: status,
         humanText:
-          `Recebimento de R$ ${payment.amount.toString()} (${payment.customer.name}) ` +
+          `Recebimento de ${formatMoney(payment.amount.toString())} (${payment.customer.name}) ` +
           `registrado como ${status}`,
       });
       return tx.payment.findUniqueOrThrow({
@@ -301,7 +311,7 @@ export class PaymentService {
         from: payment.status,
         to: 'PAID',
         humanText:
-          `Recebimento de R$ ${payment.amount.toString()} (${payment.customer.name}) ` +
+          `Recebimento de ${formatMoney(payment.amount.toString())} (${payment.customer.name}) ` +
           `baixado como pago`,
       });
       return updated;
@@ -350,8 +360,8 @@ export class PaymentService {
       if (updated.status === 'PAID') await this.assignReceiptNumber(tx, companyId, id);
       const statusChanged = payment.status !== updated.status;
       const humanText = statusChanged
-        ? `Recebimento de R$ ${updated.amount.toString()} (${updated.customer.name}) alterado de ${payment.status} para ${updated.status}`
-        : `Recebimento de R$ ${updated.amount.toString()} (${updated.customer.name}) atualizado`;
+        ? `Recebimento de ${formatMoney(updated.amount.toString())} (${updated.customer.name}) alterado de ${STATUS_TEXT[payment.status] ?? payment.status} para ${STATUS_TEXT[updated.status] ?? updated.status}`
+        : `Recebimento de ${formatMoney(updated.amount.toString())} (${updated.customer.name}) atualizado`;
       await this.audit.record(tx, {
         companyId,
         actorType: 'USER',
@@ -396,7 +406,7 @@ export class PaymentService {
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
     return this.prisma.$transaction(async (tx) => {
       const deleted = await tx.payment.update({ where: { id }, data: { deleted_at: new Date() } });
-      const humanText = `Recebimento de R$ ${payment.amount.toString()} (${payment.customer.name}) excluido`;
+      const humanText = `Recebimento de ${formatMoney(payment.amount.toString())} (${payment.customer.name}) excluído`;
       await this.audit.record(tx, {
         companyId,
         actorType: 'USER',
