@@ -10,6 +10,7 @@ module.exports = {
     'babel.config.js',
     'metro.config.js',
     'app.config.js',
+    'web-shims/',
   ],
   extends: ['../../.eslintrc.js', 'plugin:@typescript-eslint/recommended'],
   parser: '@typescript-eslint/parser',
