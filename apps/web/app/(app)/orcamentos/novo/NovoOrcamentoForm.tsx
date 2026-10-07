@@ -101,6 +101,7 @@ function Stepper({
         <Fragment key={s}>
           <div
             onClick={() => setStep(i)}
+            title={s}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -146,7 +147,8 @@ function Stepper({
                 i + 1
               )}
             </div>
-            <span>{s}</span>
+            {/* Phones: only the current step keeps its name (all 5 fit on screen). */}
+            <span className={i === step ? undefined : 'ov-hide-mobile'}>{s}</span>
           </div>
           {i < STEPS.length - 1 && (
             <div style={{ width: 24, height: 1, background: T.border1, flexShrink: 0 }} />
@@ -1023,7 +1025,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
       {/* ── Editor grid: left content + right rail ───────────────────── */}
       <div
         className="ov-row-detail"
-        style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20 }}
+        style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 20 }}
       >
         {/* Left column */}
         <div>

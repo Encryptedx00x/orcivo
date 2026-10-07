@@ -207,7 +207,7 @@ export default function NovoClientePage(): JSX.Element {
       <form id="novo-cliente-form" onSubmit={handleSubmit}>
         <div
           className="ov-row-detail"
-          style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}
+          style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 20 }}
         >
           {/* ── Left column ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

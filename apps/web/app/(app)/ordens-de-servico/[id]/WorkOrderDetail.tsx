@@ -661,7 +661,12 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
         {/* 2-column layout */}
         <div
           className="ov-row-detail"
-          style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, padding: '0 24px' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) 360px',
+            gap: 16,
+            padding: '0 24px',
+          }}
         >
           {/* LEFT */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

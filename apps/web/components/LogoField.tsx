@@ -178,7 +178,7 @@ export function LogoField({
             )}
           </div>
           <span style={{ fontSize: large ? 15 : 12, color: '#64748B' }}>
-            PNG ou JPG. Aparece no topo dos orçamentos, serviços e recibos em PDF.
+            PNG ou JPG. Fundo transparente ou branco fica melhor no PDF.
           </span>
         </div>
       </div>

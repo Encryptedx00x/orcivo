@@ -115,7 +115,20 @@ export function MenuScreen(): React.JSX.Element {
         />
       </div>
       <div style={box}>
-        <MenuRow icon={LogOut} label="Sair" danger last onClick={() => void logout()} />
+        <MenuRow
+          icon={LogOut}
+          label="Sair"
+          danger
+          last
+          onClick={() =>
+            // Same as the app: a stray tap must not end the session.
+            sheet({
+              title: 'Sair da sua conta?',
+              sub: 'Você entra de novo com seu e-mail e senha.',
+              actions: [{ label: 'Sair', icon: LogOut, danger: true, run: () => void logout() }],
+            })
+          }
+        />
       </div>
     </>
   );

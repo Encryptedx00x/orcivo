@@ -224,6 +224,11 @@ body {
 .ov-card-body {
   padding: 16px 18px;
 }
+/* Cards that hold a table scroll sideways instead of cutting the last columns (the
+   actions) on laptop widths; the inline overflow: hidden is only for the corners. */
+.ov-card:has(> table.ov-table) {
+  overflow-x: auto !important;
+}
 
 /* ── Button ── */
 .ov-btn {

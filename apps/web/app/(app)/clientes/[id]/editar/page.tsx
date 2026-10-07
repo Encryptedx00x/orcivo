@@ -276,7 +276,7 @@ export default function EditarClientePage(): JSX.Element {
       >
         <div
           className="ov-row-detail"
-          style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}
+          style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 20 }}
         >
           {/* ── Left column ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
