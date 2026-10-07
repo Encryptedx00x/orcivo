@@ -299,7 +299,11 @@ export default function ConfiguracoesPage(): JSX.Element {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ methods }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        setError(body?.message ?? 'Erro ao salvar. Tente novamente.');
+        return;
+      }
       setSaved(true);
     } catch {
       setError('Erro ao salvar. Tente novamente.');

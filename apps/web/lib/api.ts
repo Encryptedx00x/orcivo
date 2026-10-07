@@ -14,6 +14,14 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     },
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`${path} ${res.status}`);
+  if (!res.ok) {
+    // Keep "<path> <status>" (callers read the status) and carry the backend's own message,
+    // e.g. "Sua assinatura está inativa…" is not the same as a role without permission.
+    const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
+    throw Object.assign(new Error(`${path} ${res.status}`), {
+      status: res.status,
+      serverMessage: typeof body?.message === 'string' ? body.message : undefined,
+    });
+  }
   return res.json();
 }

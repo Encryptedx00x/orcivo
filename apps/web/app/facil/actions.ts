@@ -14,7 +14,12 @@ async function run<T>(fn: () => Promise<T>, fallback: string): Promise<Result<T>
     return { ok: true, data: await fn() };
   } catch (err) {
     const status = err instanceof Error ? /\s(\d{3})$/.exec(err.message)?.[1] : undefined;
-    if (status === '403') return { ok: false, message: 'Seu perfil não pode fazer isso.' };
+    const said = (err as { serverMessage?: string }).serverMessage;
+    if (status === '403')
+      return {
+        ok: false,
+        message: said && said !== 'Forbidden resource' ? said : 'Seu perfil não pode fazer isso.',
+      };
     return { ok: false, message: fallback };
   }
 }

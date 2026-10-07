@@ -375,6 +375,24 @@ const PIX_TYPES = [
   { value: 'RANDOM', label: 'Aleatória' },
 ];
 
+const PIX_EXAMPLE: Record<string, string> = {
+  CPF: '000.000.000-00',
+  CNPJ: '00.000.000/0000-00',
+  EMAIL: 'voce@email.com',
+  PHONE: '(00) 00000-0000',
+  RANDOM: 'Cole a chave aleatória do banco',
+};
+const pixShown = (type: string, key: string) =>
+  type === 'CPF' || type === 'CNPJ' ? maskCpfCnpj(key) : type === 'PHONE' ? maskPhone(key) : key;
+function pixValid(type: string, key: string): boolean {
+  const d = onlyDigits(key);
+  if (type === 'CPF') return d.length === 11;
+  if (type === 'CNPJ') return d.length === 14;
+  if (type === 'PHONE') return d.length === 10 || d.length === 11;
+  if (type === 'EMAIL') return /^\S+@\S+\.\S+$/.test(key.trim());
+  return key.trim().length >= 32; // random key (EVP)
+}
+
 function PixEdit() {
   const company = useLoad(easy.company, 'Não foi possível carregar a empresa.');
   const { busy, save } = useSave();
@@ -413,7 +431,7 @@ function PixEdit() {
     <Page
       bar={
         <Btn
-          disabled={!key.trim()}
+          disabled={!pixValid(type, key)}
           busy={busy}
           onPress={() =>
             void save(
@@ -437,8 +455,9 @@ function PixEdit() {
       <Options cols={3} options={PIX_TYPES} value={type} onPick={setType} />
       <Field
         label="Chave"
-        value={key}
-        onChange={setKey}
+        value={pixShown(type, key)}
+        onChange={(v) => setKey(type === 'EMAIL' || type === 'RANDOM' ? v : onlyDigits(v))}
+        placeholder={PIX_EXAMPLE[type]}
         keyboard={
           type === 'EMAIL' || type === 'RANDOM'
             ? 'default'
@@ -447,6 +466,9 @@ function PixEdit() {
               : 'number-pad'
         }
       />
+      {key.trim() && !pixValid(type, key) ? (
+        <Text style={[s.body, { color: C.red }]}>Confira a chave: {PIX_EXAMPLE[type]}</Text>
+      ) : null}
     </Page>
   );
 }
