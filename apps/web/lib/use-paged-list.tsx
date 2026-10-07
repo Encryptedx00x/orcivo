@@ -30,7 +30,9 @@ export function usePagedList<T extends { id: string }>(
     if (next.length < pageSize) setDone(true);
   };
 
-  return { items, more, done, busy, failed };
+  /** Updates one loaded row in place (e.g. after a status change). */
+  const replace = (item: T) => setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
+  return { items, more, done, busy, failed, replace };
 }
 
 export function LoadMore({

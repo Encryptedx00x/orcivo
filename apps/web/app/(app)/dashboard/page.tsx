@@ -121,6 +121,21 @@ const ENTITY_LABEL: Record<string, string> = {
   invite: 'Convite',
 };
 
+/** Where an activity row leads (the record it changed). */
+function activityHref(a: { entity_type: string; entity_id: string }): string {
+  const id = encodeURIComponent(a.entity_id);
+  const routes: Record<string, string> = {
+    quote: `/orcamentos/${id}`,
+    work_order: `/ordens-de-servico/${id}`,
+    customer: `/clientes/${id}`,
+    payment: '/financeiro',
+    appointment: '/agenda',
+    company: '/configuracoes',
+    invite: '/equipe',
+  };
+  return routes[a.entity_type] ?? '/dashboard';
+}
+
 function activityPath(entityType: string, action: string): string {
   const area = AREA_LABEL[entityType] ?? ENTITY_LABEL[entityType] ?? entityType;
   const step = STEP_LABEL[action] ?? action;
@@ -447,9 +462,12 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
             </div>
           ) : (
             s!.activity.map((a, i) => (
-              <div
+              <Link
                 key={a.id}
+                href={activityHref(a)}
                 style={{
+                  textDecoration: 'none',
+                  color: 'inherit',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
@@ -469,7 +487,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                 <div style={{ fontSize: 12, color: T.fg3, flexShrink: 0 }}>
                   {relativeTime(a.created_at)}
                 </div>
-              </div>
+              </Link>
             ))
           )}
         </div>

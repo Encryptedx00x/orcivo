@@ -6,6 +6,7 @@ import { formatMoney } from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { loadWorkOrdersPage } from './list-actions';
+import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from './actions';
 
 const SM: Record<WorkOrder['status'], [string, string]> = {
   PENDING: ['warning', 'Pendente'],
@@ -56,6 +57,18 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
   const [statusFilter, setStatusFilter] = useState('todos');
   const [techFilter, setTechFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('este-mes');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  // Quick forward steps straight from the list; cancel/reopen need a reason, so they stay in the detail.
+  async function quick(order: WorkOrder, action: WorkOrderAction): Promise<void> {
+    setBusyId(order.id);
+    setActionError('');
+    const result = await workOrderAction(order.id, { action });
+    setBusyId(null);
+    if (result.error) setActionError(`OS #${order.number}: ${result.error}`);
+    else if (result.order) list.replace({ ...order, ...result.order });
+  }
 
   const technicianNames = Array.from(
     new Set(orders.map((o) => o.technician?.name).filter(Boolean) as string[]),
@@ -174,6 +187,11 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
       </div>
 
       {/* Empty */}
+      {actionError && (
+        <p role="alert" style={{ color: '#B91C1C', fontSize: 14, margin: '0 0 12px' }}>
+          {actionError}
+        </p>
+      )}
       {filtered.length === 0 && (
         <div className="ov-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
           <ClipboardList
@@ -261,7 +279,23 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                   >
                     {fmtMoney(order.total ?? order.quote?.total)}
                   </td>
-                  <td data-label="" style={{ textAlign: 'right' }}>
+                  <td data-label="" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {(['iniciar', 'concluir'] as const)
+                      .filter((a) =>
+                        ((order as WorkOrderWithActions).allowed_actions ?? []).includes(a),
+                      )
+                      .map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          className="ov-btn ov-btn-secondary"
+                          disabled={busyId === order.id}
+                          onClick={() => void quick(order, a)}
+                          style={{ padding: '4px 10px', fontSize: 12, marginRight: 8 }}
+                        >
+                          {busyId === order.id ? '…' : a === 'iniciar' ? 'Iniciar' : 'Concluir'}
+                        </button>
+                      ))}
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
                       style={{ color: '#94A3B8', display: 'inline-flex' }}

@@ -367,7 +367,7 @@ interface CompanyData {
 
 function fmtDate(d?: Date | null): string {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('pt-BR');
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 /** Quantidade sem zeros à direita: "4.000" → "4", "1.500" → "1,5". */

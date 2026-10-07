@@ -243,8 +243,8 @@ function NovaOSContent(): React.JSX.Element {
                       </div>
                     </>
                   ) : (
-                    <span style={{ color: '#94A3B8', fontSize: 14 }}>
-                      {loadingCustomers ? 'Carregando...' : 'Buscar cliente…'}
+                    <span style={{ flex: 1, color: '#94A3B8', fontSize: 14 }}>
+                      {loadingCustomers ? 'Carregando…' : 'Buscar cliente…'}
                     </span>
                   )}
                   <ChevronDown size={16} color="#64748B" style={{ flexShrink: 0 }} />

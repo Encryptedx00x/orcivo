@@ -168,6 +168,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Server-rendered dates must match the users' clock (React hydration).
+      TZ: America/Sao_Paulo
       API_URL: http://orcivo-backend:3000
       BACKEND_URL: http://orcivo-backend:3000
     networks: [orcivo_internal, caddy]
