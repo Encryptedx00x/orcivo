@@ -63,7 +63,8 @@ const STATUS_ACTION_SPECS: Record<
 const WO_DETAIL_INCLUDE = {
   customer: true,
   photos: true,
-  quote: { select: { id: true, number: true } },
+  // total: the work order's value is the approved quote's (no amount of its own).
+  quote: { select: { id: true, number: true, total: true } },
 } as const;
 
 @Injectable()

@@ -38,7 +38,7 @@ export interface WorkOrder {
   finished_at?: string;
   total?: string | null;
   photos: WorkOrderPhoto[];
-  quote?: { id: string; number: number };
+  quote?: { id: string; number: number; total?: string };
 }
 
 export interface WorkOrderPayment {

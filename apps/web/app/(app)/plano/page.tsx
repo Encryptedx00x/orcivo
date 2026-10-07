@@ -305,7 +305,7 @@ export default async function PlanoPage({
       <h3 id="planos" style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 12px' }}>
         Trocar de plano
       </h3>
-      <div className="ov-grid-4">
+      <div className="ov-grid-4 ov-plan-grid">
         {PLANS.map((p) => {
           const isCurrent = p.code === current.code && !isCancelled;
           return (

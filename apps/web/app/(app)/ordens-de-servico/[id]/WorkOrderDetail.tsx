@@ -912,7 +912,9 @@ export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
                 >
                   <span style={{ color: '#64748B' }}>Total da OS</span>
                   <span style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {order.total ? formatMoney(order.total) : '—'}
+                    {(order.total ?? order.quote?.total)
+                      ? formatMoney((order.total ?? order.quote?.total) as string)
+                      : '—'}
                   </span>
                 </div>
                 <div

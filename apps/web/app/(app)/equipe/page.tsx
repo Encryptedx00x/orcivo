@@ -68,6 +68,8 @@ export default function EquipePage(): JSX.Element {
   const [inviteRole, setInviteRole] = useState<'TECNICO' | 'ADMIN'>('TECNICO');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Until the first load ends the page must not claim "0 membros".
+  const [loaded, setLoaded] = useState(false);
 
   async function loadData() {
     const [membersRes, invitesRes] = await Promise.all([
@@ -80,6 +82,7 @@ export default function EquipePage(): JSX.Element {
     ]);
     setMembers(Array.isArray(membersRes) ? membersRes : []);
     setInvites(Array.isArray(invitesRes) ? invitesRes : []);
+    setLoaded(true);
   }
 
   useEffect(() => {
@@ -133,8 +136,9 @@ export default function EquipePage(): JSX.Element {
             Equipe
           </h1>
           <div style={{ color: T.fg3, fontSize: 14, marginTop: 4 }}>
-            {members.length} membro{members.length !== 1 ? 's' : ''} · {invites.length} convite
-            {invites.length !== 1 ? 's' : ''} pendente{invites.length !== 1 ? 's' : ''}
+            {!loaded
+              ? 'Carregando…'
+              : `${members.length} membro${members.length !== 1 ? 's' : ''} · ${invites.length} convite${invites.length !== 1 ? 's' : ''} pendente${invites.length !== 1 ? 's' : ''}`}
           </div>
         </div>
         <button
@@ -164,7 +168,11 @@ export default function EquipePage(): JSX.Element {
           </h3>
         </div>
 
-        {members.length === 0 ? (
+        {!loaded ? (
+          <div style={{ padding: '48px 24px', textAlign: 'center', color: T.fg3, fontSize: 14 }}>
+            Carregando membros…
+          </div>
+        ) : members.length === 0 ? (
           <div style={{ padding: '48px 24px', textAlign: 'center' }}>
             <Users
               size={40}

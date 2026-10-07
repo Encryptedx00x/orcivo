@@ -414,6 +414,12 @@ select.ov-select {
     gap: 10px;
   }
 }
+/* Plan cards: one per row on phones (two columns broke the price "R$ 9,90/mês") */
+@media (max-width: 640px) {
+  .ov-plan-grid {
+    grid-template-columns: 1fr;
+  }
+}
 /* Sidebar/detail split layouts (aside + content, any fixed px column) */
 @media (max-width: 768px) {
   .ov-row-detail {
