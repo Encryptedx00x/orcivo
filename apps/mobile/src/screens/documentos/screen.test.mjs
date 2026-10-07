@@ -41,7 +41,7 @@ native.StyleSheet = { create: (styles) => styles };
 
 // Same lightweight hook/host adapter used by FinanceiroScreen tests.
 // It verifies behavior and native props; device layout is not simulated.
-function mount({ getQuotes, getWorkOrders, downloadAsync, isAvailableAsync, shareAsync, getItemAsync } = {}) {
+function mount({ getQuotes, getWorkOrders, downloadAsync, isAvailableAsync, shareAsync, getItemAsync, refreshSession } = {}) {
   const slots = [];
   let index = 0;
   const effects = [];
@@ -94,6 +94,7 @@ function mount({ getQuotes, getWorkOrders, downloadAsync, isAvailableAsync, shar
     'expo-secure-store': { getItemAsync: getItemAsync ?? (async () => 'token-abc') },
     '@orcivo/shared-types': shared,
     '../../config': { API_URL: 'https://api.test' },
+    '../../services/api': { refreshSession: refreshSession ?? (async () => 'expired') },
     '../../services/quote.service': { quoteService: { fetchQuotes: getQuotes ?? (async () => ({ data: [] })) } },
     '../../services/work-order.service': { workOrderService: { fetchAll: getWorkOrders ?? (async () => ({ data: [] })) } },
     './documentos-errors': { documentosError },
@@ -211,6 +212,26 @@ test('downloads the quote pdf with the bearer token and shares the resulting fil
   assert.equal(shares.length, 1);
   assert.equal(shares[0][0], 'file:///cache/orcamento-101.pdf');
   assert.equal(shares[0][1].mimeType, 'application/pdf');
+  assert.equal(screen.alerts.length, 0);
+});
+
+test('renews an expired session once and retries the pdf download', async () => {
+  let token = 'old';
+  const sent = [];
+  const screen = mount({
+    getQuotes: async () => ({ data: quotes }),
+    getWorkOrders: async () => ({ data: [] }),
+    getItemAsync: async () => token,
+    refreshSession: async () => { token = 'new'; return 'ok'; },
+    downloadAsync: async (uri, fileUri, options) => {
+      sent.push(options.headers.Authorization);
+      return { status: options.headers.Authorization === 'Bearer new' ? 200 : 401, uri: fileUri };
+    },
+  });
+  await screen.settle();
+  await screen.button('Baixar / compartilhar PDF').props.onPress();
+  await screen.settle();
+  assert.deepEqual(sent, ['Bearer old', 'Bearer new']);
   assert.equal(screen.alerts.length, 0);
 });
 

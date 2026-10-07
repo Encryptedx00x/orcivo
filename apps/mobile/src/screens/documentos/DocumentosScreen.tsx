@@ -19,6 +19,7 @@ import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 import { formatMoney } from '@orcivo/shared-types';
 import { API_URL } from '../../config';
+import { refreshSession } from '../../services/api';
 import { quoteService } from '../../services/quote.service';
 import type { Quote, QuoteStatus } from '../../services/quote.service';
 import { workOrderService } from '../../services/work-order.service';
@@ -100,11 +101,16 @@ export function DocumentosScreen() {
     downloadLock.current = true;
     setDownloadingId(quote.id);
     try {
-      const token = await SecureStore.getItemAsync('access_token');
       const fileUri = `${FileSystem.cacheDirectory}orcamento-${quote.number}.pdf`;
-      const result = await FileSystem.downloadAsync(`${API_URL}/quotes/${quote.id}/pdf`, fileUri, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const download = async () => {
+        const token = await SecureStore.getItemAsync('access_token');
+        return FileSystem.downloadAsync(`${API_URL}/quotes/${quote.id}/pdf`, fileUri, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+      };
+      let result = await download();
+      // Access token lasts 15 min: renew once and retry.
+      if (result.status === 401 && (await refreshSession()) === 'ok') result = await download();
       if (result.status !== 200) {
         throw Object.assign(new Error(`GET quote pdf ${result.status}`), { status: result.status });
       }

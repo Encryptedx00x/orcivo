@@ -1,9 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { api } from '../services/api';
+import { api, onSessionExpired } from '../services/api';
 
-export interface AuthUser { id: string; name: string; email: string; }
-export interface AuthCompany { id: string; trade_name: string; }
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+}
+export interface AuthCompany {
+  id: string;
+  trade_name: string;
+}
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -11,7 +18,12 @@ interface AuthState {
   company: AuthCompany | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  setSession: (accessToken: string, refreshToken: string, user: AuthUser, company: AuthCompany) => Promise<void>;
+  setSession: (
+    accessToken: string,
+    refreshToken: string,
+    user: AuthUser,
+    company: AuthCompany,
+  ) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>({} as AuthState);
@@ -37,30 +49,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const setSession = async (accessToken: string, refreshToken: string | undefined, u: AuthUser, c: AuthCompany) => {
+  const setSession = async (
+    accessToken: string,
+    refreshToken: string | undefined,
+    u: AuthUser,
+    c: AuthCompany,
+  ) => {
     await SecureStore.setItemAsync('access_token', accessToken);
     if (refreshToken) await SecureStore.setItemAsync('refresh_token', refreshToken);
     await SecureStore.setItemAsync('user', JSON.stringify(u));
     await SecureStore.setItemAsync('company', JSON.stringify(c));
-    setUser(u); setCompany(c); setIsAuthenticated(true);
+    setUser(u);
+    setCompany(c);
+    setIsAuthenticated(true);
   };
 
   const login = async (email: string, password: string) => {
-    const data = await api.post<{ access_token: string; refresh_token: string; user: AuthUser; company: AuthCompany }>('/auth/login', { email, password });
+    const data = await api.post<{
+      access_token: string;
+      refresh_token: string;
+      user: AuthUser;
+      company: AuthCompany;
+    }>('/auth/login', { email, password });
     await setSession(data.access_token, data.refresh_token, data.user, data.company);
   };
 
-  const logout = async () => {
-    await api.post('/auth/logout', {}).catch(() => {});
+  const clearSession = async () => {
     await SecureStore.deleteItemAsync('access_token');
     await SecureStore.deleteItemAsync('refresh_token');
     await SecureStore.deleteItemAsync('user');
     await SecureStore.deleteItemAsync('company');
-    setUser(null); setCompany(null); setIsAuthenticated(false);
+    setUser(null);
+    setCompany(null);
+    setIsAuthenticated(false);
   };
 
+  const logout = async () => {
+    await api.post('/auth/logout', {}).catch(() => {});
+    await clearSession();
+  };
+
+  // Refresh token refused (revoked or past 30 days): back to the login screen.
+  useEffect(() => {
+    onSessionExpired(() => void clearSession());
+    return () => onSessionExpired(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, company, login, logout, setSession }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, isLoading, user, company, login, logout, setSession }}
+    >
       {children}
     </AuthContext.Provider>
   );

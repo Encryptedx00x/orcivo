@@ -116,7 +116,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
             key: generateKey(),
             catalog_item_id: i.catalog_item_id ?? undefined,
             description: i.description,
-            quantity: String(i.quantity),
+            quantity: String(i.quantity).replace(/\.0+$/, ''),
             unit_price: String(i.unit_price),
           })),
         );
@@ -164,7 +164,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
         key: generateKey(),
         catalog_item_id: catalogItem.id,
         description: catalogItem.name,
-        quantity: '1.00',
+        quantity: '1',
         unit_price: catalogItem.unit_price,
       },
     ]);
@@ -174,7 +174,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   const addManualItem = () => {
     setItems((prev) => [
       ...prev,
-      { key: generateKey(), description: '', quantity: '1.00', unit_price: '0.00' },
+      { key: generateKey(), description: '', quantity: '1', unit_price: '0.00' },
     ]);
   };
 
