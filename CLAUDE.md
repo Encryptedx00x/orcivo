@@ -76,7 +76,7 @@ Condições obrigatórias antes de qualquer push:
 - validações disponíveis (lint/typecheck/test) rodadas quando fizer sentido
 
 **Ainda proibido sem aprovação explícita:**
-`git push --force` · `git push --force-with-lease` · `git reset --hard` · `git clean -fd` · deletar branch remota · reescrever histórico · tornar repo público · alterar GitHub Secrets · deploy produção · DNS/domínio · VPS/SSH/firewall · billing/fiscal · LGPD · mudança de stack · mudança de design system · qualquer comando destrutivo
+`git push --force` · `git push --force-with-lease` · `git reset --hard` · `git clean -fd` · deletar branch remota · reescrever histórico · tornar repo público · alterar GitHub Secrets · DNS/domínio · firewall/SSH config da VPS · billing/fiscal · LGPD · mudança de stack · mudança de design system · qualquer comando destrutivo
 
 ## Workflow GSD
 
@@ -192,7 +192,7 @@ Exemplos de Nível B: escolha de lib gratuita, estratégia de implementação, o
 
 Não é Nível B: criar plano/summary GSD, lint, typecheck, test, leitura de arquivo, criação de arquivo previsto no plano, correção óbvia de 1 linha.
 
-**Nível C:** Perguntar ao usuário — custo, deploy, DNS, secrets/API key fornecida externamente, billing, fiscal, LGPD, mudança de stack, mudança deliberada de estratégia multi-tenant/money handling, perda de dados, comando destrutivo, decisão que altere requisito de negócio, julgamento visual subjetivo sem validação por teste/screenshot.
+**Nível C:** Perguntar ao usuário — custo, DNS, secrets/API key fornecida externamente, billing, fiscal, LGPD, mudança de stack, mudança deliberada de estratégia multi-tenant/money handling, perda de dados, comando destrutivo, decisão que altere requisito de negócio, julgamento visual subjetivo sem validação por teste/screenshot.
 
 ## Nível C
 
@@ -200,7 +200,7 @@ Parar apenas para:
 
 - mudança de stack;
 - custo novo;
-- deploy/publicação;
+- publicação nas lojas (App Store / Play);
 - domínio/DNS;
 - secrets/API keys;
 - billing/fiscal;
@@ -213,6 +213,14 @@ Parar apenas para:
 - perda de dados.
 
 `git push` normal para `main`/`gsd/*` (repo privado, após os pré-checks) é Nível A.
+
+**Deploy de produção (VPS) é Nível A** (autorizado pelo dono em 2026-10-07), desde que:
+backup do banco e do `.env` + tag `prev-*` das imagens antes de trocar; build completo antes de
+recriar containers; migrations idempotentes; healthcheck verificado depois; rollback pronto.
+Perda de dados, reset de banco de produção e mudança de DNS/firewall continuam Nível C.
+
+**Contas de teste de terceiros autorizadas** (ex.: Agenda Boa, para benchmark): pode criar
+registros e testar funções; nunca editar nem apagar o que já existe, nem pagar/assinar nada.
 
 ## GSD
 
