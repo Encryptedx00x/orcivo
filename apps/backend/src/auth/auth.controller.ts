@@ -32,12 +32,14 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('signup/user')
   signupUser(@Body(new ZodValidationPipe(SignupStep1Schema)) body: unknown) {
     return this.authService.signupUser(body as never);
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('signup/company')
   signupCompany(
     @Headers('authorization') auth: string | undefined,
@@ -56,7 +58,7 @@ export class AuthController {
   }
 
   @Public()
-  @UseGuards(RefreshTokenGuard)
+  @UseGuards(ThrottlerGuard, RefreshTokenGuard)
   @HttpCode(200)
   @Post('refresh')
   refresh(@Req() req: { user: { userId: string; refreshToken: string } }) {
@@ -64,6 +66,7 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @HttpCode(200)
   @Post('forgot-password')
   forgotPassword(@Body(new ZodValidationPipe(ForgotPasswordSchema)) body: unknown) {
@@ -71,6 +74,7 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @HttpCode(200)
   @Post('reset-password')
   resetPassword(@Body(new ZodValidationPipe(ResetPasswordSchema)) body: unknown) {
@@ -85,7 +89,7 @@ export class AuthController {
   }
 
   @Public()
-  @UseGuards(RefreshTokenGuard)
+  @UseGuards(ThrottlerGuard, RefreshTokenGuard)
   @HttpCode(200)
   @Post('logout/refresh')
   logoutRefresh(@Req() req: { user: { userId: string; refreshToken: string } }) {

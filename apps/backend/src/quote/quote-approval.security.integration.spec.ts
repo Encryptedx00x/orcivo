@@ -96,10 +96,12 @@ describe('Security approval/session transactions (real disposable DB)', () => {
       },
     });
     quoteId = quote.id;
+    await redis.setex(`quote:approval:${token}`, 86_400, quoteId);
   });
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    if (token) await redis.del(`quote:approval:${token}`);
     if (companyId) {
       await prisma.quoteApproval.deleteMany({ where: { company_id: companyId } });
       await prisma.workOrder.deleteMany({ where: { company_id: companyId } });

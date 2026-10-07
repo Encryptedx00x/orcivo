@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Delete, Param, Body, Req } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, Req, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { InviteService } from './invite.service';
 import { TenantRequest } from '../common/interfaces/tenant-request.interface';
 import { Public } from '../auth/decorators/public.decorator';
@@ -34,6 +35,7 @@ export class InviteController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('accept')
   accept(
     @Body() body: { token: string; name?: string; password?: string },

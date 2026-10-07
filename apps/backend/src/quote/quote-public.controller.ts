@@ -8,7 +8,9 @@ import {
   Query,
   Req,
   StreamableFile,
+  UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   ApproveQuoteSchema,
@@ -55,6 +57,7 @@ export function hideByDocOptions<
 // TenantGuard lanca ForbiddenException se request.user for undefined, mesmo com @Public().
 // A separacao em controller dedicado e a solucao correta (conforme nota de interfaces do plano).
 @Public()
+@UseGuards(ThrottlerGuard)
 @Controller('quotes/public')
 export class QuotePublicController {
   constructor(private readonly quoteService: QuoteService) {}

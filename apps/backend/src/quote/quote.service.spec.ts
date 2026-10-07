@@ -1295,7 +1295,12 @@ describe('QuoteService', () => {
       });
 
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith({
-        where: { id: 'q1', status: 'SENT', approval_token: 'tok' },
+        where: {
+          id: 'q1',
+          status: 'SENT',
+          approval_token: 'tok',
+          OR: [{ valid_until: null }, { valid_until: { gte: expect.any(Date) } }],
+        },
         data: { status: 'REJECTED' },
       });
       expect(mockAudit.record).toHaveBeenCalledWith(
@@ -1324,6 +1329,18 @@ describe('QuoteService', () => {
       mockTx.quote.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.rejectByToken('tok')).rejects.toThrow(ConflictException);
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('Test RJ4: link vencido não pode recusar nem gravar auditoria', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        ...publicQuote('SENT'),
+        valid_until: new Date(Date.now() - 1000),
+      });
+
+      await expect(service.rejectByToken('tok')).rejects.toThrow(BadRequestException);
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
       expect(mockAudit.record).not.toHaveBeenCalled();
     });
   });
@@ -1380,6 +1397,13 @@ describe('QuoteService', () => {
 
       await expect(service.getByApprovalToken('token-antigo')).rejects.toThrow(NotFoundException);
     });
+
+    it('Test 7c: não ressuscita pelo banco um token cujo TTL do Redis expirou', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await expect(service.getByApprovalToken('token-expirado')).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.quote.findFirst).not.toHaveBeenCalled();
+    });
   });
 
   describe('getPdfByApprovalToken()', () => {
@@ -1407,6 +1431,7 @@ describe('QuoteService', () => {
       await expect(service.getPdfByApprovalToken('token-invalido')).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockPrisma.quote.findFirst).not.toHaveBeenCalled();
       expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
     });
 
@@ -1433,6 +1458,21 @@ describe('QuoteService', () => {
       });
 
       await expect(service.getPdfByApprovalToken('some-token')).rejects.toThrow(NotFoundException);
+      expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
+    });
+
+    it('Test 12: prazo vencido não permite baixar o PDF', async () => {
+      mockRedis.get.mockResolvedValue('q1');
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q1',
+        pdf_url: 'comp-1/quotes/q1.pdf',
+        approval_token: 'some-token',
+        valid_until: new Date(Date.now() - 1000),
+      });
+
+      await expect(service.getPdfByApprovalToken('some-token')).rejects.toThrow(
+        BadRequestException,
+      );
       expect(mockStorage.getObjectBuffer).not.toHaveBeenCalled();
     });
   });

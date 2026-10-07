@@ -742,7 +742,12 @@ export class QuoteService {
     const why = reason?.trim() || undefined;
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.quote.updateMany({
-        where: { id: quote.id, status: 'SENT', approval_token: token },
+        where: {
+          id: quote.id,
+          status: 'SENT',
+          approval_token: token,
+          OR: [{ valid_until: null }, { valid_until: { gte: new Date() } }],
+        },
         data: { status: 'REJECTED' },
       });
       if (updated.count !== 1)
@@ -969,8 +974,12 @@ export class QuoteService {
   }
 
   async getByApprovalToken(token: string) {
-    // Verificar Redis primeiro, fallback ao banco (token pode ter expirado do Redis mas estar no banco)
+    // Redis is the capability-expiry authority. The database copy lets us
+    // revalidate rotation, but must never resurrect a token after its TTL.
     const cachedId = await this.redis.get(`quote:approval:${token}`);
+    if (!cachedId) {
+      throw new NotFoundException('Orçamento não encontrado ou link inválido');
+    }
     const selectFields = {
       id: true,
       company_id: true,
@@ -1001,19 +1010,17 @@ export class QuoteService {
       company: { select: { trade_name: true, allowed_approval_methods: true } },
     };
 
-    const quote = cachedId
-      ? await this.prisma.quote.findFirst({
-          where: { id: cachedId },
-          select: selectFields,
-        })
-      : await this.prisma.quote.findFirst({
-          where: { approval_token: token },
-          select: selectFields,
-        });
+    const quote = await this.prisma.quote.findFirst({
+      where: { id: cachedId },
+      select: selectFields,
+    });
 
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
     if (quote.approval_token !== token) {
       throw new NotFoundException('Orcamento nao encontrado ou link invalido');
+    }
+    if (quote.valid_until && quote.valid_until.getTime() < Date.now()) {
+      throw new BadRequestException('O prazo de aprovação deste orçamento expirou.');
     }
     const { approval_token, ...safeQuote } = quote;
     void approval_token;
@@ -1027,15 +1034,13 @@ export class QuoteService {
    */
   async getPdfByApprovalToken(token: string): Promise<Buffer> {
     const cachedId = await this.redis.get(`quote:approval:${token}`);
-    const quote = cachedId
-      ? await this.prisma.quote.findFirst({
-          where: { id: cachedId },
-          select: { id: true, pdf_url: true, approval_token: true },
-        })
-      : await this.prisma.quote.findFirst({
-          where: { approval_token: token },
-          select: { id: true, pdf_url: true, approval_token: true },
-        });
+    if (!cachedId) {
+      throw new NotFoundException('Orçamento não encontrado ou link inválido');
+    }
+    const quote = await this.prisma.quote.findFirst({
+      where: { id: cachedId },
+      select: { id: true, pdf_url: true, approval_token: true, valid_until: true },
+    });
 
     if (!quote) throw new NotFoundException('Orçamento não encontrado ou link inválido');
     // O cache Redis (id do token -> quote id) pode ficar dessincronizado do banco
@@ -1043,6 +1048,9 @@ export class QuoteService {
     // approval_token atual do banco antes de servir o PDF — nunca confiar só no cache.
     if (quote.approval_token !== token) {
       throw new NotFoundException('Orçamento não encontrado ou link inválido');
+    }
+    if (quote.valid_until && quote.valid_until.getTime() < Date.now()) {
+      throw new BadRequestException('O prazo de aprovação deste orçamento expirou.');
     }
 
     const key = this.storage.extractKey(PDF_BUCKET, quote.pdf_url);
