@@ -54,6 +54,10 @@ export async function updateCompanyProfile(body: {
   address: string | null;
   city: string | null;
   state: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
 }): Promise<Result> {
   return patchCompanyMe(body);
 }

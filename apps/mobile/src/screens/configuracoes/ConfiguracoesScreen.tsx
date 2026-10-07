@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ApprovalMethodsPicker, LogoPicker } from '../../easy/screens/Settings';
 import { useEasyMode } from '../../easy/EasyModeContext';
+import { COMPANY_DOC_FIELDS } from '@orcivo/shared-types';
 import { api, newIdempotencyKey } from '../../services/api';
 import {
   inferPixKeyType,
@@ -238,6 +239,17 @@ export function ConfiguracoesScreen() {
             editable={!profileBusy}
             onChangeText={(value) => editProfile('address', value)}
           />
+          {COMPANY_DOC_FIELDS.map((d) => (
+            <Field
+              key={d.key}
+              label={`${d.label} (opcional)`}
+              value={profile[d.key]}
+              maxLength={d.max}
+              placeholder={d.placeholder}
+              editable={!profileBusy}
+              onChangeText={(value) => editProfile(d.key, value)}
+            />
+          ))}
           <Field
             label="Cidade"
             value={profile.city}

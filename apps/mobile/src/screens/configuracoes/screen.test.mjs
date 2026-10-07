@@ -51,6 +51,7 @@ function mount(api) {
     '@react-navigation/native': { useNavigation: () => ({ navigate() {} }) },
     '../../easy/screens/Settings': { ApprovalMethodsPicker: () => null, LogoPicker: () => null },
     '../../easy/EasyModeContext': { useEasyMode: () => ({ setEasy() {} }) },
+    '@orcivo/shared-types': { COMPANY_DOC_FIELDS: [] },
   };
   const exports = {};
   runInNewContext(compiled.outputText, { exports, require: (name) => {

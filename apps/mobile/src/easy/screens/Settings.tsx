@@ -23,6 +23,7 @@ import {
   maskPhone,
   onlyDigits,
   type QuoteDocOptions,
+  COMPANY_DOC_FIELDS,
 } from '@orcivo/shared-types';
 import { DocOptionsFields } from '../DocOptions';
 import { easy, errorText, type ApprovalMethod } from '../data';
@@ -301,6 +302,7 @@ function CompanyEdit() {
       address: c.address ?? '',
       city: c.city ?? '',
       state: c.state ?? '',
+      ...Object.fromEntries(COMPANY_DOC_FIELDS.map((d) => [d.key, c[d.key] ?? ''])),
     });
   if (!f)
     return (
@@ -338,6 +340,9 @@ function CompanyEdit() {
                     address: f.address.trim() || null,
                     city: f.city.trim() || null,
                     state: f.state.trim() || null,
+                    ...Object.fromEntries(
+                      COMPANY_DOC_FIELDS.map((d) => [d.key, f[d.key].trim() || null]),
+                    ),
                   }),
                 'Dados da empresa salvos.',
               )
@@ -378,6 +383,15 @@ function CompanyEdit() {
         onChange={(v) => set('state')(v.toUpperCase().slice(0, 2))}
         placeholder="SP"
       />
+      {COMPANY_DOC_FIELDS.map((d) => (
+        <Field
+          key={d.key}
+          label={`${d.label} (opcional)`}
+          value={f[d.key]}
+          onChange={(v) => set(d.key)(v.slice(0, d.max))}
+          placeholder={d.placeholder}
+        />
+      ))}
     </Page>
   );
 }

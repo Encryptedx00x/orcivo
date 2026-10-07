@@ -70,6 +70,10 @@ export interface ReceiptCompany {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
 }
 
 /** Name, document, phone and address lines of one party ("Quem recebeu" / "Quem pagou"). */
@@ -153,6 +157,16 @@ export class ReceiptPdfService {
                     {l}
                   </Text>
                 ))}
+                {company.instagram || company.website ? (
+                  <Text style={s.small}>
+                    {[
+                      company.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
+                      company.website ?? '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
               </View>
               <View style={s.party}>
                 <Text style={s.smallStrong}>Quem pagou</Text>
@@ -181,11 +195,18 @@ export class ReceiptPdfService {
                 <Image style={s.sigImage} src={r.signatureDataUri} />
                 <View style={s.sigLine} />
                 <Text style={s.small}>
-                  {r.signerName ? `${r.signerName} · Técnico` : 'Técnico'}
+                  {[r.signerName, 'Técnico', company.professional_registration]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Text>
               </View>
             ) : null}
             {company.pix_key ? <Text style={s.pix}>Chave Pix: {company.pix_key}</Text> : null}
+            {company.document_footer ? (
+              <Text style={[s.small, { textAlign: 'center', marginTop: 16 }]}>
+                {company.document_footer}
+              </Text>
+            ) : null}
           </View>
         </Page>
       </Document>

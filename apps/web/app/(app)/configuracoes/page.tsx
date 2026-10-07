@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import { COMPANY_DOC_FIELDS, type QuoteDocOptions } from '@orcivo/shared-types';
 import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
 import {
   Building2,
@@ -34,7 +34,13 @@ interface EmpresaForm {
   address: string;
   city: string;
   state: string;
+  instagram: string;
+  website: string;
+  professional_registration: string;
+  document_footer: string;
 }
+
+const DOC_FIELDS = COMPANY_DOC_FIELDS;
 
 interface PixForm {
   pix_key_type: PixKeyType;
@@ -56,6 +62,10 @@ interface CompanyMeResponse {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
   pix_key?: string | null;
   allowed_approval_methods?: Method[];
   logo_url?: string | null;
@@ -74,6 +84,10 @@ const EMPTY_EMPRESA: EmpresaForm = {
   address: '',
   city: '',
   state: '',
+  instagram: '',
+  website: '',
+  professional_registration: '',
+  document_footer: '',
 };
 const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
 const EMPTY_ACCOUNT: AccountForm = {
@@ -217,6 +231,10 @@ export default function ConfiguracoesPage(): React.JSX.Element {
           address: d.address ?? '',
           city: d.city ?? '',
           state: d.state ?? '',
+          instagram: d.instagram ?? '',
+          website: d.website ?? '',
+          professional_registration: d.professional_registration ?? '',
+          document_footer: d.document_footer ?? '',
         });
         if (d.pix_key) {
           setPix({
@@ -257,6 +275,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         address: empresa.address.trim() || null,
         city: empresa.city || null,
         state: empresa.state || null,
+        ...Object.fromEntries(DOC_FIELDS.map((f) => [f.key, empresa[f.key].trim() || null])),
       });
       if (!result.ok) {
         setEmpresaError(result.message);
@@ -637,6 +656,27 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                       }}
                     />
                   </div>
+                  {DOC_FIELDS.map((f) => (
+                    <div
+                      key={f.key}
+                      style={f.key === 'document_footer' ? { gridColumn: '1 / -1' } : undefined}
+                    >
+                      <label className="ov-label" htmlFor={`cfg-${f.key}`}>
+                        {f.label}
+                      </label>
+                      <input
+                        id={`cfg-${f.key}`}
+                        className="ov-input"
+                        placeholder={f.placeholder}
+                        maxLength={f.max}
+                        value={empresa[f.key]}
+                        onChange={(e) => {
+                          setEmpresaSaved(false);
+                          setEmpresa({ ...empresa, [f.key]: e.target.value });
+                        }}
+                      />
+                    </div>
+                  ))}
                   <div>
                     <label className="ov-label">Cidade</label>
                     <input

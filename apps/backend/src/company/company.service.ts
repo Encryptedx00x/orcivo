@@ -16,6 +16,10 @@ const COMPANY_SELECT = {
   city: true,
   state: true,
   address: true,
+  instagram: true,
+  website: true,
+  professional_registration: true,
+  document_footer: true,
   brand_color: true,
   logo_url: true,
   pix_key: true,
@@ -36,6 +40,10 @@ const PROFILE_FIELD_LABELS: Record<
   | 'city'
   | 'state'
   | 'address'
+  | 'instagram'
+  | 'website'
+  | 'professional_registration'
+  | 'document_footer'
   | 'pix_key'
   | 'quote_default_terms'
   | 'quote_default_validity_days'
@@ -49,6 +57,10 @@ const PROFILE_FIELD_LABELS: Record<
   city: 'cidade',
   state: 'estado',
   address: 'endereço',
+  instagram: 'Instagram',
+  website: 'site',
+  professional_registration: 'registro profissional',
+  document_footer: 'frase do rodapé',
   pix_key: 'chave Pix',
   quote_default_terms: 'condições padrão',
   quote_default_validity_days: 'validade padrão',

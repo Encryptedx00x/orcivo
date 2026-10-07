@@ -5,6 +5,10 @@ export interface CompanyProfile {
   document: string;
   phone: string;
   address: string;
+  instagram: string;
+  website: string;
+  professional_registration: string;
+  document_footer: string;
   city: string;
   state: string;
 }
@@ -27,6 +31,10 @@ export function profileFromCompany(company: CompanyResponse): CompanyProfile {
     document: company.document ?? '',
     phone: company.phone ?? '',
     address: company.address ?? '',
+    instagram: company.instagram ?? '',
+    website: company.website ?? '',
+    professional_registration: company.professional_registration ?? '',
+    document_footer: company.document_footer ?? '',
     city: company.city ?? '',
     state: company.state ?? '',
   };
@@ -38,6 +46,10 @@ export function profilePayload(profile: CompanyProfile) {
     document: profile.document.trim() || null,
     phone: profile.phone.trim() || null,
     address: profile.address.trim() || null,
+    instagram: profile.instagram.trim() || null,
+    website: profile.website.trim() || null,
+    professional_registration: profile.professional_registration.trim() || null,
+    document_footer: profile.document_footer.trim() || null,
     city: profile.city.trim() || null,
     state: profile.state.trim().toUpperCase() || null,
   };

@@ -45,9 +45,9 @@ test('saved formatted keys recover their type, including 11-digit phones', () =>
 
 test('company load and profile updates preserve the web API contract', () => {
   const form = profileFromCompany({ trade_name: 'Empresa', phone: null, pix_key: 'private@example.com' });
-  assert.deepEqual(form, { trade_name: 'Empresa', document: '', phone: '', address: '', city: '', state: '' });
+  assert.deepEqual(form, { trade_name: 'Empresa', document: '', phone: '', address: '', instagram: '', website: '', professional_registration: '', document_footer: '', city: '', state: '' });
   assert.deepEqual(profilePayload({ ...form, city: ' São Paulo ', state: 'sp' }), {
-    trade_name: 'Empresa', document: null, phone: null, address: null, city: 'São Paulo', state: 'SP',
+    trade_name: 'Empresa', document: null, phone: null, address: null, instagram: null, website: null, professional_registration: null, document_footer: null, city: 'São Paulo', state: 'SP',
   });
   assert.equal('pix_key' in profilePayload(form), false);
 });

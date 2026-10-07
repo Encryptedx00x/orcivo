@@ -282,6 +282,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: { fontSize: 8, color: C.fg3 },
+  footerPhrase: {
+    marginTop: 18,
+    textAlign: 'center',
+    fontSize: 10,
+    fontFamily: SANS,
+    color: C.fg3,
+  },
   footerBrand: { fontSize: 8, color: C.purple600, fontFamily: SANS, fontWeight: 600 },
   footerPage: { fontSize: 8, color: C.fg4, fontFamily: MONO },
 });
@@ -374,6 +381,10 @@ interface CompanyData {
   trade_name: string;
   phone?: string | null;
   address?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
   city?: string | null;
   state?: string | null;
   logo_url?: string | null;
@@ -484,6 +495,16 @@ export class QuotePdfService {
                 {company.phone ? <Text style={styles.companyInfo}>{company.phone}</Text> : null}
                 {company.address ? <Text style={styles.companyInfo}>{company.address}</Text> : null}
                 {location ? <Text style={styles.companyInfo}>{location}</Text> : null}
+                {company.instagram || company.website ? (
+                  <Text style={styles.companyInfo}>
+                    {[
+                      company.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
+                      company.website ?? '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
               </View>
             </View>
 
@@ -618,7 +639,11 @@ export class QuotePdfService {
                 <View style={styles.signLine} />
               )}
               <Text style={styles.signLabel}>{company.trade_name}</Text>
-              <Text style={styles.signSub}>Responsável</Text>
+              <Text style={styles.signSub}>
+                {company.professional_registration
+                  ? `Responsável · ${company.professional_registration}`
+                  : 'Responsável'}
+              </Text>
             </View>
             {q.customer_name ? (
               <View style={styles.signBox}>
@@ -641,6 +666,10 @@ export class QuotePdfService {
               </View>
             ) : null}
           </View>
+
+          {company.document_footer ? (
+            <Text style={styles.footerPhrase}>{company.document_footer}</Text>
+          ) : null}
 
           {/* ── Rodapé ── */}
           <View style={styles.footer} fixed>

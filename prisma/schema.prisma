@@ -47,6 +47,11 @@ model Company {
   state                    String?
   /// Street, number, district: printed on receipts and quotes.
   address                  String?
+  /// Shown on quotes and receipts (header / signature / footer).
+  instagram                 String?
+  website                   String?
+  professional_registration String?
+  document_footer           String?
   brand_color              String?
   logo_url                 String?
   pix_key                  String?

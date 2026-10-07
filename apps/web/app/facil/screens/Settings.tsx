@@ -14,7 +14,13 @@ import {
   UserRound,
   Users,
 } from 'lucide-react';
-import { formatMoney, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
+import {
+  COMPANY_DOC_FIELDS,
+  formatMoney,
+  maskCpfCnpj,
+  maskPhone,
+  onlyDigits,
+} from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
 import type { QuoteDocOptions } from '@orcivo/shared-types';
@@ -437,6 +443,7 @@ function CompanyEdit() {
       address: c.address ?? '',
       city: c.city ?? '',
       state: c.state ?? '',
+      ...Object.fromEntries(COMPANY_DOC_FIELDS.map((d) => [d.key, c[d.key] ?? ''])),
     });
   if (!f)
     return company.error ? (
@@ -481,6 +488,15 @@ function CompanyEdit() {
           onChange={(v) => set('state')(v.toUpperCase().slice(0, 2))}
           placeholder="SP"
         />
+        {COMPANY_DOC_FIELDS.map((d) => (
+          <Field
+            key={d.key}
+            label={`${d.label} (opcional)`}
+            value={f[d.key]}
+            onChange={(v) => set(d.key)(v.slice(0, d.max))}
+            placeholder={d.placeholder}
+          />
+        ))}
       </div>
       <SaveBar
         busy={busy}
@@ -497,6 +513,9 @@ function CompanyEdit() {
                 address: f.address.trim() || null,
                 city: f.city.trim() || null,
                 state: f.state.trim() || null,
+                ...Object.fromEntries(
+                  COMPANY_DOC_FIELDS.map((d) => [d.key, f[d.key].trim() || null]),
+                ),
               }),
             'Dados da empresa salvos.',
           )

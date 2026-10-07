@@ -370,6 +370,10 @@ export interface EasyCompany {
   document: string | null;
   phone: string | null;
   address?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
   city: string | null;
   state: string | null;
   pix_key: string | null;
