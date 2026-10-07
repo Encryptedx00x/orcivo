@@ -13,6 +13,8 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api, newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
+import { OsDetailsFields, cleanDetails } from './os/OsDetailsFields';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderCreate'>;
 interface Customer {
@@ -48,9 +50,18 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
+  const [osFields, setOsFields] = useState<WorkOrderField[]>([]);
+  const [details, setDetails] = useState<WorkOrderDetails>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const key = useRef(newIdempotencyKey());
+
+  useEffect(() => {
+    api
+      .get<{ work_order_fields?: WorkOrderField[] }>('/company/me')
+      .then((c) => setOsFields(c.work_order_fields ?? []))
+      .catch(() => setOsFields([]));
+  }, []);
 
   useEffect(() => {
     if (customer || !search.trim()) {
@@ -81,6 +92,7 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
           title: title.trim(),
           ...(notes.trim() ? { notes: notes.trim() } : {}),
           ...(scheduled ? { scheduled_at: scheduled } : {}),
+          ...(Object.keys(cleanDetails(details)).length ? { details: cleanDetails(details) } : {}),
         },
         { idempotencyKey: key.current },
       );
@@ -174,6 +186,8 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
           multiline
           maxLength={2000}
         />
+
+        <OsDetailsFields fields={osFields} value={details} onChange={setDetails} />
 
         {error ? (
           <Text accessibilityRole="alert" style={styles.error}>

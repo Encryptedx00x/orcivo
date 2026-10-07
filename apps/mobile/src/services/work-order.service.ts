@@ -24,6 +24,7 @@ export interface WorkOrder {
   scheduled_at?: string;
   finished_at?: string | null;
   notes?: string | null;
+  details?: Partial<Record<string, string>> | null;
   /** The value of a work order is its approved quote's total. */
   quote?: { id: string; number: number; total?: string } | null;
   photos: WorkOrderPhoto[];

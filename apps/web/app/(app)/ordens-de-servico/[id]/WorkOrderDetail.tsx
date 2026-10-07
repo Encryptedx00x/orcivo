@@ -29,6 +29,8 @@ import { contactLinks } from '../../clientes/contact-links';
 import { PaymentRegistrationModal } from '../../financeiro/PaymentRegistrationModal';
 import type { CostRow } from '../../financeiro/CostsSection';
 import { OsCosts } from './OsCosts';
+import { OsDetailsCard } from './OsDetailsCard';
+import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
 import {
   PaymentDeleteModal,
   PaymentEditModal,
@@ -155,6 +157,7 @@ interface Props {
   initial: WorkOrderWithActions;
   payments: WorkOrderPayment[];
   costs: CostRow[];
+  osFields: WorkOrderField[];
 }
 
 const PAYMENT_STATUS: Record<string, string> = {
@@ -165,7 +168,7 @@ const PAYMENT_STATUS: Record<string, string> = {
   CANCELLED: 'Cancelado',
 };
 
-export function WorkOrderDetail({ initial, payments, costs }: Props): React.JSX.Element {
+export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): React.JSX.Element {
   const router = useRouter();
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
   const contact = contactLinks(order.customer.phone);
@@ -708,6 +711,13 @@ export function WorkOrderDetail({ initial, payments, costs }: Props): React.JSX.
                 )}
               </div>
             </div>
+
+            <OsDetailsCard
+              id={order.id}
+              fields={osFields}
+              initial={(order.details ?? {}) as WorkOrderDetails}
+              editable={order.status === 'PENDING' || order.status === 'IN_PROGRESS'}
+            />
 
             {/* Fotos */}
             <div style={card}>

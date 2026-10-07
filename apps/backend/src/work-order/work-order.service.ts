@@ -401,6 +401,7 @@ export class WorkOrderService {
           number,
           title: dto.title,
           notes: dto.notes,
+          details: dto.details,
           status: initialStatus,
           scheduled_at: dto.scheduled_at ? new Date(dto.scheduled_at) : undefined,
           assigned_to_user_id: dto.assigned_to_user_id,

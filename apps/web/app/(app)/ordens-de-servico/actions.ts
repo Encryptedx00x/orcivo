@@ -83,3 +83,28 @@ export async function workOrderAction(
   const order = (await res.json()) as WorkOrderWithActions;
   return { order };
 }
+
+/** Segment fields (marca, modelo, nº de série…) of an open OS. */
+export async function saveWorkOrderDetails(
+  id: string,
+  details: Record<string, string>,
+): Promise<{ error?: string }> {
+  const token = (await cookies()).get('access_token')?.value;
+  if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
+  try {
+    const res = await fetch(`${API_URL}/work-orders/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ details }),
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      return { error: body?.message ?? 'Não foi possível salvar os dados.' };
+    }
+    revalidatePath(`/ordens-de-servico/${id}`);
+    return {};
+  } catch {
+    return { error: 'Não foi possível contatar o servidor. Tente novamente.' };
+  }
+}

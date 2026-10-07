@@ -69,6 +69,11 @@ export async function updateCompanyPix(body: {
   return patchCompanyMe(body);
 }
 
+/** Configurações > Ordem de serviço: segment fields shown on every OS. */
+export async function updateWorkOrderFields(work_order_fields: string[]): Promise<Result> {
+  return patchCompanyMe({ work_order_fields });
+}
+
 /** Configurações > Condições padrão (prefilled on every new quote). */
 export async function updateQuoteDefaults(body: {
   quote_default_terms: string | null;

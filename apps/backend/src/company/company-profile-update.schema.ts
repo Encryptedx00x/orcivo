@@ -1,4 +1,8 @@
-import { QuoteDocOptionsSchema, QuotePaymentTermsSchema } from '@orcivo/shared-types';
+import {
+  QuoteDocOptionsSchema,
+  QuotePaymentTermsSchema,
+  WorkOrderFieldListSchema,
+} from '@orcivo/shared-types';
 import { z } from 'zod';
 
 // Mirrors packages/shared-types/src/company/company-profile-update.dto.ts.
@@ -45,6 +49,7 @@ export const CompanyProfileUpdateSchema = z
     quote_default_doc_options: QuoteDocOptionsSchema.nullable().optional(),
     quote_default_payment_terms: QuotePaymentTermsSchema.nullable().optional(),
     quote_default_warranty: z.string().max(2000).nullable().optional(),
+    work_order_fields: WorkOrderFieldListSchema.optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;

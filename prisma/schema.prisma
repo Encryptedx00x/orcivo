@@ -62,6 +62,8 @@ model Company {
   quote_default_doc_options   Json?
   quote_default_payment_terms Json?
   quote_default_warranty      String?
+  /// Extra OS fields turned on for the segment (keys of WORK_ORDER_FIELDS).
+  work_order_fields           String[]  @default([])
   plan_code                   PlanCode         @default(LIVRE)
   allowed_approval_methods    ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
@@ -349,6 +351,8 @@ model WorkOrder {
   started_at          DateTime?
   finished_at         DateTime?
   notes               String?
+  /// Segment fields (brand, model, serial…) — short texts keyed by WORK_ORDER_FIELDS.
+  details             Json?
   assigned_to_user_id String?
   created_by_user_id  String
 

@@ -24,6 +24,7 @@ import { reasonSheet, useSheet } from '../easy/sheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder, WorkOrderPhoto } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import { OsDetailsSection } from './os/OsDetailsFields';
 
 import {
   auditService,
@@ -370,6 +371,13 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         ) : null}
       </View>
+
+      <OsDetailsSection
+        key={order.id}
+        id={order.id}
+        initial={order.details ?? {}}
+        editable={order.status === 'PENDING' || order.status === 'IN_PROGRESS'}
+      />
 
       {/* Ações de status */}
       {updatingStatus ? (

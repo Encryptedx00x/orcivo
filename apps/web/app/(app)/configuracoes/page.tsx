@@ -5,7 +5,9 @@ import {
   COMPANY_DOC_FIELDS,
   type QuoteDocOptions,
   type QuotePaymentTerms,
+  type WorkOrderField,
 } from '@orcivo/shared-types';
+import { OsFieldsSettings } from './OsFieldsSettings';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
 import {
@@ -18,6 +20,7 @@ import {
   UserRound,
   FileText,
   Smile,
+  Wrench,
 } from 'lucide-react';
 import { LogoField } from '../../../components/LogoField';
 import { setEasyMode } from '../../../components/EasyMode';
@@ -79,6 +82,7 @@ interface CompanyMeResponse {
   quote_default_doc_options?: QuoteDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
+  work_order_fields?: WorkOrderField[];
 }
 
 const DEFAULT_TERMS =
@@ -184,6 +188,7 @@ const TABS = [
   { id: 'plano', label: 'Plano e assinatura', icon: CreditCard },
   { id: 'aprovacao', label: 'Aprovação', icon: CheckSquare },
   { id: 'condicoes', label: 'Condições padrão', icon: FileText },
+  { id: 'os', label: 'Ordem de serviço', icon: Wrench },
   { id: 'modo', label: 'Modo fácil', icon: Smile },
 ];
 
@@ -206,6 +211,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
+  const [osFields, setOsFields] = useState<WorkOrderField[] | null>(null);
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
@@ -235,6 +241,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         setDocOptions(d.quote_default_doc_options ?? null);
         setPayTerms(d.quote_default_payment_terms ?? null);
         setWarranty(d.quote_default_warranty ?? '');
+        setOsFields(d.work_order_fields ?? []);
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -1028,6 +1035,8 @@ export default function ConfiguracoesPage(): React.JSX.Element {
               </div>
             </div>
           )}
+
+          {tab === 'os' && osFields && <OsFieldsSettings initial={osFields} />}
 
           {tab === 'modo' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>

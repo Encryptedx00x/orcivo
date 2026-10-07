@@ -37,6 +37,7 @@ export interface WorkOrder {
   started_at?: string;
   finished_at?: string;
   total?: string | null;
+  details?: Partial<Record<string, string>> | null;
   photos: WorkOrderPhoto[];
   quote?: { id: string; number: number; total?: string };
 }

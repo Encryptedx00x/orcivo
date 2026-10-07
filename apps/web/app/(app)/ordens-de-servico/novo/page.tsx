@@ -1,6 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
+import { OsDetailsFields, cleanDetails } from '../../../../components/OsDetailsFields';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList, Calendar, User, Info, ChevronDown } from 'lucide-react';
@@ -34,6 +36,15 @@ function NovaOSContent(): React.JSX.Element {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [osFields, setOsFields] = useState<WorkOrderField[]>([]);
+  const [details, setDetails] = useState<WorkOrderDetails>({});
+
+  useEffect(() => {
+    fetch('/api/company/me')
+      .then((r) => r.json())
+      .then((d: { work_order_fields?: WorkOrderField[] }) => setOsFields(d.work_order_fields ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch('/api/customers')
@@ -80,6 +91,7 @@ function NovaOSContent(): React.JSX.Element {
       title: form.title,
       notes: form.notes || undefined,
       scheduled_at,
+      ...(Object.keys(cleanDetails(details)).length ? { details: cleanDetails(details) } : {}),
     };
 
     const parsed = WorkOrderCreateSchema.safeParse(payload);
@@ -384,7 +396,7 @@ function NovaOSContent(): React.JSX.Element {
               </Field>
 
               <div style={{ marginTop: 14 }}>
-                <Field label="Observações internas">
+                <Field label="Observações">
                   <textarea
                     style={{ ...inp, height: 90, resize: 'vertical', paddingTop: 10 }}
                     value={form.notes}
@@ -393,6 +405,11 @@ function NovaOSContent(): React.JSX.Element {
                   />
                 </Field>
               </div>
+              {osFields.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <OsDetailsFields fields={osFields} value={details} onChange={setDetails} />
+                </div>
+              )}
             </div>
 
             {/* Agendamento */}
