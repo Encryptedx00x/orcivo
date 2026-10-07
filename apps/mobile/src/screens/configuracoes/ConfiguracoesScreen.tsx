@@ -231,6 +231,14 @@ export function ConfiguracoesScreen() {
             onChangeText={(value) => editProfile('phone', value)}
           />
           <Field
+            label="Endereço"
+            value={profile.address}
+            maxLength={200}
+            placeholder="Rua, número, bairro"
+            editable={!profileBusy}
+            onChangeText={(value) => editProfile('address', value)}
+          />
+          <Field
             label="Cidade"
             value={profile.city}
             maxLength={100}

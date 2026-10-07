@@ -284,7 +284,7 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
     '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
     '../screens/equipe/EquipeScreen': { EquipeScreen },
   };
-  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen']) {
+  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };
   }
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };

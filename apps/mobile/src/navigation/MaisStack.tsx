@@ -12,6 +12,7 @@ import { CatalogScreen } from '../screens/CatalogScreen';
 import { CatalogItemFormScreen } from '../screens/CatalogItemFormScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
 import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
+import { WorkOrderCreateScreen } from '../screens/WorkOrderCreateScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 import type { CatalogItem } from '../services/catalog.service';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from '../easy/screens/Receipts';
@@ -46,6 +47,7 @@ export type MaisStackParamList = {
   CatalogItemForm: { item?: CatalogItem } | undefined;
   WorkOrderList: undefined;
   WorkOrderDetail: { id: string };
+  WorkOrderCreate: undefined;
   WorkOrderPhoto: {
     workOrderId: string;
     stage?: WorkOrderPhotoStage;
@@ -199,6 +201,11 @@ export function MaisStack() {
         name="WorkOrderList"
         component={WorkOrderListScreen}
         options={{ title: 'Ordens de Serviço' }}
+      />
+      <Stack.Screen
+        name="WorkOrderCreate"
+        component={WorkOrderCreateScreen}
+        options={{ title: 'Nova OS' }}
       />
       <Stack.Screen
         name="WorkOrderDetail"

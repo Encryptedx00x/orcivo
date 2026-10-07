@@ -360,7 +360,7 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
     '../screens/documentos/DocumentosScreen': { DocumentosScreen: () => null },
     '../screens/plano/PlanoScreen': { PlanoScreen },
   };
-  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen']) {
+  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };
   }
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };

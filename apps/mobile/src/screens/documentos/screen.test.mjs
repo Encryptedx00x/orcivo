@@ -292,7 +292,7 @@ test('Mais menu opens the real documentos screen instead of EmBreve', () => {
     '../screens/documentos/DocumentosScreen': { DocumentosScreen },
     '../screens/plano/PlanoScreen': { PlanoScreen },
   };
-  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen']) {
+  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };
   }
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };

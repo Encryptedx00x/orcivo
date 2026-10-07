@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CheckCircle, ClipboardList, Clock } from 'lucide-react-native';
+import { CheckCircle, ClipboardList, Clock, Plus } from 'lucide-react-native';
+import { formatMoney } from '@orcivo/shared-types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { usePagedList } from '../hooks/usePagedList';
 import { workOrderService, WorkOrder } from '../services/work-order.service';
@@ -44,7 +45,9 @@ export function WorkOrderListScreen({ navigation }: Props) {
 
   useEffect(() => {
     load();
-  }, [load]);
+    // Back from "Nova OS" or a detail: show the fresh list.
+    return navigation.addListener('focus', load);
+  }, [load, navigation]);
 
   const renderItem = ({ item }: { item: WorkOrder }) => (
     <TouchableOpacity
@@ -61,6 +64,9 @@ export function WorkOrderListScreen({ navigation }: Props) {
       <View style={styles.cardFooter}>
         <Clock size={14} color="#6B7280" />
         <Text style={styles.customerName}>{item.customer.name}</Text>
+        {item.quote?.total ? (
+          <Text style={styles.total}>{formatMoney(item.quote.total)}</Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -105,11 +111,33 @@ export function WorkOrderListScreen({ navigation }: Props) {
           </View>
         }
       />
+      <TouchableOpacity
+        accessibilityRole="button"
+        style={styles.fab}
+        onPress={() => navigation.navigate('WorkOrderCreate')}
+      >
+        <Plus size={18} color="#FFFFFF" />
+        <Text style={styles.fabText}>Nova OS</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#6D28D9',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+  },
+  fabText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  total: { marginLeft: 'auto', fontSize: 14, fontWeight: '700', color: '#0A0A0F' },
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyContainer: { flex: 1 },

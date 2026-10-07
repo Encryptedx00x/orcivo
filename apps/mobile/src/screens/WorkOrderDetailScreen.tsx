@@ -3,13 +3,22 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Camera, CheckCircle, History, RotateCcw, XCircle } from 'lucide-react-native';
+import {
+  Camera,
+  CheckCircle,
+  History,
+  MessageCircle,
+  RotateCcw,
+  XCircle,
+} from 'lucide-react-native';
+import { formatMoney } from '@orcivo/shared-types';
 import { easy, errorText } from '../easy/data';
 import { reasonSheet, useSheet } from '../easy/sheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -30,6 +39,24 @@ import {
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderDetail'>;
 
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+
+const dateText = (iso?: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : '—';
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fact}>
+      <Text style={styles.factLabel}>{label}</Text>
+      <Text style={styles.factValue}>{value}</Text>
+    </View>
+  );
+}
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
 const STATUS_CONFIG: Record<WorkOrderStatus, { label: string; color: string; bg: string }> = {
@@ -319,6 +346,29 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
         </View>
         <Text style={styles.title}>{order.title}</Text>
         <Text style={styles.customer}>Cliente: {order.customer.name}</Text>
+        <View style={styles.facts}>
+          <Fact label="Valor" value={order.quote?.total ? formatMoney(order.quote.total) : '—'} />
+          <Fact label="Marcada para" value={dateText(order.scheduled_at)} />
+          {order.finished_at ? (
+            <Fact label="Concluída em" value={dateText(order.finished_at)} />
+          ) : null}
+          {order.quote ? <Fact label="Orçamento" value={`#${order.quote.number}`} /> : null}
+        </View>
+        {order.notes ? <Text style={styles.notes}>{order.notes}</Text> : null}
+        {order.customer.phone ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={styles.whatsBtn}
+            onPress={() =>
+              void Linking.openURL(
+                `https://wa.me/55${order.customer.phone!.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '')}`,
+              )
+            }
+          >
+            <MessageCircle size={16} color="#15803D" />
+            <Text style={styles.whatsText}>WhatsApp do cliente</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Ações de status */}
@@ -401,6 +451,23 @@ const styles = StyleSheet.create({
   orderNumber: { fontSize: 14, fontWeight: '700', color: '#6D28D9' },
   title: { fontSize: 18, fontWeight: '700', color: '#0A0A0F', marginBottom: 8 },
   customer: { fontSize: 14, color: '#6B7280' },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 14 },
+  fact: { minWidth: 120 },
+  factLabel: { fontSize: 11, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase' },
+  factValue: { fontSize: 15, fontWeight: '600', color: '#0A0A0F', marginTop: 2 },
+  notes: { fontSize: 14, color: '#334155', marginTop: 12, lineHeight: 20 },
+  whatsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+  },
+  whatsText: { fontSize: 14, fontWeight: '600', color: '#15803D' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   statusText: { fontSize: 12, fontWeight: '600' },
   actions: { flexDirection: 'row', gap: 12, padding: 20 },

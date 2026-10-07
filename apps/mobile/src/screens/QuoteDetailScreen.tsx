@@ -24,7 +24,7 @@ import { easy } from '../easy/data';
 import { approvalUrl as approvalUrlOf, draftFromQuote, useDraft } from '../easy/draft';
 import { useQuoteMore } from '../easy/screens/Quotes';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, sumDecimal } from '@orcivo/shared-types';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 
@@ -222,9 +222,13 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
         </View>
         {hasDiscount && (
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Desconto</Text>
+            <Text style={styles.totalLabel}>
+              {/* discount_value is a percent when the type is PERCENT; show the amount taken off. */}
+              Desconto
+              {quote.discount_type === 'PERCENT' ? ` (${Number(quote.discount_value)}%)` : ''}
+            </Text>
             <Text style={[styles.totalValue, { color: '#16A34A' }]}>
-              − {formatMoney(quote.discount_value)}
+              − {formatMoney(sumDecimal([quote.subtotal, `-${quote.total}`]))}
             </Text>
           </View>
         )}

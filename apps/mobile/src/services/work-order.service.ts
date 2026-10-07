@@ -5,6 +5,7 @@ import { api, WriteOptions } from './api';
 export interface WorkOrderCustomer {
   id: string;
   name: string;
+  phone?: string | null;
 }
 
 export interface WorkOrderPhoto {
@@ -21,6 +22,10 @@ export interface WorkOrder {
   status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
   customer: WorkOrderCustomer;
   scheduled_at?: string;
+  finished_at?: string | null;
+  notes?: string | null;
+  /** The value of a work order is its approved quote's total. */
+  quote?: { id: string; number: number; total?: string } | null;
   photos: WorkOrderPhoto[];
 }
 

@@ -16,7 +16,13 @@ import {
   View,
 } from 'react-native';
 import { Pencil, Plus, ShoppingBag, Trash2, X } from 'lucide-react-native';
-import { formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  multiplyDecimal,
+  sumDecimal,
+  type QuoteDocOptions,
+} from '@orcivo/shared-types';
+import { DocOptionsFields } from '../easy/DocOptions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService, CatalogItem } from '../services/catalog.service';
 import { quoteService, QuoteCreateDto } from '../services/quote.service';
@@ -71,6 +77,10 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [title, setTitle] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
+  const [discountValue, setDiscountValue] = useState('');
+  const [notes, setNotes] = useState('');
+  const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const [items, setItems] = useState<FormItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -102,7 +112,18 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
     quoteService
       .fetchQuote(editId)
       .then((q) => {
-        const full = q as typeof q & { valid_until?: string | null };
+        const full = q as typeof q & {
+          valid_until?: string | null;
+          discount_type?: 'PERCENT' | 'FIXED';
+          discount_value?: string;
+          notes?: string | null;
+          doc_options?: QuoteDocOptions | null;
+        };
+        if (full.discount_type) setDiscountType(full.discount_type);
+        if (full.discount_value && Number(full.discount_value) > 0)
+          setDiscountValue(full.discount_value);
+        setNotes(full.notes ?? '');
+        setDocOptions(full.doc_options ?? null);
         setCustomerId(q.customer.id);
         pickedName.current = q.customer.name;
         setCustomerSearch(q.customer.name);
@@ -185,11 +206,23 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   };
 
   const subtotal = sumDecimal(items.map((i) => safeDecimalPreview(i.quantity, i.unit_price)));
+  // Display only (same math as the backend): percent capped at 100, fixed capped at the subtotal.
+  const discountRaw = discountValue.replace(',', '.').trim() || '0';
+  const discountOk = /^\d+(\.\d{1,2})?$/.test(discountRaw);
+  const discount = !discountOk
+    ? '0.00'
+    : discountType === 'PERCENT'
+      ? multiplyDecimal(subtotal, (Math.min(Number(discountRaw), 100) / 100).toFixed(4))
+      : Number(discountRaw) > Number(subtotal)
+        ? subtotal
+        : discountRaw;
+  const total = sumDecimal([subtotal, `-${discount}`]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!customerId) newErrors['customer'] = 'Selecione um cliente da lista';
     if (items.length === 0) newErrors['items'] = 'Adicione pelo menos 1 item';
+    if (!discountOk) newErrors['discount'] = 'Desconto inválido';
     items.forEach((item) => {
       if (!item.description.trim()) newErrors[`item_desc_${item.key}`] = 'Descrição obrigatória';
       if (isNaN(parseFloat(item.quantity)) || parseFloat(item.quantity) <= 0)
@@ -214,12 +247,17 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
       let parsedDate: string | undefined;
       if (validUntil.trim()) {
         const [dd, mm, yyyy] = validUntil.split('/');
-        parsedDate = `${yyyy}-${mm}-${dd}`;
+        // The API takes a full ISO date-time (end of that day, local time) — same as the web.
+        parsedDate = new Date(`${yyyy}-${mm}-${dd}T23:59:59`).toISOString();
       }
       const dto: QuoteCreateDto = {
         customer_id: customerId,
         title: title.trim() || undefined,
         valid_until: parsedDate,
+        notes: notes.trim() || undefined,
+        discount_type: discountType,
+        discount_value: discountRaw,
+        ...(docOptions ? { doc_options: docOptions } : {}),
         items: items.map((i) => ({
           catalog_item_id: i.catalog_item_id,
           description: i.description,
@@ -376,14 +414,75 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
 
+          {/* Desconto */}
+          <Text style={styles.sectionLabel}>Desconto (opcional)</Text>
+          <View style={styles.itemRow}>
+            {(['PERCENT', 'FIXED'] as const).map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.discountToggle, discountType === type && styles.discountToggleOn]}
+                onPress={() => setDiscountType(type)}
+              >
+                <Text
+                  style={[
+                    styles.discountToggleText,
+                    discountType === type && styles.discountToggleTextOn,
+                  ]}
+                >
+                  {type === 'PERCENT' ? '%' : 'R$'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TextInput
+              style={[
+                styles.input,
+                styles.flex1,
+                errors['discount'] ? styles.inputError : undefined,
+              ]}
+              placeholder={discountType === 'PERCENT' ? '10' : '50,00'}
+              value={discountValue}
+              onChangeText={setDiscountValue}
+              keyboardType="decimal-pad"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+
           {items.length > 0 && (
             <View style={styles.totalsBox}>
+              {discount !== '0.00' && (
+                <>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.fieldLabel}>Subtotal</Text>
+                    <Text style={styles.fieldLabel}>{formatMoney(subtotal)}</Text>
+                  </View>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.fieldLabel}>Desconto</Text>
+                    <Text style={styles.fieldLabel}>- {formatMoney(discount)}</Text>
+                  </View>
+                </>
+              )}
               <View style={styles.totalRow}>
                 <Text style={styles.grandTotalLabel}>Total estimado</Text>
-                <Text style={styles.grandTotalValue}>{formatMoney(subtotal)}</Text>
+                <Text style={styles.grandTotalValue}>{formatMoney(total)}</Text>
               </View>
             </View>
           )}
+
+          {/* Condições */}
+          <Text style={styles.sectionLabel}>Condições e observações (opcional)</Text>
+          <TextInput
+            style={[styles.input, styles.notesInput]}
+            placeholder="Ex.: 50% na aprovação, 50% na entrega. Garantia de 90 dias."
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            maxLength={2000}
+            placeholderTextColor="#9CA3AF"
+          />
+
+          {/* O que vai no documento */}
+          <Text style={styles.sectionLabel}>O que vai no orçamento</Text>
+          <DocOptionsFields value={docOptions} onChange={setDocOptions} />
 
           <TouchableOpacity
             style={[styles.submitBtn, submitting && styles.btnDisabled]}
@@ -444,6 +543,17 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  discountToggle: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  discountToggleOn: { borderColor: '#6D28D9', backgroundColor: '#F5F3FF' },
+  discountToggleText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
+  discountToggleTextOn: { color: '#6D28D9' },
+  notesInput: { minHeight: 80, textAlignVertical: 'top' },
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   content: { padding: 16, paddingBottom: 60 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },

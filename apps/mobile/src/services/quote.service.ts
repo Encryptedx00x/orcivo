@@ -1,3 +1,4 @@
+import type { QuoteDocOptions } from '@orcivo/shared-types';
 import { api, WriteOptions } from './api';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
@@ -20,6 +21,7 @@ export interface Quote {
   title?: string;
   subtotal: string; // sempre string decimal
   discount_value: string; // sempre string decimal
+  discount_type?: 'PERCENT' | 'FIXED';
   total: string; // sempre string decimal
   approval_token?: string;
   pdf_url?: string;
@@ -38,6 +40,10 @@ export interface QuoteCreateDto {
   customer_id: string;
   title?: string;
   valid_until?: string;
+  notes?: string;
+  discount_type?: 'PERCENT' | 'FIXED';
+  discount_value?: string;
+  doc_options?: QuoteDocOptions;
   items: QuoteCreateItemDto[];
 }
 

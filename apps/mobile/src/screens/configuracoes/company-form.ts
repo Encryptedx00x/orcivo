@@ -4,6 +4,7 @@ export interface CompanyProfile {
   trade_name: string;
   document: string;
   phone: string;
+  address: string;
   city: string;
   state: string;
 }
@@ -25,6 +26,7 @@ export function profileFromCompany(company: CompanyResponse): CompanyProfile {
     trade_name: company.trade_name ?? '',
     document: company.document ?? '',
     phone: company.phone ?? '',
+    address: company.address ?? '',
     city: company.city ?? '',
     state: company.state ?? '',
   };
@@ -35,6 +37,7 @@ export function profilePayload(profile: CompanyProfile) {
     trade_name: profile.trade_name.trim(),
     document: profile.document.trim() || null,
     phone: profile.phone.trim() || null,
+    address: profile.address.trim() || null,
     city: profile.city.trim() || null,
     state: profile.state.trim().toUpperCase() || null,
   };
@@ -57,20 +60,26 @@ export function inferPixKeyType(key: string): PixKeyType {
 // remain verbatim; the server validates the selected type on save.
 export function maskPixKey(type: PixKeyType, raw: string): string {
   if (type === 'CNPJ') {
-    return raw.replace(/\D/g, '').slice(0, 14)
+    return raw
+      .replace(/\D/g, '')
+      .slice(0, 14)
       .replace(/^(\d{2})(\d)/, '$1.$2')
       .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
       .replace(/\.(\d{3})(\d)/, '.$1/$2')
       .replace(/(\d{4})(\d)/, '$1-$2');
   }
   if (type === 'CPF') {
-    return raw.replace(/\D/g, '').slice(0, 11)
+    return raw
+      .replace(/\D/g, '')
+      .slice(0, 11)
       .replace(/^(\d{3})(\d)/, '$1.$2')
       .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
       .replace(/\.(\d{3})(\d)/, '.$1-$2');
   }
   if (type === 'PHONE') {
-    return raw.replace(/\D/g, '').slice(0, 11)
+    return raw
+      .replace(/\D/g, '')
+      .slice(0, 11)
       .replace(/^(\d{2})(\d)/, '($1) $2')
       .replace(/(\d{5})(\d)/, '$1-$2');
   }
