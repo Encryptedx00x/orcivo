@@ -169,6 +169,9 @@ export const easy = {
     api.patch<{ id: string; read_at: string }>(`/notifications/${enc(id)}/read`, {}),
   noticesReadAll: () => api.patch<{ marked: number }>('/notifications/read-all', {}),
   quoteFull: (id: string) => api.get<EasyQuoteFull>(`/quotes/${enc(id)}`),
+  /** New draft with the same client, items, discount, conditions and document options. */
+  duplicateQuote: (id: string) =>
+    api.post<{ id: string; number: number }>(`/quotes/${enc(id)}/duplicate`, {}),
   /** Saves the 3 steps over an existing draft. */
   updateQuote: (id: string, dto: QuoteCreateDto, idempotencyKey: string) =>
     api.patch<{ id: string; number: number }>(`/quotes/${enc(id)}`, dto, { idempotencyKey }),

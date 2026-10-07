@@ -144,6 +144,44 @@ export class QuoteService {
     });
   }
 
+  /**
+   * New draft with the same client, items, discount, conditions and document options.
+   * Goes through create(), so plan limits and numbering apply; validity restarts from the
+   * company default.
+   */
+  async duplicate(id: string, companyId: string, userId: string) {
+    const src = await this.prisma.quote.findFirst({
+      where: { id, company_id: companyId },
+      include: { items: true },
+    });
+    if (!src) throw new NotFoundException();
+    const days = (
+      await this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { quote_default_validity_days: true },
+      })
+    )?.quote_default_validity_days;
+    return this.create(
+      {
+        customer_id: src.customer_id,
+        title: src.title ?? undefined,
+        notes: src.notes ?? undefined,
+        valid_until: days ? new Date(Date.now() + days * 86_400_000).toISOString() : undefined,
+        discount_type: src.discount_type,
+        discount_value: src.discount_value.toString(),
+        doc_options: (src.doc_options ?? undefined) as QuoteCreateDto['doc_options'],
+        items: src.items.map((i) => ({
+          catalog_item_id: i.catalog_item_id ?? undefined,
+          description: i.description,
+          quantity: i.quantity.toString(),
+          unit_price: i.unit_price.toString(),
+        })),
+      },
+      companyId,
+      userId,
+    );
+  }
+
   async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole, customerId?: string) {
     const where = { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) };
     const data = await this.prisma.quote.findMany({

@@ -40,7 +40,7 @@ export class SubscriptionStatusGuard implements CanActivate {
     const isBlocked = await this.subscriptionService.isBlocked(companyId);
     if (isBlocked) {
       throw new ForbiddenException(
-        'Sua assinatura está inativa. Acesse orcivo.com.br para regularizar.',
+        'Sua assinatura está inativa. Em Plano e assinatura, toque em Gerenciar assinatura.',
       );
     }
 

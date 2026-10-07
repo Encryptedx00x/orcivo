@@ -83,6 +83,12 @@ export class QuoteController {
     return this.quoteService.update(id, body as never, req.companyId, req.user.userId, req.role);
   }
 
+  @Post(':id/duplicate')
+  @HttpCode(201)
+  duplicate(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.quoteService.duplicate(id, req.companyId, req.user.userId);
+  }
+
   @Post(':id/send')
   @HttpCode(200)
   send(

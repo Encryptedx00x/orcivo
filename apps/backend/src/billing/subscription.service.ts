@@ -170,9 +170,9 @@ export class SubscriptionService {
       is_blocked: isBlocked,
       is_past_due: isPastDue,
       message: isBlocked
-        ? 'Sua assinatura está inativa. Acesse orcivo.com.br para regularizar.'
+        ? 'Sua assinatura está inativa. Em Plano e assinatura, toque em Gerenciar assinatura.'
         : isPastDue
-          ? 'Há um pagamento pendente. Acesse orcivo.com.br para regularizar.'
+          ? 'Há um pagamento pendente. Em Plano e assinatura, toque em Gerenciar assinatura.'
           : null,
     };
   }

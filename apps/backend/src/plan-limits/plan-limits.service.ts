@@ -1,6 +1,11 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { PlanFeature, PLAN_LIMITS } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { PLAN_PRESENTATION } from '@orcivo/shared-types';
+
+/** "Orcivo Livre" etc. — never the raw plan code in messages. */
+const planName = (code: string) =>
+  PLAN_PRESENTATION[code as keyof typeof PLAN_PRESENTATION]?.name ?? 'seu plano';
 
 export interface PlanCheckResult {
   allowed: boolean;
@@ -58,7 +63,7 @@ export class PlanLimitsService {
     // Bloqueado por inadimplência
     if (company.subscription?.status === 'BLOCKED') {
       throw new ForbiddenException(
-        'Sua assinatura está inativa. Acesse orcivo.com.br para regularizar.',
+        'Sua assinatura está inativa. Em Plano e assinatura, toque em Gerenciar assinatura.',
       );
     }
 
@@ -79,7 +84,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.customers_max) {
           throw new ForbiddenException(
-            `Limite de ${limits.customers_max} clientes atingido no plano ${company.plan_code}. Acesse orcivo.com.br para fazer upgrade.`,
+            `Limite de ${limits.customers_max} clientes atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
           );
         }
         break;
@@ -93,7 +98,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.quotes_per_month) {
           throw new ForbiddenException(
-            `Limite de ${limits.quotes_per_month} orçamentos/mês atingido. Acesse orcivo.com.br para upgrade.`,
+            `Limite de ${limits.quotes_per_month} orçamentos/mês atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
           );
         }
         break;
@@ -107,7 +112,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.work_orders_per_month) {
           throw new ForbiddenException(
-            `Limite de ${limits.work_orders_per_month} OS/mês atingido. Acesse orcivo.com.br para upgrade.`,
+            `Limite de ${limits.work_orders_per_month} OS/mês atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
           );
         }
         break;
@@ -119,7 +124,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.members_max) {
           throw new ForbiddenException(
-            `Limite de ${limits.members_max} usuário(s) atingido no plano ${company.plan_code}. Acesse orcivo.com.br para upgrade.`,
+            `Limite de ${limits.members_max} usuário(s) atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
           );
         }
         break;

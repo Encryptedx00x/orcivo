@@ -131,6 +131,9 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
   const { openMore } = useQuoteMore(
     quote ?? { id, number: 0, status: 'DRAFT', total: '0', customer: { id: '', name: '' } },
     () => void load(),
+    undefined,
+    undefined,
+    (copyId) => navigation.push('QuoteDetail', { id: copyId }),
   );
 
   const handleWhatsApp = () => {

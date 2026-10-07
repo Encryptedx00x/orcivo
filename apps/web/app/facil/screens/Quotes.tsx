@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   Ban,
   ClipboardList,
+  Copy,
   Download,
   FileText,
   Link2,
@@ -22,7 +23,11 @@ import {
   type EasyQuote,
   type EasyQuoteFull,
 } from '../actions';
-import { quoteAction, type DirectQuoteAction } from '../../(app)/orcamentos/actions';
+import {
+  duplicateQuote,
+  quoteAction,
+  type DirectQuoteAction,
+} from '../../(app)/orcamentos/actions';
 import { buildWhatsAppLink } from '../../../lib/whatsapp';
 import { emptyDraft, useLoad, useNav, type Draft } from '../EasyApp';
 import { centsToDecimal, decimalToDigits } from '../rows';
@@ -258,8 +263,8 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     toast(`Pronto! Reenviado para ${q.customer?.name?.split(' ')[0] ?? 'o cliente'} no WhatsApp.`);
   };
   // Drafts reopen in the same 3 steps (items first; back goes to the client step).
-  const edit = async (review = false) => {
-    const r = await getQuoteFull(q.id);
+  const edit = async (review = false, id = q.id) => {
+    const r = await getQuoteFull(id);
     if (!r.ok) return toast(r.message);
     setDraft(draftFromQuote(r.data));
     go('q1');
@@ -312,6 +317,19 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
       action === 'cancelar' || action === 'recusar' ? Ban : RotateCcw,
     );
 
+  // Copy of this quote as a new draft, opened on its review step to change what is needed.
+  const duplicate: SheetAction = {
+    label: 'Duplicar',
+    sub: 'Novo rascunho com os mesmos itens',
+    icon: Copy,
+    run: async () => {
+      const r = await duplicateQuote(q.id);
+      if (r.error || !r.id) return toast(r.error ?? 'Não foi possível duplicar.');
+      toast('Orçamento duplicado.');
+      onChanged();
+      void edit(true, r.id);
+    },
+  };
   const pdf: SheetAction = {
     label: 'Baixar PDF',
     icon: Download,
@@ -334,7 +352,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
     icon: Pencil,
     run: () => run('corrigir', () => void edit()),
   };
-  const actions: SheetAction[] =
+  const statusActions: SheetAction[] =
     q.status === 'SENT'
       ? [
           link,
@@ -380,6 +398,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
               correct,
               pdf,
             ];
+  const actions = [...statusActions, duplicate];
 
   return (
     <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

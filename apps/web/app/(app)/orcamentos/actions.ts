@@ -72,6 +72,25 @@ export async function quoteAction(id: string, input: QuoteActionInput): Promise<
   return { quote };
 }
 
+/** New draft copying client, items, discount, conditions and document options. */
+export async function duplicateQuote(id: string): Promise<{ error?: string; id?: string }> {
+  const token = await authToken();
+  if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
+  try {
+    const res = await fetch(`${API_URL}/quotes/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    const body = (await res.json().catch(() => null)) as { id?: string; message?: string } | null;
+    if (!res.ok || !body?.id) return { error: body?.message ?? 'Não foi possível duplicar.' };
+    revalidatePath('/orcamentos');
+    return { id: body.id };
+  } catch {
+    return { error: 'Não foi possível contatar o servidor. Tente novamente.' };
+  }
+}
+
 /** PB1-P35/AC1: edição direta dos campos do orçamento fora do assistente guiado. */
 export async function updateQuote(
   id: string,

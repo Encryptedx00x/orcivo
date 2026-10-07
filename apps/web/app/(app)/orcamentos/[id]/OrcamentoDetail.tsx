@@ -27,6 +27,7 @@ import {
   updateQuote,
   type DirectQuoteAction,
   type QuoteWithActions,
+  duplicateQuote,
 } from '../actions';
 import {
   getTechnicianSignature,
@@ -394,6 +395,16 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
             style={headerBtn}
           >
             <Download size={15} /> Baixar PDF
+          </button>
+          <button
+            onClick={async () => {
+              const r = await duplicateQuote(quote.id);
+              if (r.id) router.push(`/orcamentos/${r.id}`);
+              else alert(r.error);
+            }}
+            style={headerBtn}
+          >
+            <Copy size={15} /> Duplicar
           </button>
           <button onClick={() => router.back()} style={headerBtn}>
             Voltar

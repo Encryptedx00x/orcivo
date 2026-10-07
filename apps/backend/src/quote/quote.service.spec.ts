@@ -189,6 +189,48 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('duplicate()', () => {
+    it('D1: copia cliente, itens, desconto e opções num rascunho novo (passa por create)', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValueOnce({
+        id: 'q-src',
+        customer_id: 'cust-uuid',
+        title: 'Instalação',
+        notes: '50% na entrada',
+        discount_type: 'PERCENT',
+        discount_value: { toString: () => '10' },
+        doc_options: { title: 'CONTRATO' },
+        items: [
+          {
+            catalog_item_id: null,
+            description: 'Split 12k',
+            quantity: { toString: () => '2' },
+            unit_price: { toString: () => '150.00' },
+          },
+        ],
+      });
+      mockPrisma.quote.create.mockResolvedValueOnce({ id: 'q-new', items: [] });
+      await service.duplicate('q-src', 'comp-1', 'user-1');
+      expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customer_id: 'cust-uuid',
+            title: 'Instalação',
+            notes: '50% na entrada',
+            discount_value: '10',
+            doc_options: { title: 'CONTRATO' },
+            subtotal: '300.00',
+            total: '270.00',
+          }),
+        }),
+      );
+    });
+
+    it('D2: orçamento de outra empresa → 404', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValueOnce(null);
+      await expect(service.duplicate('x', 'comp-1', 'user-1')).rejects.toThrow();
+    });
+  });
+
   describe('findAll()', () => {
     it('filtra pelos orçamentos de um cliente (página do cliente)', async () => {
       mockPrisma.quote.findMany.mockResolvedValue([]);

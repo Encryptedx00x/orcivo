@@ -14,6 +14,7 @@ import {
   X,
   XCircle,
   type LucideIcon,
+  Copy,
 } from 'lucide-react-native';
 import { formatMoney } from '@orcivo/shared-types';
 import { easy, errorText, type EasyQuote, type QuoteStatus } from '../data';
@@ -221,6 +222,8 @@ export function useQuoteMore(
   onSchedule?: () => void,
   /** Easy mode: reopens a draft in the 3 steps (also right after "corrigir"). */
   onEdit?: () => void,
+  /** Where to open the copy made by "Duplicar" (new draft id). */
+  onDuplicated?: (id: string) => void,
 ) {
   const sheet = useSheet();
 
@@ -280,7 +283,22 @@ export function useQuoteMore(
       danger: ACTIONS[a].danger,
       run: () => run(a),
     });
-    const actions: SheetAction[] =
+    const duplicateAct: SheetAction = {
+      label: 'Duplicar',
+      sub: 'Novo rascunho com os mesmos itens',
+      icon: Copy,
+      run: async () => {
+        try {
+          const copy = await easy.duplicateQuote(q.id);
+          onChanged();
+          if (onDuplicated) onDuplicated(copy.id);
+          else Alert.alert('Pronto', `Orçamento duplicado: rascunho #${copy.number}.`);
+        } catch (err) {
+          Alert.alert('Não deu certo', errorText(err, 'Não foi possível duplicar.'));
+        }
+      },
+    };
+    const statusActions: SheetAction[] =
       q.status === 'SENT'
         ? [linkAct, act('correct'), pdfAct, act('reject'), act('cancel')]
         : q.status === 'APPROVED'
@@ -308,6 +326,7 @@ export function useQuoteMore(
                 { ...act('cancel'), label: 'Descartar rascunho' },
               ]
             : [act('reopen'), act('correct'), pdfAct];
+    const actions = [...statusActions, duplicateAct];
     sheet({
       title: q.customer?.name ?? `Orçamento #${q.number}`,
       sub: `#${q.number} · ${formatMoney(q.total)}`,
@@ -326,9 +345,9 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const nav = useEasyNav();
   const chip = quoteChip(q.status);
   const { setDraft } = useDraft();
-  const edit = async (review = false) => {
+  const edit = async (review = false, id = q.id) => {
     try {
-      setDraft(draftFromQuote(await easy.quoteFull(q.id)));
+      setDraft(draftFromQuote(await easy.quoteFull(id)));
       // Items first (or the review); back walks the client and items steps.
       nav.push('QuoteClient');
       nav.push('QuoteItems');
@@ -346,6 +365,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
         type: 'INSTALACAO',
       }),
     () => void edit(),
+    (copyId) => void edit(true, copyId),
   );
 
   return (
