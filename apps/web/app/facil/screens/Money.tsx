@@ -15,10 +15,12 @@ import {
   Plus,
   ReceiptText,
   Trash2,
+  Minus,
 } from 'lucide-react';
 import { formatMoney, sumDecimal } from '@orcivo/shared-types';
 import {
   deletePayment,
+  getFinanceSummary,
   getClient,
   getCompany,
   listPayments,
@@ -124,6 +126,14 @@ export function MoneyScreen(): React.JSX.Element {
   const toast = useToast();
   const sheet = useSheet();
   const payments = useLoad(listPayments);
+  // This month's costs and what was left (received − costs).
+  const month = useLoad(() => {
+    const n = new Date();
+    return getFinanceSummary(
+      new Date(n.getFullYear(), n.getMonth(), 1).toISOString(),
+      new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59).toISOString(),
+    );
+  });
   const [open, setOpen] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [paidLimit, setPaidLimit] = useState(PAGE);
@@ -310,6 +320,47 @@ export function MoneyScreen(): React.JSX.Element {
               </span>
             </div>
           </div>
+
+          {month.data && (
+            <div
+              style={{
+                ...card,
+                borderRadius: 24,
+                padding: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}
+              >
+                <span style={{ fontSize: 15, color: C.fg3 }}>
+                  Gastos do mês: {formatMoney(month.data.costs.paid)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 19,
+                    fontWeight: 700,
+                    color: month.data.result.startsWith('-') ? '#B91C1C' : '#166534',
+                  }}
+                >
+                  {month.data.result.startsWith('-')
+                    ? `Faltou ${formatMoney(month.data.result.slice(1))}`
+                    : `Sobrou ${formatMoney(month.data.result)}`}
+                </span>
+              </div>
+              <Btn
+                tone="outline"
+                icon={Minus}
+                height={48}
+                onClick={() => go('edit', { kind: 'cost' })}
+              >
+                Lançar gasto
+              </Btn>
+            </div>
+          )}
 
           {dues.length === 0 && paid.length === 0 ? (
             <EmptyBox

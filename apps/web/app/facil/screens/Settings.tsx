@@ -23,11 +23,17 @@ import {
 } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
-import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import {
+  EXPENSE_CATEGORIES,
+  type ExpenseCategory,
+  type QuoteDocOptions,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import { DocOptionsFields } from '../DocOptions';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 import {
+  createCost,
   createCatalogItem,
   deleteCatalogItem,
   getApprovalMethods,
@@ -378,6 +384,8 @@ export function EditScreen(): React.JSX.Element {
       return <ClientEdit />;
     case 'payment':
       return <PaymentEdit />;
+    case 'cost':
+      return <CostEdit />;
     default:
       return <ErrorBox title="Nada para editar aqui." onRetry={() => history.back()} />;
   }
@@ -853,6 +861,64 @@ function ClientEdit() {
         disabled={!ok}
         hint={!ok ? 'Preencha nome e telefone' : undefined}
         onSave={() => void save(() => updateClient(id, f as never), 'Dados do cliente salvos.')}
+      />
+    </>
+  );
+}
+
+/** "Lançar gasto": category, amount (already paid) and what it was. */
+function CostEdit() {
+  const { busy, save } = useSaver();
+  const [category, setCategory] = useState<ExpenseCategory>('MATERIAL');
+  const [digits, setDigits] = useState('');
+  const [description, setDescription] = useState('');
+  const amount = centsToDecimal(digits);
+  return (
+    <>
+      <EditHead title="Lançar gasto" sub="Entra no Financeiro e no quanto sobrou no mês." />
+      <div style={fieldsGap}>
+        <Field
+          label="Quanto foi?"
+          value={digits ? formatMoney(amount) : ''}
+          onChange={(v) => setDigits(v.replace(/\D/g, '').slice(0, 10))}
+          inputMode="numeric"
+          placeholder="R$ 0,00"
+          big
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 17, fontWeight: 600 }}>Com o quê?</span>
+          <Options
+            cols={2}
+            value={category}
+            onPick={(v: ExpenseCategory) => setCategory(v)}
+            options={(Object.keys(EXPENSE_CATEGORIES) as ExpenseCategory[]).map((k) => ({
+              value: k,
+              label: EXPENSE_CATEGORIES[k],
+            }))}
+          />
+        </div>
+        <Field
+          label="O que foi (opcional)"
+          value={description}
+          onChange={(v) => setDescription(v.slice(0, 200))}
+          placeholder="Ex.: tubulação de cobre"
+        />
+      </div>
+      <SaveBar
+        busy={busy}
+        disabled={!(Number(amount) > 0)}
+        onSave={() =>
+          void save(
+            () =>
+              createCost({
+                category,
+                amount,
+                status: 'PAID',
+                description: description.trim() || undefined,
+              }),
+            'Gasto lançado.',
+          )
+        }
       />
     </>
   );

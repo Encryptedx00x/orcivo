@@ -2,7 +2,13 @@
 
 // Modo fácil: a thin, explicit data layer over the same backend endpoints the
 // standard screens use. No business rules live here — only fetch/compose.
-import type { QuoteCreateDto, QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import type {
+  ExpenseCreateDto,
+  FinanceSummary,
+  QuoteCreateDto,
+  QuoteDocOptions,
+  QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import { apiFetch } from '../../lib/api';
 
 type Ok<T> = { ok: true; data: T };
@@ -520,4 +526,22 @@ export async function deletePayment(id: string, justification: string): Promise<
     });
     return true as const;
   }, 'Não foi possível excluir o recebimento.');
+}
+
+/** Month (or any period) totals: received, costs and what was left. */
+export async function getFinanceSummary(from: string, to: string): Promise<Result<FinanceSummary>> {
+  return run(
+    () =>
+      apiFetch<FinanceSummary>(
+        `/finance/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+    'Não foi possível carregar o resumo.',
+  );
+}
+
+export async function createCost(dto: ExpenseCreateDto): Promise<Result<{ id: string }>> {
+  return run(
+    () => apiFetch<{ id: string }>('/expenses', { method: 'POST', body: JSON.stringify(dto) }),
+    'Não foi possível lançar o gasto.',
+  );
 }
