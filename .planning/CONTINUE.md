@@ -72,6 +72,24 @@ o mesmo produto em qualquer superfície.
 ### Sempre
 - [ ] App só chega aos aparelhos com novo build EAS; publicar nas lojas é **Nível C** (perguntar ao dono).
 
+## 3b. Autopilot (quem executa a fila) — levantado em 2026-10-07
+
+- Supervisor: `scripts/orchestration/v2/pilot.ps1` (status / start / stop / approve-gate), runbook em
+  `docs/runbooks/agent-orchestration.md`, estado em `.orchestration/v2/` (checkpoints, ledger, runs).
+  Lote atual configurado em `config.v2.json → pilot.taskSourceFile` = `.planning/product/MVP-LAUNCH-BATCH-2.tasks.json`
+  (já concluído) — a fila deste arquivo precisa virar um **lote novo** no mesmo formato (+ `batch-reconcile.ps1`).
+- Executor GLM: `scripts/orchestration/v2/glm.ps1` via OpenCode CLI (1.17.9), hoje **fixado** em
+  `nvidia/z-ai/glm-5.3` (rota NVIDIA NIM). A rota direta `zai-coding-plan/glm-5.3` foi aposentada em 2026-09-17,
+  mas a credencial **Z.AI Coding Plan** continua no OpenCode. Para a cadeia pedida pelo dono
+  (**GLM pelo plano Z.AI → ao acabar a cota, o mesmo GLM 5.3 pelo NVIDIA NIM**) é preciso reativar
+  `zai-coding-plan/glm-5.3` como 1ª rota e manter `nvidia/z-ai/glm-5.3` como reserva por cota
+  (`PROVIDER_QUOTA`/`RATE_LIMIT`), sem trocar de modelo.
+- Revisor do lado oposto: DeepSeek (`DEEPSEEK_API_KEY`; `deepseek-v4-pro`/`flash`). Credenciais disponíveis no
+  OpenCode: Z.AI Coding Plan, OpenCode Go, OpenRouter (auth) + DeepSeek, NVIDIA (env). Nenhuma chave em arquivo do repo.
+- Modelo: manter **GLM 5.3** nas duas rotas (mesmo comportamento no fallback). Alternativa de código no NIM se o
+  GLM falhar muito: `nvidia/moonshotai/kimi-k3`. Nemotron (llama-3.1 e nemotron-3) é generalista/raciocínio, não é
+  a melhor escolha para agente de código que edita muitos arquivos.
+
 ## 4. Como trabalhar cada tarefa (receita que já funcionou)
 
 1. Backend primeiro: `prisma/schema.prisma` → migration idempotente em `prisma/migrations/<timestamp>_<nome>/migration.sql`
