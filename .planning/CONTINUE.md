@@ -99,6 +99,28 @@ limite do Orcivo Livre (10 orçamentos/mês) bloqueia criar/duplicar na conta de
 - 14 avisos transitivos de dependências exigem versões principais/upstream — planejar à parte, sem overrides forçados.
 - Publicação nas lojas, DNS, billing/fiscal, LGPD, mudança de stack/design system: Nível C.
 
+## 5b. Depois da fila de desenvolvimento — segurança e infraestrutura (com o Codex, pedido do dono 2026-10-07)
+
+Fazer **só depois** de R5b…R9, com o Codex (que fez a auditoria de segurança). Não executar pelo autopilot.
+
+- [ ] **Rotação de senhas numa vez só:** o dono decidiu (ordem dele, riscos conhecidos) trocar **todas as senhas**
+      (só senhas; o resto não vazou) por **uma única senha**. Entregar um comando/script para ele rodar na VPS que
+      substitui todas ao mesmo tempo, com o valor de exemplo `Senha123` no lugar da senha real (ele troca antes de
+      rodar). Mapear antes cada lugar onde a senha vive (`.env` de cada projeto, usuários de banco, MinIO, n8n,
+      painéis) e reiniciar os serviços na ordem certa; validar health de cada site depois.
+- [ ] **Credenciais fixas no código:** revisar todos os projetos da VPS (inclusive **ascn.codes**) atrás de senhas/
+      tokens hard-coded ou semelhantes; corrigir e dizer ao dono exatamente o que foi achado e ajustado.
+- [ ] **Limpar rastros:** após a rotação, completar a limpeza pendente da auditoria (objetos retidos no GitHub,
+      rede de fork de `dio-lab-open-source`) e repetir a varredura em clones novos.
+- [ ] **Documentar a VPS do zero (repositório privado):** como a VPS está montada (Docker, Caddy, stack n8n/umami/
+      php, cada site, volumes, backups, firewall/SSH), como recriar tudo numa VPS nova passo a passo, o que configurar
+      fora (domínios, DNS/Cloudflare, e-mail, Mercado Pago, GitHub). Em cada repositório de projeto: README com como
+      configurar e subir sem erro.
+- [ ] **Repositórios públicos:** terminar as revisões e tornar os projetos públicos (exceto o repositório privado
+      da VPS) — só depois da rotação e da limpeza acima.
+- [ ] **Perfil GitHub:** atualizar `Encryptedx00x/Encryptedx00x/README.md` e publicar a extensão Chrome para n8n
+      (código está numa conversa do ChatGPT do dono chamada "Criar extensão Chrome n8n" — pedir o código a ele).
+
 ## 6. Deploy de produção (Nível A, autorizado pelo dono)
 
 ```bash
