@@ -4,6 +4,23 @@ Fonte dos itens: benchmark `.planning/research/AGENDA-BOA-BENCHMARK.md` (AB-1…
 `docs/qa/2026-10-06-bateria-de-testes.md` (V1…V16) e backlog 999.x do `ROADMAP.md`.
 Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P/W).
 
+## Andamento (atualizado 2026-10-07)
+
+| Rodada | Status | Commits principais |
+| --- | --- | --- |
+| Next 15 / React 19 (web) | ✅ produção | `e8c2092`, `63aacf6` |
+| R0 | ✅ produção — copiar link, preço do site sem `Number`, 999.1 ok, Nova OS (seta), ações rápidas na lista de OS (999.4), feed clicável (999.8), fuso `TZ` no web, PDF com fuso | `78c53fc`, `057cbcf` |
+| R1 | ✅ — app completo: criar OS, detalhe com valor/data/obs/WhatsApp, endereço da empresa, desconto + condições + opções no orçamento, validade corrigida (dava 400), desconto % exibido certo | `8d3ef40` |
+| R2 | ✅ produção — 6 tipos de documento, cor, contato do cliente, Instagram/site, registro profissional, frase de rodapé (PDF orçamento + recibo) | `f7df634`, `6b8a8ae` |
+| R3 | ✅ produção — duplicar orçamento (4 telas), condição de pagamento estruturada → **cobranças criadas na aprovação**, garantia; mensagens de limite com "Ver planos" | `7338121`, `1479e25` |
+| R4 | 🚀 em deploy — custos (`/expenses`), resumo do mês (`/finance/summary`), web completo + fácil + app fácil | `b28e341`, `6422c1b`, `d380c1a` |
+
+Pendências registradas para depois:
+- R3: desconto separado serviços × produtos; formas de pagamento aceitas no PDF; texto de laudo (o título "Laudo técnico" já existe).
+- R4: aba Financeiro dentro da OS/orçamento (lucro por serviço); custos no Financeiro do app **modo completo**.
+- Erro React #418 (hidratação) só em produção em `/orcamentos` — a página se recupera; investigar com build local `next start` em fuso UTC.
+- App mobile: as mudanças só chegam aos aparelhos com um novo build (EAS) — publicação nas lojas é Nível C.
+
 ## Regras de cada rodada
 
 1. Ler esta página + o item AB/V da rodada; não reinvestigar o que já está descrito.
