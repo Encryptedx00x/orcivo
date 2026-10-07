@@ -478,3 +478,13 @@ Plans:
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.14: Benchmark Agenda Boa — documentos, campos do segmento, status e financeiro (BACKLOG)
+
+**Goal:** Implementar os itens AB-1…AB-13 de `.planning/research/AGENDA-BOA-BENCHMARK.md` depois de fechar os bugs da bateria de 2026-10-06. Prioridade: P1 documento (tipos, aparência, textos padrão, assinatura no PDF) → P2 campos do segmento e status configuráveis da OS → P3 financeiro (categorias de despesa, condições de pagamento, conta bancária, contratos de manutenção) → P4 Home.
+
+**Requirements:** ver documento de benchmark
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
