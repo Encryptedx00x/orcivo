@@ -7,7 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  FileText,
+  Link2,
   Image as ImageIcon,
   MessageCircle,
   Minus,
@@ -855,6 +855,7 @@ function Q3() {
           ...d,
           terms: r.data.quote_default_terms ?? d.terms,
           validityDays: r.data.quote_default_validity_days ?? d.validityDays,
+          priceDisplay: r.data.quote_default_price_display ?? d.priceDisplay,
         }));
       });
     }
@@ -901,6 +902,7 @@ function Q3() {
       notes: draft.terms.trim() || undefined,
       valid_until: validUntil(),
       discount_type: draft.discountType,
+      price_display: draft.priceDisplay,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -923,16 +925,13 @@ function Q3() {
     return saved;
   };
 
-  const send = async () => {
+  // "Concluir orçamento": saves and registers the quote (PDF + approval link) first;
+  // the Pronto screen then sends it by WhatsApp, PDF or link — all with a fresh tap.
+  const conclude = async () => {
     if (busy || !draft.client) return;
-    // Open the WhatsApp tab synchronously (inside the tap) so mobile browsers don't block it.
-    const tabRef = window.open('', '_blank');
     setBusy(true);
     const created = await create();
-    if (!created) {
-      tabRef?.close();
-      return setBusy(false);
-    }
+    if (!created) return setBusy(false);
     const sent = await sendQuoteWithSignature(
       created.id,
       draft.signature.mode !== 'none',
@@ -940,29 +939,27 @@ function Q3() {
     );
     setBusy(false);
     if (!sent.ok) {
-      tabRef?.close();
-      toast('Não foi possível enviar agora. O orçamento ficou guardado como rascunho.');
+      toast('Não foi possível concluir agora. O orçamento ficou guardado como rascunho.');
       return;
     }
     const q = sent.quote as { approvalUrl?: string; approval_token?: string };
     const url =
       q.approvalUrl ??
       (q.approval_token ? `${window.location.origin}/approve/${q.approval_token}` : '');
-    const link = buildWhatsAppLink(draft.client.phone ?? '', url, `#${created.number}`);
-    if (tabRef) tabRef.location.href = link;
-    else window.location.href = link;
-    setDraft((d) => ({ ...d, result: { id: created.id, number: created.number, total } }));
+    const phone = draft.client.phone;
+    setDraft((d) => ({
+      ...d,
+      result: { id: created.id, number: created.number, total, url, phone },
+    }));
     go('done');
   };
 
-  const pdf = async () => {
-    const tabRef = window.open('', '_blank');
+  const saveDraft = async () => {
     setBusy(true);
     const created = await create();
     setBusy(false);
-    if (!created) return tabRef?.close();
-    if (tabRef) tabRef.location.href = `/api/quotes/${created.id}/pdf`;
-    toast('PDF pronto. O orçamento ficou guardado como rascunho.');
+    if (!created) return;
+    toast(`Rascunho #${created.number} guardado em Orçamentos.`);
     setDraft(emptyDraft());
     tab('quotes');
   };
@@ -971,6 +968,11 @@ function Q3() {
     Number(discount) > 0 ? `Desconto de ${formatMoney(discount)}` : null,
     `Vale por ${draft.validityDays} dias`,
     draft.terms.trim() ? 'com condições' : null,
+    draft.priceDisplay === 'TOTAL'
+      ? 'só o total'
+      : draft.priceDisplay === 'NONE'
+        ? 'sem preços'
+        : null,
   ].filter(Boolean);
 
   return (
@@ -1286,6 +1288,18 @@ function Q3() {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 17, fontWeight: 600 }}>O que o cliente vê dos preços</span>
+                <Options
+                  options={[
+                    { value: 'ITEMS' as const, label: 'Cada item' },
+                    { value: 'TOTAL' as const, label: 'Só o total' },
+                    { value: 'NONE' as const, label: 'Sem preços' },
+                  ]}
+                  value={draft.priceDisplay}
+                  onPick={(v) => setDraft((d) => ({ ...d, priceDisplay: v }))}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 600 }}>Vale por</span>
                 <Options
                   options={[7, 15, 30].map((d) => ({ value: d, label: `${d} dias` }))}
@@ -1319,11 +1333,11 @@ function Q3() {
         </div>
       </div>
       <ActionBar>
-        <Btn icon={MessageCircle} disabled={busy} onClick={() => void send()}>
-          {busy ? 'Enviando…' : 'Enviar no WhatsApp'}
+        <Btn icon={Check} disabled={busy} onClick={() => void conclude()}>
+          {busy ? 'Concluindo…' : 'Concluir orçamento'}
         </Btn>
-        <Btn tone="outline" icon={Download} height={56} disabled={busy} onClick={() => void pdf()}>
-          Baixar PDF
+        <Btn tone="link" disabled={busy} onClick={() => void saveDraft()}>
+          Guardar rascunho
         </Btn>
       </ActionBar>
     </>
@@ -1652,7 +1666,19 @@ function Sign() {
 // ── Pronto ────────────────────────────────────────────────────────────
 function Done() {
   const { draft, setDraft, tab } = useNav();
+  const toast = useToast();
   const r = draft.result;
+  const whatsapp = () =>
+    r && window.open(buildWhatsAppLink(r.phone ?? '', r.url, `#${r.number}`), '_blank', 'noopener');
+  const copy = async () => {
+    if (!r?.url) return;
+    try {
+      await navigator.clipboard.writeText(r.url);
+      toast('Link de aprovação copiado.');
+    } catch {
+      toast('Não foi possível copiar o link.');
+    }
+  };
   return (
     <>
       <div
@@ -1688,11 +1714,11 @@ function Done() {
             letterSpacing: '-0.02em',
           }}
         >
-          Pronto! Orçamento enviado
+          Pronto! Orçamento concluído
         </h1>
         <p style={{ margin: 0, fontSize: 18, lineHeight: '26px', color: C.fg2 }}>
-          {draft.client?.name ?? 'O cliente'} recebe no WhatsApp. Quando aprovar, aparece em
-          Orçamentos.
+          Ficou registrado. Agora mande para {draft.client?.name ?? 'o cliente'}: quando aprovar,
+          aparece em Orçamentos.
         </p>
         {r && (
           <div
@@ -1735,18 +1761,22 @@ function Done() {
         )}
       </div>
       <ActionBar>
-        <Btn
-          onClick={() => {
-            setDraft(emptyDraft());
-            tab('home');
-          }}
-        >
-          Voltar ao início
+        <Btn icon={MessageCircle} onClick={whatsapp}>
+          Enviar no WhatsApp
         </Btn>
         <Btn
           tone="outline"
-          icon={FileText}
+          icon={Download}
           height={56}
+          onClick={() => r && window.open(`/api/quotes/${r.id}/pdf`, '_blank', 'noopener')}
+        >
+          Baixar PDF
+        </Btn>
+        <Btn tone="link" icon={Link2} onClick={() => void copy()}>
+          Copiar link de aprovação
+        </Btn>
+        <Btn
+          tone="link"
           onClick={() => {
             setDraft(emptyDraft());
             tab('quotes');

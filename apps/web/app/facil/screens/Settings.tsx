@@ -31,6 +31,7 @@ import {
   updateCompany,
   updatePayment,
   type ApprovalMethod,
+  type PriceDisplay,
 } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import {
@@ -432,6 +433,7 @@ function CompanyEdit() {
       trade_name: c.trade_name ?? '',
       document: c.document ?? '',
       phone: c.phone ?? '',
+      address: c.address ?? '',
       city: c.city ?? '',
       state: c.state ?? '',
     });
@@ -465,6 +467,12 @@ function CompanyEdit() {
           inputMode="tel"
           placeholder="(00) 00000-0000"
         />
+        <Field
+          label="Endereço"
+          value={f.address}
+          onChange={(v) => set('address')(v.slice(0, 200))}
+          placeholder="Rua, número e bairro"
+        />
         <Field label="Cidade" value={f.city} onChange={set('city')} placeholder="Ex.: Campinas" />
         <Field
           label="Estado (UF)"
@@ -485,6 +493,7 @@ function CompanyEdit() {
                 document: docDigits || null,
                 document_type: docDigits ? (docDigits.length === 11 ? 'CPF' : 'CNPJ') : null,
                 phone: f.phone.replace(/\D/g, '') || null,
+                address: f.address.trim() || null,
                 city: f.city.trim() || null,
                 state: f.state.trim() || null,
               }),
@@ -611,10 +620,12 @@ function TermsEdit() {
   const { busy, save } = useSaver();
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
+  const [prices, setPrices] = useState<PriceDisplay>('ITEMS');
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
+    setPrices(c.quote_default_price_display ?? 'ITEMS');
   }
   if (terms === null)
     return company.error ? (
@@ -648,6 +659,20 @@ function TermsEdit() {
             ]}
           />
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 17, fontWeight: 600 }}>O que o cliente vê dos preços</span>
+          <Options
+            cols={3}
+            value={prices}
+            onPick={setPrices}
+            options={[
+              { value: 'ITEMS' as const, label: 'Cada item' },
+              { value: 'TOTAL' as const, label: 'Só o total' },
+              { value: 'NONE' as const, label: 'Sem preços' },
+            ]}
+          />
+          <Hint>Dá para mudar em cada orçamento, em Mais opções.</Hint>
+        </div>
       </div>
       <SaveBar
         busy={busy}
@@ -657,6 +682,7 @@ function TermsEdit() {
               updateCompany({
                 quote_default_terms: terms.trim() || null,
                 quote_default_validity_days: days,
+                quote_default_price_display: prices,
               }),
             'Condições salvas.',
           )

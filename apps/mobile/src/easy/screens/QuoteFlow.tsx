@@ -1,13 +1,14 @@
 // Novo orçamento in three steps (mirrors apps/web/app/facil/screens/QuoteFlow.tsx).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, PanResponder, Pressable, Text, View } from 'react-native';
+import { Alert, Image, PanResponder, Pressable, Share, Text, View } from 'react-native';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera,
   Check,
-  FileText,
+  Download,
+  MessageCircle,
   Image as ImageIcon,
   Minus,
   PenLine,
@@ -55,6 +56,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { EasyStackParamList } from '../EasyNavigator';
 import { approvalsSummary } from './Settings';
+import { shareQuotePdf } from '../share';
 
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const key = () => Math.random().toString(36).slice(2);
@@ -396,6 +398,7 @@ export function QuoteReviewScreen() {
             ...d,
             terms: c.quote_default_terms ?? d.terms,
             validityDays: c.quote_default_validity_days ?? d.validityDays,
+            priceDisplay: c.quote_default_price_display ?? d.priceDisplay,
           })),
         )
         .catch(() => undefined);
@@ -430,17 +433,16 @@ export function QuoteReviewScreen() {
         ? saved
         : null;
 
-  const send = async () => {
-    if (busy || !draft.client) return;
-    setBusy(true);
+  const buildDto = (): QuoteCreateDto => {
     const validUntil = new Date();
     validUntil.setDate(validUntil.getDate() + draft.validityDays);
     validUntil.setHours(23, 59, 59, 0);
-    const dto: QuoteCreateDto = {
-      customer_id: draft.client.id,
+    return {
+      customer_id: draft.client?.id ?? '',
       notes: draft.terms.trim() || undefined,
       valid_until: validUntil.toISOString(),
       discount_type: draft.discountType,
+      price_display: draft.priceDisplay,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -452,6 +454,12 @@ export function QuoteReviewScreen() {
         unit_price: i.price,
       })),
     } as QuoteCreateDto;
+  };
+
+  const send = async () => {
+    if (busy || !draft.client) return;
+    setBusy(true);
+    const dto = buildDto();
     let created: { id: string; number: number };
     try {
       created = draft.id
@@ -471,25 +479,32 @@ export function QuoteReviewScreen() {
       const client = draft.client;
       createKey.current = newIdempotencyKey();
       setBusy(false);
+      // Registered: the Pronto screen sends it (WhatsApp, PDF or link).
       nav.reset({
         index: 1,
         routes: [
           { name: 'EasyTabs' },
           {
             name: 'QuoteDone',
-            params: { number: created.number, total: totals.total, name: client.name },
+            params: {
+              id: created.id,
+              number: created.number,
+              total: totals.total,
+              name: client.name,
+              phone: client.phone,
+              url,
+            },
           },
         ],
       });
       setDraft(emptyDraft());
-      if (url) void openWhatsApp(client.phone, url, `#${created.number}`);
     } catch {
       setBusy(false);
       createKey.current = newIdempotencyKey();
       setDraft(emptyDraft());
       Alert.alert(
         'Não deu certo',
-        'Não foi possível enviar agora. O orçamento ficou guardado como rascunho.',
+        'Não foi possível concluir agora. O orçamento ficou guardado como rascunho.',
       );
       nav.reset({
         index: 1,
@@ -498,13 +513,37 @@ export function QuoteReviewScreen() {
     }
   };
 
+  const saveDraft = async () => {
+    if (busy || !draft.client) return;
+    setBusy(true);
+    try {
+      const dto = buildDto();
+      const saved = draft.id
+        ? await easy.updateQuote(draft.id, dto, createKey.current)
+        : await easy.createQuote(dto, createKey.current);
+      createKey.current = newIdempotencyKey();
+      setDraft(emptyDraft());
+      Alert.alert('Pronto', `Rascunho #${saved.number} guardado em Orçamentos.`);
+      nav.reset({ index: 0, routes: [{ name: 'EasyTabs', params: { screen: 'Orcamentos' } }] });
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o orçamento.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pct = draft.discountType === 'PERCENT';
   return (
     <Page
       bar={
-        <Btn icon={FileText} busy={busy} onPress={() => void send()}>
-          Enviar no WhatsApp
-        </Btn>
+        <>
+          <Btn icon={Check} busy={busy} onPress={() => void send()}>
+            Concluir orçamento
+          </Btn>
+          <Btn tone="link" disabled={busy} onPress={() => void saveDraft()}>
+            Guardar rascunho
+          </Btn>
+        </>
       }
     >
       <H1 size={32}>Revisar e enviar</H1>
@@ -625,6 +664,17 @@ export function QuoteReviewScreen() {
             }}
             placeholder={pct ? '0' : 'R$ 0,00'}
             keyboard="number-pad"
+          />
+          <Text style={[s.body, { fontWeight: '600' }]}>O que o cliente vê dos preços</Text>
+          <Options
+            cols={3}
+            value={draft.priceDisplay}
+            onPick={(v) => setDraft((d) => ({ ...d, priceDisplay: v }))}
+            options={[
+              { value: 'ITEMS' as const, label: 'Cada item' },
+              { value: 'TOTAL' as const, label: 'Só o total' },
+              { value: 'NONE' as const, label: 'Sem preços' },
+            ]}
           />
           <Text style={[s.body, { fontWeight: '600' }]}>Vale por</Text>
           <Options
@@ -957,18 +1007,29 @@ export function QuoteDoneScreen({
   navigation,
   route,
 }: NativeStackScreenProps<EasyStackParamList, 'QuoteDone'>) {
-  const { number, total, name } = route.params;
+  const { id, number, total, name, phone, url } = route.params;
+  const pdf = async () => {
+    try {
+      await shareQuotePdf(id, number);
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível preparar o PDF.'));
+    }
+  };
   return (
     <Page
       bar={
         <>
-          <Btn onPress={() => navigation.reset({ index: 0, routes: [{ name: 'EasyTabs' }] })}>
-            Voltar ao início
+          <Btn icon={MessageCircle} onPress={() => void openWhatsApp(phone, url, `#${number}`)}>
+            Enviar no WhatsApp
+          </Btn>
+          <Btn tone="outline" icon={Download} height={56} onPress={() => void pdf()}>
+            Baixar ou compartilhar PDF
+          </Btn>
+          <Btn tone="link" onPress={() => void Share.share({ message: url })}>
+            Compartilhar link de aprovação
           </Btn>
           <Btn
-            tone="outline"
-            icon={FileText}
-            height={56}
+            tone="link"
             onPress={() =>
               navigation.reset({
                 index: 0,
@@ -994,9 +1055,9 @@ export function QuoteDoneScreen({
         >
           <Check size={56} strokeWidth={2.5} color={C.green} />
         </View>
-        <H1>Pronto! Orçamento enviado</H1>
+        <H1>Pronto! Orçamento concluído</H1>
         <Text style={[s.body, { textAlign: 'center', color: C.fg2 }]}>
-          {name} recebe no WhatsApp. Quando aprovar, aparece em Orçamentos.
+          Ficou registrado. Agora mande para {name}: quando aprovar, aparece em Orçamentos.
         </Text>
       </View>
       <Card style={{ padding: 16, gap: 8 }}>

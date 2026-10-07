@@ -45,12 +45,15 @@ model Company {
   phone                    String?
   city                     String?
   state                    String?
+  /// Street, number, district: printed on receipts and quotes.
+  address                  String?
   brand_color              String?
   logo_url                 String?
   pix_key                  String?
   /// Default "Condições" text and validity (days) prefilled on new quotes.
   quote_default_terms         String?
   quote_default_validity_days Int?
+  quote_default_price_display QuotePriceDisplay @default(ITEMS)
   plan_code                PlanCode         @default(LIVRE)
   allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
@@ -230,6 +233,14 @@ enum ApprovalMethod {
   PHOTO_SIGNATURE
 }
 
+/// ITEMS: unit price and total per item · TOTAL: items without prices, only the total ·
+/// NONE: no prices at all (scope only).
+enum QuotePriceDisplay {
+  ITEMS
+  TOTAL
+  NONE
+}
+
 model Quote {
   id                 String       @id @default(uuid())
   company_id         String
@@ -245,6 +256,8 @@ model Quote {
   total              Decimal      @default(0) @db.Decimal(12, 2)
   pdf_url            String?
   technician_signature_key String?
+  /// What the client sees of the prices (PDF and approval page).
+  price_display      QuotePriceDisplay @default(ITEMS)
   approval_token     String?      @unique
   created_by_user_id String?
 

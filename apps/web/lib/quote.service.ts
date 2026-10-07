@@ -4,9 +4,9 @@ import type { QuoteCreateDto } from '@orcivo/shared-types';
 export interface QuoteItem {
   id: string;
   description: string;
-  quantity: string;   // string decimal
+  quantity: string; // string decimal
   unit_price: string; // string decimal
-  total: string;      // string decimal
+  total: string; // string decimal
   catalog_item_id?: string;
 }
 
@@ -27,6 +27,7 @@ export interface Quote {
   subtotal: string;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
+  price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
   total: string;
   pdf_url?: string;
   approval_token?: string;
@@ -42,11 +43,9 @@ export interface QuoteListResponse {
 }
 
 export const quoteService = {
-  fetchQuotes: (page = 1) =>
-    apiFetch<QuoteListResponse>(`/quotes?page=${page}`),
+  fetchQuotes: (page = 1) => apiFetch<QuoteListResponse>(`/quotes?page=${page}`),
 
-  fetchQuote: (id: string) =>
-    apiFetch<Quote>(`/quotes/${id}`),
+  fetchQuote: (id: string) => apiFetch<Quote>(`/quotes/${id}`),
 
   createQuote: (dto: QuoteCreateDto) =>
     apiFetch<Quote>('/quotes', {

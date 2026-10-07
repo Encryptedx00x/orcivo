@@ -145,6 +145,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
   const [editValidUntil, setEditValidUntil] = useState('');
   const [editDiscountType, setEditDiscountType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [editDiscountValue, setEditDiscountValue] = useState('0');
+  const [editPriceDisplay, setEditPriceDisplay] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
   const [editItems, setEditItems] = useState<QuoteItem[]>([]);
   const [editError, setEditError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -158,6 +159,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
     );
     setEditDiscountType(quote.discount_type);
     setEditDiscountValue(quote.discount_value);
+    setEditPriceDisplay(quote.price_display ?? 'ITEMS');
     setEditItems(quote.items.map((i) => ({ ...i })));
     setShowEditModal(true);
   }
@@ -201,6 +203,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
           ? new Date(`${editValidUntil}T23:59:59`).toISOString()
           : undefined,
         discount_type: editDiscountType,
+        price_display: editPriceDisplay,
         discount_value: editDiscountValue || '0',
         items: validItems.map((i) => ({
           catalog_item_id: i.catalog_item_id,
@@ -1079,6 +1082,20 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Ele
                     style={editInput}
                   />
                 </div>
+              </div>
+              <div>
+                <label style={editLabel}>O que o cliente vê dos preços</label>
+                <select
+                  value={editPriceDisplay}
+                  onChange={(e) =>
+                    setEditPriceDisplay(e.target.value as 'ITEMS' | 'TOTAL' | 'NONE')
+                  }
+                  style={editInput}
+                >
+                  <option value="ITEMS">Preço de cada item e total</option>
+                  <option value="TOTAL">Só o total</option>
+                  <option value="NONE">Sem preços</option>
+                </select>
               </div>
               <div>
                 <label style={editLabel}>Observações</label>

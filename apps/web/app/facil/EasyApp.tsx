@@ -66,10 +66,13 @@ export interface Draft {
   terms: string;
   /** Technician signature for this quote: saved one, one-off image, or none. */
   signature: { mode: 'saved' | 'once' | 'none'; dataUrl?: string };
+  /** What the client sees of the prices (company default until changed). */
+  priceDisplay: 'ITEMS' | 'TOTAL' | 'NONE';
   /** Set once the quote exists (editing a draft, or after the first save): saves update it. */
   id?: string;
   number?: number;
-  result?: { id: string; number: number; total: string };
+  /** After "Concluir orçamento": what the Pronto screen sends (WhatsApp, PDF, link). */
+  result?: { id: string; number: number; total: string; url: string; phone: string | null };
 }
 export const emptyDraft = (hasSaved = false): Draft => ({
   client: null,
@@ -79,6 +82,7 @@ export const emptyDraft = (hasSaved = false): Draft => ({
   validityDays: 15,
   terms: '',
   signature: { mode: hasSaved ? 'saved' : 'none' },
+  priceDisplay: 'ITEMS',
 });
 
 interface Nav {

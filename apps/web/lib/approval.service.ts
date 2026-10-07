@@ -3,8 +3,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 export interface PublicQuoteItem {
   description: string;
   quantity: string;
-  unit_price: string;
-  total: string;
+  /** Absent when the technician hid the prices. */
+  unit_price?: string;
+  total?: string;
 }
 
 export interface PublicQuote {
@@ -12,10 +13,12 @@ export interface PublicQuote {
   number: number;
   title?: string;
   status: string;
-  subtotal: string;
+  /** ITEMS: everything · TOTAL: only `total` · NONE: no prices (null values). */
+  price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
+  subtotal: string | null;
   discount_type: 'PERCENT' | 'FIXED';
-  discount_value: string;
-  total: string;
+  discount_value: string | null;
+  total: string | null;
   valid_until?: string;
   notes?: string;
   customer: { name: string; phone?: string };

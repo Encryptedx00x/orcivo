@@ -53,7 +53,15 @@ export type EasyStackParamList = {
   QuoteItems: undefined;
   QuoteReview: undefined;
   QuoteSign: { standalone?: boolean } | undefined;
-  QuoteDone: { number: number; total: string; name: string };
+  /** After "Concluir orçamento": the quote is registered; this screen sends it. */
+  QuoteDone: {
+    id: string;
+    number: number;
+    total: string;
+    name: string;
+    phone: string | null;
+    url: string;
+  };
   ClientDetail: { id: string };
   ClientNew: { forQuote?: boolean; forReceipt?: boolean; edit?: EasyClient } | undefined;
   Services: undefined;

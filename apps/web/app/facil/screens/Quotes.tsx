@@ -90,6 +90,7 @@ function draftFromQuote(q: EasyQuoteFull): Draft {
           : decimalToDigits(q.discount_value),
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
+    priceDisplay: q.price_display ?? 'ITEMS',
   };
 }
 

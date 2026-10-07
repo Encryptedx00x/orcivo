@@ -156,7 +156,21 @@ export class PaymentService {
   async findOne(id: string, companyId: string) {
     const payment = await this.prisma.payment.findFirst({
       where: { id, company_id: companyId, deleted_at: null },
-      include: { customer: { select: { id: true, name: true, phone: true } } },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            tax_id: true,
+            street: true,
+            number: true,
+            neighborhood: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
     });
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
     const [withOrigin] = await this.withOrigins(companyId, [payment]);
@@ -207,6 +221,17 @@ export class PaymentService {
         number: p.receipt_number,
         amount: p.amount.toString(),
         client: p.customer.name,
+        clientDetails: {
+          document: p.customer.tax_id,
+          phone: p.customer.phone,
+          address: [
+            [p.customer.street, p.customer.number].filter(Boolean).join(', '),
+            p.customer.neighborhood,
+            [p.customer.city, p.customer.state].filter(Boolean).join('/'),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        },
         reference: this.receiptReference(p),
         method: METHOD_LABEL[p.method ?? ''] ?? 'Não informado',
         paidAt: p.paid_at ?? p.updated_at,

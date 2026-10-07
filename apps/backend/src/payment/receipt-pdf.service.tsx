@@ -1,6 +1,6 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
 import { Injectable } from '@nestjs/common';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
 import { registerPdfFonts } from '../quote/pdf-fonts';
 
 registerPdfFonts();
@@ -43,6 +43,9 @@ const s = StyleSheet.create({
   sigBox: { width: 260, gap: 6 },
   sigImage: { height: 56, objectFit: 'contain', alignSelf: 'flex-start' },
   sigLine: { height: 1, backgroundColor: C.sigLine },
+  parties: { flexDirection: 'row', gap: 16 },
+  party: { flex: 1, borderRadius: 12, backgroundColor: C.slate50, padding: 12, gap: 2 },
+  partyName: { fontSize: 11, fontWeight: 700 },
   pix: { borderRadius: 12, backgroundColor: C.slate50, padding: 12, color: C.fg2, fontSize: 10 },
 });
 
@@ -50,6 +53,7 @@ export interface ReceiptData {
   number: number;
   amount: string;
   client: string;
+  clientDetails?: { document?: string | null; phone?: string | null; address?: string | null };
   reference: string;
   method: string;
   paidAt: Date;
@@ -62,6 +66,24 @@ export interface ReceiptCompany {
   document?: string | null;
   logo_url?: string | null;
   pix_key?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+}
+
+/** Name, document, phone and address lines of one party ("Quem recebeu" / "Quem pagou"). */
+function partyLines(p: {
+  document?: string | null;
+  phone?: string | null;
+  address?: string | null;
+}): string[] {
+  const doc = p.document ? maskCpfCnpj(p.document) : '';
+  return [
+    doc ? `${doc.length > 14 ? 'CNPJ' : 'CPF'} ${doc}` : '',
+    p.phone ? maskPhone(p.phone) : '',
+    p.address ?? '',
+  ].filter(Boolean);
 }
 
 export const receiptNumber = (n: number) => String(n).padStart(4, '0');
@@ -113,6 +135,35 @@ export class ReceiptPdfService {
               Recebi de <Text style={s.bold}>{r.client}</Text> o valor acima, referente a{' '}
               {r.reference}.
             </Text>
+            <View style={s.parties}>
+              <View style={s.party}>
+                <Text style={s.smallStrong}>Quem recebeu</Text>
+                <Text style={s.partyName}>{company.trade_name}</Text>
+                {partyLines({
+                  document: company.document,
+                  phone: company.phone,
+                  address: [
+                    company.address,
+                    [company.city, company.state].filter(Boolean).join('/'),
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
+                }).map((l) => (
+                  <Text key={l} style={s.small}>
+                    {l}
+                  </Text>
+                ))}
+              </View>
+              <View style={s.party}>
+                <Text style={s.smallStrong}>Quem pagou</Text>
+                <Text style={s.partyName}>{r.client}</Text>
+                {partyLines(r.clientDetails ?? {}).map((l) => (
+                  <Text key={l} style={s.small}>
+                    {l}
+                  </Text>
+                ))}
+              </View>
+            </View>
             <View style={s.grid}>
               <View style={s.col}>
                 <Text style={s.small}>Forma de pagamento</Text>

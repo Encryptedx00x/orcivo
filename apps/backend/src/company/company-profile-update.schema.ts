@@ -32,10 +32,12 @@ export const CompanyProfileUpdateSchema = z
     phone: z.string().max(20).nullable().optional(),
     city: z.string().max(100).nullable().optional(),
     state: z.string().max(2).nullable().optional(),
+    address: z.string().max(200).nullable().optional(),
     pix_key_type: PixKeyTypeEnum.nullable().optional(),
     pix_key: z.string().max(140).nullable().optional(),
     quote_default_terms: z.string().max(2000).nullable().optional(),
     quote_default_validity_days: z.number().int().min(1).max(365).nullable().optional(),
+    quote_default_price_display: z.enum(['ITEMS', 'TOTAL', 'NONE']).optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;

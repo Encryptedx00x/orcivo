@@ -348,7 +348,11 @@ export default function ApprovePage(): JSX.Element {
             <h1>Olá, {quote?.customer.name}</h1>
             <div className="sub">
               Aqui está o orçamento #{quote?.number}, preparado por <strong>{companyName}</strong>.
-              Confira os itens, valores e condições — você pode aprovar ou recusar abaixo.
+              Confira{' '}
+              {quote?.total != null
+                ? 'os itens, valores e condições'
+                : 'o que será feito e as condições'}{' '}
+              — você pode aprovar ou recusar abaixo.
             </div>
           </div>
           <span
@@ -383,6 +387,38 @@ export default function ApprovePage(): JSX.Element {
           </span>
         </div>
 
+        {/* The client reads the full PDF before answering. */}
+        <div
+          className="pub-card"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}
+        >
+          <FileText size={22} style={{ color: '#6D28D9', flexShrink: 0 }} aria-hidden="true" />
+          <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Orçamento em PDF</div>
+            <div style={{ fontSize: 13, color: '#64748B' }}>
+              Veja o documento completo antes de responder.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a
+              href={approvalService.getPdfUrl(token)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ov-btn ov-btn-primary"
+              style={{ height: 44, textDecoration: 'none' }}
+            >
+              Ver PDF
+            </a>
+            <a
+              href={`${approvalService.getPdfUrl(token)}?download=1`}
+              className="ov-btn ov-btn-outline"
+              style={{ height: 44, textDecoration: 'none' }}
+            >
+              <Download size={16} aria-hidden="true" /> Baixar
+            </a>
+          </div>
+        </div>
+
         {/* Para (cliente) */}
         <div className="pub-card">
           <h2>Para</h2>
@@ -414,31 +450,41 @@ export default function ApprovePage(): JSX.Element {
               <div>
                 <div className="name">{item.description}</div>
               </div>
-              <div className="qty">{item.quantity} un</div>
-              <div className="total">{formatMoney(item.total)}</div>
+              <div className="qty">{Number(item.quantity).toLocaleString('pt-BR')} un</div>
+              {item.total != null && <div className="total">{formatMoney(item.total)}</div>}
             </div>
           ))}
 
-          <div className="pub-totals">
-            <div className="row">
-              <span>Subtotal</span>
-              <span>{formatMoney(quote?.subtotal ?? '0')}</span>
-            </div>
-            {quote && parseFloat(quote.discount_value) > 0 && (
-              <div className="row" style={{ color: '#166534' }}>
-                <span>
-                  Desconto {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
-                </span>
-                <span>
-                  - {formatMoney(sumDecimal([quote.subtotal, multiplyDecimal(quote.total, '-1')]))}
-                </span>
+          {quote?.total != null && (
+            <div className="pub-totals">
+              {quote.subtotal != null && (
+                <div className="row">
+                  <span>Subtotal</span>
+                  <span>{formatMoney(quote.subtotal)}</span>
+                </div>
+              )}
+              {quote.subtotal != null &&
+                quote.discount_value != null &&
+                Number(quote.discount_value) > 0 && (
+                  <div className="row" style={{ color: '#166534' }}>
+                    <span>
+                      Desconto{' '}
+                      {quote.discount_type === 'PERCENT' ? `(${quote.discount_value}%)` : ''}
+                    </span>
+                    <span>
+                      -{' '}
+                      {formatMoney(
+                        sumDecimal([quote.subtotal, multiplyDecimal(quote.total, '-1')]),
+                      )}
+                    </span>
+                  </div>
+                )}
+              <div className="grand">
+                <span>Total</span>
+                <span className="v">{formatMoney(quote.total)}</span>
               </div>
-            )}
-            <div className="grand">
-              <span>Total</span>
-              <span className="v">{formatMoney(quote?.total ?? '0')}</span>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Observações */}
@@ -791,8 +837,14 @@ export default function ApprovePage(): JSX.Element {
         <div style={{ padding: '0 20px 20px' }}>
           <div className="pub-cta">
             <div className="total-mini">
-              <div className="k">Total do orçamento</div>
-              <div className="v">{formatMoney(quote?.total ?? '0')}</div>
+              {quote?.total != null ? (
+                <>
+                  <div className="k">Total do orçamento</div>
+                  <div className="v">{formatMoney(quote.total)}</div>
+                </>
+              ) : (
+                <div className="k">Orçamento #{quote?.number}</div>
+              )}
             </div>
             <div className="actions">
               <button className="btn-reject" onClick={() => setPageState('rejecting')}>

@@ -32,6 +32,8 @@ export interface Draft {
   signature: SignatureChoice;
   /** null until the saved signature was checked on the review step. */
   savedSignature: string | null | undefined;
+  /** What the client sees of the prices (company default until changed). */
+  priceDisplay: 'ITEMS' | 'TOTAL' | 'NONE';
   /** Editing an existing draft: sending updates it instead of creating a new quote. */
   id?: string;
 }
@@ -48,6 +50,7 @@ export const emptyDraft = (): Draft => ({
   terms: '',
   signature: { mode: 'none' },
   savedSignature: undefined,
+  priceDisplay: 'ITEMS',
 });
 
 const Ctx = createContext<{
@@ -104,6 +107,7 @@ export function draftFromQuote(q: EasyQuoteFull): Draft {
           : decimalToDigits(q.discount_value),
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
+    priceDisplay: q.price_display ?? 'ITEMS',
   };
 }
 

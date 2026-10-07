@@ -29,6 +29,7 @@ export interface EasyQuoteFull {
   valid_until: string | null;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
+  price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
   customer: { id: string; name: string; phone?: string | null };
   items: Array<{
     catalog_item_id: string | null;
@@ -318,7 +319,17 @@ export interface EasyReceipt {
   receipt_signature_key: string | null;
   receipt_signer_name: string | null;
   receipt_signature_url?: string | null;
-  customer: { id: string; name: string; phone?: string | null };
+  customer: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    tax_id?: string | null;
+    street?: string | null;
+    number?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+  };
   work_order: { id: string; number: number; title?: string | null } | null;
   quote: { id: string; number: number; title?: string | null } | null;
 }
@@ -328,6 +339,7 @@ export interface EasyCompany {
   document_type: 'CPF' | 'CNPJ' | null;
   document: string | null;
   phone: string | null;
+  address?: string | null;
   city: string | null;
   state: string | null;
   pix_key: string | null;
@@ -336,6 +348,7 @@ export interface EasyCompany {
   allowed_approval_methods?: ApprovalMethod[];
   quote_default_terms: string | null;
   quote_default_validity_days: number | null;
+  quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
 }
 
 export const RECEIPT_METHODS = [

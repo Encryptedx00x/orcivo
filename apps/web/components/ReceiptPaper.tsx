@@ -1,4 +1,4 @@
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
 import { QrCode } from 'lucide-react';
 import { methodLabel, receiptDate, receiptNo, receiptRef, type Receipt } from '../lib/receipts';
 
@@ -15,9 +15,33 @@ export function ReceiptPaper({
     document?: string | null;
     document_type?: string | null;
     pix_key?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
   };
   large?: boolean;
 }): React.JSX.Element {
+  const c = receipt.customer;
+  const parties = [
+    {
+      title: 'Quem recebeu',
+      name: company.trade_name,
+      lines: partyLines(company.document, company.phone, [
+        company.address,
+        [company.city, company.state].filter(Boolean).join('/'),
+      ]),
+    },
+    {
+      title: 'Quem pagou',
+      name: c.name,
+      lines: partyLines(c.tax_id, c.phone, [
+        [c.street, c.number].filter(Boolean).join(', '),
+        c.neighborhood,
+        [c.city, c.state].filter(Boolean).join('/'),
+      ]),
+    },
+  ];
   const initials =
     company.trade_name
       .trim()
@@ -105,6 +129,38 @@ export function ReceiptPaper({
         Recebi de <strong>{receipt.customer.name}</strong> o valor acima, referente a{' '}
         {receiptRef(receipt)}.
       </p>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 10,
+        }}
+      >
+        {parties.map((p) => (
+          <div
+            key={p.title}
+            style={{
+              borderRadius: 12,
+              background: '#F8FAFC',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              minWidth: 0,
+            }}
+          >
+            <span style={{ fontSize: sm, fontWeight: 600, color: '#475569' }}>{p.title}</span>
+            <span style={{ fontSize: body, fontWeight: 700, overflowWrap: 'anywhere' }}>
+              {p.name}
+            </span>
+            {p.lines.map((l) => (
+              <span key={l} style={{ fontSize: sm, color: '#475569', overflowWrap: 'anywhere' }}>
+                {l}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: sm, color: '#475569' }}>Forma de pagamento</span>
@@ -157,4 +213,18 @@ export function ReceiptPaper({
       )}
     </div>
   );
+}
+
+/** Document, phone and address of a party, formatted; empty parts are skipped. */
+function partyLines(
+  document: string | null | undefined,
+  phone: string | null | undefined,
+  address: Array<string | null | undefined>,
+): string[] {
+  const doc = document ? maskCpfCnpj(document) : '';
+  return [
+    doc ? `${doc.length > 14 ? 'CNPJ' : 'CPF'} ${doc}` : '',
+    phone ? maskPhone(phone) : '',
+    address.filter(Boolean).join(' · '),
+  ].filter(Boolean);
 }

@@ -175,6 +175,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [validUntil, setValidUntil] = useState('');
   const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [discountValue, setDiscountValue] = useState('0');
+  const [priceDisplay, setPriceDisplay] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
@@ -199,7 +200,9 @@ export default function NovoOrcamentoForm(): JSX.Element {
         (c: {
           quote_default_terms?: string | null;
           quote_default_validity_days?: number | null;
+          quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
         }) => {
+          if (c.quote_default_price_display) setPriceDisplay(c.quote_default_price_display);
           if (c.quote_default_terms)
             setTerms((t) => (t === DEFAULT_TERMS ? c.quote_default_terms! : t));
           const days = c.quote_default_validity_days ?? 15;
@@ -338,6 +341,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
           valid_until: validUntil ? new Date(`${validUntil}T23:59:59`).toISOString() : undefined,
           discount_type: discountType,
           discount_value: discountValue || '0',
+          price_display: priceDisplay,
           items: validItems.map((it) => ({
             catalog_item_id: it.catalog_item_id,
             description: it.description,
@@ -582,6 +586,18 @@ export default function NovoOrcamentoForm(): JSX.Element {
                 value={validUntil}
                 onChange={(e) => setValidUntil(e.target.value)}
               />
+            </div>
+            <div>
+              <label className="ov-label">O que o cliente vê dos preços</label>
+              <select
+                className="ov-input"
+                value={priceDisplay}
+                onChange={(e) => setPriceDisplay(e.target.value as 'ITEMS' | 'TOTAL' | 'NONE')}
+              >
+                <option value="ITEMS">Preço de cada item e total</option>
+                <option value="TOTAL">Só o total</option>
+                <option value="NONE">Sem preços</option>
+              </select>
             </div>
           </div>
         </div>

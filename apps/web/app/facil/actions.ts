@@ -173,6 +173,7 @@ export interface EasyQuoteFull {
   valid_until: string | null;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
+  price_display?: PriceDisplay;
   customer: { id: string; name: string; phone?: string | null };
   items: Array<{
     catalog_item_id: string | null;
@@ -368,6 +369,7 @@ export interface EasyCompany {
   document_type: 'CPF' | 'CNPJ' | null;
   document: string | null;
   phone: string | null;
+  address?: string | null;
   city: string | null;
   state: string | null;
   pix_key: string | null;
@@ -376,7 +378,10 @@ export interface EasyCompany {
   allowed_approval_methods?: ApprovalMethod[];
   quote_default_terms: string | null;
   quote_default_validity_days: number | null;
+  quote_default_price_display?: PriceDisplay;
 }
+/** What the client sees of a quote's prices. */
+export type PriceDisplay = 'ITEMS' | 'TOTAL' | 'NONE';
 export async function getCompany(): Promise<Result<EasyCompany>> {
   return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');
 }

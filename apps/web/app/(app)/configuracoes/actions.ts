@@ -50,6 +50,7 @@ export async function updateCompanyProfile(body: {
   trade_name: string;
   document: string | null;
   phone: string | null;
+  address: string | null;
   city: string | null;
   state: string | null;
 }): Promise<Result> {
@@ -67,6 +68,7 @@ export async function updateCompanyPix(body: {
 export async function updateQuoteDefaults(body: {
   quote_default_terms: string | null;
   quote_default_validity_days: number;
+  quote_default_price_display: 'ITEMS' | 'TOTAL' | 'NONE';
 }): Promise<Result> {
   return patchCompanyMe(body);
 }

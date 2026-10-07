@@ -329,6 +329,8 @@ interface QuoteData {
   discount_type: string;
   discount_value: DecimalLike;
   total: DecimalLike;
+  /** ITEMS (default) · TOTAL: no unit prices, only the total · NONE: no prices at all. */
+  price_display?: string | null;
   valid_until?: Date | null;
   created_at?: Date | null;
   items: Array<{
@@ -393,6 +395,10 @@ export class QuotePdfService {
     const showWatermark = company.plan_code === 'LIVRE';
     const location = [company.city, company.state].filter(Boolean).join(' · ');
     const hasDiscount = new Decimal(q.discount_value).greaterThan(0);
+    // Discount shown in money (a percent discount_value is not an amount).
+    const discountAmount = new Decimal(q.subtotal).minus(q.total).toFixed(2);
+    const itemPrices = (q.price_display ?? 'ITEMS') === 'ITEMS';
+    const anyPrice = q.price_display !== 'NONE';
     // Total sobre a máquina de estados: todo QuoteStatus tem selo definido
     // (PB1-P12/AC1). O guard abaixo é apenas defesa em runtime contra
     // valores fora da enum — nunca exibe rótulo de estado errado.
@@ -482,8 +488,8 @@ export class QuotePdfService {
             <View style={styles.tHeadRow}>
               <Text style={[styles.th, styles.cDesc]}>Descrição</Text>
               <Text style={[styles.th, styles.cQty]}>Qtd</Text>
-              <Text style={[styles.th, styles.cPrice]}>Preço un.</Text>
-              <Text style={[styles.th, styles.cTotal]}>Total</Text>
+              {itemPrices && <Text style={[styles.th, styles.cPrice]}>Preço un.</Text>}
+              {itemPrices && <Text style={[styles.th, styles.cTotal]}>Total</Text>}
             </View>
             {q.items.map((item, i) => {
               const last = i === q.items.length - 1;
@@ -491,36 +497,44 @@ export class QuotePdfService {
                 <View key={i} style={[styles.tRow, last ? styles.tRowLast : {}]} wrap={false}>
                   <Text style={[styles.cellText, styles.cDesc]}>{item.description}</Text>
                   <Text style={[styles.cellMono, styles.cQty]}>{fmtQty(item.quantity)}</Text>
-                  <Text style={[styles.cellMono, styles.cPrice]}>
-                    {formatMoney(item.unit_price)}
-                  </Text>
-                  <Text style={[styles.cellMoney, styles.cTotal]}>{formatMoney(item.total)}</Text>
+                  {itemPrices && (
+                    <Text style={[styles.cellMono, styles.cPrice]}>
+                      {formatMoney(item.unit_price)}
+                    </Text>
+                  )}
+                  {itemPrices && (
+                    <Text style={[styles.cellMoney, styles.cTotal]}>{formatMoney(item.total)}</Text>
+                  )}
                 </View>
               );
             })}
           </View>
 
           {/* ── Totais ── */}
-          <View style={styles.totalsWrap}>
-            <View style={styles.totalsBox}>
-              <View style={styles.tLine}>
-                <Text style={styles.tLineLabel}>Subtotal</Text>
-                <Text style={styles.tLineValue}>{formatMoney(q.subtotal)}</Text>
-              </View>
-              {hasDiscount && (
-                <View style={styles.tLine}>
-                  <Text style={styles.tLineLabel}>
-                    Desconto{q.discount_type === 'PERCENT' ? ` (${q.discount_value}%)` : ''}
-                  </Text>
-                  <Text style={styles.tLineValue}>− {formatMoney(q.discount_value)}</Text>
+          {anyPrice && (
+            <View style={styles.totalsWrap}>
+              <View style={styles.totalsBox}>
+                {itemPrices && (
+                  <View style={styles.tLine}>
+                    <Text style={styles.tLineLabel}>Subtotal</Text>
+                    <Text style={styles.tLineValue}>{formatMoney(q.subtotal)}</Text>
+                  </View>
+                )}
+                {itemPrices && hasDiscount && (
+                  <View style={styles.tLine}>
+                    <Text style={styles.tLineLabel}>
+                      Desconto{q.discount_type === 'PERCENT' ? ` (${q.discount_value}%)` : ''}
+                    </Text>
+                    <Text style={styles.tLineValue}>− {formatMoney(discountAmount)}</Text>
+                  </View>
+                )}
+                <View style={styles.tTotal}>
+                  <Text style={styles.tTotalLabel}>Total</Text>
+                  <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
                 </View>
-              )}
-              <View style={styles.tTotal}>
-                <Text style={styles.tTotalLabel}>Total</Text>
-                <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
               </View>
             </View>
-          </View>
+          )}
 
           {/* ── Pix ── */}
           {company.pix_key ? (

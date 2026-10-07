@@ -291,6 +291,7 @@ function CompanyEdit() {
       trade_name: c.trade_name ?? '',
       document: c.document ?? '',
       phone: c.phone ?? '',
+      address: c.address ?? '',
       city: c.city ?? '',
       state: c.state ?? '',
     });
@@ -327,6 +328,7 @@ function CompanyEdit() {
                     document: doc || null,
                     document_type: doc ? (doc.length === 11 ? 'CPF' : 'CNPJ') : null,
                     phone: f.phone.replace(/\D/g, '') || null,
+                    address: f.address.trim() || null,
                     city: f.city.trim() || null,
                     state: f.state.trim() || null,
                   }),
@@ -355,6 +357,12 @@ function CompanyEdit() {
         onChange={(v) => set('phone')(onlyDigits(v).slice(0, 11))}
         keyboard="phone-pad"
         placeholder="(00) 00000-0000"
+      />
+      <Field
+        label="Endereço"
+        value={f.address}
+        onChange={(v) => set('address')(v.slice(0, 200))}
+        placeholder="Rua, número e bairro"
       />
       <Field label="Cidade" value={f.city} onChange={set('city')} placeholder="Ex.: Campinas" />
       <Field
@@ -478,10 +486,12 @@ function TermsEdit() {
   const { busy, save } = useSave();
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
+  const [prices, setPrices] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
+    setPrices(c.quote_default_price_display ?? 'ITEMS');
   }
   if (terms === null)
     return (
@@ -504,6 +514,7 @@ function TermsEdit() {
                 easy.updateCompany({
                   quote_default_terms: terms.trim() || null,
                   quote_default_validity_days: days,
+                  quote_default_price_display: prices,
                 }),
               'Condições salvas.',
             )
@@ -531,6 +542,18 @@ function TermsEdit() {
           { value: 30, label: '30 dias' },
         ]}
       />
+      <Text style={[s.body, { fontWeight: '600' }]}>O que o cliente vê dos preços</Text>
+      <Options
+        cols={3}
+        value={prices}
+        onPick={setPrices}
+        options={[
+          { value: 'ITEMS' as const, label: 'Cada item' },
+          { value: 'TOTAL' as const, label: 'Só o total' },
+          { value: 'NONE' as const, label: 'Sem preços' },
+        ]}
+      />
+      <Text style={s.muted}>Dá para mudar em cada orçamento, em Mais opções.</Text>
     </Page>
   );
 }

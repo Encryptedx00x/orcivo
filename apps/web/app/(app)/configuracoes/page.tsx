@@ -32,6 +32,7 @@ interface EmpresaForm {
   trade_name: string;
   document: string;
   phone: string;
+  address: string;
   city: string;
   state: string;
 }
@@ -53,6 +54,7 @@ interface CompanyMeResponse {
   trade_name?: string;
   document?: string | null;
   phone?: string | null;
+  address?: string | null;
   city?: string | null;
   state?: string | null;
   pix_key?: string | null;
@@ -60,12 +62,20 @@ interface CompanyMeResponse {
   logo_url?: string | null;
   quote_default_terms?: string | null;
   quote_default_validity_days?: number | null;
+  quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
 }
 
 const DEFAULT_TERMS =
   'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.';
 
-const EMPTY_EMPRESA: EmpresaForm = { trade_name: '', document: '', phone: '', city: '', state: '' };
+const EMPTY_EMPRESA: EmpresaForm = {
+  trade_name: '',
+  document: '',
+  phone: '',
+  address: '',
+  city: '',
+  state: '',
+};
 const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
 const EMPTY_ACCOUNT: AccountForm = {
   name: '',
@@ -176,6 +186,7 @@ export default function ConfiguracoesPage(): JSX.Element {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [validity, setValidity] = useState(15);
+  const [priceDisplay, setPriceDisplay] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
@@ -202,10 +213,12 @@ export default function ConfiguracoesPage(): JSX.Element {
         setLogoUrl(d.logo_url ?? null);
         setTerms(d.quote_default_terms ?? DEFAULT_TERMS);
         setValidity(d.quote_default_validity_days ?? 15);
+        setPriceDisplay(d.quote_default_price_display ?? 'ITEMS');
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
           phone: d.phone ?? '',
+          address: d.address ?? '',
           city: d.city ?? '',
           state: d.state ?? '',
         });
@@ -245,6 +258,7 @@ export default function ConfiguracoesPage(): JSX.Element {
         trade_name: empresa.trade_name,
         document: empresa.document || null,
         phone: empresa.phone || null,
+        address: empresa.address.trim() || null,
         city: empresa.city || null,
         state: empresa.state || null,
       });
@@ -614,6 +628,19 @@ export default function ConfiguracoesPage(): JSX.Element {
                       }}
                     />
                   </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="ov-label">Endereço</label>
+                    <input
+                      className="ov-input"
+                      placeholder="Rua, número e bairro (vai nos recibos e orçamentos)"
+                      maxLength={200}
+                      value={empresa.address}
+                      onChange={(e) => {
+                        setEmpresaSaved(false);
+                        setEmpresa({ ...empresa, address: e.target.value });
+                      }}
+                    />
+                  </div>
                   <div>
                     <label className="ov-label">Cidade</label>
                     <input
@@ -883,6 +910,23 @@ export default function ConfiguracoesPage(): JSX.Element {
                   </option>
                 ))}
               </select>
+              <label className="ov-label" htmlFor="cfg-prices">
+                O que o cliente vê dos preços
+              </label>
+              <select
+                id="cfg-prices"
+                className="ov-input"
+                value={priceDisplay}
+                onChange={(e) => {
+                  setPriceDisplay(e.target.value as 'ITEMS' | 'TOTAL' | 'NONE');
+                  setTermsSaved(false);
+                }}
+                style={{ maxWidth: 320, marginBottom: 20 }}
+              >
+                <option value="ITEMS">Preço de cada item e total</option>
+                <option value="TOTAL">Só o total</option>
+                <option value="NONE">Sem preços (só o que será feito)</option>
+              </select>
               {termsError && (
                 <p role="alert" style={{ color: '#B91C1C', fontSize: 13, margin: '0 0 12px' }}>
                   {termsError}
@@ -898,6 +942,7 @@ export default function ConfiguracoesPage(): JSX.Element {
                     const r = await updateQuoteDefaults({
                       quote_default_terms: terms.trim() || null,
                       quote_default_validity_days: validity,
+                      quote_default_price_display: priceDisplay,
                     });
                     setTermsSaving(false);
                     if (!r.ok) return setTermsError(r.message);

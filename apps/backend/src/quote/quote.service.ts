@@ -99,6 +99,15 @@ export class QuoteService {
       companyId,
     );
     const number = await this.nextQuoteNumber(companyId);
+    // Without a choice in the form, the company's default ("Condições padrão") applies.
+    const priceDisplay =
+      dto.price_display ??
+      (
+        await this.prisma.company.findUnique({
+          where: { id: companyId },
+          select: { quote_default_price_display: true },
+        })
+      )?.quote_default_price_display;
     const { itemTotals, subtotal, total } = this.computeTotals(
       dto.items,
       dto.discount_type ?? 'PERCENT',
@@ -115,6 +124,7 @@ export class QuoteService {
         valid_until: dto.valid_until ? new Date(dto.valid_until) : undefined,
         discount_type: dto.discount_type ?? 'PERCENT',
         discount_value: dto.discount_value ?? '0',
+        price_display: priceDisplay,
         subtotal,
         total,
         created_by_user_id: userId,
@@ -278,6 +288,7 @@ export class QuoteService {
           title: dto.title,
           notes: dto.notes,
           valid_until: dto.valid_until ? new Date(dto.valid_until) : undefined,
+          price_display: dto.price_display,
           discount_type: discountType,
           discount_value: discountValue,
           subtotal,
@@ -901,6 +912,7 @@ export class QuoteService {
       discount_type: true,
       discount_value: true,
       subtotal: true,
+      price_display: true,
       notes: true,
       customer: { select: { id: true, name: true, phone: true } },
       items: {

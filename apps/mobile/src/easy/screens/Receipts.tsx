@@ -14,7 +14,7 @@ import {
   Share2,
   UserPlus,
 } from 'lucide-react-native';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
 import {
   RECEIPT_METHODS,
   easy,
@@ -167,6 +167,20 @@ export function ReceiptsScreen() {
 }
 
 /** On-screen receipt, same layout as the PDF ("Recibo Papel"). */
+/** Document, phone and address of a party, formatted; empty parts are skipped. */
+function partyLines(
+  document: string | null | undefined,
+  phone: string | null | undefined,
+  address: Array<string | null | undefined>,
+): string[] {
+  const doc = document ? maskCpfCnpj(document) : '';
+  return [
+    doc ? `${doc.length > 14 ? 'CNPJ' : 'CPF'} ${doc}` : '',
+    phone ? maskPhone(phone) : '',
+    address.filter(Boolean).join(' · '),
+  ].filter(Boolean);
+}
+
 export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: EasyCompany | null }) {
   const initials =
     (company?.trade_name ?? '')
@@ -220,6 +234,38 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
         Recebi de <Text style={{ fontWeight: '700' }}>{r.customer.name}</Text> o valor acima,
         referente a {receiptRef(r)}.
       </Text>
+      {[
+        {
+          title: 'Quem recebeu',
+          name: company?.trade_name ?? '',
+          lines: partyLines(company?.document, company?.phone, [
+            company?.address,
+            [company?.city, company?.state].filter(Boolean).join('/'),
+          ]),
+        },
+        {
+          title: 'Quem pagou',
+          name: r.customer.name,
+          lines: partyLines(r.customer.tax_id, r.customer.phone, [
+            [r.customer.street, r.customer.number].filter(Boolean).join(', '),
+            r.customer.neighborhood,
+            [r.customer.city, r.customer.state].filter(Boolean).join('/'),
+          ]),
+        },
+      ].map((p) => (
+        <View
+          key={p.title}
+          style={{ borderRadius: 12, backgroundColor: '#F8FAFC', padding: 12, gap: 2 }}
+        >
+          <Text style={[s.muted, { fontWeight: '600' }]}>{p.title}</Text>
+          <Text style={[s.body, { fontWeight: '700' }]}>{p.name}</Text>
+          {p.lines.map((l) => (
+            <Text key={l} style={s.muted}>
+              {l}
+            </Text>
+          ))}
+        </View>
+      ))}
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={s.muted}>Forma de pagamento</Text>

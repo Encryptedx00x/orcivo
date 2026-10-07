@@ -15,11 +15,13 @@ const COMPANY_SELECT = {
   phone: true,
   city: true,
   state: true,
+  address: true,
   brand_color: true,
   logo_url: true,
   pix_key: true,
   quote_default_terms: true,
   quote_default_validity_days: true,
+  quote_default_price_display: true,
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
@@ -33,9 +35,11 @@ const PROFILE_FIELD_LABELS: Record<
   | 'phone'
   | 'city'
   | 'state'
+  | 'address'
   | 'pix_key'
   | 'quote_default_terms'
-  | 'quote_default_validity_days',
+  | 'quote_default_validity_days'
+  | 'quote_default_price_display',
   string
 > = {
   trade_name: 'nome fantasia',
@@ -44,9 +48,11 @@ const PROFILE_FIELD_LABELS: Record<
   phone: 'telefone',
   city: 'cidade',
   state: 'estado',
+  address: 'endereço',
   pix_key: 'chave Pix',
   quote_default_terms: 'condições padrão',
   quote_default_validity_days: 'validade padrão',
+  quote_default_price_display: 'preços no orçamento',
 };
 
 @Injectable()

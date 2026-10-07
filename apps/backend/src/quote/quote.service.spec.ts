@@ -43,6 +43,7 @@ const mockPrisma = {
     create: jest.fn(),
   },
   company: {
+    findUnique: jest.fn().mockResolvedValue({ quote_default_price_display: 'TOTAL' }),
     findUniqueOrThrow: jest.fn().mockResolvedValue({
       id: 'comp-1',
       trade_name: 'Empresa',
@@ -163,6 +164,23 @@ describe('QuoteService', () => {
             total: '30.00',
           }),
         }),
+      );
+    });
+
+    it('Test 1b: sem escolha no formulário, usa os preços padrão da empresa; com escolha, respeita', async () => {
+      const dto = {
+        customer_id: 'cust-uuid',
+        items: [{ description: 'Item A', quantity: '1', unit_price: '10.00' }],
+        discount_type: 'PERCENT' as const,
+        discount_value: '0',
+      };
+      await service.create(dto, 'comp-1', 'user-1');
+      expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ price_display: 'TOTAL' }) }),
+      );
+      await service.create({ ...dto, price_display: 'NONE' }, 'comp-1', 'user-1');
+      expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ price_display: 'NONE' }) }),
       );
     });
   });
@@ -1355,7 +1373,7 @@ describe('QuoteExpiryProcessor', () => {
       },
       quoteApproval: { create: jest.fn() },
       auditLog: { create: jest.fn() },
-      company: { findUniqueOrThrow: jest.fn() },
+      company: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
       $transaction: jest.fn(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)),
     };
     // default: still eligible at UPDATE time

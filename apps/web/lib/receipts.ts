@@ -14,7 +14,17 @@ export interface Receipt {
   receipt_signer_name: string | null;
   /** Short-lived URL of the frozen signature (detail endpoint only). */
   receipt_signature_url?: string | null;
-  customer: { id: string; name: string; phone?: string | null };
+  customer: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    tax_id?: string | null;
+    street?: string | null;
+    number?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+  };
   work_order: { id: string; number: number; title?: string | null } | null;
   quote: { id: string; number: number; title?: string | null } | null;
 }

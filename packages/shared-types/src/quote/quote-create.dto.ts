@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-const decimalStr = (decimals = 2) =>
-  z.string().regex(new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`));
+const decimalStr = (decimals = 2) => z.string().regex(new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`));
 
 export const QuoteItemSchema = z.object({
   catalog_item_id: z.string().uuid().optional(),
@@ -17,6 +16,8 @@ export const QuoteCreateSchema = z.object({
   valid_until: z.string().datetime().optional(),
   discount_type: z.enum(['PERCENT', 'FIXED']).default('PERCENT'),
   discount_value: decimalStr(2).default('0'),
+  /** What the client sees of the prices: per item, only the total, or none (scope only). */
+  price_display: z.enum(['ITEMS', 'TOTAL', 'NONE']).optional(),
   items: z.array(QuoteItemSchema).min(1),
 });
 
