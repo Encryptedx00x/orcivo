@@ -21,7 +21,7 @@ const COMPANY_SELECT = {
   pix_key: true,
   quote_default_terms: true,
   quote_default_validity_days: true,
-  quote_default_price_display: true,
+  quote_default_doc_options: true,
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
@@ -39,7 +39,7 @@ const PROFILE_FIELD_LABELS: Record<
   | 'pix_key'
   | 'quote_default_terms'
   | 'quote_default_validity_days'
-  | 'quote_default_price_display',
+  | 'quote_default_doc_options',
   string
 > = {
   trade_name: 'nome fantasia',
@@ -52,7 +52,7 @@ const PROFILE_FIELD_LABELS: Record<
   pix_key: 'chave Pix',
   quote_default_terms: 'condições padrão',
   quote_default_validity_days: 'validade padrão',
-  quote_default_price_display: 'preços no orçamento',
+  quote_default_doc_options: 'o que vai no orçamento',
 };
 
 @Injectable()
@@ -228,8 +228,9 @@ export class CompanyService {
       const from: Record<string, AuditJsonValue> = {};
       const to: Record<string, AuditJsonValue> = {};
       for (const key of changedKeys) {
-        from[key] = before[key] ?? null;
-        to[key] = updated[key] ?? null;
+        // Prisma Json values are plain JSON here (doc options object).
+        from[key] = (before[key] ?? null) as AuditJsonValue;
+        to[key] = (updated[key] ?? null) as AuditJsonValue;
       }
       const changedLabels = changedKeys.map((key) => PROFILE_FIELD_LABELS[key]);
 

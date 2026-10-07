@@ -2,6 +2,8 @@
 
 import { Fragment, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import type { QuoteDocOptions } from '@orcivo/shared-types';
+import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
 import { Plus, BookOpen, X, Check, FileText, Share2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -175,7 +177,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
   const [validUntil, setValidUntil] = useState('');
   const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [discountValue, setDiscountValue] = useState('0');
-  const [priceDisplay, setPriceDisplay] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
+  const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
@@ -200,9 +202,9 @@ export default function NovoOrcamentoForm(): JSX.Element {
         (c: {
           quote_default_terms?: string | null;
           quote_default_validity_days?: number | null;
-          quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
+          quote_default_doc_options?: QuoteDocOptions | null;
         }) => {
-          if (c.quote_default_price_display) setPriceDisplay(c.quote_default_price_display);
+          if (c.quote_default_doc_options) setDocOptions(c.quote_default_doc_options);
           if (c.quote_default_terms)
             setTerms((t) => (t === DEFAULT_TERMS ? c.quote_default_terms! : t));
           const days = c.quote_default_validity_days ?? 15;
@@ -341,7 +343,7 @@ export default function NovoOrcamentoForm(): JSX.Element {
           valid_until: validUntil ? new Date(`${validUntil}T23:59:59`).toISOString() : undefined,
           discount_type: discountType,
           discount_value: discountValue || '0',
-          price_display: priceDisplay,
+          doc_options: docOptions ?? undefined,
           items: validItems.map((it) => ({
             catalog_item_id: it.catalog_item_id,
             description: it.description,
@@ -587,18 +589,9 @@ export default function NovoOrcamentoForm(): JSX.Element {
                 onChange={(e) => setValidUntil(e.target.value)}
               />
             </div>
-            <div>
-              <label className="ov-label">O que o cliente vê dos preços</label>
-              <select
-                className="ov-input"
-                value={priceDisplay}
-                onChange={(e) => setPriceDisplay(e.target.value as 'ITEMS' | 'TOTAL' | 'NONE')}
-              >
-                <option value="ITEMS">Preço de cada item e total</option>
-                <option value="TOTAL">Só o total</option>
-                <option value="NONE">Sem preços</option>
-              </select>
-            </div>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <QuoteDocOptionsForm value={docOptions} onChange={setDocOptions} />
           </div>
         </div>
       );

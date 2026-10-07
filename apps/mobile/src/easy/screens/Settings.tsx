@@ -17,7 +17,14 @@ import {
   UserRound,
   Users,
 } from 'lucide-react-native';
-import { formatMoney, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  maskCpfCnpj,
+  maskPhone,
+  onlyDigits,
+  type QuoteDocOptions,
+} from '@orcivo/shared-types';
+import { DocOptionsFields } from '../DocOptions';
 import { easy, errorText, type ApprovalMethod } from '../data';
 import { useEasyMode } from '../EasyModeContext';
 import {
@@ -486,12 +493,12 @@ function TermsEdit() {
   const { busy, save } = useSave();
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
-  const [prices, setPrices] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
+  const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
-    setPrices(c.quote_default_price_display ?? 'ITEMS');
+    setDocOptions(c.quote_default_doc_options ?? null);
   }
   if (terms === null)
     return (
@@ -514,7 +521,7 @@ function TermsEdit() {
                 easy.updateCompany({
                   quote_default_terms: terms.trim() || null,
                   quote_default_validity_days: days,
-                  quote_default_price_display: prices,
+                  quote_default_doc_options: docOptions,
                 }),
               'Condições salvas.',
             )
@@ -542,18 +549,8 @@ function TermsEdit() {
           { value: 30, label: '30 dias' },
         ]}
       />
-      <Text style={[s.body, { fontWeight: '600' }]}>O que o cliente vê dos preços</Text>
-      <Options
-        cols={3}
-        value={prices}
-        onPick={setPrices}
-        options={[
-          { value: 'ITEMS' as const, label: 'Cada item' },
-          { value: 'TOTAL' as const, label: 'Só o total' },
-          { value: 'NONE' as const, label: 'Sem preços' },
-        ]}
-      />
-      <Text style={s.muted}>Dá para mudar em cada orçamento, em Mais opções.</Text>
+      <DocOptionsFields value={docOptions} onChange={setDocOptions} />
+      <Text style={s.muted}>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Text>
     </Page>
   );
 }

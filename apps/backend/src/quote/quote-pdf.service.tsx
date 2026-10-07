@@ -14,7 +14,12 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer';
 import { Injectable } from '@nestjs/common';
-import { formatMoney, QuoteStatus } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  QUOTE_DOC_TITLES,
+  QuoteStatus,
+  resolveQuoteDocOptions,
+} from '@orcivo/shared-types';
 import { registerPdfFonts } from './pdf-fonts';
 
 registerPdfFonts();
@@ -329,8 +334,8 @@ interface QuoteData {
   discount_type: string;
   discount_value: DecimalLike;
   total: DecimalLike;
-  /** ITEMS (default) · TOTAL: no unit prices, only the total · NONE: no prices at all. */
-  price_display?: string | null;
+  /** QuoteDocOptions (title + what is shown); missing = everything shown. */
+  doc_options?: unknown;
   valid_until?: Date | null;
   created_at?: Date | null;
   items: Array<{
@@ -397,8 +402,10 @@ export class QuotePdfService {
     const hasDiscount = new Decimal(q.discount_value).greaterThan(0);
     // Discount shown in money (a percent discount_value is not an amount).
     const discountAmount = new Decimal(q.subtotal).minus(q.total).toFixed(2);
-    const itemPrices = (q.price_display ?? 'ITEMS') === 'ITEMS';
-    const anyPrice = q.price_display !== 'NONE';
+    const opts = resolveQuoteDocOptions(q.doc_options);
+    const docTitle = QUOTE_DOC_TITLES[opts.title];
+    const itemPrices = opts.item_prices;
+    const anyPrice = opts.subtotal || opts.total;
     // Total sobre a máquina de estados: todo QuoteStatus tem selo definido
     // (PB1-P12/AC1). O guard abaixo é apenas defesa em runtime contra
     // valores fora da enum — nunca exibe rótulo de estado errado.
@@ -408,7 +415,7 @@ export class QuotePdfService {
 
     const doc = (
       <Document
-        title={`Orçamento #${q.number}`}
+        title={`${docTitle} #${q.number}`}
         author={company.trade_name}
         creator="Orcivo"
         producer="Orcivo"
@@ -448,7 +455,7 @@ export class QuotePdfService {
             </View>
 
             <View style={styles.headRight}>
-              <Text style={styles.eyebrow}>Orçamento</Text>
+              <Text style={styles.eyebrow}>{docTitle}</Text>
               <Text style={styles.quoteNumber}>#{q.number}</Text>
             </View>
           </View>
@@ -475,7 +482,7 @@ export class QuotePdfService {
                   Emitido em <Text style={styles.metaStrong}>{fmtDate(q.created_at)}</Text>
                 </Text>
               ) : null}
-              {q.valid_until ? (
+              {q.valid_until && opts.validity ? (
                 <Text style={styles.metaLine}>
                   Válido até <Text style={styles.metaStrong}>{fmtDate(q.valid_until)}</Text>
                 </Text>
@@ -514,13 +521,13 @@ export class QuotePdfService {
           {anyPrice && (
             <View style={styles.totalsWrap}>
               <View style={styles.totalsBox}>
-                {itemPrices && (
+                {opts.subtotal && (
                   <View style={styles.tLine}>
                     <Text style={styles.tLineLabel}>Subtotal</Text>
                     <Text style={styles.tLineValue}>{formatMoney(q.subtotal)}</Text>
                   </View>
                 )}
-                {itemPrices && hasDiscount && (
+                {opts.subtotal && hasDiscount && (
                   <View style={styles.tLine}>
                     <Text style={styles.tLineLabel}>
                       Desconto{q.discount_type === 'PERCENT' ? ` (${q.discount_value}%)` : ''}
@@ -528,16 +535,18 @@ export class QuotePdfService {
                     <Text style={styles.tLineValue}>− {formatMoney(discountAmount)}</Text>
                   </View>
                 )}
-                <View style={styles.tTotal}>
-                  <Text style={styles.tTotalLabel}>Total</Text>
-                  <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
-                </View>
+                {opts.total && (
+                  <View style={styles.tTotal}>
+                    <Text style={styles.tTotalLabel}>Total</Text>
+                    <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
+                  </View>
+                )}
               </View>
             </View>
           )}
 
           {/* ── Pix ── */}
-          {company.pix_key ? (
+          {company.pix_key && opts.pix ? (
             <View style={styles.infoCard} wrap={false}>
               <Text style={styles.label}>Pagamento via Pix</Text>
               <Text style={styles.pixKey}>{company.pix_key}</Text>
@@ -545,7 +554,7 @@ export class QuotePdfService {
           ) : null}
 
           {/* ── Observações ── */}
-          {q.notes ? (
+          {q.notes && opts.terms ? (
             <View style={[styles.infoCard, { backgroundColor: C.slate50 }]} wrap={false}>
               <Text style={styles.label}>Observações</Text>
               <Text style={styles.notesText}>{q.notes}</Text>

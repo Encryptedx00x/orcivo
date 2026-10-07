@@ -2,7 +2,7 @@
 
 // Modo fácil: a thin, explicit data layer over the same backend endpoints the
 // standard screens use. No business rules live here — only fetch/compose.
-import type { QuoteCreateDto } from '@orcivo/shared-types';
+import type { QuoteCreateDto, QuoteDocOptions } from '@orcivo/shared-types';
 import { apiFetch } from '../../lib/api';
 
 type Ok<T> = { ok: true; data: T };
@@ -173,7 +173,7 @@ export interface EasyQuoteFull {
   valid_until: string | null;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
-  price_display?: PriceDisplay;
+  doc_options?: QuoteDocOptions | null;
   customer: { id: string; name: string; phone?: string | null };
   items: Array<{
     catalog_item_id: string | null;
@@ -378,10 +378,8 @@ export interface EasyCompany {
   allowed_approval_methods?: ApprovalMethod[];
   quote_default_terms: string | null;
   quote_default_validity_days: number | null;
-  quote_default_price_display?: PriceDisplay;
+  quote_default_doc_options?: QuoteDocOptions | null;
 }
-/** What the client sees of a quote's prices. */
-export type PriceDisplay = 'ITEMS' | 'TOTAL' | 'NONE';
 export async function getCompany(): Promise<Result<EasyCompany>> {
   return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');
 }

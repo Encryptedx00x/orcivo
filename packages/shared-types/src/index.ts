@@ -23,6 +23,7 @@ export * from './quote/quote-create.dto';
 export * from './quote/quote-update.dto';
 export * from './quote/quote-status.enum';
 export * from './quote/quote-approval.dto';
+export * from './quote/quote-doc-options';
 export * from './work-order/work-order-create.dto';
 export * from './work-order/work-order-update.dto';
 export * from './plan/plan-feature.enum';

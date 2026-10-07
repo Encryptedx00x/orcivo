@@ -1,6 +1,6 @@
 // Modo fácil: a thin data layer over the same endpoints the full screens use
 // (mirrors apps/web/app/facil/actions.ts). No business rules live here.
-import type { QuoteCreateDto } from '@orcivo/shared-types';
+import type { QuoteCreateDto, QuoteDocOptions } from '@orcivo/shared-types';
 import { api } from '../services/api';
 import { workOrderService } from '../services/work-order.service';
 
@@ -29,7 +29,7 @@ export interface EasyQuoteFull {
   valid_until: string | null;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
-  price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
+  doc_options?: QuoteDocOptions | null;
   customer: { id: string; name: string; phone?: string | null };
   items: Array<{
     catalog_item_id: string | null;
@@ -348,7 +348,7 @@ export interface EasyCompany {
   allowed_approval_methods?: ApprovalMethod[];
   quote_default_terms: string | null;
   quote_default_validity_days: number | null;
-  quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
+  quote_default_doc_options?: QuoteDocOptions | null;
 }
 
 export const RECEIPT_METHODS = [

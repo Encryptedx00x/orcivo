@@ -19,7 +19,14 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react-native';
-import { formatMoney, maskPhone, multiplyDecimal, type QuoteCreateDto } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  maskPhone,
+  multiplyDecimal,
+  type QuoteCreateDto,
+  QUOTE_DOC_TITLES,
+  resolveQuoteDocOptions,
+} from '@orcivo/shared-types';
 import { newIdempotencyKey } from '../../services/api';
 import { easy, errorText, type EasyCatalogItem, type EasyClient } from '../data';
 import {
@@ -57,6 +64,7 @@ import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { EasyStackParamList } from '../EasyNavigator';
 import { approvalsSummary } from './Settings';
 import { shareQuotePdf } from '../share';
+import { DocOptionsFields } from '../DocOptions';
 
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const key = () => Math.random().toString(36).slice(2);
@@ -398,7 +406,7 @@ export function QuoteReviewScreen() {
             ...d,
             terms: c.quote_default_terms ?? d.terms,
             validityDays: c.quote_default_validity_days ?? d.validityDays,
-            priceDisplay: c.quote_default_price_display ?? d.priceDisplay,
+            docOptions: c.quote_default_doc_options ?? d.docOptions,
           })),
         )
         .catch(() => undefined);
@@ -442,7 +450,7 @@ export function QuoteReviewScreen() {
       notes: draft.terms.trim() || undefined,
       valid_until: validUntil.toISOString(),
       discount_type: draft.discountType,
-      price_display: draft.priceDisplay,
+      doc_options: draft.docOptions ?? undefined,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -493,6 +501,7 @@ export function QuoteReviewScreen() {
               name: client.name,
               phone: client.phone,
               url,
+              docTitle: resolveQuoteDocOptions(draft.docOptions).title,
             },
           },
         ],
@@ -665,16 +674,9 @@ export function QuoteReviewScreen() {
             placeholder={pct ? '0' : 'R$ 0,00'}
             keyboard="number-pad"
           />
-          <Text style={[s.body, { fontWeight: '600' }]}>O que o cliente vê dos preços</Text>
-          <Options
-            cols={3}
-            value={draft.priceDisplay}
-            onPick={(v) => setDraft((d) => ({ ...d, priceDisplay: v }))}
-            options={[
-              { value: 'ITEMS' as const, label: 'Cada item' },
-              { value: 'TOTAL' as const, label: 'Só o total' },
-              { value: 'NONE' as const, label: 'Sem preços' },
-            ]}
+          <DocOptionsFields
+            value={draft.docOptions}
+            onChange={(v) => setDraft((d) => ({ ...d, docOptions: v }))}
           />
           <Text style={[s.body, { fontWeight: '600' }]}>Vale por</Text>
           <Options
@@ -1007,7 +1009,9 @@ export function QuoteDoneScreen({
   navigation,
   route,
 }: NativeStackScreenProps<EasyStackParamList, 'QuoteDone'>) {
-  const { id, number, total, name, phone, url } = route.params;
+  const { id, number, total, name, phone, url, docTitle = 'ORCAMENTO' } = route.params;
+  const docName = QUOTE_DOC_TITLES[docTitle];
+  const fem = docTitle === 'PROPOSTA';
   const pdf = async () => {
     try {
       await shareQuotePdf(id, number);
@@ -1055,13 +1059,15 @@ export function QuoteDoneScreen({
         >
           <Check size={56} strokeWidth={2.5} color={C.green} />
         </View>
-        <H1>Pronto! Orçamento concluído</H1>
+        <H1>{`Pronto! ${docName} ${fem ? 'concluída' : 'concluído'}`}</H1>
         <Text style={[s.body, { textAlign: 'center', color: C.fg2 }]}>
           Ficou registrado. Agora mande para {name}: quando aprovar, aparece em Orçamentos.
         </Text>
       </View>
       <Card style={{ padding: 16, gap: 8 }}>
-        <Text style={[s.body, { fontWeight: '600' }]}>Orçamento #{number}</Text>
+        <Text style={[s.body, { fontWeight: '600' }]}>
+          {docName} #{number}
+        </Text>
         <Text style={{ fontSize: 22, fontWeight: '800', color: C.ink }}>{formatMoney(total)}</Text>
       </Card>
     </Page>

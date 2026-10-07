@@ -10,31 +10,41 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { ApproveQuoteSchema, RejectQuotePublicSchema } from '@orcivo/shared-types';
+import {
+  ApproveQuoteSchema,
+  RejectQuotePublicSchema,
+  resolveQuoteDocOptions,
+} from '@orcivo/shared-types';
 import type { RejectQuotePublicDto } from '@orcivo/shared-types';
 import { QuoteService } from './quote.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { Request } from 'express';
 
 /**
- * "Sem preços" / "Só o total": what the technician chose to hide is not sent to the
- * client at all (not only hidden on screen).
+ * What the technician hid on the document (prices, validity, conditions) is not sent
+ * to the client at all, not only hidden on screen.
  */
-export function hidePrices<
+export function hideByDocOptions<
   T extends {
-    price_display?: string | null;
+    doc_options?: unknown;
     subtotal?: unknown;
     discount_value?: unknown;
     total?: unknown;
+    valid_until?: unknown;
+    notes?: unknown;
     items: Array<{ unit_price?: unknown; total?: unknown }>;
   },
 >(q: T): T {
-  if (!q.price_display || q.price_display === 'ITEMS') return q;
-  const items = q.items.map(({ unit_price: _u, total: _t, ...rest }) => rest);
-  if (q.price_display === 'TOTAL') {
-    return { ...q, subtotal: null, discount_value: null, items } as T;
-  }
-  return { ...q, subtotal: null, discount_value: null, total: null, items } as T;
+  const o = resolveQuoteDocOptions(q.doc_options);
+  return {
+    ...q,
+    subtotal: o.subtotal ? q.subtotal : null,
+    discount_value: o.subtotal ? q.discount_value : null,
+    total: o.total ? q.total : null,
+    valid_until: o.validity ? q.valid_until : null,
+    notes: o.terms ? q.notes : null,
+    items: o.item_prices ? q.items : q.items.map(({ unit_price: _u, total: _t, ...rest }) => rest),
+  } as T;
 }
 
 // AVISO: Este controller e intencionalmente publico — sem JwtAuthGuard, sem TenantGuard.
@@ -47,7 +57,7 @@ export class QuotePublicController {
 
   @Get(':token')
   async getPublicQuote(@Param('token') token: string) {
-    return hidePrices(await this.quoteService.getByApprovalToken(token));
+    return hideByDocOptions(await this.quoteService.getByApprovalToken(token));
   }
 
   // Serve o PDF ja gerado (nao regenera) para o token dado — mesmo escopo de

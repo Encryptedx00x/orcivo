@@ -17,6 +17,8 @@ import {
 import { formatMoney, maskCpfCnpj, maskPhone, onlyDigits } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
+import type { QuoteDocOptions } from '@orcivo/shared-types';
+import { DocOptionsFields } from '../DocOptions';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 import {
   createCatalogItem,
@@ -31,7 +33,6 @@ import {
   updateCompany,
   updatePayment,
   type ApprovalMethod,
-  type PriceDisplay,
 } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import {
@@ -620,12 +621,12 @@ function TermsEdit() {
   const { busy, save } = useSaver();
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
-  const [prices, setPrices] = useState<PriceDisplay>('ITEMS');
+  const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
-    setPrices(c.quote_default_price_display ?? 'ITEMS');
+    setDocOptions(c.quote_default_doc_options ?? null);
   }
   if (terms === null)
     return company.error ? (
@@ -659,20 +660,8 @@ function TermsEdit() {
             ]}
           />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 17, fontWeight: 600 }}>O que o cliente vê dos preços</span>
-          <Options
-            cols={3}
-            value={prices}
-            onPick={setPrices}
-            options={[
-              { value: 'ITEMS' as const, label: 'Cada item' },
-              { value: 'TOTAL' as const, label: 'Só o total' },
-              { value: 'NONE' as const, label: 'Sem preços' },
-            ]}
-          />
-          <Hint>Dá para mudar em cada orçamento, em Mais opções.</Hint>
-        </div>
+        <DocOptionsFields value={docOptions} onChange={setDocOptions} />
+        <Hint>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Hint>
       </div>
       <SaveBar
         busy={busy}
@@ -682,7 +671,7 @@ function TermsEdit() {
               updateCompany({
                 quote_default_terms: terms.trim() || null,
                 quote_default_validity_days: days,
-                quote_default_price_display: prices,
+                quote_default_doc_options: docOptions,
               }),
             'Condições salvas.',
           )

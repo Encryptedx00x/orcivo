@@ -43,7 +43,7 @@ const mockPrisma = {
     create: jest.fn(),
   },
   company: {
-    findUnique: jest.fn().mockResolvedValue({ quote_default_price_display: 'TOTAL' }),
+    findUnique: jest.fn().mockResolvedValue({ quote_default_doc_options: { total: false } }),
     findUniqueOrThrow: jest.fn().mockResolvedValue({
       id: 'comp-1',
       trade_name: 'Empresa',
@@ -176,11 +176,15 @@ describe('QuoteService', () => {
       };
       await service.create(dto, 'comp-1', 'user-1');
       expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ price_display: 'TOTAL' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ doc_options: { total: false } }),
+        }),
       );
-      await service.create({ ...dto, price_display: 'NONE' }, 'comp-1', 'user-1');
+      await service.create({ ...dto, doc_options: { title: 'PROPOSTA' } }, 'comp-1', 'user-1');
       expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ price_display: 'NONE' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ doc_options: { title: 'PROPOSTA' } }),
+        }),
       );
     });
   });

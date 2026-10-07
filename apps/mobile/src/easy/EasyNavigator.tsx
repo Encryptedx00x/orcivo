@@ -61,6 +61,8 @@ export type EasyStackParamList = {
     name: string;
     phone: string | null;
     url: string;
+    /** Document name chosen (Orçamento / Proposta / Pedido). */
+    docTitle?: 'ORCAMENTO' | 'PROPOSTA' | 'PEDIDO';
   };
   ClientDetail: { id: string };
   ClientNew: { forQuote?: boolean; forReceipt?: boolean; edit?: EasyClient } | undefined;

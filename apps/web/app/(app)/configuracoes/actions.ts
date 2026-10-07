@@ -1,6 +1,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
+import type { QuoteDocOptions } from '@orcivo/shared-types';
 
 type Result = { ok: true } | { ok: false; message: string };
 type Account = { id: string; name: string; email: string };
@@ -68,7 +69,7 @@ export async function updateCompanyPix(body: {
 export async function updateQuoteDefaults(body: {
   quote_default_terms: string | null;
   quote_default_validity_days: number;
-  quote_default_price_display: 'ITEMS' | 'TOTAL' | 'NONE';
+  quote_default_doc_options: QuoteDocOptions | null;
 }): Promise<Result> {
   return patchCompanyMe(body);
 }

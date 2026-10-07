@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QuoteDocOptionsSchema } from './quote-doc-options';
 
 const decimalStr = (decimals = 2) => z.string().regex(new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`));
 
@@ -16,8 +17,8 @@ export const QuoteCreateSchema = z.object({
   valid_until: z.string().datetime().optional(),
   discount_type: z.enum(['PERCENT', 'FIXED']).default('PERCENT'),
   discount_value: decimalStr(2).default('0'),
-  /** What the client sees of the prices: per item, only the total, or none (scope only). */
-  price_display: z.enum(['ITEMS', 'TOTAL', 'NONE']).optional(),
+  /** What goes on the document (title, prices, validity, conditions, Pix). */
+  doc_options: QuoteDocOptionsSchema.optional(),
   items: z.array(QuoteItemSchema).min(1),
 });
 

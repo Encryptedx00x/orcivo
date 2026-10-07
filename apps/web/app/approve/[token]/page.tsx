@@ -12,7 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { approvalService, type PublicQuote } from '../../../lib/approval.service';
-import { formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import { QUOTE_DOC_TITLES, formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
 import { downscaleToDataUrl } from '../../../lib/image';
 
@@ -155,6 +155,8 @@ export default function ApprovePage(): JSX.Element {
       .join('') ?? 'OV';
   const companyName = quote?.company.trade_name ?? 'Orcivo';
 
+  const docName = QUOTE_DOC_TITLES[quote?.doc_options?.title ?? 'ORCAMENTO'];
+  const fem = quote?.doc_options?.title === 'PROPOSTA';
   const expiresDate = quote?.valid_until
     ? new Date(quote.valid_until).toLocaleDateString('pt-BR', {
         day: '2-digit',
@@ -347,8 +349,8 @@ export default function ApprovePage(): JSX.Element {
           <div className="pub-hero-text">
             <h1>Olá, {quote?.customer.name}</h1>
             <div className="sub">
-              Aqui está o orçamento #{quote?.number}, preparado por <strong>{companyName}</strong>.
-              Confira{' '}
+              Aqui está {fem ? 'a' : 'o'} {docName.toLowerCase()} #{quote?.number}, preparad
+              {fem ? 'a' : 'o'} por <strong>{companyName}</strong>. Confira{' '}
               {quote?.total != null
                 ? 'os itens, valores e condições'
                 : 'o que será feito e as condições'}{' '}
@@ -378,10 +380,12 @@ export default function ApprovePage(): JSX.Element {
 
         {/* Meta row */}
         <div className="pub-meta-row">
-          <span>
-            <Calendar size={14} /> Validade:{' '}
-            <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
-          </span>
+          {quote?.valid_until && (
+            <span>
+              <Calendar size={14} /> Validade:{' '}
+              <strong style={{ color: 'var(--ink)' }}>{expiresDate}</strong>
+            </span>
+          )}
           <span>
             <ShieldCheck size={14} /> Você está num link seguro do Orcivo
           </span>
@@ -394,7 +398,7 @@ export default function ApprovePage(): JSX.Element {
         >
           <FileText size={22} style={{ color: '#6D28D9', flexShrink: 0 }} aria-hidden="true" />
           <div style={{ flex: '1 1 160px', minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Orçamento em PDF</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{docName} em PDF</div>
             <div style={{ fontSize: 13, color: '#64748B' }}>
               Veja o documento completo antes de responder.
             </div>
@@ -444,7 +448,7 @@ export default function ApprovePage(): JSX.Element {
 
         {/* Itens */}
         <div className="pub-card">
-          <h2>Itens do orçamento</h2>
+          <h2>Itens</h2>
           {quote?.items.map((item, i) => (
             <div key={i} className="pub-item">
               <div>
@@ -839,11 +843,13 @@ export default function ApprovePage(): JSX.Element {
             <div className="total-mini">
               {quote?.total != null ? (
                 <>
-                  <div className="k">Total do orçamento</div>
+                  <div className="k">Total</div>
                   <div className="v">{formatMoney(quote.total)}</div>
                 </>
               ) : (
-                <div className="k">Orçamento #{quote?.number}</div>
+                <div className="k">
+                  {docName} #{quote?.number}
+                </div>
               )}
             </div>
             <div className="actions">

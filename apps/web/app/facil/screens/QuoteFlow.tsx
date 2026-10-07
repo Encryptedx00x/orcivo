@@ -19,7 +19,14 @@ import {
   UserPlus,
   XCircle,
 } from 'lucide-react';
-import { formatMoney, maskPhone, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import {
+  QUOTE_DOC_TITLES,
+  formatMoney,
+  maskPhone,
+  multiplyDecimal,
+  resolveQuoteDocOptions,
+  sumDecimal,
+} from '@orcivo/shared-types';
 import {
   createCatalogItem,
   createClient,
@@ -32,6 +39,7 @@ import {
   type EasyCatalogItem,
 } from '../actions';
 import { approvalsSummary } from './Settings';
+import { DocOptionsFields, docOptionsSummary } from '../DocOptions';
 import {
   getTechnicianSignature,
   saveTechnicianSignature,
@@ -855,7 +863,7 @@ function Q3() {
           ...d,
           terms: r.data.quote_default_terms ?? d.terms,
           validityDays: r.data.quote_default_validity_days ?? d.validityDays,
-          priceDisplay: r.data.quote_default_price_display ?? d.priceDisplay,
+          docOptions: r.data.quote_default_doc_options ?? d.docOptions,
         }));
       });
     }
@@ -902,7 +910,7 @@ function Q3() {
       notes: draft.terms.trim() || undefined,
       valid_until: validUntil(),
       discount_type: draft.discountType,
-      price_display: draft.priceDisplay,
+      doc_options: draft.docOptions ?? undefined,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -968,11 +976,7 @@ function Q3() {
     Number(discount) > 0 ? `Desconto de ${formatMoney(discount)}` : null,
     `Vale por ${draft.validityDays} dias`,
     draft.terms.trim() ? 'com condições' : null,
-    draft.priceDisplay === 'TOTAL'
-      ? 'só o total'
-      : draft.priceDisplay === 'NONE'
-        ? 'sem preços'
-        : null,
+    docOptionsSummary(draft.docOptions),
   ].filter(Boolean);
 
   return (
@@ -1287,18 +1291,10 @@ function Q3() {
                   />
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 600 }}>O que o cliente vê dos preços</span>
-                <Options
-                  options={[
-                    { value: 'ITEMS' as const, label: 'Cada item' },
-                    { value: 'TOTAL' as const, label: 'Só o total' },
-                    { value: 'NONE' as const, label: 'Sem preços' },
-                  ]}
-                  value={draft.priceDisplay}
-                  onPick={(v) => setDraft((d) => ({ ...d, priceDisplay: v }))}
-                />
-              </div>
+              <DocOptionsFields
+                value={draft.docOptions}
+                onChange={(v) => setDraft((d) => ({ ...d, docOptions: v }))}
+              />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 600 }}>Vale por</span>
                 <Options
@@ -1668,6 +1664,9 @@ function Done() {
   const { draft, setDraft, tab } = useNav();
   const toast = useToast();
   const r = draft.result;
+  const docTitle = resolveQuoteDocOptions(draft.docOptions).title;
+  const docName = QUOTE_DOC_TITLES[docTitle];
+  const fem = docTitle === 'PROPOSTA';
   const whatsapp = () =>
     r && window.open(buildWhatsAppLink(r.phone ?? '', r.url, `#${r.number}`), '_blank', 'noopener');
   const copy = async () => {
@@ -1714,7 +1713,7 @@ function Done() {
             letterSpacing: '-0.02em',
           }}
         >
-          Pronto! Orçamento concluído
+          Pronto! {docName} {fem ? 'concluída' : 'concluído'}
         </h1>
         <p style={{ margin: 0, fontSize: 18, lineHeight: '26px', color: C.fg2 }}>
           Ficou registrado. Agora mande para {draft.client?.name ?? 'o cliente'}: quando aprovar,
@@ -1735,7 +1734,9 @@ function Done() {
             }}
           >
             <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: 17, fontWeight: 600 }}>Orçamento #{r.number}</span>
+              <span style={{ fontSize: 17, fontWeight: 600 }}>
+                {docName} #{r.number}
+              </span>
               <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
                 {formatMoney(r.total)}
               </span>

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import { multiplyDecimal, sumDecimal, type QuoteDocOptions } from '@orcivo/shared-types';
 import type { EasyClient, EasyQuoteFull } from './data';
 import type { EasyStackParamList } from './EasyNavigator';
 import { WEB_URL } from '../config';
@@ -33,7 +33,7 @@ export interface Draft {
   /** null until the saved signature was checked on the review step. */
   savedSignature: string | null | undefined;
   /** What the client sees of the prices (company default until changed). */
-  priceDisplay: 'ITEMS' | 'TOTAL' | 'NONE';
+  docOptions: QuoteDocOptions | null;
   /** Editing an existing draft: sending updates it instead of creating a new quote. */
   id?: string;
 }
@@ -50,7 +50,7 @@ export const emptyDraft = (): Draft => ({
   terms: '',
   signature: { mode: 'none' },
   savedSignature: undefined,
-  priceDisplay: 'ITEMS',
+  docOptions: null,
 });
 
 const Ctx = createContext<{
@@ -107,7 +107,7 @@ export function draftFromQuote(q: EasyQuoteFull): Draft {
           : decimalToDigits(q.discount_value),
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
-    priceDisplay: q.price_display ?? 'ITEMS',
+    docOptions: q.doc_options ?? null,
   };
 }
 

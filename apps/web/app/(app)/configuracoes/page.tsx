@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import type { QuoteDocOptions } from '@orcivo/shared-types';
+import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
 import {
   Building2,
   Image,
@@ -62,7 +64,7 @@ interface CompanyMeResponse {
   logo_url?: string | null;
   quote_default_terms?: string | null;
   quote_default_validity_days?: number | null;
-  quote_default_price_display?: 'ITEMS' | 'TOTAL' | 'NONE';
+  quote_default_doc_options?: QuoteDocOptions | null;
 }
 
 const DEFAULT_TERMS =
@@ -186,7 +188,7 @@ export default function ConfiguracoesPage(): JSX.Element {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [validity, setValidity] = useState(15);
-  const [priceDisplay, setPriceDisplay] = useState<'ITEMS' | 'TOTAL' | 'NONE'>('ITEMS');
+  const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
@@ -213,7 +215,7 @@ export default function ConfiguracoesPage(): JSX.Element {
         setLogoUrl(d.logo_url ?? null);
         setTerms(d.quote_default_terms ?? DEFAULT_TERMS);
         setValidity(d.quote_default_validity_days ?? 15);
-        setPriceDisplay(d.quote_default_price_display ?? 'ITEMS');
+        setDocOptions(d.quote_default_doc_options ?? null);
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -910,23 +912,15 @@ export default function ConfiguracoesPage(): JSX.Element {
                   </option>
                 ))}
               </select>
-              <label className="ov-label" htmlFor="cfg-prices">
-                O que o cliente vê dos preços
-              </label>
-              <select
-                id="cfg-prices"
-                className="ov-input"
-                value={priceDisplay}
-                onChange={(e) => {
-                  setPriceDisplay(e.target.value as 'ITEMS' | 'TOTAL' | 'NONE');
-                  setTermsSaved(false);
-                }}
-                style={{ maxWidth: 320, marginBottom: 20 }}
-              >
-                <option value="ITEMS">Preço de cada item e total</option>
-                <option value="TOTAL">Só o total</option>
-                <option value="NONE">Sem preços (só o que será feito)</option>
-              </select>
+              <div style={{ marginBottom: 20 }}>
+                <QuoteDocOptionsForm
+                  value={docOptions}
+                  onChange={(v) => {
+                    setDocOptions(v);
+                    setTermsSaved(false);
+                  }}
+                />
+              </div>
               {termsError && (
                 <p role="alert" style={{ color: '#B91C1C', fontSize: 13, margin: '0 0 12px' }}>
                   {termsError}
@@ -942,7 +936,7 @@ export default function ConfiguracoesPage(): JSX.Element {
                     const r = await updateQuoteDefaults({
                       quote_default_terms: terms.trim() || null,
                       quote_default_validity_days: validity,
-                      quote_default_price_display: priceDisplay,
+                      quote_default_doc_options: docOptions,
                     });
                     setTermsSaving(false);
                     if (!r.ok) return setTermsError(r.message);

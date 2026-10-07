@@ -1,3 +1,4 @@
+import { QuoteDocOptionsSchema } from '@orcivo/shared-types';
 import { z } from 'zod';
 
 // Mirrors packages/shared-types/src/company/company-profile-update.dto.ts.
@@ -37,7 +38,7 @@ export const CompanyProfileUpdateSchema = z
     pix_key: z.string().max(140).nullable().optional(),
     quote_default_terms: z.string().max(2000).nullable().optional(),
     quote_default_validity_days: z.number().int().min(1).max(365).nullable().optional(),
-    quote_default_price_display: z.enum(['ITEMS', 'TOTAL', 'NONE']).optional(),
+    quote_default_doc_options: QuoteDocOptionsSchema.nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;
