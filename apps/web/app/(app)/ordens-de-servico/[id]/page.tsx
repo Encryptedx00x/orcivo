@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { fetchOneWorkOrder, fetchWorkOrderPayments } from '../../../../lib/work-order.service';
+import { apiFetch } from '../../../../lib/api';
+import type { CostRow } from '../../financeiro/CostsSection';
 import { WorkOrderDetail } from './WorkOrderDetail';
 
 interface Props {
@@ -10,11 +12,16 @@ interface Props {
 export default async function WorkOrderDetailPage(props: Props): Promise<React.JSX.Element> {
   const params = await props.params;
   try {
-    const [order, paymentResult] = await Promise.all([
+    const [order, paymentResult, costResult] = await Promise.all([
       fetchOneWorkOrder(params.id),
       fetchWorkOrderPayments(params.id).catch(() => ({ data: [] })),
+      apiFetch<{ data: CostRow[] }>(
+        `/expenses?work_order_id=${encodeURIComponent(params.id)}`,
+      ).catch(() => ({ data: [] as CostRow[] })),
     ]);
-    return <WorkOrderDetail initial={order} payments={paymentResult.data} />;
+    return (
+      <WorkOrderDetail initial={order} payments={paymentResult.data} costs={costResult.data} />
+    );
   } catch {
     return (
       <div>

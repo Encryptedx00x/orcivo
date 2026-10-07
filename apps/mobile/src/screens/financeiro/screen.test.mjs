@@ -83,7 +83,7 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
       Check: 'Check', CircleDollarSign: 'CircleDollarSign', MoreHorizontal: 'MoreHorizontal', Pencil: 'Pencil',
       Receipt: 'Receipt', ReceiptText: 'ReceiptText', Trash2: 'Trash2', X: 'X',
     },
-    '../../easy/data': { easy: { deletePayment: async () => undefined }, errorText: (_e, f) => f },
+    '../../easy/data': { easy: { deletePayment: async () => undefined, financeSummary: async () => null }, errorText: (_e, f) => f },
     '../../easy/sheet': { useSheet: () => () => {}, reasonSheet: () => {} },
     '@orcivo/shared-types': shared,
     '../../services/api': { newIdempotencyKey: () => `request-${++key}` },
@@ -373,6 +373,7 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
   modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
   modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
   modules['../easy/screens/Clients'] = { ClientNewScreen: () => null };
+  modules['../easy/screens/Money'] = { CostNewScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
   assert.equal(registered.find((node) => node.props.name === 'Financeiro').props.component, FinanceiroScreen);

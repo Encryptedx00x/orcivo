@@ -27,6 +27,8 @@ import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from '../actions';
 import { contactLinks } from '../../clientes/contact-links';
 import { PaymentRegistrationModal } from '../../financeiro/PaymentRegistrationModal';
+import type { CostRow } from '../../financeiro/CostsSection';
+import { OsCosts } from './OsCosts';
 import {
   PaymentDeleteModal,
   PaymentEditModal,
@@ -152,9 +154,18 @@ function formatDateShort(iso?: string | null): string {
 interface Props {
   initial: WorkOrderWithActions;
   payments: WorkOrderPayment[];
+  costs: CostRow[];
 }
 
-export function WorkOrderDetail({ initial, payments }: Props): React.JSX.Element {
+const PAYMENT_STATUS: Record<string, string> = {
+  PAID: 'Recebido',
+  PENDING: 'A receber',
+  PARTIAL: 'Parcial',
+  OVERDUE: 'Atrasado',
+  CANCELLED: 'Cancelado',
+};
+
+export function WorkOrderDetail({ initial, payments, costs }: Props): React.JSX.Element {
   const router = useRouter();
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
   const contact = contactLinks(order.customer.phone);
@@ -975,7 +986,9 @@ export function WorkOrderDetail({ initial, payments }: Props): React.JSX.Element
                         >
                           {formatMoney(payment.amount)}
                         </span>
-                        <span style={{ color: '#64748B', fontSize: 12 }}>{payment.status}</span>
+                        <span style={{ color: '#64748B', fontSize: 12 }}>
+                          {PAYMENT_STATUS[payment.status] ?? payment.status}
+                        </span>
                         <button
                           type="button"
                           aria-label="Editar recebimento"
@@ -996,6 +1009,7 @@ export function WorkOrderDetail({ initial, payments }: Props): React.JSX.Element
                     ))}
                   </div>
                 ) : null}
+                <OsCosts workOrderId={order.id} costs={costs} received={received} />
                 <button
                   onClick={() => setShowPaymentModal(true)}
                   style={{

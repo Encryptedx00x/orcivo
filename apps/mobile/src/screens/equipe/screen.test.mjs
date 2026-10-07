@@ -296,6 +296,7 @@ test('Mais menu opens the real team screen and retains unrelated routes', () => 
   modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
   modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
   modules['../easy/screens/Clients'] = { ClientNewScreen: () => null };
+  modules['../easy/screens/Money'] = { CostNewScreen: () => null };
   modules['../screens/financeiro/FinanceiroScreen'] = { FinanceiroScreen: () => null };
   modules['../screens/documentos/DocumentosScreen'] = { DocumentosScreen: () => null };
   modules['../screens/plano/PlanoScreen'] = { PlanoScreen: () => null };

@@ -15,6 +15,11 @@ export function multiplyDecimal(a: string, b: string): string {
   return new Decimal(a).mul(new Decimal(b)).toFixed(2);
 }
 
+/** Subtrai valores string decimal: "100.00" - "30.50" → "69.50" */
+export function subtractDecimal(a: string, b: string): string {
+  return new Decimal(a).minus(new Decimal(b)).toFixed(2);
+}
+
 /** Soma array de valores string decimal */
 export function sumDecimal(values: string[]): string {
   return values.reduce((acc, v) => new Decimal(acc).add(new Decimal(v)).toFixed(2), '0');

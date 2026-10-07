@@ -20,6 +20,7 @@ import { NoticesScreen } from '../easy/screens/Notices';
 import { ApprovalsScreen, EditScreen } from '../easy/screens/Settings';
 import { QuoteSignScreen } from '../easy/screens/QuoteFlow';
 import { ClientNewScreen } from '../easy/screens/Clients';
+import { CostNewScreen } from '../easy/screens/Money';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEasyMode } from '../easy/EasyModeContext';
 
@@ -43,6 +44,7 @@ export type MaisStackParamList = {
   Approvals: undefined;
   Edit: { kind: string; id?: string; name?: string; price?: string; amount?: string; due?: string };
   ClientNew: { forReceipt?: boolean } | undefined;
+  CostNew: undefined;
   Catalog: undefined;
   CatalogItemForm: { item?: CatalogItem } | undefined;
   WorkOrderList: undefined;
@@ -189,6 +191,7 @@ export function MaisStack() {
       />
 
       {/* Catálogo */}
+      <Stack.Screen name="CostNew" component={CostNewScreen} options={{ title: 'Lançar gasto' }} />
       <Stack.Screen name="Catalog" component={CatalogScreen} options={{ title: 'Catálogo' }} />
       <Stack.Screen
         name="CatalogItemForm"

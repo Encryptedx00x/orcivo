@@ -27,7 +27,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react-native';
-import { formatMoney, parseMoneyInput, sumDecimal } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  parseMoneyInput,
+  sumDecimal,
+  type FinanceSummary,
+} from '@orcivo/shared-types';
 import { newIdempotencyKey } from '../../services/api';
 import { paymentService } from '../../services/payment.service';
 import type {
@@ -115,6 +120,7 @@ const EMPTY_FORM = {
 type MoreNav = NativeStackNavigationProp<{
   Receipt: { id: string };
   Edit: { kind: string; id?: string; amount?: string; due?: string; name?: string };
+  CostNew: undefined;
 }>;
 
 export function FinanceiroScreen() {
@@ -175,6 +181,7 @@ export function FinanceiroScreen() {
   const [loadError, setLoadError] = useState('');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [month, setMonth] = useState<FinanceSummary | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -196,6 +203,14 @@ export function FinanceiroScreen() {
       let active = true;
       setLoading(true);
       setLoadError('');
+      const n = new Date();
+      easy
+        .financeSummary(
+          new Date(n.getFullYear(), n.getMonth(), 1).toISOString(),
+          new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59).toISOString(),
+        )
+        .then((summary) => active && setMonth(summary))
+        .catch(() => active && setMonth(null));
       Promise.all([paymentService.fetchAll(), workOrderService.fetchAll(1)])
         .then(([paymentsData, workOrdersRes]) => {
           if (!active) return;
@@ -337,20 +352,48 @@ export function FinanceiroScreen() {
               <Text style={styles.summaryValue}>{pendingTotal}</Text>
             </View>
           </View>
+          {month ? (
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryLabel}>Custos do mês</Text>
+                <Text style={styles.summaryValue}>{formatMoney(month.costs.paid)}</Text>
+              </View>
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryLabel}>Resultado do mês</Text>
+                <Text
+                  style={[
+                    styles.summaryValue,
+                    { color: month.result.startsWith('-') ? '#B91C1C' : '#15803D' },
+                  ]}
+                >
+                  {month.result.startsWith('-')
+                    ? `− ${formatMoney(month.result.slice(1))}`
+                    : formatMoney(month.result)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
           {!!successMsg && (
             <Text accessibilityLiveRegion="polite" style={styles.success}>
               {successMsg}
             </Text>
           )}
           {!showForm ? (
-            <Button
-              label="Registrar recebimento"
-              onPress={() => {
-                setSuccessMsg('');
-                setFormError('');
-                setShowForm(true);
-              }}
-            />
+            <View style={{ gap: 8 }}>
+              <Button
+                label="Registrar recebimento"
+                onPress={() => {
+                  setSuccessMsg('');
+                  setFormError('');
+                  setShowForm(true);
+                }}
+              />
+              <Button
+                label="Lançar custo"
+                secondary
+                onPress={() => navigation.navigate('CostNew')}
+              />
+            </View>
           ) : (
             <View style={styles.form}>
               <View style={styles.sectionHeading}>
