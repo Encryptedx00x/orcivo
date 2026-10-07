@@ -108,8 +108,8 @@ Abas Início/Clientes/Orçamentos/Agenda/Mais; Mais: Modo fácil, OS, Catálogo,
 
 ## 8. Deploy e produção
 
-| ID  | Passos                                           | Esperado                                                   |
-| --- | ------------------------------------------------ | ---------------------------------------------------------- |
-| D1  | `git archive HEAD` → scp → `bash /tmp/deploy.sh` | "HEALTH: healthy healthy healthy" + DEPLOY_DONE            |
-| D2  | Pós-deploy em app.orcivo.com.br (conta do dono)  | Login, criar rascunho, abrir link de aprovação, baixar PDF |
-| D3  | Rollback pronto                                  | tags `prev-*` existem                                      |
+| ID  | Passos                                                                     | Esperado                                                   |
+| --- | -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| D1  | `git archive HEAD` → scp (+ `infra/vps/deploy.sh`) → `bash /tmp/deploy.sh` | "HEALTH: healthy healthy healthy" + DEPLOY_DONE            |
+| D2  | Pós-deploy em app.orcivo.com.br (conta do dono)                            | Login, criar rascunho, abrir link de aprovação, baixar PDF |
+| D3  | Rollback pronto                                                            | tags `prev-*` existem                                      |
