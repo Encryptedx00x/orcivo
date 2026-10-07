@@ -521,7 +521,7 @@ export default function ApprovePage(): React.JSX.Element {
         {/* Observações */}
         {quote?.notes && (
           <div className="pub-card" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <h2>Observações</h2>
+            <h2>{quote.doc_options?.title === 'LAUDO' ? 'Laudo técnico' : 'Observações'}</h2>
             <p style={{ fontSize: 14, color: '#334155', margin: 0 }}>{quote.notes}</p>
           </div>
         )}

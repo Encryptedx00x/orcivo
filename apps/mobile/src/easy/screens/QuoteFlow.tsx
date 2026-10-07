@@ -706,7 +706,7 @@ export function QuoteReviewScreen() {
             ]}
           />
           <Field
-            label="Condições"
+            label={draft.docOptions?.title === 'LAUDO' ? 'Laudo técnico' : 'Condições'}
             value={draft.terms}
             onChange={(v) => setDraft((d) => ({ ...d, terms: v.slice(0, 2000) }))}
             multiline

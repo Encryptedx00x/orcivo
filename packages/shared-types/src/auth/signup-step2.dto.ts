@@ -7,7 +7,10 @@ export const SignupStep2Schema = z.object({
   phone: z.string().optional(),
   city: z.string().optional(),
   state: z.string().length(2).toUpperCase().optional(),
-  brand_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  brand_color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
   pix_key: z.string().optional(),
 });
 

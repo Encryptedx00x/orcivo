@@ -81,9 +81,7 @@ export interface PaymentProvider {
   readonly provider: string;
 
   createCustomer(input: PaymentProviderCustomerInput): Promise<PaymentProviderCustomer>;
-  createSubscription(
-    input: PaymentProviderSubscriptionInput,
-  ): Promise<PaymentProviderSubscription>;
+  createSubscription(input: PaymentProviderSubscriptionInput): Promise<PaymentProviderSubscription>;
   cancelSubscription(providerSubscriptionId: string): Promise<void>;
   getSubscription(providerSubscriptionId: string): Promise<PaymentProviderSubscription>;
 }

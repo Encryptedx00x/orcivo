@@ -1,6 +1,11 @@
 'use client';
 
-import { describePaymentTerms, type QuotePaymentTerms } from '@orcivo/shared-types';
+import {
+  ACCEPTED_PAYMENT_METHODS,
+  describePaymentTerms,
+  type AcceptedPaymentMethod,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 
 type Kind = 'NONE' | QuotePaymentTerms['kind'];
 
@@ -60,16 +65,29 @@ export function PaymentTermsFields({
   onChange: (v: QuotePaymentTerms | null) => void;
 }): React.JSX.Element {
   const kind: Kind = value?.kind ?? 'NONE';
+  const methods = value?.methods;
   const pick = (k: Kind) =>
     onChange(
       k === 'NONE'
         ? null
         : k === 'A_VISTA'
-          ? { kind: 'A_VISTA' }
+          ? { kind: 'A_VISTA', methods }
           : k === 'PARCELADO'
-            ? { kind: 'PARCELADO', installments: value?.installments ?? 3 }
-            : { kind: 'ENTRADA', upfront_percent: value?.upfront_percent ?? 50, rest: 'CONCLUSAO' },
+            ? { kind: 'PARCELADO', installments: value?.installments ?? 3, methods }
+            : {
+                kind: 'ENTRADA',
+                upfront_percent: value?.upfront_percent ?? 50,
+                rest: 'CONCLUSAO',
+                methods,
+              },
     );
+  const toggleMethod = (m: AcceptedPaymentMethod) => {
+    if (!value) return;
+    const next = (methods ?? []).includes(m)
+      ? (methods ?? []).filter((x) => x !== m)
+      : [...(methods ?? []), m];
+    onChange({ ...value, methods: next.length ? next : undefined });
+  };
   const sentence = describePaymentTerms(value);
   const installments = (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
@@ -145,6 +163,16 @@ export function PaymentTermsFields({
         </>
       )}
       {value?.kind === 'PARCELADO' && <div style={row}>{installments}</div>}
+      {value && (
+        <div role="group" aria-label="Formas de pagamento aceitas" style={row}>
+          <span style={{ fontSize: 14, color: '#475569' }}>Formas aceitas</span>
+          {(Object.keys(ACCEPTED_PAYMENT_METHODS) as AcceptedPaymentMethod[]).map((m) => (
+            <Chip key={m} on={(methods ?? []).includes(m)} onClick={() => toggleMethod(m)}>
+              {ACCEPTED_PAYMENT_METHODS[m].replace(/^./, (c) => c.toUpperCase())}
+            </Chip>
+          ))}
+        </div>
+      )}
       {sentence && (
         <span style={{ fontSize: 13, color: '#64748B' }}>
           No documento: “{sentence}” Ao aprovar, as cobranças são criadas no Financeiro.

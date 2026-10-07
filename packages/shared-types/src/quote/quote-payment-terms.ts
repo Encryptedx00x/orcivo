@@ -1,6 +1,20 @@
 import Decimal from 'decimal.js';
 import { z } from 'zod';
 
+/** Ways the client may pay, printed next to the terms ("Aceito Pix, cartão ou dinheiro."). */
+export const ACCEPTED_PAYMENT_METHODS = {
+  PIX: 'Pix',
+  CARTAO: 'cartão',
+  DINHEIRO: 'dinheiro',
+  BOLETO: 'boleto',
+  TRANSFERENCIA: 'transferência',
+} as const;
+export type AcceptedPaymentMethod = keyof typeof ACCEPTED_PAYMENT_METHODS;
+const METHOD_KEYS = Object.keys(ACCEPTED_PAYMENT_METHODS) as [
+  AcceptedPaymentMethod,
+  ...AcceptedPaymentMethod[],
+];
+
 /**
  * How the client pays a quote. Printed as a sentence on the document and, when the
  * quote is approved, turned into receivables (see buildPaymentSchedule).
@@ -14,6 +28,8 @@ export const QuotePaymentTermsSchema = z
     rest: z.enum(['CONCLUSAO', 'PARCELAS']).optional(),
     /** PARCELADO, or ENTRADA + PARCELAS: number of monthly installments. */
     installments: z.number().int().min(2).max(24).optional(),
+    /** Accepted payment methods (printed only). */
+    methods: z.array(z.enum(METHOD_KEYS)).max(METHOD_KEYS.length).optional(),
   })
   .strict()
   .superRefine((t, ctx) => {
@@ -29,11 +45,21 @@ export type QuotePaymentTerms = z.infer<typeof QuotePaymentTermsSchema>;
 /** Sentence for the PDF and the approval link. */
 export function describePaymentTerms(t: QuotePaymentTerms | null | undefined): string | null {
   if (!t) return null;
-  if (t.kind === 'A_VISTA') return 'Pagamento à vista.';
-  if (t.kind === 'PARCELADO') return `Pagamento em ${t.installments} parcelas mensais.`;
   const rest =
     t.rest === 'PARCELAS' ? `em ${t.installments} parcelas mensais` : 'na conclusão do serviço';
-  return `Entrada de ${t.upfront_percent}% na aprovação e o restante ${rest}.`;
+  const terms =
+    t.kind === 'A_VISTA'
+      ? 'Pagamento à vista.'
+      : t.kind === 'PARCELADO'
+        ? `Pagamento em ${t.installments} parcelas mensais.`
+        : `Entrada de ${t.upfront_percent}% na aprovação e o restante ${rest}.`;
+  const names = (t.methods ?? []).map((m) => ACCEPTED_PAYMENT_METHODS[m]);
+  if (!names.length) return terms;
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')} ou ${names[names.length - 1]}`;
+  return `${terms} Aceito ${list}.`;
 }
 
 export interface ScheduledPayment {

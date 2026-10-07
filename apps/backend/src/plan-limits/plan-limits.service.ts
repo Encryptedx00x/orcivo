@@ -84,7 +84,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.customers_max) {
           throw new ForbiddenException(
-            `Limite de ${limits.customers_max} clientes atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
+            `Limite de ${limits.customers_max} clientes atingido no ${planName(company.plan_code)}. Abra Ver planos para ampliar.`,
           );
         }
         break;
@@ -98,7 +98,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.quotes_per_month) {
           throw new ForbiddenException(
-            `Limite de ${limits.quotes_per_month} orçamentos/mês atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
+            `Limite de ${limits.quotes_per_month} orçamentos/mês atingido no ${planName(company.plan_code)}. Abra Ver planos para ampliar.`,
           );
         }
         break;
@@ -112,7 +112,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.work_orders_per_month) {
           throw new ForbiddenException(
-            `Limite de ${limits.work_orders_per_month} OS/mês atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
+            `Limite de ${limits.work_orders_per_month} OS/mês atingido no ${planName(company.plan_code)}. Abra Ver planos para ampliar.`,
           );
         }
         break;
@@ -124,7 +124,7 @@ export class PlanLimitsService {
         });
         if (count >= limits.members_max) {
           throw new ForbiddenException(
-            `Limite de ${limits.members_max} usuário(s) atingido no ${planName(company.plan_code)}. Toque em Ver planos para ampliar.`,
+            `Limite de ${limits.members_max} usuário(s) atingido no ${planName(company.plan_code)}. Abra Ver planos para ampliar.`,
           );
         }
         break;

@@ -643,7 +643,9 @@ export class QuotePdfService {
 
           {q.notes && opts.terms ? (
             <View style={[styles.infoCard, { backgroundColor: C.slate50 }]} wrap={false}>
-              <Text style={styles.label}>Observações</Text>
+              <Text style={styles.label}>
+                {opts.title === 'LAUDO' ? 'Laudo técnico' : 'Observações'}
+              </Text>
               <Text style={styles.notesText}>{q.notes}</Text>
             </View>
           ) : null}

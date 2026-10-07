@@ -1,6 +1,11 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { describePaymentTerms, type QuotePaymentTerms } from '@orcivo/shared-types';
+import {
+  ACCEPTED_PAYMENT_METHODS,
+  describePaymentTerms,
+  type AcceptedPaymentMethod,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import { Options, s } from './ui';
 
 type Kind = 'NONE' | QuotePaymentTerms['kind'];
@@ -14,16 +19,29 @@ export function PaymentTermsFields({
   onChange: (v: QuotePaymentTerms | null) => void;
 }) {
   const kind: Kind = value?.kind ?? 'NONE';
+  const methods = value?.methods;
   const pick = (k: Kind) =>
     onChange(
       k === 'NONE'
         ? null
         : k === 'A_VISTA'
-          ? { kind: 'A_VISTA' }
+          ? { kind: 'A_VISTA', methods }
           : k === 'PARCELADO'
-            ? { kind: 'PARCELADO', installments: value?.installments ?? 3 }
-            : { kind: 'ENTRADA', upfront_percent: value?.upfront_percent ?? 50, rest: 'CONCLUSAO' },
+            ? { kind: 'PARCELADO', installments: value?.installments ?? 3, methods }
+            : {
+                kind: 'ENTRADA',
+                upfront_percent: value?.upfront_percent ?? 50,
+                rest: 'CONCLUSAO',
+                methods,
+              },
     );
+  const toggleMethod = (m: AcceptedPaymentMethod) => {
+    if (!value) return;
+    const next = (methods ?? []).includes(m)
+      ? (methods ?? []).filter((x) => x !== m)
+      : [...(methods ?? []), m];
+    onChange({ ...value, methods: next.length ? next : undefined });
+  };
   const installments = (v: QuotePaymentTerms) => (
     <Options
       cols={4}
@@ -75,6 +93,22 @@ export function PaymentTermsFields({
         </>
       ) : null}
       {value?.kind === 'PARCELADO' ? installments(value) : null}
+      {value ? (
+        <>
+          <Text style={s.muted}>Formas aceitas</Text>
+          <Options
+            cols={3}
+            value={methods ?? []}
+            onPick={toggleMethod}
+            options={(Object.keys(ACCEPTED_PAYMENT_METHODS) as AcceptedPaymentMethod[]).map(
+              (m) => ({
+                value: m,
+                label: ACCEPTED_PAYMENT_METHODS[m].replace(/^./, (c) => c.toUpperCase()),
+              }),
+            )}
+          />
+        </>
+      ) : null}
       {sentence ? (
         <Text style={s.muted}>
           No documento: “{sentence}” Ao aprovar, as cobranças são criadas no Financeiro.

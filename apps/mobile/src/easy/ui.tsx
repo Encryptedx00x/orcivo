@@ -205,14 +205,15 @@ export function Options<T extends string | number>({
   cols = 3,
 }: {
   options: Array<{ value: T; label: string }>;
-  value: T | null;
+  /** An array makes it multi-select (each pick toggles). */
+  value: T | null | T[];
   onPick: (v: T) => void;
   cols?: number;
 }) {
   return (
     <View style={s.options}>
       {options.map((o) => {
-        const on = o.value === value;
+        const on = Array.isArray(value) ? value.includes(o.value) : o.value === value;
         return (
           <Pressable
             key={String(o.value)}

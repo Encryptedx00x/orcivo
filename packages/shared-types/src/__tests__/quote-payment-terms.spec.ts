@@ -62,6 +62,18 @@ describe('payment terms', () => {
     );
   });
 
+  it('describes accepted methods', () => {
+    expect(describePaymentTerms({ kind: 'A_VISTA', methods: ['PIX'] })).toBe(
+      'Pagamento à vista. Aceito Pix.',
+    );
+    expect(describePaymentTerms({ kind: 'A_VISTA', methods: ['PIX', 'CARTAO', 'DINHEIRO'] })).toBe(
+      'Pagamento à vista. Aceito Pix, cartão ou dinheiro.',
+    );
+    expect(
+      QuotePaymentTermsSchema.safeParse({ kind: 'A_VISTA', methods: ['CHEQUE'] }).success,
+    ).toBe(false);
+  });
+
   it('schema rejects incomplete terms', () => {
     expect(QuotePaymentTermsSchema.safeParse({ kind: 'ENTRADA' }).success).toBe(false);
     expect(QuotePaymentTermsSchema.safeParse({ kind: 'PARCELADO' }).success).toBe(false);

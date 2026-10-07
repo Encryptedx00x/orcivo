@@ -479,10 +479,18 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
           )}
 
           {/* Condições */}
-          <Text style={styles.sectionLabel}>Condições e observações (opcional)</Text>
+          <Text style={styles.sectionLabel}>
+            {docOptions?.title === 'LAUDO'
+              ? 'Laudo técnico (o que foi constatado)'
+              : 'Observações (opcional)'}
+          </Text>
           <TextInput
             style={[styles.input, styles.notesInput]}
-            placeholder="Ex.: 50% na aprovação, 50% na entrega. Garantia de 90 dias."
+            placeholder={
+              docOptions?.title === 'LAUDO'
+                ? 'Ex.: disjuntor de 20 A subdimensionado para o chuveiro; fiação aquecida.'
+                : 'Ex.: o cliente fornece o material elétrico.'
+            }
             value={notes}
             onChangeText={setNotes}
             multiline

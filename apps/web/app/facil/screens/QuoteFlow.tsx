@@ -1329,7 +1329,9 @@ function Q3() {
                 />
               </div>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 600 }}>Condições</span>
+                <span style={{ fontSize: 17, fontWeight: 600 }}>
+                  {draft.docOptions?.title === 'LAUDO' ? 'Laudo técnico' : 'Condições'}
+                </span>
                 <textarea
                   value={draft.terms}
                   onChange={(e) => setDraft((d) => ({ ...d, terms: e.target.value }))}

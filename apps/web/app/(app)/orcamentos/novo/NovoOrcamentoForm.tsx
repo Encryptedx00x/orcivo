@@ -184,7 +184,6 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   const [paymentTerms, setPaymentTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
-  const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
     { description: '', quantity: '1.000', unit_price: '0.00' },
   ]);
@@ -633,22 +632,14 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
             Termos e observações
           </h3>
           <div>
-            <label className="ov-label">Termos</label>
+            <label className="ov-label">
+              {docOptions?.title === 'LAUDO' ? 'Laudo técnico (o que foi constatado)' : 'Termos'}
+            </label>
             <textarea
               className="ov-input"
               style={{ height: 120, padding: 12, resize: 'vertical' }}
               value={terms}
               onChange={(e) => setTerms(e.target.value)}
-            />
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <label className="ov-label">Observações internas</label>
-            <textarea
-              className="ov-input"
-              style={{ height: 80, padding: 12, resize: 'vertical' }}
-              value={internalNotes}
-              onChange={(e) => setInternalNotes(e.target.value)}
-              placeholder="Visível apenas para a equipe"
             />
           </div>
         </div>

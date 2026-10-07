@@ -1136,7 +1136,11 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
               </div>
               <QuoteDocOptionsForm value={editDocOptions} onChange={setEditDocOptions} />
               <div>
-                <label style={editLabel}>Observações</label>
+                <label style={editLabel}>
+                  {editDocOptions?.title === 'LAUDO'
+                    ? 'Laudo técnico (o que foi constatado)'
+                    : 'Observações'}
+                </label>
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
