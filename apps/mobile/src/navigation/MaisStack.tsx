@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { EmBreveScreen } from '../screens/placeholders/EmBreveScreen';
 import { ConfiguracoesScreen } from '../screens/configuracoes/ConfiguracoesScreen';
 import { ContaScreen } from '../screens/conta/ContaScreen';
@@ -109,7 +109,8 @@ function MaisMenuScreen({ navigation }: MaisMenuProps) {
           style={styles.row}
           onPress={() => {
             if (item.screen === 'EmBreve') {
-              navigation.navigate('EmBreve', { title: item.label });
+              // Ajuda: e-mail to support (same contact as the terms of use).
+              void Linking.openURL('mailto:suporte@orcivo.com.br?subject=Ajuda%20com%20o%20Orcivo');
               return;
             }
             navigation.navigate(item.screen);

@@ -10,9 +10,6 @@ import {
   Users,
   CreditCard,
   CheckSquare,
-  Shield,
-  Bell,
-  FileOutput,
   UserRound,
   FileText,
   Smile,
@@ -167,9 +164,6 @@ const TABS = [
   { id: 'aprovacao', label: 'Aprovação', icon: CheckSquare },
   { id: 'condicoes', label: 'Condições padrão', icon: FileText },
   { id: 'modo', label: 'Modo fácil', icon: Smile },
-  { id: 'seg', label: 'Segurança', icon: Shield },
-  { id: 'notif', label: 'Notificações', icon: Bell },
-  { id: 'exp', label: 'Exportação', icon: FileOutput },
 ];
 
 export default function ConfiguracoesPage(): JSX.Element {
@@ -972,17 +966,6 @@ export default function ConfiguracoesPage(): JSX.Element {
               >
                 Ligar o Modo fácil neste aparelho
               </button>
-            </div>
-          )}
-
-          {['seg', 'notif', 'exp'].includes(tab) && (
-            <div className="ov-card ov-card-body" style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontWeight: 600, color: '#0A0A0F', fontSize: 15, marginBottom: 6 }}>
-                {TABS.find((t) => t.id === tab)?.label}
-              </div>
-              <div style={{ fontSize: 13, color: '#64748B' }}>
-                Em breve — funcionalidade disponível em uma próxima atualização.
-              </div>
             </div>
           )}
         </div>

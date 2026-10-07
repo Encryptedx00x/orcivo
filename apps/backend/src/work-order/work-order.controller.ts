@@ -45,13 +45,22 @@ export class WorkOrderController {
   ) {}
 
   @Get()
-  findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
+  findAll(
+    @Req() req: TenantRequest,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('customer_id') customerId?: string,
+  ) {
     return this.workOrderService.findAll(
       req.companyId,
       Number(page) || 1,
       // Cap protects the API from unbounded reads; screens page with Ver mais.
       Math.min(Number(limit) || 20, 100),
       req.role,
+      customerId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId)
+        ? customerId
+        : undefined,
     );
   }
 

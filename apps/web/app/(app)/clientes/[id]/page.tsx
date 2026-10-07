@@ -1,6 +1,6 @@
 import { apiFetch } from '../../../../lib/api';
 import { notFound } from 'next/navigation';
-import { ClienteDetail } from './ClienteDetail';
+import { ClienteDetail, type CustomerPayment, type CustomerWorkOrder } from './ClienteDetail';
 
 interface Customer {
   id: string;
@@ -43,9 +43,25 @@ export default async function ClienteDetailPage({
     notFound();
   }
 
-  // TODO: add customer_id filter to quotes endpoint (Phase 3+)
-
   if (!customer) notFound();
 
-  return <ClienteDetail customer={customer} quotes={quotes} />;
+  // This customer's quotes, services and payments (tabs of the detail page).
+  const q = `customer_id=${encodeURIComponent(customer.id)}`;
+  const [quoteRes, woRes, payRes] = await Promise.all([
+    apiFetch<{ data: Quote[] }>(`/quotes?${q}&limit=100`).catch(() => ({ data: [] })),
+    apiFetch<{ data: CustomerWorkOrder[] }>(`/work-orders?${q}&limit=100`).catch(() => ({
+      data: [],
+    })),
+    apiFetch<{ data: CustomerPayment[] }>(`/payments?${q}`).catch(() => ({ data: [] })),
+  ]);
+  quotes.push(...quoteRes.data);
+
+  return (
+    <ClienteDetail
+      customer={customer}
+      quotes={quotes}
+      workOrders={woRes.data}
+      payments={payRes.data}
+    />
+  );
 }

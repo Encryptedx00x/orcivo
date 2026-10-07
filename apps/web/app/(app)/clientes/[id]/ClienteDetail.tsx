@@ -4,7 +4,14 @@ import Link from 'next/link';
 import { Plus, ChevronRight, Pencil } from 'lucide-react';
 import { AuditHistoryFeed } from '../AuditHistoryFeed';
 import { contactLinks } from '../contact-links';
-import { maskCep, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
+import {
+  formatMoney as money,
+  maskCep,
+  maskCpfCnpj,
+  maskPhone,
+  sumDecimal,
+} from '@orcivo/shared-types';
+import { methodLabel } from '../../../../lib/receipts';
 
 interface Customer {
   id: string;
@@ -24,6 +31,33 @@ interface Customer {
   created_at: string;
 }
 
+export interface CustomerWorkOrder {
+  id: string;
+  number: number;
+  title: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  scheduled_at?: string | null;
+  created_at?: string;
+}
+export interface CustomerPayment {
+  id: string;
+  amount: string;
+  status: string;
+  method: string | null;
+  description: string | null;
+  due_date: string | null;
+  paid_at: string | null;
+  created_at: string;
+  receipt_number: number | null;
+}
+
+const WO_STATUS: Record<CustomerWorkOrder['status'], { label: string; k: string }> = {
+  PENDING: { label: 'Para fazer', k: 'warning' },
+  IN_PROGRESS: { label: 'Em execução', k: 'info' },
+  DONE: { label: 'Concluída', k: 'success' },
+  CANCELLED: { label: 'Cancelada', k: 'slate' },
+};
+
 interface Quote {
   id: string;
   number: number;
@@ -39,6 +73,7 @@ const STATUS_MAP: Record<string, { label: string; k: string }> = {
   APPROVED: { label: 'Aprovado', k: 'success' },
   REJECTED: { label: 'Rejeitado', k: 'danger' },
   EXPIRED: { label: 'Expirado', k: 'warning' },
+  CANCELLED: { label: 'Cancelado', k: 'slate' },
 };
 
 const PILL_COLORS: Record<string, { bg: string; color: string }> = {
@@ -83,10 +118,14 @@ const TABS = ['Resumo', 'Orçamentos', 'OS', 'Financeiro', 'Endereços', 'Histó
 export function ClienteDetail({
   customer,
   quotes,
+  workOrders,
+  payments,
 }: {
   customer: Customer;
   quotes: Quote[];
-}): JSX.Element {
+  workOrders: CustomerWorkOrder[];
+  payments: CustomerPayment[];
+}): React.JSX.Element {
   const [activeTab, setActiveTab] = useState(0);
   const contact = contactLinks(customer.phone);
 
@@ -103,12 +142,18 @@ export function ClienteDetail({
     year: 'numeric',
   });
 
-  const formatMoney = (v: string) =>
-    `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-
-  const totalApproved = quotes
-    .filter((q) => q.status === 'APPROVED')
-    .reduce((acc, q) => acc + Number(q.total), 0);
+  const formatMoney = money;
+  const approved = quotes.filter((q) => q.status === 'APPROVED');
+  const totalApproved = approved.length ? sumDecimal(approved.map((q) => q.total)) : null;
+  const paid = payments.filter((p) => p.status === 'PAID');
+  const open = payments.filter((p) => p.status !== 'PAID' && p.status !== 'CANCELLED');
+  const doneOrders = workOrders.filter((w) => w.status === 'DONE').length;
+  const address = [
+    [customer.street, customer.number].filter(Boolean).join(', '),
+    customer.complement,
+    customer.neighborhood,
+    [customer.city, customer.state].filter(Boolean).join('/'),
+  ].filter(Boolean);
 
   return (
     <div>
@@ -267,6 +312,8 @@ export function ClienteDetail({
               borderBottom: '1px solid #E2E8F0',
               marginBottom: 20,
               overflowX: 'auto',
+              overflowY: 'hidden',
+              scrollbarWidth: 'none',
             }}
           >
             {TABS.map((t, i) => (
@@ -319,10 +366,14 @@ export function ClienteDetail({
                     v: String(quotes.length),
                     s: `${quotes.filter((q) => q.status === 'APPROVED').length} aprovados`,
                   },
-                  { k: 'OS concluídas', v: '—', s: 'sem dados' },
+                  {
+                    k: 'OS concluídas',
+                    v: String(doneOrders),
+                    s: `${workOrders.length} no total`,
+                  },
                   {
                     k: 'Faturado',
-                    v: totalApproved > 0 ? formatMoney(String(totalApproved)) : '—',
+                    v: totalApproved ? formatMoney(totalApproved) : '—',
                     s: 'orçamentos aprovados',
                   },
                   {
@@ -431,16 +482,236 @@ export function ClienteDetail({
             </div>
           )}
 
-          {/* Other tabs: placeholder */}
-          {activeTab === 5 && <AuditHistoryFeed entityType="customer" entityId={customer.id} />}
-          {activeTab >= 2 && activeTab < 5 && (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: '#94A3B8', fontSize: 14 }}>
-              Nenhum dado disponível ainda.
+          {/* Tab: OS */}
+          {activeTab === 2 && (
+            <div>
+              <TabHead
+                title="Ordens de serviço"
+                action={{
+                  href: `/ordens-de-servico/novo?client_id=${customer.id}`,
+                  label: 'Nova OS',
+                }}
+              />
+              {workOrders.length === 0 ? (
+                <Empty>Nenhuma ordem de serviço para este cliente.</Empty>
+              ) : (
+                <RowList>
+                  {workOrders.map((w) => (
+                    <Row
+                      key={w.id}
+                      href={`/ordens-de-servico/${w.id}`}
+                      title={`OS #${w.number} · ${w.title}`}
+                      sub={
+                        w.scheduled_at
+                          ? `Marcada para ${new Date(w.scheduled_at).toLocaleDateString('pt-BR')}`
+                          : w.created_at
+                            ? `Criada em ${new Date(w.created_at).toLocaleDateString('pt-BR')}`
+                            : ''
+                      }
+                      right={<Pill k={WO_STATUS[w.status].k}>{WO_STATUS[w.status].label}</Pill>}
+                    />
+                  ))}
+                </RowList>
+              )}
             </div>
           )}
+
+          {/* Tab: Financeiro */}
+          {activeTab === 3 && (
+            <div>
+              <TabHead
+                title={`Recebido ${paid.length ? formatMoney(sumDecimal(paid.map((p) => p.amount))) : 'R$ 0,00'} · a receber ${open.length ? formatMoney(sumDecimal(open.map((p) => p.amount))) : 'R$ 0,00'}`}
+                action={{ href: '/financeiro?registrar=1', label: 'Registrar recebimento' }}
+              />
+              {payments.length === 0 ? (
+                <Empty>Nenhum recebimento deste cliente.</Empty>
+              ) : (
+                <RowList>
+                  {payments.map((p) => (
+                    <Row
+                      key={p.id}
+                      href={p.receipt_number ? `/documentos?recibo=${p.id}` : '/financeiro'}
+                      title={`${formatMoney(p.amount)} · ${p.description || 'Recebimento'}`}
+                      sub={
+                        p.status === 'PAID'
+                          ? `Pago em ${new Date(p.paid_at ?? p.created_at).toLocaleDateString('pt-BR')} · ${methodLabel(p.method)}${p.receipt_number ? ` · recibo nº ${String(p.receipt_number).padStart(4, '0')}` : ''}`
+                          : p.due_date
+                            ? `Vence em ${new Date(p.due_date).toLocaleDateString('pt-BR')}`
+                            : 'A receber'
+                      }
+                      right={
+                        <Pill
+                          k={
+                            p.status === 'PAID'
+                              ? 'success'
+                              : p.status === 'OVERDUE'
+                                ? 'danger'
+                                : 'warning'
+                          }
+                        >
+                          {p.status === 'PAID'
+                            ? 'Recebido'
+                            : p.status === 'OVERDUE'
+                              ? 'Atrasado'
+                              : 'A receber'}
+                        </Pill>
+                      }
+                    />
+                  ))}
+                </RowList>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Endereços */}
+          {activeTab === 4 && (
+            <div>
+              <TabHead
+                title="Endereço"
+                action={{ href: `/clientes/${customer.id}/editar`, label: 'Editar endereço' }}
+              />
+              {address.length === 0 ? (
+                <Empty>Endereço não informado.</Empty>
+              ) : (
+                <div
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 12,
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    fontSize: 14,
+                  }}
+                >
+                  {address.map((l) => (
+                    <span key={l}>{l}</span>
+                  ))}
+                  {customer.cep && (
+                    <span style={{ color: '#64748B' }}>CEP {maskCep(customer.cep)}</span>
+                  )}
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.join(', '))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#6D28D9', fontWeight: 600, marginTop: 8 }}
+                  >
+                    Abrir no mapa
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 5 && <AuditHistoryFeed entityType="customer" entityId={customer.id} />}
         </div>
       </div>
     </div>
+  );
+}
+
+function TabHead({ title, action }: { title: string; action?: { href: string; label: string } }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 12,
+        flexWrap: 'wrap',
+        marginBottom: 16,
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{title}</h3>
+      {action && (
+        <Link
+          href={action.href}
+          style={{
+            height: 36,
+            padding: '0 14px',
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 600,
+            background: '#6D28D9',
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            textDecoration: 'none',
+          }}
+        >
+          <Plus size={14} /> {action.label}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #E2E8F0',
+        borderRadius: 12,
+        padding: '40px 20px',
+        textAlign: 'center',
+        color: '#94A3B8',
+        fontSize: 14,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function RowList({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #E2E8F0',
+        borderRadius: 12,
+        overflow: 'hidden',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({
+  href,
+  title,
+  sub,
+  right,
+}: {
+  href: string;
+  title: string;
+  sub: string;
+  right: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 16px',
+        borderTop: '1px solid #F1F5F9',
+        color: '#0A0A0F',
+        textDecoration: 'none',
+      }}
+    >
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere' }}>{title}</span>
+        {sub && <span style={{ fontSize: 12, color: '#64748B' }}>{sub}</span>}
+      </span>
+      {right}
+      <ChevronRight size={16} color="#94A3B8" aria-hidden="true" />
+    </Link>
   );
 }
 

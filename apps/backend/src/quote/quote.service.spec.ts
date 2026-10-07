@@ -189,6 +189,17 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('findAll()', () => {
+    it('filtra pelos orçamentos de um cliente (página do cliente)', async () => {
+      mockPrisma.quote.findMany.mockResolvedValue([]);
+      (mockPrisma.quote as unknown as { count?: jest.Mock }).count = jest.fn().mockResolvedValue(0);
+      await service.findAll('comp-1', 1, 20, undefined, 'cust-1');
+      expect(mockPrisma.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { company_id: 'comp-1', customer_id: 'cust-1' } }),
+      );
+    });
+  });
+
   describe('update()', () => {
     const baseDraft = {
       id: 'q1',

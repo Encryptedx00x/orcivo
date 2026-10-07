@@ -140,6 +140,7 @@ export class PaymentService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.method ? { method: query.method } : {}),
       ...(query.work_order_id ? { work_order_id: query.work_order_id } : {}),
+      ...(query.customer_id ? { customer_id: query.customer_id } : {}),
       ...(query.receipts ? { status: 'PAID' as const, receipt_number: { not: null } } : {}),
     };
     const data = await this.prisma.payment.findMany({

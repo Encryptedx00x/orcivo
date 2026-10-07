@@ -63,6 +63,7 @@ export const PaymentListQuerySchema = z.object({
   status: PaymentStatusEnum.optional(),
   method: PaymentMethodEnum.optional(),
   work_order_id: z.string().uuid().optional(),
+  customer_id: z.string().uuid().optional(),
   /** Only paid payments that carry a receipt number (Recibos). */
   receipts: z
     .enum(['true', 'false'])

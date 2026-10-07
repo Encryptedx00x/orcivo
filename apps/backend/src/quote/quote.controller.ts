@@ -34,13 +34,23 @@ export class QuoteController {
   constructor(private readonly quoteService: QuoteService) {}
 
   @Get()
-  findAll(@Req() req: TenantRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
+  findAll(
+    @Req() req: TenantRequest,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('customer_id') customerId?: string,
+  ) {
     return this.quoteService.findAll(
       req.companyId,
       Number(page) || 1,
       // Cap protects the API from unbounded reads; screens page with Ver mais.
       Math.min(Number(limit) || 20, 100),
       req.role,
+      // Client detail page: only this customer's quotes (ignored unless it is a UUID).
+      customerId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId)
+        ? customerId
+        : undefined,
     );
   }
 

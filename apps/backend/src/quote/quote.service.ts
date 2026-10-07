@@ -144,8 +144,8 @@ export class QuoteService {
     });
   }
 
-  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole) {
-    const where = { company_id: companyId };
+  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole, customerId?: string) {
+    const where = { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) };
     const data = await this.prisma.quote.findMany({
       where,
       orderBy: { created_at: 'desc' },
