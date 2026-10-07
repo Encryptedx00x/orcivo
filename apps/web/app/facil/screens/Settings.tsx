@@ -23,7 +23,8 @@ import {
 } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import { DocOptionsFields } from '../DocOptions';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 import {
@@ -641,11 +642,15 @@ function TermsEdit() {
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
+  const [warranty, setWarranty] = useState('');
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
     setDocOptions(c.quote_default_doc_options ?? null);
+    setPayTerms(c.quote_default_payment_terms ?? null);
+    setWarranty(c.quote_default_warranty ?? '');
   }
   if (terms === null)
     return company.error ? (
@@ -679,6 +684,16 @@ function TermsEdit() {
             ]}
           />
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 17, fontWeight: 600 }}>Condição de pagamento padrão</span>
+          <PaymentTermsFields value={payTerms} onChange={setPayTerms} />
+        </div>
+        <TextArea
+          label="Garantia padrão"
+          value={warranty}
+          onChange={(v) => setWarranty(v.slice(0, 2000))}
+          rows={2}
+        />
         <DocOptionsFields value={docOptions} onChange={setDocOptions} />
         <Hint>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Hint>
       </div>
@@ -691,6 +706,8 @@ function TermsEdit() {
                 quote_default_terms: terms.trim() || null,
                 quote_default_validity_days: days,
                 quote_default_doc_options: docOptions,
+                quote_default_payment_terms: payTerms,
+                quote_default_warranty: warranty.trim() || null,
               }),
             'Condições salvas.',
           )

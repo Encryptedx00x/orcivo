@@ -22,6 +22,7 @@ import { UsersService } from '../users/users.service';
 
 const mockTx = {
   quoteApproval: { create: jest.fn() },
+  payment: { createMany: jest.fn() },
   quote: { updateMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
   auditLog: { create: jest.fn() },
 };
@@ -1133,6 +1134,34 @@ describe('QuoteService', () => {
       expect(mockWorkOrderService.create).toHaveBeenCalled();
     });
 
+    it('Test A1c: condição de pagamento vira cobranças ligadas ao orçamento e à OS', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        ...quoteMock,
+        payment_terms: { kind: 'ENTRADA', upfront_percent: 50, rest: 'CONCLUSAO' },
+      });
+      await service.approve(quoteToken, { approval_method: 'APPROVE_BUTTON' }, '1.2.3.4', 'ua');
+      const { data } = mockTx.payment.createMany.mock.calls.at(-1)[0];
+      expect(
+        data.map((p: { amount: string; due_date: Date | null }) => [p.amount, p.due_date === null]),
+      ).toEqual([
+        ['100.00', false],
+        ['100.00', true],
+      ]);
+      expect(data[0]).toMatchObject({
+        company_id: 'comp-1',
+        customer_id: 'cust-1',
+        quote_id: 'q1',
+        work_order_id: 'wo-1',
+        status: 'PENDING',
+      });
+    });
+
+    it('Test A1d: sem condição de pagamento não cria cobranças', async () => {
+      mockTx.payment.createMany.mockClear();
+      await service.approve(quoteToken, { approval_method: 'APPROVE_BUTTON' }, '1.2.3.4', 'ua');
+      expect(mockTx.payment.createMany).not.toHaveBeenCalled();
+    });
+
     it('Test A1b: OS de orçamento sem título leva o nome do serviço (itens), não um número', async () => {
       mockPrisma.quote.findFirst.mockResolvedValue({
         ...quoteMock,
@@ -1413,6 +1442,7 @@ describe('QuoteExpiryProcessor', () => {
   let prisma: typeof mockPrisma;
   const txMock = {
     quoteApproval: { create: jest.fn() },
+    payment: { createMany: jest.fn() },
     quote: { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn() },
     auditLog: { create: jest.fn() },
   };

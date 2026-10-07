@@ -21,7 +21,9 @@ import {
   multiplyDecimal,
   sumDecimal,
   type QuoteDocOptions,
+  type QuotePaymentTerms,
 } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../easy/PaymentTerms';
 import { DocOptionsFields } from '../easy/DocOptions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService, CatalogItem } from '../services/catalog.service';
@@ -81,6 +83,8 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   const [discountValue, setDiscountValue] = useState('');
   const [notes, setNotes] = useState('');
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState<QuotePaymentTerms | null>(null);
+  const [warranty, setWarranty] = useState('');
   const [items, setItems] = useState<FormItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -118,12 +122,16 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
           discount_value?: string;
           notes?: string | null;
           doc_options?: QuoteDocOptions | null;
+          payment_terms?: QuotePaymentTerms | null;
+          warranty?: string | null;
         };
         if (full.discount_type) setDiscountType(full.discount_type);
         if (full.discount_value && Number(full.discount_value) > 0)
           setDiscountValue(full.discount_value);
         setNotes(full.notes ?? '');
         setDocOptions(full.doc_options ?? null);
+        setPaymentTerms(full.payment_terms ?? null);
+        setWarranty(full.warranty ?? '');
         setCustomerId(q.customer.id);
         pickedName.current = q.customer.name;
         setCustomerSearch(q.customer.name);
@@ -258,6 +266,8 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
         discount_type: discountType,
         discount_value: discountRaw,
         ...(docOptions ? { doc_options: docOptions } : {}),
+        payment_terms: paymentTerms,
+        warranty: warranty.trim() || undefined,
         items: items.map((i) => ({
           catalog_item_id: i.catalog_item_id,
           description: i.description,
@@ -475,6 +485,20 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
             placeholder="Ex.: 50% na aprovação, 50% na entrega. Garantia de 90 dias."
             value={notes}
             onChangeText={setNotes}
+            multiline
+            maxLength={2000}
+            placeholderTextColor="#9CA3AF"
+          />
+
+          {/* Condição de pagamento e garantia */}
+          <Text style={styles.sectionLabel}>Condição de pagamento</Text>
+          <PaymentTermsFields value={paymentTerms} onChange={setPaymentTerms} />
+          <Text style={styles.sectionLabel}>Garantia (opcional)</Text>
+          <TextInput
+            style={[styles.input, styles.notesInput]}
+            placeholder="Ex.: 90 dias sobre a mão de obra."
+            value={warranty}
+            onChangeText={setWarranty}
             multiline
             maxLength={2000}
             placeholderTextColor="#9CA3AF"

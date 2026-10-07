@@ -1,5 +1,5 @@
 import { apiFetch } from './api';
-import type { QuoteCreateDto, QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteCreateDto, QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 
 export interface QuoteItem {
   id: string;
@@ -28,6 +28,8 @@ export interface Quote {
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string;
   doc_options?: QuoteDocOptions | null;
+  payment_terms?: QuotePaymentTerms | null;
+  warranty?: string | null;
   total: string;
   pdf_url?: string;
   approval_token?: string;

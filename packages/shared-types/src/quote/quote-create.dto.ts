@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { QuoteDocOptionsSchema } from './quote-doc-options';
+import { QuotePaymentTermsSchema } from './quote-payment-terms';
 
 const decimalStr = (decimals = 2) => z.string().regex(new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`));
 
@@ -19,6 +20,9 @@ export const QuoteCreateSchema = z.object({
   discount_value: decimalStr(2).default('0'),
   /** What goes on the document (title, prices, validity, conditions, Pix). */
   doc_options: QuoteDocOptionsSchema.optional(),
+  /** Structured payment terms (null clears them on update). */
+  payment_terms: QuotePaymentTermsSchema.nullable().optional(),
+  warranty: z.string().max(2000).optional(),
   items: z.array(QuoteItemSchema).min(1),
 });
 

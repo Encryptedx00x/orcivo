@@ -1,4 +1,4 @@
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { api, WriteOptions } from './api';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
@@ -44,6 +44,8 @@ export interface QuoteCreateDto {
   discount_type?: 'PERCENT' | 'FIXED';
   discount_value?: string;
   doc_options?: QuoteDocOptions;
+  payment_terms?: QuotePaymentTerms | null;
+  warranty?: string;
   items: QuoteCreateItemDto[];
 }
 

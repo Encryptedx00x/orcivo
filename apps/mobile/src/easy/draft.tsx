@@ -2,7 +2,12 @@ import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { multiplyDecimal, sumDecimal, type QuoteDocOptions } from '@orcivo/shared-types';
+import {
+  multiplyDecimal,
+  sumDecimal,
+  type QuoteDocOptions,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import type { EasyClient, EasyQuoteFull } from './data';
 import type { EasyStackParamList } from './EasyNavigator';
 import { WEB_URL } from '../config';
@@ -34,6 +39,9 @@ export interface Draft {
   savedSignature: string | null | undefined;
   /** What the client sees of the prices (company default until changed). */
   docOptions: QuoteDocOptions | null;
+  /** Down payment / installments; become receivables when the client approves. */
+  paymentTerms: QuotePaymentTerms | null;
+  warranty: string;
   /** Editing an existing draft: sending updates it instead of creating a new quote. */
   id?: string;
 }
@@ -51,6 +59,8 @@ export const emptyDraft = (): Draft => ({
   signature: { mode: 'none' },
   savedSignature: undefined,
   docOptions: null,
+  paymentTerms: null,
+  warranty: '',
 });
 
 const Ctx = createContext<{
@@ -108,6 +118,8 @@ export function draftFromQuote(q: EasyQuoteFull): Draft {
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
     docOptions: q.doc_options ?? null,
+    paymentTerms: q.payment_terms ?? null,
+    warranty: q.warranty ?? '',
   };
 }
 

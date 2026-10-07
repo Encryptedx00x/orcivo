@@ -96,6 +96,8 @@ function draftFromQuote(q: EasyQuoteFull): Draft {
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
     docOptions: q.doc_options ?? null,
+    paymentTerms: q.payment_terms ?? null,
+    warranty: q.warranty ?? '',
   };
 }
 

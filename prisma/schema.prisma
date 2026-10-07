@@ -60,6 +60,8 @@ model Company {
   quote_default_validity_days Int?
   /// Default QuoteDocOptions (see shared-types quote-doc-options).
   quote_default_doc_options Json?
+  quote_default_payment_terms Json?
+  quote_default_warranty      String?
   plan_code                PlanCode         @default(LIVRE)
   allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
@@ -256,6 +258,9 @@ model Quote {
   technician_signature_key String?
   /// QuoteDocOptions: title and what the document shows (PDF and approval page).
   doc_options        Json?
+  /// QuotePaymentTerms (shared-types); receivables are created from it on approval.
+  payment_terms Json?
+  warranty      String?
   approval_token     String?      @unique
   created_by_user_id String?
 

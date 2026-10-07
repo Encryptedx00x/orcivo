@@ -24,6 +24,7 @@ import {
   formatMoney,
   maskPhone,
   multiplyDecimal,
+  describePaymentTerms,
   resolveQuoteDocOptions,
   sumDecimal,
   isFeminineDocTitle,
@@ -41,6 +42,7 @@ import {
 } from '../actions';
 import { approvalsSummary } from './Settings';
 import { DocOptionsFields, docOptionsSummary } from '../DocOptions';
+import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import {
   getTechnicianSignature,
   saveTechnicianSignature,
@@ -869,6 +871,8 @@ function Q3() {
           terms: r.data.quote_default_terms ?? d.terms,
           validityDays: r.data.quote_default_validity_days ?? d.validityDays,
           docOptions: r.data.quote_default_doc_options ?? d.docOptions,
+          paymentTerms: r.data.quote_default_payment_terms ?? d.paymentTerms,
+          warranty: r.data.quote_default_warranty ?? d.warranty,
         }));
       });
     }
@@ -916,6 +920,8 @@ function Q3() {
       valid_until: validUntil(),
       discount_type: draft.discountType,
       doc_options: draft.docOptions ?? undefined,
+      payment_terms: draft.paymentTerms,
+      warranty: draft.warranty.trim() || undefined,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -981,6 +987,7 @@ function Q3() {
     Number(discount) > 0 ? `Desconto de ${formatMoney(discount)}` : null,
     `Vale por ${draft.validityDays} dias`,
     draft.terms.trim() ? 'com condições' : null,
+    describePaymentTerms(draft.paymentTerms),
     docOptionsSummary(draft.docOptions),
   ].filter(Boolean);
 
@@ -1296,6 +1303,19 @@ function Q3() {
                   />
                 </div>
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 17, fontWeight: 600 }}>Condição de pagamento</span>
+                <PaymentTermsFields
+                  value={draft.paymentTerms}
+                  onChange={(v) => setDraft((d) => ({ ...d, paymentTerms: v }))}
+                />
+              </div>
+              <Field
+                label="Garantia"
+                value={draft.warranty}
+                onChange={(v) => setDraft((d) => ({ ...d, warranty: v.slice(0, 2000) }))}
+                placeholder="Ex.: 90 dias sobre a mão de obra"
+              />
               <DocOptionsFields
                 value={draft.docOptions}
                 onChange={(v) => setDraft((d) => ({ ...d, docOptions: v }))}

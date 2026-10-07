@@ -1,3 +1,4 @@
+import type { QuoteDocTitle, QuotePaymentTerms } from '@orcivo/shared-types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export interface PublicQuoteItem {
@@ -14,13 +15,15 @@ export interface PublicQuote {
   title?: string;
   status: string;
   /** Title and what is shown; hidden values arrive as null. */
-  doc_options?: { title?: 'ORCAMENTO' | 'PROPOSTA' | 'PEDIDO' } | null;
+  doc_options?: { title?: QuoteDocTitle } | null;
   subtotal: string | null;
   discount_type: 'PERCENT' | 'FIXED';
   discount_value: string | null;
   total: string | null;
   valid_until?: string;
   notes?: string;
+  payment_terms?: QuotePaymentTerms | null;
+  warranty?: string | null;
   customer: { name: string; phone?: string };
   items: PublicQuoteItem[];
   company: {

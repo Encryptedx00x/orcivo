@@ -2,7 +2,8 @@
 
 import { Fragment, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
 import { Plus, BookOpen, X, Check, FileText, Share2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
@@ -180,6 +181,8 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   const [discountType, setDiscountType] = useState<'PERCENT' | 'FIXED'>('FIXED');
   const [discountValue, setDiscountValue] = useState('0');
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState<QuotePaymentTerms | null>(null);
+  const [warranty, setWarranty] = useState('');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [internalNotes, setInternalNotes] = useState('');
   const [items, setItems] = useState<QuoteItemRow[]>([
@@ -205,8 +208,12 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
           quote_default_terms?: string | null;
           quote_default_validity_days?: number | null;
           quote_default_doc_options?: QuoteDocOptions | null;
+          quote_default_payment_terms?: QuotePaymentTerms | null;
+          quote_default_warranty?: string | null;
         }) => {
           if (c.quote_default_doc_options) setDocOptions(c.quote_default_doc_options);
+          if (c.quote_default_payment_terms) setPaymentTerms(c.quote_default_payment_terms);
+          if (c.quote_default_warranty) setWarranty(c.quote_default_warranty);
           if (c.quote_default_terms)
             setTerms((t) => (t === DEFAULT_TERMS ? c.quote_default_terms! : t));
           const days = c.quote_default_validity_days ?? 15;
@@ -346,6 +353,8 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
           discount_type: discountType,
           discount_value: discountValue || '0',
           doc_options: docOptions ?? undefined,
+          payment_terms: paymentTerms,
+          warranty: warranty.trim() || undefined,
           items: validItems.map((it) => ({
             catalog_item_id: it.catalog_item_id,
             description: it.description,
@@ -591,6 +600,24 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
                 onChange={(e) => setValidUntil(e.target.value)}
               />
             </div>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <label className="ov-label">Condição de pagamento</label>
+            <PaymentTermsFields value={paymentTerms} onChange={setPaymentTerms} />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <label className="ov-label" htmlFor="quote-warranty">
+              Garantia
+            </label>
+            <textarea
+              id="quote-warranty"
+              className="ov-input"
+              rows={2}
+              maxLength={2000}
+              placeholder="Ex.: 90 dias sobre a mão de obra."
+              value={warranty}
+              onChange={(e) => setWarranty(e.target.value)}
+            />
           </div>
           <div style={{ marginTop: 16 }}>
             <QuoteDocOptionsForm value={docOptions} onChange={setDocOptions} />

@@ -32,6 +32,8 @@ export function hideByDocOptions<
     total?: unknown;
     valid_until?: unknown;
     notes?: unknown;
+    payment_terms?: unknown;
+    warranty?: unknown;
     items: Array<{ unit_price?: unknown; total?: unknown }>;
   },
 >(q: T): T {
@@ -43,6 +45,8 @@ export function hideByDocOptions<
     total: o.total ? q.total : null,
     valid_until: o.validity ? q.valid_until : null,
     notes: o.terms ? q.notes : null,
+    payment_terms: o.terms ? q.payment_terms : null,
+    warranty: o.terms ? q.warranty : null,
     items: o.item_prices ? q.items : q.items.map(({ unit_price: _u, total: _t, ...rest }) => rest),
   } as T;
 }

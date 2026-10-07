@@ -14,7 +14,7 @@ import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
 import { SettingsScreen, ApprovalsScreen, CatalogScreen, EditScreen } from './screens/Settings';
 import { SheetProvider } from './sheet';
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { NoticesScreen } from './screens/Notices';
 import { DesktopShell, useIsDesktop } from './desktop';
 
@@ -69,6 +69,9 @@ export interface Draft {
   signature: { mode: 'saved' | 'once' | 'none'; dataUrl?: string };
   /** What the client sees of the prices (company default until changed). */
   docOptions: QuoteDocOptions | null;
+  /** Down payment / installments; become receivables when the client approves. */
+  paymentTerms: QuotePaymentTerms | null;
+  warranty: string;
   /** Set once the quote exists (editing a draft, or after the first save): saves update it. */
   id?: string;
   number?: number;
@@ -84,6 +87,8 @@ export const emptyDraft = (hasSaved = false): Draft => ({
   terms: '',
   signature: { mode: hasSaved ? 'saved' : 'none' },
   docOptions: null,
+  paymentTerms: null,
+  warranty: '',
 });
 
 interface Nav {

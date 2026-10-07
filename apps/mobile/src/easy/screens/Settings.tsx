@@ -23,8 +23,10 @@ import {
   maskPhone,
   onlyDigits,
   type QuoteDocOptions,
+  type QuotePaymentTerms,
   COMPANY_DOC_FIELDS,
 } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../PaymentTerms';
 import { DocOptionsFields } from '../DocOptions';
 import { easy, errorText, type ApprovalMethod } from '../data';
 import { useEasyMode } from '../EasyModeContext';
@@ -508,11 +510,15 @@ function TermsEdit() {
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
+  const [warranty, setWarranty] = useState('');
   const c = company.data;
   if (c && terms === null) {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
     setDocOptions(c.quote_default_doc_options ?? null);
+    setPayTerms(c.quote_default_payment_terms ?? null);
+    setWarranty(c.quote_default_warranty ?? '');
   }
   if (terms === null)
     return (
@@ -536,6 +542,8 @@ function TermsEdit() {
                   quote_default_terms: terms.trim() || null,
                   quote_default_validity_days: days,
                   quote_default_doc_options: docOptions,
+                  quote_default_payment_terms: payTerms,
+                  quote_default_warranty: warranty.trim() || null,
                 }),
               'Condições salvas.',
             )
@@ -562,6 +570,14 @@ function TermsEdit() {
           { value: 15, label: '15 dias' },
           { value: 30, label: '30 dias' },
         ]}
+      />
+      <Text style={[s.body, { fontWeight: '600' }]}>Condição de pagamento padrão</Text>
+      <PaymentTermsFields value={payTerms} onChange={setPayTerms} />
+      <Field
+        label="Garantia padrão"
+        value={warranty}
+        onChange={(v) => setWarranty(v.slice(0, 2000))}
+        multiline
       />
       <DocOptionsFields value={docOptions} onChange={setDocOptions} />
       <Text style={s.muted}>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Text>

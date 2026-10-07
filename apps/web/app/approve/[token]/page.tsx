@@ -17,6 +17,7 @@ import {
   formatMoney,
   multiplyDecimal,
   sumDecimal,
+  describePaymentTerms,
   isFeminineDocTitle,
 } from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
@@ -496,6 +497,26 @@ export default function ApprovePage(): React.JSX.Element {
             </div>
           )}
         </div>
+
+        {/* Pagamento e garantia */}
+        {(quote?.payment_terms || quote?.warranty) && (
+          <div className="pub-card">
+            {quote.payment_terms && (
+              <>
+                <h2>Pagamento</h2>
+                <p style={{ fontSize: 14, color: '#334155', margin: '0 0 12px' }}>
+                  {describePaymentTerms(quote.payment_terms)}
+                </p>
+              </>
+            )}
+            {quote.warranty && (
+              <>
+                <h2>Garantia</h2>
+                <p style={{ fontSize: 14, color: '#334155', margin: 0 }}>{quote.warranty}</p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Observações */}
         {quote?.notes && (

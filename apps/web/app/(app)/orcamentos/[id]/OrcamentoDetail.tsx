@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { QuoteDocOptions } from '@orcivo/shared-types';
+import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
 import {
   Check,
@@ -160,6 +161,8 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
   const [editDiscountType, setEditDiscountType] = useState<'PERCENT' | 'FIXED'>('PERCENT');
   const [editDiscountValue, setEditDiscountValue] = useState('0');
   const [editDocOptions, setEditDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [editPaymentTerms, setEditPaymentTerms] = useState<QuotePaymentTerms | null>(null);
+  const [editWarranty, setEditWarranty] = useState('');
   const [editItems, setEditItems] = useState<QuoteItem[]>([]);
   const [editError, setEditError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -174,6 +177,8 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
     setEditDiscountType(quote.discount_type);
     setEditDiscountValue(quote.discount_value);
     setEditDocOptions(quote.doc_options ?? null);
+    setEditPaymentTerms(quote.payment_terms ?? null);
+    setEditWarranty(quote.warranty ?? '');
     setEditItems(quote.items.map((i) => ({ ...i })));
     setShowEditModal(true);
   }
@@ -218,6 +223,8 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
           : undefined,
         discount_type: editDiscountType,
         doc_options: editDocOptions ?? undefined,
+        payment_terms: editPaymentTerms,
+        warranty: editWarranty.trim(),
         discount_value: editDiscountValue || '0',
         items: validItems.map((i) => ({
           catalog_item_id: i.catalog_item_id,
@@ -1112,6 +1119,20 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
                     style={editInput}
                   />
                 </div>
+              </div>
+              <div>
+                <label style={editLabel}>Condição de pagamento</label>
+                <PaymentTermsFields value={editPaymentTerms} onChange={setEditPaymentTerms} />
+              </div>
+              <div>
+                <label style={editLabel}>Garantia</label>
+                <textarea
+                  rows={2}
+                  maxLength={2000}
+                  value={editWarranty}
+                  onChange={(e) => setEditWarranty(e.target.value)}
+                  style={editInput}
+                />
               </div>
               <QuoteDocOptionsForm value={editDocOptions} onChange={setEditDocOptions} />
               <div>

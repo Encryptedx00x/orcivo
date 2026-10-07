@@ -26,6 +26,8 @@ const COMPANY_SELECT = {
   quote_default_terms: true,
   quote_default_validity_days: true,
   quote_default_doc_options: true,
+  quote_default_payment_terms: true,
+  quote_default_warranty: true,
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
@@ -47,7 +49,9 @@ const PROFILE_FIELD_LABELS: Record<
   | 'pix_key'
   | 'quote_default_terms'
   | 'quote_default_validity_days'
-  | 'quote_default_doc_options',
+  | 'quote_default_doc_options'
+  | 'quote_default_payment_terms'
+  | 'quote_default_warranty',
   string
 > = {
   trade_name: 'nome fantasia',
@@ -65,6 +69,8 @@ const PROFILE_FIELD_LABELS: Record<
   quote_default_terms: 'condições padrão',
   quote_default_validity_days: 'validade padrão',
   quote_default_doc_options: 'o que vai no orçamento',
+  quote_default_payment_terms: 'condição de pagamento padrão',
+  quote_default_warranty: 'garantia padrão',
 };
 
 @Injectable()

@@ -28,6 +28,7 @@ import {
   resolveQuoteDocOptions,
   isFeminineDocTitle,
 } from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../PaymentTerms';
 import { newIdempotencyKey } from '../../services/api';
 import { easy, errorText, type EasyCatalogItem, type EasyClient } from '../data';
 import {
@@ -408,6 +409,8 @@ export function QuoteReviewScreen() {
             terms: c.quote_default_terms ?? d.terms,
             validityDays: c.quote_default_validity_days ?? d.validityDays,
             docOptions: c.quote_default_doc_options ?? d.docOptions,
+            paymentTerms: c.quote_default_payment_terms ?? d.paymentTerms,
+            warranty: c.quote_default_warranty ?? d.warranty,
           })),
         )
         .catch(() => undefined);
@@ -452,6 +455,8 @@ export function QuoteReviewScreen() {
       valid_until: validUntil.toISOString(),
       discount_type: draft.discountType,
       doc_options: draft.docOptions ?? undefined,
+      payment_terms: draft.paymentTerms,
+      warranty: draft.warranty.trim() || undefined,
       discount_value:
         draft.discountType === 'PERCENT'
           ? draft.discountDigits || '0'
@@ -674,6 +679,17 @@ export function QuoteReviewScreen() {
             }}
             placeholder={pct ? '0' : 'R$ 0,00'}
             keyboard="number-pad"
+          />
+          <Text style={[s.body, { fontWeight: '600' }]}>Condição de pagamento</Text>
+          <PaymentTermsFields
+            value={draft.paymentTerms}
+            onChange={(v) => setDraft((d) => ({ ...d, paymentTerms: v }))}
+          />
+          <Field
+            label="Garantia"
+            value={draft.warranty}
+            onChange={(v) => setDraft((d) => ({ ...d, warranty: v.slice(0, 2000) }))}
+            placeholder="Ex.: 90 dias sobre a mão de obra"
           />
           <DocOptionsFields
             value={draft.docOptions}

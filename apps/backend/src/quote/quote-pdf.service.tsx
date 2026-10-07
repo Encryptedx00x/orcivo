@@ -18,7 +18,9 @@ import {
   formatMoney,
   maskCpfCnpj,
   maskPhone,
+  describePaymentTerms,
   QUOTE_DOC_COLORS,
+  QuotePaymentTermsSchema,
   QUOTE_DOC_TITLES,
   QuoteStatus,
   resolveQuoteDocOptions,
@@ -340,6 +342,9 @@ interface QuoteData {
   status: QuoteStatus;
   title?: string | null;
   notes?: string | null;
+  /** QuotePaymentTerms JSON. */
+  payment_terms?: unknown;
+  warranty?: string | null;
   subtotal: DecimalLike;
   discount_type: string;
   discount_value: DecimalLike;
@@ -432,6 +437,8 @@ export class QuotePdfService {
     const opts = resolveQuoteDocOptions(q.doc_options);
     const docTitle = QUOTE_DOC_TITLES[opts.title];
     const accent = QUOTE_DOC_COLORS[opts.color].hex;
+    const terms = QuotePaymentTermsSchema.safeParse(q.payment_terms);
+    const paymentText = terms.success ? describePaymentTerms(terms.data) : null;
     const cust = opts.client_details ? q.customer : null;
     const custLines = cust
       ? [
@@ -620,6 +627,20 @@ export class QuotePdfService {
           ) : null}
 
           {/* ── Observações ── */}
+          {paymentText && opts.terms ? (
+            <View style={styles.infoCard} wrap={false}>
+              <Text style={styles.label}>Condição de pagamento</Text>
+              <Text style={styles.notesText}>{paymentText}</Text>
+            </View>
+          ) : null}
+
+          {q.warranty && opts.terms ? (
+            <View style={styles.infoCard} wrap={false}>
+              <Text style={styles.label}>Garantia</Text>
+              <Text style={styles.notesText}>{q.warranty}</Text>
+            </View>
+          ) : null}
+
           {q.notes && opts.terms ? (
             <View style={[styles.infoCard, { backgroundColor: C.slate50 }]} wrap={false}>
               <Text style={styles.label}>Observações</Text>

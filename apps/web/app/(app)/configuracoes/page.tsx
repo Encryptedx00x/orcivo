@@ -1,7 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { COMPANY_DOC_FIELDS, type QuoteDocOptions } from '@orcivo/shared-types';
+import {
+  COMPANY_DOC_FIELDS,
+  type QuoteDocOptions,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
+import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
 import {
   Building2,
@@ -72,6 +77,8 @@ interface CompanyMeResponse {
   quote_default_terms?: string | null;
   quote_default_validity_days?: number | null;
   quote_default_doc_options?: QuoteDocOptions | null;
+  quote_default_payment_terms?: QuotePaymentTerms | null;
+  quote_default_warranty?: string | null;
 }
 
 const DEFAULT_TERMS =
@@ -197,6 +204,8 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [validity, setValidity] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
+  const [warranty, setWarranty] = useState('');
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
@@ -224,6 +233,8 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         setTerms(d.quote_default_terms ?? DEFAULT_TERMS);
         setValidity(d.quote_default_validity_days ?? 15);
         setDocOptions(d.quote_default_doc_options ?? null);
+        setPayTerms(d.quote_default_payment_terms ?? null);
+        setWarranty(d.quote_default_warranty ?? '');
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -947,6 +958,33 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                 ))}
               </select>
               <div style={{ marginBottom: 20 }}>
+                <label className="ov-label">Condição de pagamento padrão</label>
+                <PaymentTermsFields
+                  value={payTerms}
+                  onChange={(v) => {
+                    setPayTerms(v);
+                    setTermsSaved(false);
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label className="ov-label" htmlFor="cfg-warranty">
+                  Garantia padrão
+                </label>
+                <textarea
+                  id="cfg-warranty"
+                  className="ov-input"
+                  rows={2}
+                  maxLength={2000}
+                  placeholder="Ex.: 90 dias sobre a mão de obra."
+                  value={warranty}
+                  onChange={(e) => {
+                    setWarranty(e.target.value);
+                    setTermsSaved(false);
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: 20 }}>
                 <QuoteDocOptionsForm
                   value={docOptions}
                   onChange={(v) => {
@@ -971,6 +1009,8 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                       quote_default_terms: terms.trim() || null,
                       quote_default_validity_days: validity,
                       quote_default_doc_options: docOptions,
+                      quote_default_payment_terms: payTerms,
+                      quote_default_warranty: warranty.trim() || null,
                     });
                     setTermsSaving(false);
                     if (!r.ok) return setTermsError(r.message);

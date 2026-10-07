@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import type { MemberRole } from '@prisma/client';
+import { Prisma, type MemberRole } from '@prisma/client';
+import { buildPaymentSchedule, type QuotePaymentTerms } from '@orcivo/shared-types';
 import * as crypto from 'crypto';
 import Decimal from 'decimal.js';
 import {
@@ -100,15 +101,19 @@ export class QuoteService {
     );
     const number = await this.nextQuoteNumber(companyId);
     // Without a choice in the form, the company's default ("Condições padrão") applies.
-    const docOptions =
-      dto.doc_options ??
-      (
-        await this.prisma.company.findUnique({
-          where: { id: companyId },
-          select: { quote_default_doc_options: true },
-        })
-      )?.quote_default_doc_options ??
-      undefined;
+    const defaults = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        quote_default_doc_options: true,
+        quote_default_payment_terms: true,
+        quote_default_warranty: true,
+      },
+    });
+    const docOptions = dto.doc_options ?? defaults?.quote_default_doc_options ?? undefined;
+    // undefined = not chosen in the form → company default; null = explicitly none.
+    const paymentTerms =
+      dto.payment_terms === undefined ? defaults?.quote_default_payment_terms : dto.payment_terms;
+    const warranty = dto.warranty ?? defaults?.quote_default_warranty ?? undefined;
     const { itemTotals, subtotal, total } = this.computeTotals(
       dto.items,
       dto.discount_type ?? 'PERCENT',
@@ -126,6 +131,8 @@ export class QuoteService {
         discount_type: dto.discount_type ?? 'PERCENT',
         discount_value: dto.discount_value ?? '0',
         doc_options: docOptions as never,
+        payment_terms: (paymentTerms ?? Prisma.DbNull) as never,
+        warranty,
         subtotal,
         total,
         created_by_user_id: userId,
@@ -170,6 +177,8 @@ export class QuoteService {
         discount_type: src.discount_type,
         discount_value: src.discount_value.toString(),
         doc_options: (src.doc_options ?? undefined) as QuoteCreateDto['doc_options'],
+        payment_terms: (src.payment_terms ?? null) as QuoteCreateDto['payment_terms'],
+        warranty: src.warranty ?? undefined,
         items: src.items.map((i) => ({
           catalog_item_id: i.catalog_item_id ?? undefined,
           description: i.description,
@@ -328,6 +337,10 @@ export class QuoteService {
           notes: dto.notes,
           valid_until: dto.valid_until ? new Date(dto.valid_until) : undefined,
           doc_options: dto.doc_options,
+          ...(dto.payment_terms !== undefined
+            ? { payment_terms: (dto.payment_terms ?? Prisma.DbNull) as never }
+            : {}),
+          warranty: dto.warranty,
           discount_type: discountType,
           discount_value: discountValue,
           subtotal,
@@ -659,7 +672,7 @@ export class QuoteService {
             user_agent: userAgent ?? '',
           },
         });
-        await this.workOrderService.create(
+        const workOrder = await this.workOrderService.create(
           {
             customer_id: quote.customer.id,
             title: workOrderInput.title,
@@ -670,6 +683,26 @@ export class QuoteService {
           'IN_PROGRESS',
           tx,
         );
+        // Payment terms → receivables (entrada, parcelas, restante), linked to quote and OS.
+        const schedule = buildPaymentSchedule(
+          quote.total.toString(),
+          quote.payment_terms as QuotePaymentTerms | null,
+          new Date(),
+          `Orçamento #${quote.number}`,
+        );
+        if (schedule.length)
+          await tx.payment.createMany({
+            data: schedule.map((p) => ({
+              company_id: quote.company_id,
+              customer_id: quote.customer.id,
+              quote_id: quote.id,
+              work_order_id: workOrder.id,
+              description: p.description,
+              amount: p.amount,
+              status: 'PENDING' as const,
+              due_date: p.due_date,
+            })),
+          });
         await this.auditService.record(tx, {
           companyId: quote.company_id,
           actorType: 'CUSTOMER',
@@ -953,6 +986,8 @@ export class QuoteService {
       subtotal: true,
       doc_options: true,
       notes: true,
+      payment_terms: true,
+      warranty: true,
       customer: { select: { id: true, name: true, phone: true } },
       items: {
         select: {
