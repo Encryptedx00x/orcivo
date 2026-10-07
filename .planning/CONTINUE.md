@@ -84,8 +84,12 @@ o mesmo produto em qualquer superfície.
   (**GLM pelo plano Z.AI → ao acabar a cota, o mesmo GLM 5.3 pelo NVIDIA NIM**) é preciso reativar
   `zai-coding-plan/glm-5.3` como 1ª rota e manter `nvidia/z-ai/glm-5.3` como reserva por cota
   (`PROVIDER_QUOTA`/`RATE_LIMIT`), sem trocar de modelo.
-- Revisor do lado oposto: DeepSeek (`DEEPSEEK_API_KEY`; `deepseek-v4-pro`/`flash`). Credenciais disponíveis no
-  OpenCode: Z.AI Coding Plan, OpenCode Go, OpenRouter (auth) + DeepSeek, NVIDIA (env). Nenhuma chave em arquivo do repo.
+- Revisão (decisão do dono 2026-10-07): **DeepSeek fora**. Sem revisor de outro provedor, o dispatcher usa a
+  autorrevisão (`Get-OrcivoReviewProviderWithSelfFallback`): GLM revisa em sessão nova. Além disso, gates
+  determinísticos (typecheck, testes, lint, varredura de segredos) e **uma revisão leve do Codex por rodada**
+  (stat + diff dos arquivos de regra de negócio/migration). Cuidado: `glm.ps1` lê `Get-DeepSeekRuntimeConfig`
+  — tirar o DeepSeek só da lista de revisores; **não** desativar esse runtime, senão o GLM para junto.
+  Credenciais no OpenCode: Z.AI Coding Plan, OpenCode Go, OpenRouter (auth) + DeepSeek, NVIDIA (env).
 - Modelo: manter **GLM 5.3** nas duas rotas (mesmo comportamento no fallback). Alternativa de código no NIM se o
   GLM falhar muito: `nvidia/moonshotai/kimi-k3`. Nemotron (llama-3.1 e nemotron-3) é generalista/raciocínio, não é
   a melhor escolha para agente de código que edita muitos arquivos.
