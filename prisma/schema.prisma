@@ -10,26 +10,26 @@ datasource db {
 // ─── Usuário ──────────────────────────────────────────────────────────────────
 
 model User {
-  id                String   @id @default(uuid())
-  email             String   @unique
-  name              String
-  phone             String?
-  password_hash     String
-  accepted_terms_at DateTime
+  id                       String   @id @default(uuid())
+  email                    String   @unique
+  name                     String
+  phone                    String?
+  password_hash            String
+  accepted_terms_at        DateTime
   // Versão (data de vigência) dos documentos aceitos; 'pre-versioning' = conta anterior ao registro.
-  accepted_terms_version   String @default("pre-versioning")
-  accepted_privacy_version String @default("pre-versioning")
+  accepted_terms_version   String   @default("pre-versioning")
+  accepted_privacy_version String   @default("pre-versioning")
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company_members     CompanyMember[]
+  company_members      CompanyMember[]
   refresh_tokens       RefreshToken[]
-  assigned_customers   Customer[]       @relation("AssignedTo")
-  work_orders_assigned WorkOrder[]      @relation("WorkOrderAssignedTo")
-  work_orders_created  WorkOrder[]      @relation("WorkOrderCreatedBy")
-  work_order_photos    WorkOrderPhoto[] @relation("WorkOrderPhotoUploadedBy")
-  quotes_created       Quote[]          @relation("QuoteCreatedBy")
+  assigned_customers   Customer[]         @relation("AssignedTo")
+  work_orders_assigned WorkOrder[]        @relation("WorkOrderAssignedTo")
+  work_orders_created  WorkOrder[]        @relation("WorkOrderCreatedBy")
+  work_order_photos    WorkOrderPhoto[]   @relation("WorkOrderPhotoUploadedBy")
+  quotes_created       Quote[]            @relation("QuoteCreatedBy")
   notification_reads   NotificationRead[]
 
   @@map("users")
@@ -38,49 +38,51 @@ model User {
 // ─── Empresa (tenant) ─────────────────────────────────────────────────────────
 
 model Company {
-  id                       String           @id @default(uuid())
-  trade_name               String
-  document_type            DocumentType?
-  document                 String?
-  phone                    String?
-  city                     String?
-  state                    String?
+  id                          String           @id @default(uuid())
+  trade_name                  String
+  document_type               DocumentType?
+  document                    String?
+  phone                       String?
+  city                        String?
+  state                       String?
   /// Street, number, district: printed on receipts and quotes.
-  address                  String?
+  address                     String?
   /// Shown on quotes and receipts (header / signature / footer).
-  instagram                 String?
-  website                   String?
-  professional_registration String?
-  document_footer           String?
-  brand_color              String?
-  logo_url                 String?
-  pix_key                  String?
+  instagram                   String?
+  website                     String?
+  professional_registration   String?
+  document_footer             String?
+  brand_color                 String?
+  logo_url                    String?
+  pix_key                     String?
   /// Default "Condições" text and validity (days) prefilled on new quotes.
   quote_default_terms         String?
   quote_default_validity_days Int?
   /// Default QuoteDocOptions (see shared-types quote-doc-options).
-  quote_default_doc_options Json?
+  quote_default_doc_options   Json?
   quote_default_payment_terms Json?
   quote_default_warranty      String?
-  plan_code                PlanCode         @default(LIVRE)
-  allowed_approval_methods ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
+  plan_code                   PlanCode         @default(LIVRE)
+  allowed_approval_methods    ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  members          CompanyMember[]
-  customers        Customer[]
-  catalog_items    CatalogItem[]
-  quotes           Quote[]
-  quote_items      QuoteItem[]
-  quote_approvals  QuoteApproval[]
-  work_orders      WorkOrder[]
-  subscription     Subscription?
-  invites          CompanyInvite[]
-  payments         Payment[]
-  appointments     Appointment[]
-  idempotency_keys RequestIdempotency[]
+  members            CompanyMember[]
+  customers          Customer[]
+  catalog_items      CatalogItem[]
+  quotes             Quote[]
+  quote_items        QuoteItem[]
+  quote_approvals    QuoteApproval[]
+  work_orders        WorkOrder[]
+  subscription       Subscription?
+  invites            CompanyInvite[]
+  payments           Payment[]
+  appointments       Appointment[]
+  idempotency_keys   RequestIdempotency[]
   notification_reads NotificationRead[]
+
+  expenses Expense[]
 
   @@map("companies")
 }
@@ -242,27 +244,27 @@ enum ApprovalMethod {
 }
 
 model Quote {
-  id                 String       @id @default(uuid())
-  company_id         String
-  customer_id        String
-  number             Int
-  title              String?
-  notes              String?
-  status             QuoteStatus  @default(DRAFT)
-  valid_until        DateTime?
-  discount_type      DiscountType @default(PERCENT)
-  discount_value     Decimal      @default(0) @db.Decimal(12, 2)
-  subtotal           Decimal      @default(0) @db.Decimal(12, 2)
-  total              Decimal      @default(0) @db.Decimal(12, 2)
-  pdf_url            String?
+  id                       String       @id @default(uuid())
+  company_id               String
+  customer_id              String
+  number                   Int
+  title                    String?
+  notes                    String?
+  status                   QuoteStatus  @default(DRAFT)
+  valid_until              DateTime?
+  discount_type            DiscountType @default(PERCENT)
+  discount_value           Decimal      @default(0) @db.Decimal(12, 2)
+  subtotal                 Decimal      @default(0) @db.Decimal(12, 2)
+  total                    Decimal      @default(0) @db.Decimal(12, 2)
+  pdf_url                  String?
   technician_signature_key String?
   /// QuoteDocOptions: title and what the document shows (PDF and approval page).
-  doc_options        Json?
+  doc_options              Json?
   /// QuotePaymentTerms (shared-types); receivables are created from it on approval.
-  payment_terms Json?
-  warranty      String?
-  approval_token     String?      @unique
-  created_by_user_id String?
+  payment_terms            Json?
+  warranty                 String?
+  approval_token           String?      @unique
+  created_by_user_id       String?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -440,23 +442,23 @@ model Subscription {
 }
 
 model SubscriptionPayment {
-  id                  String       @id @default(uuid())
-  subscription_id     String
-  subscription        Subscription @relation(fields: [subscription_id], references: [id])
-  asaas_payment_id    String?      @unique
-  amount              Decimal      @db.Decimal(12, 2)
-  status              String
-  due_date            DateTime?
-  paid_at             DateTime?
-  created_at          DateTime     @default(now())
-  updated_at          DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  subscription_id    String
+  subscription       Subscription @relation(fields: [subscription_id], references: [id])
+  asaas_payment_id   String?      @unique
+  amount             Decimal      @db.Decimal(12, 2)
+  status             String
+  due_date           DateTime?
+  paid_at            DateTime?
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
   // Pix copia-e-cola/QR persistido para o cliente conseguir recuperar o
   // pagamento pendente se saiu da tela de checkout sem pagar (o provedor só
   // devolve esses dados uma vez, na criação da cobrança).
-  pix_qr_code         String?
-  pix_qr_code_base64  String?
-  pix_ticket_url      String?
-  pix_expires_at      DateTime?
+  pix_qr_code        String?
+  pix_qr_code_base64 String?
+  pix_ticket_url     String?
+  pix_expires_at     DateTime?
 
   @@map("subscription_payments")
 }
@@ -597,20 +599,20 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id            String         @id @default(uuid())
-  company_id    String
-  customer_id   String
-  work_order_id String?
-  quote_id      String?
-  description   String?
-  amount        Decimal        @db.Decimal(12, 2)
-  method        PaymentMethod?
-  status        PaymentStatus  @default(PENDING)
-  due_date      DateTime?
-  paid_at       DateTime?
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
-  deleted_at    DateTime?
+  id                    String         @id @default(uuid())
+  company_id            String
+  customer_id           String
+  work_order_id         String?
+  quote_id              String?
+  description           String?
+  amount                Decimal        @db.Decimal(12, 2)
+  method                PaymentMethod?
+  status                PaymentStatus  @default(PENDING)
+  due_date              DateTime?
+  paid_at               DateTime?
+  created_at            DateTime       @default(now())
+  updated_at            DateTime       @updatedAt
+  deleted_at            DateTime?
   /// Sequential per company, assigned when the payment becomes PAID (recibo nº).
   receipt_number        Int?
   /// Frozen copy of the technician signature applied to the receipt (storage key).
@@ -658,4 +660,36 @@ model Appointment {
   @@index([company_id])
   @@index([company_id, starts_at])
   @@map("appointments")
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+}
+
+/// Costs of the business (material, fuel, helper…), optionally tied to a client / quote / OS.
+model Expense {
+  id                 String         @id @default(uuid())
+  company_id         String
+  customer_id        String?
+  quote_id           String?
+  work_order_id      String?
+  /// EXPENSE_CATEGORIES key (shared-types).
+  category           String
+  description        String?
+  amount             Decimal        @db.Decimal(12, 2)
+  method             PaymentMethod?
+  status             ExpenseStatus  @default(PAID)
+  due_date           DateTime?
+  paid_at            DateTime?
+  created_by_user_id String?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  deleted_at         DateTime?
+
+  company Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id, deleted_at])
+  @@index([company_id, work_order_id])
+  @@map("expenses")
 }

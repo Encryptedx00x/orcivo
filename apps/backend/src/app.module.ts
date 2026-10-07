@@ -25,6 +25,7 @@ import { BillingModule } from './billing/billing.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { InviteModule } from './invite/invite.module';
 import { PaymentModule } from './payment/payment.module';
+import { ExpenseModule } from './expense/expense.module';
 import { AppointmentModule } from './appointment/appointment.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AuditModule } from './audit/audit.module';
@@ -60,6 +61,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     WebhookModule,
     InviteModule,
     PaymentModule,
+    ExpenseModule,
     AppointmentModule,
     DashboardModule,
     NotificationsModule,

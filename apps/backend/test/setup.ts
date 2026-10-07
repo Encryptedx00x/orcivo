@@ -28,6 +28,7 @@ export async function cleanupDatabase(): Promise<void> {
   await prisma.quoteItem.deleteMany();
   await prisma.workOrderPhoto.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.expense.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.quote.deleteMany();
   await prisma.workOrder.deleteMany();
