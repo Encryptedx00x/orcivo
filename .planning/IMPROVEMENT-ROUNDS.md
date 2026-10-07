@@ -13,12 +13,17 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R1 | ✅ — app completo: criar OS, detalhe com valor/data/obs/WhatsApp, endereço da empresa, desconto + condições + opções no orçamento, validade corrigida (dava 400), desconto % exibido certo | `8d3ef40` |
 | R2 | ✅ produção — 6 tipos de documento, cor, contato do cliente, Instagram/site, registro profissional, frase de rodapé (PDF orçamento + recibo) | `f7df634`, `6b8a8ae` |
 | R3 | ✅ produção — duplicar orçamento (4 telas), condição de pagamento estruturada → **cobranças criadas na aprovação**, garantia; mensagens de limite com "Ver planos" | `7338121`, `1479e25` |
-| R4 | 🚀 em deploy — custos (`/expenses`), resumo do mês (`/finance/summary`), web completo + fácil + app fácil | `b28e341`, `6422c1b`, `d380c1a` |
+| R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
+| R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
+| R5a | 🚀 campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
+
+Decisões:
+- Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
+- Erro React #418: não reproduz mais em aba limpa em nenhuma página (era anterior ao `TZ` no container web).
 
 Pendências registradas para depois:
-- R3: desconto separado serviços × produtos; formas de pagamento aceitas no PDF; texto de laudo (o título "Laudo técnico" já existe).
-- R4: aba Financeiro dentro da OS/orçamento (lucro por serviço); custos no Financeiro do app **modo completo**.
-- Erro React #418 (hidratação) só em produção em `/orcamentos` — a página se recupera; investigar com build local `next start` em fuso UTC.
+- R9 (pedido do dono): app mobile com o mesmo design do web, nos dois modos — ver `.planning/CONTINUE.md` §3.
+- R5b: status extras (`AWAITING_PAYMENT`, `WARRANTY`), visão por status (colunas) no web, OS em abas, taxa de deslocamento, campos da OS no modo fácil e em documento da OS.
 - App mobile: as mudanças só chegam aos aparelhos com um novo build (EAS) — publicação nas lojas é Nível C.
 
 ## Regras de cada rodada
@@ -29,7 +34,7 @@ Pendências registradas para depois:
 3. Dinheiro: `Prisma.Decimal` / string decimal / `formatMoney`, nunca `Number`. Toda tabela nova com `company_id`.
 4. Fechar a rodada: testes automáticos (§7 do catálogo) + blocos do catálogo indicados → log da rodada →
    commit por entrega → push → deploy (§8) → conferir em produção.
-5. **Lockfile:** a cópia de trabalho do web tem uma migração para Next 15/React 19 **não commitada**. Ao mexer em dependências, gerar o lockfile com o `apps/web/package.json` do commit (`git show HEAD:apps/web/package.json`) e `pnpm install --lockfile-only`; o Docker usa `--frozen-lockfile`. Decidir na R0 se essa migração entra ou é descartada.
+5. **Lockfile:** o Docker usa `--frozen-lockfile`. Ao mexer em dependências: `pnpm install --lockfile-only` e validar com `pnpm install --frozen-lockfile --lockfile-only`.
 6. Opções novas que mudam o PDF entram em `doc_options`/`quote_default_doc_options` (JSONB) quando couber —
    evita migration.
 

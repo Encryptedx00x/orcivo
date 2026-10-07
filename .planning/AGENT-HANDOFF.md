@@ -10,6 +10,13 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
+## ▶ Retomada: leia `.planning/CONTINUE.md` primeiro
+
+Estado exato, fila de tarefas (R5b…R9), receita de trabalho, testes e deploy ficam lá e são
+atualizados a cada entrega. Este arquivo guarda o histórico.
+
+---
+
 ## Estado corrente — 2026-10-07 — pronto para as rodadas de melhoria R0…R8
 
 - Produção atualizada até as correções de 07/10 (recibo com partes, opções do orçamento, Concluir,
