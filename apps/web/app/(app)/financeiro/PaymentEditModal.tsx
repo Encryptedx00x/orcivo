@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, X } from 'lucide-react';
-import { parseMoneyInput } from '@orcivo/shared-types';
+import { formatMoney, parseMoneyInput } from '@orcivo/shared-types';
 
 export type EditablePayment = {
   id: string;
@@ -63,15 +63,32 @@ function ModalFrame({
           boxShadow: '0 20px 40px rgba(15,23,42,.18)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
-          <h2 id="payment-change-title" style={{ margin: 0, color: T.ink, fontSize: 18, fontWeight: 700 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
+          <h2
+            id="payment-change-title"
+            style={{ margin: 0, color: T.ink, fontSize: 18, fontWeight: 700 }}
+          >
             {title}
           </h2>
           <button
             type="button"
             aria-label="Fechar"
             onClick={onClose}
-            style={{ display: 'flex', border: 0, background: 'transparent', color: T.fg3, cursor: 'pointer' }}
+            style={{
+              display: 'flex',
+              border: 0,
+              background: 'transparent',
+              color: T.fg3,
+              cursor: 'pointer',
+            }}
           >
             <X size={18} />
           </button>
@@ -95,7 +112,9 @@ export function PaymentEditModal({
   const [amount, setAmount] = useState(payment.amount.replace('.', ','));
   const [method, setMethod] = useState<PaymentMethod>(payment.method ?? 'PIX');
   const [status, setStatus] = useState<PaymentStatus>(payment.status);
-  const [date, setDate] = useState(dateInputValue(payment.status === 'PAID' ? payment.paidAt : payment.dueDate));
+  const [date, setDate] = useState(
+    dateInputValue(payment.status === 'PAID' ? payment.paidAt : payment.dueDate),
+  );
   const [justification, setJustification] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -123,7 +142,8 @@ export function PaymentEditModal({
           method,
           status,
           justification: justification.trim(),
-          ...(status === 'PAID' ? { paid_at: dateValue, due_date: null } : { due_date: dateValue, paid_at: null }),
+          // Only the date being edited changes: a paid charge keeps its due date.
+          ...(status === 'PAID' ? { paid_at: dateValue } : { due_date: dateValue, paid_at: null }),
         }),
       });
       if (!response.ok) {
@@ -143,35 +163,100 @@ export function PaymentEditModal({
   return (
     <ModalFrame title="Editar recebimento" onClose={onClose}>
       <p style={{ margin: '0 0 16px', color: T.fg3, fontSize: 13 }}>Cliente: {payment.customer}</p>
-      {error ? <div role="alert" style={alertStyle}>{error}</div> : null}
+      {error ? (
+        <div role="alert" style={alertStyle}>
+          {error}
+        </div>
+      ) : null}
       <form onSubmit={submit}>
         <div style={twoColumns}>
           <Field label="Valor (R$) *" htmlFor="payment-edit-amount">
-            <input id="payment-edit-amount" className="ov-input" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" required />
+            <input
+              id="payment-edit-amount"
+              className="ov-input"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              inputMode="decimal"
+              required
+            />
           </Field>
           <Field label="Método" htmlFor="payment-edit-method">
-            <select id="payment-edit-method" className="ov-input" value={method} onChange={(event) => setMethod(event.target.value as PaymentMethod)}>
-              <option value="PIX">Pix</option><option value="BOLETO">Boleto</option><option value="CARTAO">Cartão</option><option value="DINHEIRO">Dinheiro</option><option value="TRANSFERENCIA">Transferência</option><option value="OUTRO">Outro</option>
+            <select
+              id="payment-edit-method"
+              className="ov-input"
+              value={method}
+              onChange={(event) => setMethod(event.target.value as PaymentMethod)}
+            >
+              <option value="PIX">Pix</option>
+              <option value="BOLETO">Boleto</option>
+              <option value="CARTAO">Cartão</option>
+              <option value="DINHEIRO">Dinheiro</option>
+              <option value="TRANSFERENCIA">Transferência</option>
+              <option value="OUTRO">Outro</option>
             </select>
           </Field>
         </div>
         <div style={{ ...twoColumns, marginTop: 12 }}>
           <Field label="Situação" htmlFor="payment-edit-status">
-            <select id="payment-edit-status" className="ov-input" value={status} onChange={(event) => setStatus(event.target.value as PaymentStatus)}>
-              <option value="PAID">Recebido</option><option value="PENDING">Pendente</option><option value="OVERDUE">Vencido</option><option value="PARTIAL">Parcial</option><option value="CANCELLED">Cancelado</option>
+            <select
+              id="payment-edit-status"
+              className="ov-input"
+              value={status}
+              onChange={(event) => setStatus(event.target.value as PaymentStatus)}
+            >
+              <option value="PAID">Recebido</option>
+              <option value="PENDING">Pendente</option>
+              <option value="OVERDUE">Vencido</option>
+              <option value="PARTIAL">Parcial</option>
+              <option value="CANCELLED">Cancelado</option>
             </select>
           </Field>
-          <Field label={status === 'PAID' ? 'Data do recebimento' : 'Vencimento'} htmlFor="payment-edit-date">
-            <input id="payment-edit-date" className="ov-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <Field
+            label={status === 'PAID' ? 'Data do recebimento' : 'Vencimento'}
+            htmlFor="payment-edit-date"
+          >
+            <input
+              id="payment-edit-date"
+              className="ov-input"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
           </Field>
         </div>
         <div style={{ marginTop: 12 }}>
-          <label className="ov-label" htmlFor="payment-edit-justification">Justificativa *</label>
-          <textarea id="payment-edit-justification" className="ov-input" value={justification} onChange={(event) => setJustification(event.target.value)} maxLength={500} required rows={3} placeholder="Explique a alteração deste recebimento" style={{ resize: 'vertical' }} />
+          <label className="ov-label" htmlFor="payment-edit-justification">
+            Justificativa *
+          </label>
+          <textarea
+            id="payment-edit-justification"
+            className="ov-input"
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
+            maxLength={500}
+            required
+            rows={3}
+            placeholder="Explique a alteração deste recebimento"
+            style={{ resize: 'vertical' }}
+          />
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button type="button" onClick={onClose} className="ov-btn ov-btn-outline" style={{ flex: 1 }}>Cancelar</button>
-          <button type="submit" disabled={saving} className="ov-btn ov-btn-primary" style={{ flex: 1 }}>{saving ? 'Salvando…' : 'Salvar alterações'}</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ov-btn ov-btn-outline"
+            style={{ flex: 1 }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="ov-btn ov-btn-primary"
+            style={{ flex: 1 }}
+          >
+            {saving ? 'Salvando…' : 'Salvar alterações'}
+          </button>
         </div>
       </form>
     </ModalFrame>
@@ -223,24 +308,84 @@ export function PaymentDeleteModal({
   return (
     <ModalFrame title="Excluir recebimento" onClose={onClose}>
       <p style={{ margin: '0 0 16px', color: T.fg3, fontSize: 13 }}>
-        O recebimento de {payment.amount} de {payment.customer} deixará de aparecer no financeiro, mas continuará preservado no histórico.
+        O recebimento de {formatMoney(payment.amount)} de {payment.customer} deixará de aparecer no
+        financeiro, mas continuará preservado no histórico.
       </p>
-      {error ? <div role="alert" style={alertStyle}>{error}</div> : null}
+      {error ? (
+        <div role="alert" style={alertStyle}>
+          {error}
+        </div>
+      ) : null}
       <form onSubmit={submit}>
-        <label className="ov-label" htmlFor="payment-delete-justification">Justificativa *</label>
-        <textarea id="payment-delete-justification" className="ov-input" value={justification} onChange={(event) => setJustification(event.target.value)} maxLength={500} required rows={3} placeholder="Explique a exclusão deste recebimento" style={{ resize: 'vertical' }} />
+        <label className="ov-label" htmlFor="payment-delete-justification">
+          Justificativa *
+        </label>
+        <textarea
+          id="payment-delete-justification"
+          className="ov-input"
+          value={justification}
+          onChange={(event) => setJustification(event.target.value)}
+          maxLength={500}
+          required
+          rows={3}
+          placeholder="Explique a exclusão deste recebimento"
+          style={{ resize: 'vertical' }}
+        />
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button type="button" onClick={onClose} className="ov-btn ov-btn-outline" style={{ flex: 1 }}>Cancelar</button>
-          <button type="submit" disabled={deleting} className="ov-btn" style={{ flex: 1, color: '#fff', background: T.danger, borderColor: T.danger }}>{deleting ? 'Excluindo…' : <><Trash2 size={15} /> Excluir</>}</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ov-btn ov-btn-outline"
+            style={{ flex: 1 }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={deleting}
+            className="ov-btn"
+            style={{ flex: 1, color: '#fff', background: T.danger, borderColor: T.danger }}
+          >
+            {deleting ? (
+              'Excluindo…'
+            ) : (
+              <>
+                <Trash2 size={15} /> Excluir
+              </>
+            )}
+          </button>
         </div>
       </form>
     </ModalFrame>
   );
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }): JSX.Element {
-  return <div><label className="ov-label" htmlFor={htmlFor}>{label}</label>{children}</div>;
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div>
+      <label className="ov-label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
 }
 
 const twoColumns = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
-const alertStyle = { marginBottom: 14, padding: '10px 14px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEE2E2', color: T.danger, fontSize: 13 };
+const alertStyle = {
+  marginBottom: 14,
+  padding: '10px 14px',
+  borderRadius: 8,
+  border: '1px solid #FECACA',
+  background: '#FEE2E2',
+  color: T.danger,
+  fontSize: 13,
+};

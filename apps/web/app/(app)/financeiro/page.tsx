@@ -6,6 +6,7 @@ import {
   sumDecimal,
 } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
+import { methodLabel } from '../../../lib/receipts';
 import {
   FinanceiroContent,
   type PaymentRow,
@@ -54,7 +55,7 @@ export default async function FinanceiroPage(): Promise<JSX.Element> {
     description: p.description ?? '',
     amount: formatMoney(p.amount),
     amountDecimal: p.amount,
-    method: p.method ?? '—',
+    method: p.method ? methodLabel(p.method) : '—',
     rawMethod: p.method as PaymentRow['rawMethod'],
     status: p.status,
     due: ddmm(p.due_date),

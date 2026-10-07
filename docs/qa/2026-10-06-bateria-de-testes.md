@@ -158,3 +158,14 @@ Legenda: ✅ ok · 🔧 bug achado e corrigido (commit) · ⚠️ limitação co
 | W3  | Novo cliente / Editar cliente / Novo orçamento / Nova OS / Detalhe da OS a 1100 px: painel lateral empurrado para fora da tela                                                             | 🔧 coluna principal pode encolher (`minmax(0, 1fr)`)             |
 | W4  | Novo orçamento a 414 px: etapas cortadas ("Desconto e validade", etapa 4 fora da tela)                                                                                                     | 🔧 no celular só a etapa atual mostra o nome; as 5 cabem         |
 | W5  | Abas de Orçamentos/Documentos/Configurações a 414 px                                                                                                                                       | ✅ faixa rolável (de propósito)                                  |
+
+## Modo completo web — Financeiro e Documentos
+
+| #   | Teste                                                                                                      | Resultado                       |
+| --- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| X1  | Tabela: Recibo, Editar, Excluir visíveis                                                                   | ✅ (depois de W2)               |
+| X2  | Coluna Método mostrava o código ("PIX", "DINHEIRO")                                                        | 🔧 "Pix", "Dinheiro", "Cartão"… |
+| X3  | Editar recebimento: valor 250 → 260 com justificativa → salvo                                              | ✅                              |
+| X4  | **Editar um recebimento pago apagava o vencimento**                                                        | 🔧 só a data editada muda       |
+| X5  | Excluir com justificativa → some da lista (fica no histórico); texto dizia "recebimento de 690"            | 🔧 "R$ 690,00"                  |
+| X6  | Link "Recibo" → Documentos abre o recibo (com Quem recebeu / Quem pagou, assinatura, Baixar PDF, WhatsApp) | ✅                              |
