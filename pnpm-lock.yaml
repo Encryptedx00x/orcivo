@@ -346,16 +346,16 @@ importers:
         version: link:../../packages/shared-types
       lucide-react:
         specifier: ^1.16.0
-        version: 1.16.0(react@19.2.6)
+        version: 1.16.0(react@19.1.9)
       next:
         specifier: ^15.5.27
-        version: 15.5.27(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.9(react@19.2.6))(react@19.2.6)
+        version: 15.5.27(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.9(react@19.1.9))(react@19.1.9)
       react:
-        specifier: ^19.1.9
-        version: 19.2.6
+        specifier: 19.1.9
+        version: 19.1.9
       react-dom:
-        specifier: ^19.1.9
-        version: 19.1.9(react@19.2.6)
+        specifier: 19.1.9
+        version: 19.1.9(react@19.1.9)
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -12908,10 +12908,6 @@ snapshots:
     dependencies:
       react: 19.1.9
 
-  lucide-react@1.16.0(react@19.2.6):
-    dependencies:
-      react: 19.2.6
-
   luxon@3.5.0: {}
 
   luxon@3.7.2: {}
@@ -13257,30 +13253,6 @@ snapshots:
       react: 19.1.9
       react-dom: 19.1.9(react@19.1.9)
       styled-jsx: 5.1.6(react@19.1.9)
-    optionalDependencies:
-      '@next/swc-darwin-arm64': 15.5.27
-      '@next/swc-darwin-x64': 15.5.27
-      '@next/swc-linux-arm64-gnu': 15.5.27
-      '@next/swc-linux-arm64-musl': 15.5.27
-      '@next/swc-linux-x64-gnu': 15.5.27
-      '@next/swc-linux-x64-musl': 15.5.27
-      '@next/swc-win32-arm64-msvc': 15.5.27
-      '@next/swc-win32-x64-msvc': 15.5.27
-      babel-plugin-react-compiler: 1.0.0
-      sharp: 0.34.5
-    transitivePeerDependencies:
-      - '@babel/core'
-      - babel-plugin-macros
-
-  next@15.5.27(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.9(react@19.2.6))(react@19.2.6):
-    dependencies:
-      '@next/env': 15.5.27
-      '@swc/helpers': 0.5.15
-      caniuse-lite: 1.0.30001793
-      postcss: 8.4.31
-      react: 19.2.6
-      react-dom: 19.1.9(react@19.2.6)
-      styled-jsx: 5.1.6(react@19.2.6)
     optionalDependencies:
       '@next/swc-darwin-arm64': 15.5.27
       '@next/swc-darwin-x64': 15.5.27
@@ -13789,11 +13761,6 @@ snapshots:
   react-dom@19.1.9(react@19.1.9):
     dependencies:
       react: 19.1.9
-      scheduler: 0.26.0
-
-  react-dom@19.1.9(react@19.2.6):
-    dependencies:
-      react: 19.2.6
       scheduler: 0.26.0
 
   react-freeze@1.0.4(react@19.1.0):
@@ -14469,11 +14436,6 @@ snapshots:
     dependencies:
       client-only: 0.0.1
       react: 19.1.9
-
-  styled-jsx@5.1.6(react@19.2.6):
-    dependencies:
-      client-only: 0.0.1
-      react: 19.2.6
 
   styleq@0.1.3: {}
 
