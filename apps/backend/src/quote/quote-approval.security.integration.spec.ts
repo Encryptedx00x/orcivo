@@ -32,6 +32,7 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     uploadBuffer: jest.fn(async (_bucket: string, key: string) => key),
     getSignedUrl: jest.fn(async (_bucket: string, key: string) => `https://fixture.invalid/${key}`),
     assertUploadable: jest.fn(),
+    inlineImage: jest.fn(async (key: string | null) => key),
   };
   const workOrders = new WorkOrderService(db, redis, limits as never, ownership, audit, {
     resolveUrl: async (_b: string, key: string) => key,

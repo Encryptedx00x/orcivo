@@ -1,3 +1,4 @@
+import { type QuoteDocTitle } from '@orcivo/shared-types';
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -62,7 +63,7 @@ export type EasyStackParamList = {
     phone: string | null;
     url: string;
     /** Document name chosen (Orçamento / Proposta / Pedido). */
-    docTitle?: 'ORCAMENTO' | 'PROPOSTA' | 'PEDIDO';
+    docTitle?: QuoteDocTitle;
   };
   ClientDetail: { id: string };
   ClientNew: { forQuote?: boolean; forReceipt?: boolean; edit?: EasyClient } | undefined;

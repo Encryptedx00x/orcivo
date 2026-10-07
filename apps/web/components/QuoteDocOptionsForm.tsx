@@ -1,9 +1,11 @@
 'use client';
 
 import {
+  QUOTE_DOC_COLORS,
   QUOTE_DOC_SWITCHES,
   QUOTE_DOC_TITLES,
   resolveQuoteDocOptions,
+  type QuoteDocColor,
   type QuoteDocOptions,
   type QuoteDocTitle,
 } from '@orcivo/shared-types';
@@ -37,6 +39,10 @@ export function QuoteDocOptionsForm({
           ))}
         </select>
       </div>
+      <div>
+        <span className="ov-label">Cor do documento</span>
+        <ColorSwatches value={o.color} onPick={(color) => onChange({ ...o, color })} />
+      </div>
       <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
         <legend className="ov-label">O que aparece para o cliente (PDF e link)</legend>
         <div
@@ -62,6 +68,44 @@ export function QuoteDocOptionsForm({
           ))}
         </div>
       </fieldset>
+    </div>
+  );
+}
+
+/** Accent color of the PDF (header, total). */
+export function ColorSwatches({
+  value,
+  onPick,
+}: {
+  value: QuoteDocColor;
+  onPick: (c: QuoteDocColor) => void;
+}): React.JSX.Element {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Cor do documento"
+      style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6 }}
+    >
+      {(Object.keys(QUOTE_DOC_COLORS) as QuoteDocColor[]).map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={value === k}
+          aria-label={QUOTE_DOC_COLORS[k].label}
+          title={QUOTE_DOC_COLORS[k].label}
+          onClick={() => onPick(k)}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            background: QUOTE_DOC_COLORS[k].hex,
+            border: '3px solid #fff',
+            boxShadow: value === k ? `0 0 0 2px ${QUOTE_DOC_COLORS[k].hex}` : '0 0 0 1px #E2E8F0',
+            cursor: 'pointer',
+          }}
+        />
+      ))}
     </div>
   );
 }

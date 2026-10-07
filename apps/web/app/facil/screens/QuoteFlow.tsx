@@ -26,6 +26,7 @@ import {
   multiplyDecimal,
   resolveQuoteDocOptions,
   sumDecimal,
+  isFeminineDocTitle,
 } from '@orcivo/shared-types';
 import {
   createCatalogItem,
@@ -1670,7 +1671,7 @@ function Done() {
   const r = draft.result;
   const docTitle = resolveQuoteDocOptions(draft.docOptions).title;
   const docName = QUOTE_DOC_TITLES[docTitle];
-  const fem = docTitle === 'PROPOSTA';
+  const fem = isFeminineDocTitle(docTitle);
   const whatsapp = () =>
     r && window.open(buildWhatsAppLink(r.phone ?? '', r.url, `#${r.number}`), '_blank', 'noopener');
   const copy = async () => {

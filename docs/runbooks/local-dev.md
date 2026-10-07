@@ -225,8 +225,11 @@ docker compose -f infra/docker-compose.test.yml down
 
 Recomendação: **3 terminais**, um por app. Ou use o painel de terminais do VS Code com split view.
 
-## Specs de isolamento (`*.isolation.spec.ts`)
+## Specs de integração e isolamento
 
-Criam empresas via `/auth/signup/*`, que tem limite de taxa no Redis. Com o backend de dev rodando e
-muitos cadastros no dia, o signup é barrado e as specs falham com **401** (falso negativo). Rodar com o
-backend de dev parado e o Redis limpo (`docker exec orcivo-redis redis-cli FLUSHDB` no ambiente local).
+Usam o banco descartável de `.env.test` (porta 5433, `orcivo_test`) e Redis 6380 — não o de dev.
+
+1. Schema em dia (o banco de teste não tem histórico de migrations):
+   `DATABASE_URL=<DATABASE_URL do .env.test> npx prisma db push --schema prisma/schema.prisma --skip-generate --accept-data-loss`
+2. Rodar **em série**: `npx jest src/<módulo> --runInBand`. Em paralelo as suites disputam o mesmo
+   banco/Redis e falham com 401/estado sujo (falso negativo).

@@ -26,6 +26,7 @@ import {
   type QuoteCreateDto,
   QUOTE_DOC_TITLES,
   resolveQuoteDocOptions,
+  isFeminineDocTitle,
 } from '@orcivo/shared-types';
 import { newIdempotencyKey } from '../../services/api';
 import { easy, errorText, type EasyCatalogItem, type EasyClient } from '../data';
@@ -1011,7 +1012,7 @@ export function QuoteDoneScreen({
 }: NativeStackScreenProps<EasyStackParamList, 'QuoteDone'>) {
   const { id, number, total, name, phone, url, docTitle = 'ORCAMENTO' } = route.params;
   const docName = QUOTE_DOC_TITLES[docTitle];
-  const fem = docTitle === 'PROPOSTA';
+  const fem = isFeminineDocTitle(docTitle);
   const pdf = async () => {
     try {
       await shareQuotePdf(id, number);

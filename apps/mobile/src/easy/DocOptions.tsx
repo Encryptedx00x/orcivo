@@ -1,9 +1,11 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import {
+  QUOTE_DOC_COLORS,
   QUOTE_DOC_SWITCHES,
   QUOTE_DOC_TITLES,
   resolveQuoteDocOptions,
+  type QuoteDocColor,
   type QuoteDocOptions,
   type QuoteDocTitle,
 } from '@orcivo/shared-types';
@@ -30,6 +32,29 @@ export function DocOptionsFields({
           label: QUOTE_DOC_TITLES[k],
         }))}
       />
+      <Text style={[s.body, { fontWeight: '600' }]}>Cor do documento</Text>
+      <View
+        accessibilityRole="radiogroup"
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}
+      >
+        {(Object.keys(QUOTE_DOC_COLORS) as QuoteDocColor[]).map((k) => (
+          <TouchableOpacity
+            key={k}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: o.color === k }}
+            accessibilityLabel={QUOTE_DOC_COLORS[k].label}
+            onPress={() => onChange({ ...o, color: k })}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: QUOTE_DOC_COLORS[k].hex,
+              borderWidth: 3,
+              borderColor: o.color === k ? '#0A0A0F' : '#FFFFFF',
+            }}
+          />
+        ))}
+      </View>
       <Text style={[s.body, { fontWeight: '600' }]}>O que aparece para o cliente</Text>
       {QUOTE_DOC_SWITCHES.map((sw) => (
         <Toggle

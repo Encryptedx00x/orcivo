@@ -98,13 +98,13 @@ Abas Início/Clientes/Orçamentos/Agenda/Mais; Mais: Modo fácil, OS, Catálogo,
 
 ## 7. Automático (rodar sempre antes de commit)
 
-| Pacote       | Comando                                                                                                                                                                  |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| backend      | `npx tsc --noEmit -p tsconfig.json` · `npx jest src/<módulo>` (specs `*.isolation.spec.ts` precisam do Redis sem limite de cadastro — rodar com o backend de dev parado) |
-| web          | `npx tsc --noEmit` · testes `*.browser.test.cjs`                                                                                                                         |
-| app          | `npx tsc --noEmit` · `pnpm lint` · `node --test src/hooks/*.test.mjs src/services/*.test.mjs src/screens/*/*.test.mjs` (76)                                              |
-| shared-types | `npm run build` antes do backend ver mudanças                                                                                                                            |
-| site         | `npx tsc --noEmit -p .`                                                                                                                                                  |
+| Pacote       | Comando                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| backend      | `npx tsc --noEmit -p tsconfig.json` · `npx jest src/<módulo> --runInBand` (integração usa `.env.test`; antes, `prisma db push` no `orcivo_test` — ver runbook) |
+| web          | `npx tsc --noEmit` · testes `*.browser.test.cjs`                                                                                                               |
+| app          | `npx tsc --noEmit` · `pnpm lint` · `node --test src/hooks/*.test.mjs src/services/*.test.mjs src/screens/*/*.test.mjs` (76)                                    |
+| shared-types | `npm run build` antes do backend ver mudanças                                                                                                                  |
+| site         | `npx tsc --noEmit -p .`                                                                                                                                        |
 
 ## 8. Deploy e produção
 

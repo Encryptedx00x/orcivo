@@ -16,6 +16,9 @@ import {
 import { Injectable } from '@nestjs/common';
 import {
   formatMoney,
+  maskCpfCnpj,
+  maskPhone,
+  QUOTE_DOC_COLORS,
   QUOTE_DOC_TITLES,
   QuoteStatus,
   resolveQuoteDocOptions,
@@ -345,6 +348,18 @@ interface QuoteData {
     total: DecimalLike;
   }>;
   customer_name?: string | null;
+  /** Full customer row (callers include it); shown when doc option client_details is on. */
+  customer?: {
+    phone?: string | null;
+    email?: string | null;
+    tax_id?: string | null;
+    street?: string | null;
+    number?: string | null;
+    complement?: string | null;
+    neighborhood?: string | null;
+    city?: string | null;
+    state?: string | null;
+  } | null;
   /** PB1-P10/AC2: signed URL of the technician's reusable signature, resolved by the caller for this render only. */
   technician_signature_url?: string | null;
   approval?: {
@@ -358,6 +373,7 @@ interface QuoteData {
 interface CompanyData {
   trade_name: string;
   phone?: string | null;
+  address?: string | null;
   city?: string | null;
   state?: string | null;
   logo_url?: string | null;
@@ -404,6 +420,22 @@ export class QuotePdfService {
     const discountAmount = new Decimal(q.subtotal).minus(q.total).toFixed(2);
     const opts = resolveQuoteDocOptions(q.doc_options);
     const docTitle = QUOTE_DOC_TITLES[opts.title];
+    const accent = QUOTE_DOC_COLORS[opts.color].hex;
+    const cust = opts.client_details ? q.customer : null;
+    const custLines = cust
+      ? [
+          [cust.phone ? maskPhone(cust.phone) : '', cust.email ?? ''].filter(Boolean).join(' · '),
+          cust.tax_id ? `CPF/CNPJ ${maskCpfCnpj(cust.tax_id)}` : '',
+          [
+            [cust.street, cust.number].filter(Boolean).join(', '),
+            cust.complement,
+            cust.neighborhood,
+            [cust.city, cust.state].filter(Boolean).join('/'),
+          ]
+            .filter(Boolean)
+            .join(' — '),
+        ].filter(Boolean)
+      : [];
     const itemPrices = opts.item_prices;
     const anyPrice = opts.subtotal || opts.total;
     // Total sobre a máquina de estados: todo QuoteStatus tem selo definido
@@ -438,7 +470,7 @@ export class QuotePdfService {
                     <Defs>
                       <LinearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
                         <Stop offset="0" stopColor={C.ink} />
-                        <Stop offset="1" stopColor={C.purple600} />
+                        <Stop offset="1" stopColor={accent} />
                       </LinearGradient>
                     </Defs>
                     <Rect x={0} y={0} width={38} height={38} rx={10} fill="url(#brand)" />
@@ -450,12 +482,13 @@ export class QuotePdfService {
               <View>
                 <Text style={styles.companyName}>{company.trade_name}</Text>
                 {company.phone ? <Text style={styles.companyInfo}>{company.phone}</Text> : null}
+                {company.address ? <Text style={styles.companyInfo}>{company.address}</Text> : null}
                 {location ? <Text style={styles.companyInfo}>{location}</Text> : null}
               </View>
             </View>
 
             <View style={styles.headRight}>
-              <Text style={styles.eyebrow}>{docTitle}</Text>
+              <Text style={[styles.eyebrow, { color: accent }]}>{docTitle}</Text>
               <Text style={styles.quoteNumber}>#{q.number}</Text>
             </View>
           </View>
@@ -469,6 +502,11 @@ export class QuotePdfService {
             <View>
               <Text style={styles.label}>Para</Text>
               <Text style={styles.customerName}>{q.customer_name ?? '—'}</Text>
+              {custLines.map((line) => (
+                <Text key={line} style={styles.companyInfo}>
+                  {line}
+                </Text>
+              ))}
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               {badge && (
@@ -536,9 +574,16 @@ export class QuotePdfService {
                   </View>
                 )}
                 {opts.total && (
-                  <View style={styles.tTotal}>
-                    <Text style={styles.tTotalLabel}>Total</Text>
-                    <Text style={styles.tTotalValue}>{formatMoney(q.total)}</Text>
+                  <View
+                    style={[
+                      styles.tTotal,
+                      opts.color === 'ROXO' ? {} : { backgroundColor: C.slate50 },
+                    ]}
+                  >
+                    <Text style={[styles.tTotalLabel, { color: accent }]}>Total</Text>
+                    <Text style={[styles.tTotalValue, { color: accent }]}>
+                      {formatMoney(q.total)}
+                    </Text>
                   </View>
                 )}
               </View>

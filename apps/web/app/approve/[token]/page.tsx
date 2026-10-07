@@ -12,7 +12,13 @@ import {
   XCircle,
 } from 'lucide-react';
 import { approvalService, type PublicQuote } from '../../../lib/approval.service';
-import { QUOTE_DOC_TITLES, formatMoney, multiplyDecimal, sumDecimal } from '@orcivo/shared-types';
+import {
+  QUOTE_DOC_TITLES,
+  formatMoney,
+  multiplyDecimal,
+  sumDecimal,
+  isFeminineDocTitle,
+} from '@orcivo/shared-types';
 import { SignatureCanvas } from './SignatureCanvas';
 import { downscaleToDataUrl } from '../../../lib/image';
 
@@ -156,7 +162,7 @@ export default function ApprovePage(): React.JSX.Element {
   const companyName = quote?.company.trade_name ?? 'Orcivo';
 
   const docName = QUOTE_DOC_TITLES[quote?.doc_options?.title ?? 'ORCAMENTO'];
-  const fem = quote?.doc_options?.title === 'PROPOSTA';
+  const fem = isFeminineDocTitle(quote?.doc_options?.title);
   const expiresDate = quote?.valid_until
     ? new Date(quote.valid_until).toLocaleDateString('pt-BR', {
         day: '2-digit',

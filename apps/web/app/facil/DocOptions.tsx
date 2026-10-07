@@ -7,6 +7,7 @@ import {
   type QuoteDocOptions,
   type QuoteDocTitle,
 } from '@orcivo/shared-types';
+import { ColorSwatches } from '../../components/QuoteDocOptionsForm';
 import { C, Options, Toggle } from './ui';
 
 /** "O que vai no orçamento": title of the document and what it shows (PDF and client link). */
@@ -30,6 +31,8 @@ export function DocOptionsFields({
           label: QUOTE_DOC_TITLES[k],
         }))}
       />
+      <span style={{ fontSize: 17, fontWeight: 600, marginTop: 6 }}>Cor do documento</span>
+      <ColorSwatches value={o.color} onPick={(color) => onChange({ ...o, color })} />
       <span style={{ fontSize: 17, fontWeight: 600, marginTop: 6 }}>
         O que aparece para o cliente
       </span>
