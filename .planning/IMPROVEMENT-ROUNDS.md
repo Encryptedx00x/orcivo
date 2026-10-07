@@ -12,7 +12,8 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 3. Dinheiro: `Prisma.Decimal` / string decimal / `formatMoney`, nunca `Number`. Toda tabela nova com `company_id`.
 4. Fechar a rodada: testes automáticos (§7 do catálogo) + blocos do catálogo indicados → log da rodada →
    commit por entrega → push → deploy (§8) → conferir em produção.
-5. Opções novas que mudam o PDF entram em `doc_options`/`quote_default_doc_options` (JSONB) quando couber —
+5. **Lockfile:** a cópia de trabalho do web tem uma migração para Next 15/React 19 **não commitada**. Ao mexer em dependências, gerar o lockfile com o `apps/web/package.json` do commit (`git show HEAD:apps/web/package.json`) e `pnpm install --lockfile-only`; o Docker usa `--frozen-lockfile`. Decidir na R0 se essa migração entra ou é descartada.
+6. Opções novas que mudam o PDF entram em `doc_options`/`quote_default_doc_options` (JSONB) quando couber —
    evita migration.
 
 ---
