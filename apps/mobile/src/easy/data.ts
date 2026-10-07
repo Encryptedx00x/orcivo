@@ -1,6 +1,12 @@
 // Modo fácil: a thin data layer over the same endpoints the full screens use
 // (mirrors apps/web/app/facil/actions.ts). No business rules live here.
-import type { QuoteCreateDto, QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import type {
+  ExpenseCreateDto,
+  FinanceSummary,
+  QuoteCreateDto,
+  QuoteDocOptions,
+  QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import { api } from '../services/api';
 import { workOrderService } from '../services/work-order.service';
 
@@ -288,6 +294,12 @@ export const easy = {
     work_order_id?: string;
     quote_id?: string;
   }) => api.post<{ id: string }>('/payments', { ...input, status: 'PENDING' }),
+  /** Received, costs and what was left in [from, to]. */
+  financeSummary: (from: string, to: string) =>
+    api.get<FinanceSummary>(
+      `/finance/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+  createCost: (dto: ExpenseCreateDto) => api.post<{ id: string }>('/expenses', dto),
   setReceiptSignature: (id: string, apply: boolean) =>
     api.patch<EasyReceipt>(`/payments/${enc(id)}/receipt-signature`, { apply }),
 

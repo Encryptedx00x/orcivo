@@ -12,10 +12,16 @@ import {
   Plus,
   ReceiptText,
   Trash2,
+  Minus,
 } from 'lucide-react-native';
-import { formatMoney, sumDecimal } from '@orcivo/shared-types';
+import {
+  EXPENSE_CATEGORIES,
+  formatMoney,
+  sumDecimal,
+  type ExpenseCategory,
+} from '@orcivo/shared-types';
 import { easy, errorText, methodLabel, RECEIPT_METHODS, type EasyPayment } from '../data';
-import { useEasyNav } from '../draft';
+import { centsToDecimal, useEasyNav } from '../draft';
 import { reasonSheet, useSheet } from '../sheet';
 import {
   Btn,
@@ -24,6 +30,7 @@ import {
   Chip,
   EmptyBox,
   ErrorBox,
+  Field,
   H1,
   Loading,
   Options,
@@ -87,6 +94,14 @@ export function MoneyScreen() {
   const nav = useEasyNav();
   const sheet = useSheet();
   const payments = useLoad(easy.payments, 'Não foi possível carregar o financeiro.');
+  // This month's costs and what was left (received − costs).
+  const month = useLoad(() => {
+    const n = new Date();
+    return easy.financeSummary(
+      new Date(n.getFullYear(), n.getMonth(), 1).toISOString(),
+      new Date(n.getFullYear(), n.getMonth() + 1, 0, 23, 59, 59).toISOString(),
+    );
+  }, 'Não foi possível carregar o resumo.');
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState(PAGE);
@@ -242,6 +257,26 @@ export function MoneyScreen() {
             </Card>
           </View>
 
+          {month.data ? (
+            <Card style={{ padding: 16, gap: 8 }}>
+              <Text style={s.muted}>Gastos do mês: {formatMoney(month.data.costs.paid)}</Text>
+              <Text
+                style={{
+                  fontSize: 19,
+                  fontWeight: '700',
+                  color: month.data.result.startsWith('-') ? C.red : C.green,
+                }}
+              >
+                {month.data.result.startsWith('-')
+                  ? `Faltou ${formatMoney(month.data.result.slice(1))}`
+                  : `Sobrou ${formatMoney(month.data.result)}`}
+              </Text>
+              <Btn tone="outline" icon={Minus} height={48} onPress={() => nav.navigate('CostNew')}>
+                Lançar gasto
+              </Btn>
+            </Card>
+          ) : null}
+
           {!dues.length && !paid.length ? (
             <EmptyBox>
               Nada por aqui neste período. Toque em Registrar para lançar um pagamento.
@@ -390,6 +425,68 @@ export function MoneyScreen() {
           </Btn>
         </>
       ) : null}
+    </Page>
+  );
+}
+
+/** "Lançar gasto": amount, category and what it was (already paid). */
+export function CostNewScreen() {
+  const nav = useEasyNav();
+  const [digits, setDigits] = useState('');
+  const [category, setCategory] = useState<ExpenseCategory>('MATERIAL');
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState(false);
+  const amount = centsToDecimal(digits);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await easy.createCost({
+        category,
+        amount,
+        status: 'PAID',
+        description: description.trim() || undefined,
+      });
+      nav.goBack();
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível lançar o gasto.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Page
+      bar={
+        <Btn disabled={!(Number(amount) > 0)} busy={busy} onPress={() => void save()}>
+          Salvar
+        </Btn>
+      }
+    >
+      <H1 size={30}>Lançar gasto</H1>
+      <Text style={s.muted}>Entra no Financeiro e no quanto sobrou no mês.</Text>
+      <Field
+        label="Quanto foi?"
+        value={digits ? formatMoney(amount) : ''}
+        onChange={(v) => setDigits(v.replace(/\D/g, '').slice(0, 10))}
+        keyboard="number-pad"
+        placeholder="R$ 0,00"
+        big
+      />
+      <Text style={[s.body, { fontWeight: '600' }]}>Com o quê?</Text>
+      <Options
+        cols={2}
+        value={category}
+        onPick={(v: ExpenseCategory) => setCategory(v)}
+        options={(Object.keys(EXPENSE_CATEGORIES) as ExpenseCategory[]).map((k) => ({
+          value: k,
+          label: EXPENSE_CATEGORIES[k],
+        }))}
+      />
+      <Field
+        label="O que foi (opcional)"
+        value={description}
+        onChange={(v) => setDescription(v.slice(0, 200))}
+        placeholder="Ex.: tubulação de cobre"
+      />
     </Page>
   );
 }

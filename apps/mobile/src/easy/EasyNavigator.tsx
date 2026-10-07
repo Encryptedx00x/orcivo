@@ -18,7 +18,7 @@ import {
 } from './screens/QuoteFlow';
 import { ServicesScreen, RunScreen } from './screens/Services';
 import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
-import { MoneyScreen } from './screens/Money';
+import { CostNewScreen, MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
 import { NoticesScreen } from './screens/Notices';
@@ -75,6 +75,7 @@ export type EasyStackParamList = {
   Receipt: { id: string };
   /** due: "Cobrança para receber depois" (due date instead of how/when it was paid). */
   ReceiptNew: { link?: boolean; clientId?: string; due?: boolean } | undefined;
+  CostNew: undefined;
   Settings: undefined;
   Approvals: undefined;
   Edit: { kind: string; id?: string; name?: string; price?: string; amount?: string; due?: string };
@@ -202,6 +203,11 @@ export function EasyNavigator() {
         <Stack.Screen name="Services" component={ServicesScreen} options={{ title: 'Serviços' }} />
         <Stack.Screen name="Run" component={RunScreen} options={{ title: 'Serviço' }} />
         <Stack.Screen name="Money" component={MoneyScreen} options={{ title: 'Financeiro' }} />
+        <Stack.Screen
+          name="CostNew"
+          component={CostNewScreen}
+          options={{ title: 'Lançar gasto' }}
+        />
         <Stack.Screen name="Notices" component={NoticesScreen} options={{ title: 'Avisos' }} />
         <Stack.Screen name="Receipts" component={ReceiptsScreen} options={{ title: 'Recibos' }} />
         <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Recibo' }} />
