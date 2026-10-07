@@ -10,7 +10,19 @@ Documento de continuidade entre agentes (Claude ↔ Codex/GPT ↔ humano).
 
 ---
 
-## Estado corrente — 2026-10-03 — MVP-LAUNCH-BATCH-2 publicado, deploy em produção feito
+## Estado corrente — 2026-10-07 — pronto para as rodadas de melhoria R0…R8
+
+- Produção atualizada até as correções de 07/10 (recibo com partes, opções do orçamento, Concluir,
+  PDF no link, avisos com valor formatado, link de aprovação completo, termos preenchidos).
+- **Próximo passo:** executar `.planning/IMPROVEMENT-ROUNDS.md` a partir da **R0**.
+- Testes: roteiro fixo em `docs/qa/CATALOGO-DE-TESTES.md`; o app roda no navegador para QA
+  (preview `orcivo-mobile-web`, :8081, shim do SecureStore em `apps/mobile/web-shims/`).
+- Benchmark completo do Agenda Boa: `.planning/research/AGENDA-BOA-BENCHMARK.md` (AB-1…AB-24).
+- Termos/Privacidade: responsável pessoa física (dono) até existir CNPJ — trocar quando abrir empresa.
+
+---
+
+## Estado anterior — 2026-10-03 — MVP-LAUNCH-BATCH-2 publicado, deploy em produção feito
 
 FASE A (16/16 tasks do batch) e FASE B (deploy VPS) concluídas nesta sessão.
 Produção rodando com Mercado Pago real (`MP_ENV=production`, backend loga

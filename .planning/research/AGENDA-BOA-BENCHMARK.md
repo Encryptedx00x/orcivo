@@ -1,7 +1,7 @@
 # Benchmark Agenda Boa → backlog Orcivo
 
 **Data:** 2026-10-07 · **Fonte:** conta de teste autorizada em web.agendaboa.com (plano intermediário), só leitura/criação, nada existente editado ou apagado.
-**Cobertura:** todos os módulos — Home, Pedidos, Documentos, Financeiro, Agenda, Clientes, Produtos & estoque, Serviços, Gerenciar (relatórios), Outras configurações e Planos. Duas rodadas (2026-10-07). Registros criados na conta de teste: 1 compromisso "Teste benchmark Orcivo". Termo de privacidade deles **não** foi aceito (precisa do dono).
+**Cobertura:** todos os módulos — Home, Pedidos, Documentos, Financeiro, Agenda, Clientes, Produtos & estoque, Serviços, Gerenciar (relatórios), Outras configurações e Planos. Três rodadas (2026-10-07), a última com fluxo ponta a ponta. Registros criados na conta de teste: compromisso "Teste benchmark Orcivo", cliente "Cliente teste Orcivo", pedidos 098-2026 e 099-2026 (duplicado), receita R$ 157,50 com recibo, custo R$ 80,00, documento Orçamento 098-2026. Termo de privacidade (18+) aceito com autorização do dono.
 
 Ordem sugerida: **depois** de fechar os bugs abertos da bateria (`docs/qa/2026-10-06-bateria-de-testes.md`). Cada item abaixo é um candidato a fase/plano GSD; o que já existe no Orcivo está marcado.
 
@@ -128,6 +128,41 @@ Filtro por período e, todos no plano mais alto deles: receitas × custos; receb
 - **Exportar todos os dados** (o usuário recebe tudo o que salvou) — também ajuda em LGPD (portabilidade). Nível C para o desenho jurídico; a exportação CSV em si é simples.
 - Excluir conta ("medidas irreversíveis") separado do resto.
 - Aceite de privacidade antes do 1º cadastro de cliente ("não repassamos dados dos seus clientes") — avaliar com LGPD (Nível C).
+
+## P6 — Fluxo ponta a ponta (3ª rodada)
+
+### AB-20 · Perfil do técnico: registro profissional e assinatura
+- Perfil com foto, CPF, **registro profissional** (CREA/CFT/CRT) e **assinatura desenhada** uma vez — sai automaticamente em recibos e documentos ("Cidade, data / assinatura / nome").
+- Nós já guardamos `technician_signature_key` no orçamento e `receipt_signature_key` no recibo; falta a assinatura **padrão no perfil** para não desenhar toda vez, e o registro profissional no PDF.
+
+### AB-21 · Empresa: segmentos, redes sociais e frase no documento
+- Segmentos (vários), WhatsApp comercial, site, Instagram, Facebook, YouTube — ícones no cabeçalho do PDF.
+- Frase de rodapé ("Agradecemos a sua preferência") e slogan abaixo da logo.
+
+### AB-22 · Orçamento/pedido mais completo
+- Número com ano (098-2026), editável.
+- Cadastro rápido de cliente sem sair do orçamento (o nosso já cria cliente no fluxo — conferir no modo completo web).
+- **Desconto separado para serviços e para produtos**, em % ou R$, com atalhos 5% / 10%; PDF mostra "Desconto em serviços (10%)".
+- **Condição de pagamento estruturada:** à vista / entrada (% ou R$; atalhos 30%, 50%) + restante na conclusão ou parcelado; texto livre extra. Sai no PDF como frase pronta.
+- **Formas de pagamento aceitas** (marcar quais) impressas no PDF.
+- **Garantia:** prazo (dias/meses/anos, atalhos 30/90 dias) + condições (texto padrão da empresa). Eles têm "gerar condições com IA" no plano superior.
+- **Laudo:** texto livre (situação / observado / executado) que vira o documento "Laudo técnico" — casa com AB-1.
+- Ao salvar pela 1ª vez o app pergunta o status.
+
+### AB-23 · Financeiro por pedido e custos (base para AB-10/AB-18)
+- Aba Financeiro do pedido: últimas receitas, últimos custos, **valor total, recebido, não lançado e resultado (lucro do serviço)**.
+- Receita com "este valor se refere a…" (entrada 50%, parcela 1/3) — ótimo para recibo parcial.
+- **Custos** (não temos): valor, categoria (≈28 prontas: combustível, alimentação, aluguel, impostos, fornecedor, matéria-prima, pró-labore, manutenção, marketing, funcionário…), pedido, cliente, vencimento, data e forma de pagamento (exigidas quando "Pago"), descrição, observações. Status pago / previsto / vencido.
+- Resumo do financeiro por período: receitas (recebido, a receber, vencido), custos (pago, previsto, vencido) e **resultado**.
+
+### AB-24 · Recibo com opções e impressão
+- Ao emitir: mostrar serviços / preço de cada / subtotais / detalhes, com aviso "para recibo parcial, não ative tudo".
+- Texto de declaração ("Declaro que recebi de X a quantia de R$ Y (entrada de 50%) em DD/MM/AAAA…").
+- Compartilhar: **impressora térmica** (app), imprimir A4, baixar arquivo.
+
+### Onde o Orcivo já está à frente
+- **Link de aprovação para o cliente** (aceitar/recusar, ver PDF, assinatura/foto) — eles só geram PDF.
+- Modo fácil para o técnico em campo; recibos numerados; notificações.
 
 ### Lições de UX (o que NÃO copiar)
 - Formulário de cliente: ao fechar pergunta "salvar alterações?" mas **não tem "descartar"** — o usuário fica preso até salvar. No Orcivo: sempre oferecer "Descartar".

@@ -399,7 +399,7 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.6: Feature: editar ou excluir recebimento (pagamento) já registrado (BACKLOG)
+### Phase 999.6: Feature: editar ou excluir recebimento (pagamento) já registrado (ENTREGUE 2026-10-07)
 
 **Goal:** Hoje só é possível criar um recebimento; falta poder editar ou excluir um pagamento já registrado, com rastreabilidade completa no histórico/auditoria da alteração (pode redirecionar para editar na OS de origem).
 
@@ -409,7 +409,7 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.7: Feature (opcional): foto do produto no catálogo (BACKLOG)
+### Phase 999.7: Feature (opcional): foto do produto no catálogo (ENTREGUE 2026-10-07)
 
 **Goal:** Adicionar campo de foto para itens do catálogo de produtos/serviços.
 
@@ -429,7 +429,7 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.9: Bug: máscara de chave PIX sempre formata como CNPJ (BACKLOG)
+### Phase 999.9: Bug: máscara de chave PIX sempre formata como CNPJ (ENTREGUE 2026-10-07)
 
 **Goal:** Regressão de PB1-P04 AC2 ("pix_key validated by type"): todos os tipos de chave PIX (CPF, email, telefone, aleatória) estão sendo mascarados/formatados como se fossem CNPJ.
 
@@ -439,7 +439,7 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.10: Feature: tela de conta do usuário (nome, e-mail, senha) (BACKLOG)
+### Phase 999.10: Feature: tela de conta do usuário (nome, e-mail, senha) (ENTREGUE 2026-10-07)
 
 **Goal:** Não existe hoje uma tela para o usuário alterar o próprio nome de usuário, e-mail e senha da conta; precisa existir.
 
@@ -459,7 +459,7 @@ Plans:
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
-### Phase 999.12: Feature: editar orçamentos e alterar status diretamente (BACKLOG)
+### Phase 999.12: Feature: editar orçamentos e alterar status diretamente (ENTREGUE 2026-10-07)
 
 **Goal:** Mesma flexibilidade pedida para OS (item 999.4): permitir editar orçamentos e alterar seus status diretamente, não só pelo fluxo guiado atual.
 
@@ -481,7 +481,9 @@ Plans:
 
 ### Phase 999.14: Benchmark Agenda Boa — documentos, campos do segmento, status e financeiro (BACKLOG)
 
-**Goal:** Implementar os itens AB-1…AB-19 de `.planning/research/AGENDA-BOA-BENCHMARK.md` depois de fechar os bugs da bateria de 2026-10-06. Prioridade: P1 documento (tipos, aparência, textos padrão, assinatura no PDF) → P2 campos do segmento e status configuráveis da OS → P3 financeiro (categorias de despesa, condições de pagamento, conta bancária, contratos de manutenção) → P4 Home → P5 agenda (período, lembrete, recorrência), cliente (origem, aniversário, contatos), baixa automática de estoque, duplicar, relatórios e exportação de dados.
+**Plano em rodadas:** `.planning/IMPROVEMENT-ROUNDS.md` (R0…R8).
+
+**Goal:** Implementar os itens AB-1…AB-24 de `.planning/research/AGENDA-BOA-BENCHMARK.md` depois de fechar os bugs da bateria de 2026-10-06. Prioridade: P1 documento (tipos, aparência, textos padrão, assinatura no PDF) → P2 campos do segmento e status configuráveis da OS → P3 financeiro (categorias de despesa, condições de pagamento, conta bancária, contratos de manutenção) → P4 Home → P5 agenda (período, lembrete, recorrência), cliente (origem, aniversário, contatos), baixa automática de estoque, duplicar, relatórios e exportação de dados.
 
 **Requirements:** ver documento de benchmark
 **Plans:** 0 plans
