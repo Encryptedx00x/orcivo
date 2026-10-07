@@ -44,18 +44,21 @@ sudo docker compose --profile tools run --rm seed 2>&1 | tail -6
 sudo docker compose up -d backend web site
 for i in $(seq 1 40); do
   st=$(sudo docker inspect -f '{{.State.Health.Status}}' orcivo-backend orcivo-web orcivo-site | tr '\n' ' ')
-  echo "$st" | grep -qv 'starting\|unhealthy' && break
+  [ "$st" = 'healthy healthy healthy ' ] && break
   sleep 5
 done
 echo "HEALTH: $st"
+if [ "$st" != 'healthy healthy healthy ' ]; then
+  echo "DEPLOY_FAILED: application health checks did not pass; source.old and prev-$TS images retained" >&2
+  exit 1
+fi
 sudo rm -rf source.old
 # 6. Disk: keep only this deploy's rollback tag (prev-$TS) per image; drop old cache.
-if echo "$st" | grep -q '^healthy healthy healthy'; then
-  for img in orcivo-backend orcivo-backend-build orcivo-web orcivo-site; do
-    sudo docker images --format '{{.Repository}}:{{.Tag}}' "$img" | grep ':prev-' | grep -v "prev-$TS"       | xargs -r sudo docker rmi >/dev/null 2>&1 || true
-  done
-  sudo docker image prune -f >/dev/null 2>&1 || true
-  sudo docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
-fi
+for img in orcivo-backend orcivo-backend-build orcivo-web orcivo-site; do
+  sudo docker images --format '{{.Repository}}:{{.Tag}}' "$img" | grep ':prev-' | grep -v "prev-$TS" \
+    | xargs -r sudo docker rmi >/dev/null 2>&1 || true
+done
+sudo docker image prune -f >/dev/null 2>&1 || true
+sudo docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
 df -h / | tail -1
 echo DEPLOY_DONE
