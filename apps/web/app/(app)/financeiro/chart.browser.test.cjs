@@ -47,10 +47,13 @@ async function financeProps(payments) {
         apiFetch: async (url) => ({ data: url === '/payments' ? payments : [] }),
       },
       './FinanceiroContent': { FinanceiroContent: 'finance-content' },
+      '../../../lib/receipts': { methodLabel: (value) => value },
+      './CostsSection': { CostsSection: () => null },
     },
     { Date: FixedDate },
   );
-  return JSON.parse(JSON.stringify((await page.default()).props));
+  const rendered = await page.default();
+  return JSON.parse(JSON.stringify(rendered.props.children[0].props));
 }
 
 test('daily chart shows exact Decimal totals and dates on hover and keyboard focus', async () => {
@@ -92,10 +95,11 @@ test('daily chart shows exact Decimal totals and dates on hover and keyboard foc
       const exports = {};
       const require = (name) => {
         if (name === 'react') return React;
-        if (name === 'next/navigation') return { useRouter: () => ({ refresh() {} }) };
-        if (name === 'lucide-react') return { Check: () => null, Inbox: () => null, Plus: () => null, Pencil: () => null, Trash2: () => null };
+        if (name === 'next/navigation') return { useRouter: () => ({ refresh() {} }), useSearchParams: () => ({ get: () => null }) };
+        if (name === 'lucide-react') return { Check: () => null, Inbox: () => null, Plus: () => null, Pencil: () => null, ReceiptText: () => null, Trash2: () => null };
         if (name === './PaymentRegistrationModal') return { PaymentRegistrationModal: () => null };
         if (name === './PaymentEditModal') return { PaymentEditModal: () => null, PaymentDeleteModal: () => null };
+        if (name === './CostsSection') return { CostsSection: () => null };
         if (name === '../../../lib/EntityHistory') return { EntityHistory: () => null };
         throw new Error(name);
       };

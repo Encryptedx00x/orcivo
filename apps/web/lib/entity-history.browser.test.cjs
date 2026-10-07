@@ -324,7 +324,7 @@ test('entity history renders reasons, actors and exact time; paginates, retries,
           const dependencies = (name) => {
             if (name === 'react') return React;
             if (name === 'next/navigation')
-              return { useRouter: () => ({ refresh() {}, back() {} }) };
+              return { useRouter: () => ({ refresh() {}, back() {} }), useSearchParams: () => ({ get: () => null }) };
             if (name === 'next/link')
               return {
                 default: ({ children }) => React.createElement('span', null, children),

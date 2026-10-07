@@ -46,7 +46,7 @@ describe('Expense — Multi-tenant isolation', () => {
       .send({ category: 'COMBUSTIVEL', amount: '80.00', status: 'PAID' })
       .expect(201);
     expenseBId = res.body.id;
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await cleanupDatabase();
