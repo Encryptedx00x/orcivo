@@ -31,7 +31,11 @@ function toIsoDate(date: string): string | undefined {
   return date ? new Date(`${date}T12:00:00`).toISOString() : undefined;
 }
 
-export function PaymentRegistrationModal({ customers, onClose, workOrder }: Props): JSX.Element {
+export function PaymentRegistrationModal({
+  customers,
+  onClose,
+  workOrder,
+}: Props): React.JSX.Element {
   const router = useRouter();
   const [customerId, setCustomerId] = useState(workOrder ? (customers[0]?.id ?? '') : '');
   const [description, setDescription] = useState(

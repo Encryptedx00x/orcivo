@@ -10,7 +10,7 @@ type AccountResult =
   | { ok: false; message: string };
 
 async function patchCompanyMe(body: Record<string, unknown>): Promise<Result> {
-  const token = cookies().get('access_token')?.value;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
   try {
     const response = await fetch(
@@ -75,7 +75,7 @@ export async function updateQuoteDefaults(body: {
 }
 
 export async function getAccountSettings(): Promise<AccountResult> {
-  const token = cookies().get('access_token')?.value;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
   try {
@@ -102,7 +102,7 @@ export async function updateAccountSettings(body: {
   current_password?: string;
   new_password?: string;
 }): Promise<AccountResult> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 

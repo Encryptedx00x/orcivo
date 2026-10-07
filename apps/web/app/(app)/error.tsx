@@ -6,7 +6,7 @@ export default function AppError({
 }: {
   error: Error & { digest?: string };
   reset: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div className="ov-card" style={{ padding: '56px 24px', textAlign: 'center' }} role="alert">
       <AlertTriangle

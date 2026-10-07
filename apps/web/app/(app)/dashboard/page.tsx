@@ -173,7 +173,7 @@ function Pill({ bg, color, children }: { bg: string; color: string; children: Re
   );
 }
 
-export default async function DashboardPage(): Promise<JSX.Element> {
+export default async function DashboardPage(): Promise<React.JSX.Element> {
   const s = await apiFetch<Summary>('/dashboard/summary');
 
   const now = new Date();

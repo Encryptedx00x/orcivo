@@ -170,10 +170,10 @@ describe('AC8 — middleware libera as rotas públicas sem access_token', () => 
     assert.match(res.location, /\/login$/);
   });
 
-  test('regressão: /login com sessão continua redirecionando para /clientes', async () => {
+  test('regressão: /login com sessão continua redirecionando para /dashboard', async () => {
     const res = await middlewareFor('/login', { access_token: liveJwt });
     assert.equal(res.kind, 'redirect');
-    assert.match(res.location, /\/clientes$/);
+    assert.match(res.location, /\/dashboard$/);
   });
 });
 

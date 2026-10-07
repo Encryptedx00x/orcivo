@@ -9,12 +9,12 @@ interface SubStatus {
   message: string | null;
 }
 
-export function SubscriptionBanner(): JSX.Element | null {
+export function SubscriptionBanner(): React.JSX.Element | null {
   const [status, setStatus] = useState<SubStatus | null>(null);
 
   useEffect(() => {
     fetch('/api/me/subscription-status')
-      .then(r => r.json())
+      .then((r) => r.json())
       .then(setStatus)
       .catch(() => {});
   }, []);
@@ -27,7 +27,10 @@ export function SubscriptionBanner(): JSX.Element | null {
     <div className={`${colorClass} text-white px-4 py-3 flex items-center gap-3`}>
       <AlertTriangle size={16} />
       <span className="text-sm flex-1">{status.message}</span>
-      <Link href="https://orcivo.com.br/planos" className="text-sm font-semibold underline whitespace-nowrap">
+      <Link
+        href="https://orcivo.com.br/planos"
+        className="text-sm font-semibold underline whitespace-nowrap"
+      >
         Ver planos
       </Link>
     </div>

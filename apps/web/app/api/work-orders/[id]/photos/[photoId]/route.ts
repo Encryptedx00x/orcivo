@@ -5,9 +5,10 @@ const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; photoId: string } },
+  props: { params: Promise<{ id: string; photoId: string }> },
 ): Promise<NextResponse> {
-  const cookieStore = cookies();
+  const params = await props.params;
+  const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   if (!token) {
     return NextResponse.json({ message: 'Não autenticado' }, { status: 401 });

@@ -60,7 +60,7 @@ function RolePill({ role }: { role: string }) {
   );
 }
 
-export default function EquipePage(): JSX.Element {
+export default function EquipePage(): React.JSX.Element {
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [showModal, setShowModal] = useState(false);

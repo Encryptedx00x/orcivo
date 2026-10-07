@@ -12,7 +12,7 @@ function harness(response, withRefresh = true) {
     .replace('export async function POST', 'module.exports = async function POST');
   const context = {
     module: { exports: {} }, AbortSignal,
-    cookies: () => ({ get: (key) => jar.has(key) ? { value: jar.get(key) } : undefined, delete: (key) => jar.delete(key) }),
+    cookies: async () => ({ get: (key) => jar.has(key) ? { value: jar.get(key) } : undefined, delete: (key) => jar.delete(key) }),
     NextResponse: { json: (body, options = {}) => ({ body, status: options.status ?? 200 }) },
     process: { env: { API_URL: 'https://fixture.invalid' } },
     fetch: async (url, options) => {

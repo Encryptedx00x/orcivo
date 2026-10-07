@@ -78,7 +78,7 @@ function ReasonModal({
   children: React.ReactNode;
   onClose: () => void;
   busy: boolean;
-}): JSX.Element {
+}): React.JSX.Element {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
@@ -154,7 +154,7 @@ interface Props {
   payments: WorkOrderPayment[];
 }
 
-export function WorkOrderDetail({ initial, payments }: Props): JSX.Element {
+export function WorkOrderDetail({ initial, payments }: Props): React.JSX.Element {
   const router = useRouter();
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
   const contact = contactLinks(order.customer.phone);

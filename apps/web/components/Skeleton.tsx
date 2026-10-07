@@ -1,4 +1,4 @@
-export function SkeletonListPage(): JSX.Element {
+export function SkeletonListPage(): React.JSX.Element {
   return (
     <div>
       <div className="ov-page-header">
@@ -36,7 +36,7 @@ export function SkeletonListPage(): JSX.Element {
   );
 }
 
-export function SkeletonDetailPage(): JSX.Element {
+export function SkeletonDetailPage(): React.JSX.Element {
   return (
     <div>
       <div className="ov-page-header">

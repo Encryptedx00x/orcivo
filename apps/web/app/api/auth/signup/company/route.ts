@@ -12,8 +12,13 @@ export async function POST(req: NextRequest) {
   });
   const data = await res.json();
   if (!res.ok) return NextResponse.json(data, { status: res.status });
-  const cookieOpts = { httpOnly: true, sameSite: 'strict' as const, secure: process.env['NODE_ENV'] === 'production', path: '/' };
-  cookies().set('access_token', data.access_token, cookieOpts);
-  if (data.refresh_token) cookies().set('refresh_token', data.refresh_token, cookieOpts);
+  const cookieOpts = {
+    httpOnly: true,
+    sameSite: 'strict' as const,
+    secure: process.env['NODE_ENV'] === 'production',
+    path: '/',
+  };
+  (await cookies()).set('access_token', data.access_token, cookieOpts);
+  if (data.refresh_token) (await cookies()).set('refresh_token', data.refresh_token, cookieOpts);
   return NextResponse.json({ user: data.user, company: data.company });
 }

@@ -76,14 +76,7 @@ test('entity history renders reasons, actors and exact time; paginates, retries,
     });
     await page.setContent('<div id="root"></div>');
     await page.addStyleTag({ path: path.join(__dirname, '../app/globals.css') });
-    for (const name of ['react', 'react-dom']) {
-      await page.addScriptTag({
-        path: path.join(
-          path.dirname(require.resolve(`${name}/package.json`)),
-          `umd/${name}.development.js`,
-        ),
-      });
-    }
+    await require('../test/browser-react.cjs').loadBrowserReact(page);
     await page.addScriptTag({
       content: `
       window.historyRequests = [];

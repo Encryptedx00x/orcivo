@@ -4,14 +4,14 @@ import { cookies } from 'next/headers';
 
 const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 
-function authHeader(): Record<string, string> {
-  const token = cookies().get('access_token')?.value;
+async function authHeader(): Promise<Record<string, string>> {
+  const token = (await cookies()).get('access_token')?.value;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /** PB1-P10/AC1-AC3: assinatura reutilizável do técnico, privada e tenant-scoped (P03 storage). */
 export async function getTechnicianSignature(): Promise<{ signature_url: string | null }> {
-  const auth = authHeader();
+  const auth = await authHeader();
   if (!auth['Authorization']) return { signature_url: null };
 
   const res = await fetch(`${API_URL}/users/me/signature`, {
@@ -25,7 +25,7 @@ export async function getTechnicianSignature(): Promise<{ signature_url: string 
 export async function saveTechnicianSignature(
   formData: FormData,
 ): Promise<{ ok: true; signature_url: string | null } | { ok: false; message: string }> {
-  const auth = authHeader();
+  const auth = await authHeader();
   if (!auth['Authorization']) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
   const res = await fetch(`${API_URL}/users/me/signature`, {
@@ -48,7 +48,7 @@ export async function sendQuoteWithSignature(
   /** Signature image (data URL) used only on this quote — not saved for reuse. */
   oneOffSignature?: string,
 ): Promise<{ ok: true; quote: unknown } | { ok: false; message: string }> {
-  const auth = authHeader();
+  const auth = await authHeader();
   if (!auth['Authorization']) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
 
   let res: Response;

@@ -15,7 +15,7 @@ export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
-}): Promise<JSX.Element> {
+}): Promise<React.JSX.Element> {
   let auth: AuthState = { user: null, company: null };
   try {
     const s = await apiFetch<SessionSummary>('/dashboard/summary');

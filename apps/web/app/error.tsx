@@ -6,7 +6,7 @@ export default function GlobalError({
 }: {
   error: Error & { digest?: string };
   reset: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <html lang="pt-BR">
       <body>

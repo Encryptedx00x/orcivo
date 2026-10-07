@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
-function LoginForm(): JSX.Element {
+function LoginForm(): React.JSX.Element {
   const router = useRouter();
   const intent = readCheckoutIntent(useSearchParams());
   const [email, setEmail] = useState('');
@@ -148,7 +148,7 @@ function LoginForm(): JSX.Element {
   );
 }
 
-export default function LoginPage(): JSX.Element {
+export default function LoginPage(): React.JSX.Element {
   return (
     <Suspense fallback={null}>
       <LoginForm />

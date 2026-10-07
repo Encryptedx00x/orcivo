@@ -137,7 +137,7 @@ interface Props {
 export function DocumentosContent({
   quotes: firstQuotes,
   workOrders: firstWorkOrders,
-}: Props): JSX.Element {
+}: Props): React.JSX.Element {
   const quoteList = usePagedList(firstQuotes, async (page) => {
     const rows = await loadQuotesPage(page);
     return (

@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   const res = await fetch(`${API_URL}${path}`, {
     ...options,

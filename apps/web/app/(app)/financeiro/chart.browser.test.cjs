@@ -86,22 +86,16 @@ test('daily chart shows exact Decimal totals and dates on hover and keyboard foc
     const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
     await page.setContent('<div id="root"></div>');
     await page.addStyleTag({ path: path.resolve(__dirname, '../../globals.css') });
-    for (const name of ['react', 'react-dom']) {
-      await page.addScriptTag({
-        path: path.join(
-          path.dirname(require.resolve(`${name}/package.json`)),
-          `umd/${name}.development.js`,
-        ),
-      });
-    }
+    await require('../../../test/browser-react.cjs').loadBrowserReact(page);
     await page.addScriptTag({
       content: `
       const exports = {};
       const require = (name) => {
         if (name === 'react') return React;
         if (name === 'next/navigation') return { useRouter: () => ({ refresh() {} }) };
-        if (name === 'lucide-react') return { Check: () => null, Inbox: () => null, Plus: () => null };
+        if (name === 'lucide-react') return { Check: () => null, Inbox: () => null, Plus: () => null, Pencil: () => null, Trash2: () => null };
         if (name === './PaymentRegistrationModal') return { PaymentRegistrationModal: () => null };
+        if (name === './PaymentEditModal') return { PaymentEditModal: () => null, PaymentDeleteModal: () => null };
         if (name === '../../../lib/EntityHistory') return { EntityHistory: () => null };
         throw new Error(name);
       };

@@ -78,7 +78,7 @@ const TECHNICIAN_SIGNATURE_METHODS: Array<{ key: TechnicianSignatureMethod; labe
   { key: 'PHOTO_SIGNATURE', label: 'Foto' },
 ];
 
-export default function OrcamentoDetail({ quote: initialQuote }: Props): JSX.Element {
+export default function OrcamentoDetail({ quote: initialQuote }: Props): React.JSX.Element {
   const router = useRouter();
   const [quote, setQuote] = useState<QuoteWithActions>(initialQuote);
   const [approvalUrl, setApprovalUrl] = useState<string | null>(null);

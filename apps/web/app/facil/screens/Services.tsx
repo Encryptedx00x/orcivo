@@ -246,7 +246,7 @@ export function ServicesScreen(): React.JSX.Element {
   );
 }
 
-export function RunScreen(): JSX.Element {
+export function RunScreen(): React.JSX.Element {
   const { params, tab } = useNav();
   const toast = useToast();
   const id = params.id ?? '';

@@ -36,7 +36,7 @@ const ESTADOS = [
   'TO',
 ];
 
-function SignupForm(): JSX.Element {
+function SignupForm(): React.JSX.Element {
   const router = useRouter();
   const intent = readCheckoutIntent(useSearchParams());
   const [step, setStep] = useState(1);
@@ -391,7 +391,7 @@ function SignupForm(): JSX.Element {
   );
 }
 
-export default function SignupPage(): JSX.Element {
+export default function SignupPage(): React.JSX.Element {
   return (
     <Suspense fallback={null}>
       <SignupForm />

@@ -44,7 +44,7 @@ function choiceStyle(active: boolean): React.CSSProperties {
 export function CheckoutForm(props: {
   initialPlan: PaidPlanCode;
   initialCycle: CycleCode;
-}): JSX.Element {
+}): React.JSX.Element {
   const router = useRouter();
   const [plan, setPlan] = useState<PaidPlanCode>(props.initialPlan);
   const [cycle, setCycle] = useState<CycleCode>(props.initialCycle);

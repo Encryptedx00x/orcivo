@@ -41,7 +41,7 @@ export function Chip({
   kind: ChipKind;
   label: string;
   small?: boolean;
-}): JSX.Element {
+}): React.JSX.Element {
   const c = CHIP[kind];
   return (
     <span
@@ -78,7 +78,7 @@ export function H1({
 }: {
   children: React.ReactNode;
   size?: number;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <h1
       style={{
@@ -95,7 +95,7 @@ export function H1({
   );
 }
 
-export function SectionLabel({ children }: { children: React.ReactNode }): JSX.Element {
+export function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <span style={{ fontSize: 17, fontWeight: 700, color: C.fg2, margin: '2px 4px 0' }}>
       {children}
@@ -124,7 +124,7 @@ export function Btn({
   height?: number;
   type?: 'button' | 'submit';
   style?: React.CSSProperties;
-}): JSX.Element {
+}): React.JSX.Element {
   const tones: Record<BtnTone, React.CSSProperties> = {
     primary: {
       background: disabled ? C.border : C.purple,
@@ -201,7 +201,7 @@ export function Options<T extends string | number>({
   onPick: (v: T) => void;
   cols?: number;
   height?: number;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
       {options.map((o) => {
@@ -242,7 +242,7 @@ export function Toggle({
   onClick: () => void;
   label: string;
   sub?: string;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <button
       type="button"
@@ -308,7 +308,7 @@ export function Field({
   placeholder?: string;
   inputMode?: 'text' | 'numeric' | 'tel';
   big?: boolean;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <span style={{ fontSize: 17, fontWeight: 600, color: C.ink }}>{label}</span>
@@ -344,7 +344,7 @@ export function Search({
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div
       style={{
@@ -391,7 +391,7 @@ export function Search({
   );
 }
 
-export function Avatar({ name, size = 48 }: { name: string; size?: number }): JSX.Element {
+export function Avatar({ name, size = 48 }: { name: string; size?: number }): React.JSX.Element {
   return (
     <span
       style={{
@@ -413,7 +413,7 @@ export function Avatar({ name, size = 48 }: { name: string; size?: number }): JS
   );
 }
 
-export function Loading(): JSX.Element {
+export function Loading(): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} aria-busy="true">
       <span style={{ fontSize: 17, fontWeight: 600, color: C.fg3, margin: '0 4px' }}>
@@ -443,7 +443,7 @@ export function ErrorBox({
   title: string;
   text?: string;
   onRetry: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div
       style={{
@@ -495,7 +495,7 @@ export function EmptyBox({
   text: string;
   action?: string;
   onAction?: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div
       style={{
@@ -532,7 +532,13 @@ export function EmptyBox({
   );
 }
 
-export function BackBar({ onBack, step }: { onBack: () => void; step?: number }): JSX.Element {
+export function BackBar({
+  onBack,
+  step,
+}: {
+  onBack: () => void;
+  step?: number;
+}): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div
@@ -592,9 +598,9 @@ export function ToastProvider({
 }: {
   children: ReactNode;
   bottom: number;
-}): JSX.Element {
+}): React.JSX.Element {
   const [toast, setToast] = useState<ToastState>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const show = useCallback((msg: string, undo?: () => void) => {
     clearTimeout(timer.current);
     setToast({ msg, undo });

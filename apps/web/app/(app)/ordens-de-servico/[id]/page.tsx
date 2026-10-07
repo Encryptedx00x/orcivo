@@ -4,10 +4,11 @@ import { fetchOneWorkOrder, fetchWorkOrderPayments } from '../../../../lib/work-
 import { WorkOrderDetail } from './WorkOrderDetail';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function WorkOrderDetailPage({ params }: Props): Promise<JSX.Element> {
+export default async function WorkOrderDetailPage(props: Props): Promise<React.JSX.Element> {
+  const params = await props.params;
   try {
     const [order, paymentResult] = await Promise.all([
       fetchOneWorkOrder(params.id),

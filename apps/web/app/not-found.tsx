@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { SearchX } from 'lucide-react';
 
-export default function NotFound(): JSX.Element {
+export default function NotFound(): React.JSX.Element {
   return (
     <div
       style={{

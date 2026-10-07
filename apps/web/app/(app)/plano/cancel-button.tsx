@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cancelSubscription } from './actions';
 
-export function CancelButton(): JSX.Element {
+export function CancelButton(): React.JSX.Element {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');

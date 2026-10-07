@@ -23,7 +23,7 @@ export function AuthProvider({
 }: {
   value: AuthState;
   children: ReactNode;
-}): JSX.Element {
+}): React.JSX.Element {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -137,7 +137,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-export function AgendaScreen(): JSX.Element {
+export function AgendaScreen(): React.JSX.Element {
   const { go, params } = useNav();
   const toast = useToast();
   // Opens on the day just booked (params.day) so the new appointment is in view.
@@ -343,7 +343,7 @@ export function AgendaScreen(): JSX.Element {
   );
 }
 
-export function AgendaNewScreen(): JSX.Element {
+export function AgendaNewScreen(): React.JSX.Element {
   const { params, tab } = useNav();
   const toast = useToast();
   const clients = useLoad(listClients);

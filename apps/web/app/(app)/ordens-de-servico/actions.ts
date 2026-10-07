@@ -51,7 +51,7 @@ export async function workOrderAction(
   const route = input.status ? 'status' : ACTION_ROUTES[input.action];
   if (!route) return { error: `Ação inválida: ${input.action}` };
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
 

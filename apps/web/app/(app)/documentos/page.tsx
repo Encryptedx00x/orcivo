@@ -2,7 +2,7 @@ import { quoteService } from '../../../lib/quote.service';
 import { fetchAllWorkOrders } from '../../../lib/work-order.service';
 import { DocumentosContent, type DocQuote, type DocWorkOrder } from './DocumentosContent';
 
-export default async function DocumentosPage(): Promise<JSX.Element> {
+export default async function DocumentosPage(): Promise<React.JSX.Element> {
   const [quotesRes, workOrdersRes] = await Promise.all([
     quoteService.fetchQuotes(1),
     fetchAllWorkOrders(1),

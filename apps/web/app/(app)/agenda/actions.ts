@@ -9,7 +9,7 @@ async function mutate(
   method: 'PATCH' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<Result> {
-  const token = cookies().get('access_token')?.value;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return { ok: false, message: 'Compromisso inválido.' };

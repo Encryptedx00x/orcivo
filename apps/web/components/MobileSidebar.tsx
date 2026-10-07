@@ -13,7 +13,7 @@ const MobileSidebarContext = createContext<MobileSidebarState>({
   close: () => {},
 });
 
-export function MobileSidebarProvider({ children }: { children: ReactNode }): JSX.Element {
+export function MobileSidebarProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <MobileSidebarContext.Provider

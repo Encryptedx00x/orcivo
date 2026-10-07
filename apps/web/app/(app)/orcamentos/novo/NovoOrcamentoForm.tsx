@@ -160,7 +160,7 @@ function Stepper({
 }
 
 // ── Main component ────────────────────────────────────────────────────
-export default function NovoOrcamentoForm(): JSX.Element {
+export default function NovoOrcamentoForm(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState(0);

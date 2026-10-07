@@ -151,7 +151,7 @@ const BACK_SCREENS: Screen[] = [
 ];
 const STEP: Partial<Record<Screen, number>> = { q1: 1, q2: 2, q3: 3 };
 
-export function EasyApp({ initial }: { initial?: Screen }): JSX.Element {
+export function EasyApp({ initial }: { initial?: Screen }): React.JSX.Element {
   const [stack, setStack] = useState<Entry[]>([{ screen: initial ?? 'home', params: {} }]);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -499,7 +499,7 @@ export function ActionBar({
   );
 }
 
-export function Hint({ children }: { children: React.ReactNode }): JSX.Element {
+export function Hint({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <span style={{ fontSize: 15, color: C.fg3, textAlign: 'center' }}>{children}</span>;
 }
 

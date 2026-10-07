@@ -13,7 +13,7 @@ interface Customer {
   created_at: string | null;
 }
 
-export function ClientesContent({ customers }: { customers: Customer[] }): JSX.Element {
+export function ClientesContent({ customers }: { customers: Customer[] }): React.JSX.Element {
   const [q, setQ] = useState('');
   const filtered = customers.filter(
     (c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.phone ?? '').includes(q),

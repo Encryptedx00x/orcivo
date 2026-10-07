@@ -3,10 +3,11 @@ import { quoteService } from '../../../../lib/quote.service';
 import OrcamentoDetail from './OrcamentoDetail';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function OrcamentoDetailPage({ params }: Props): Promise<JSX.Element> {
+export default async function OrcamentoDetailPage(props: Props): Promise<React.JSX.Element> {
+  const params = await props.params;
   let quote;
   try {
     quote = await quoteService.fetchQuote(params.id);

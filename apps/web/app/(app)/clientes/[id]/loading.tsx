@@ -1,5 +1,5 @@
 import { SkeletonDetailPage } from '../../../../components/Skeleton';
 
-export default function Loading(): JSX.Element {
+export default function Loading(): React.JSX.Element {
   return <SkeletonDetailPage />;
 }

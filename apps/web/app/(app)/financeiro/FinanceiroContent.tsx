@@ -58,7 +58,7 @@ const BADGE: Record<string, { bg: string; color: string; label: string }> = {
   CANCELLED: { bg: '#F1F5F9', color: '#64748B', label: 'Cancelado' },
 };
 
-function StatusBadge({ status }: { status: string }): JSX.Element {
+function StatusBadge({ status }: { status: string }): React.JSX.Element {
   const badge = BADGE[status] ?? BADGE.PENDING;
   return (
     <span
@@ -102,7 +102,7 @@ export function FinanceiroContent({
   bars,
   monthLabel,
   customers,
-}: Props): JSX.Element {
+}: Props): React.JSX.Element {
   const [statusFilter, setStatusFilter] = useState('todos');
   // ?registrar=1 opens the form directly (link from Modo fácil > Financeiro > Registrar).
   const [showModal, setShowModal] = useState(useSearchParams().get('registrar') === '1');

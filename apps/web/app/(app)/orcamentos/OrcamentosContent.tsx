@@ -68,7 +68,7 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OrcamentosContent({ quotes: firstPage }: { quotes: Quote[] }): JSX.Element {
+export function OrcamentosContent({ quotes: firstPage }: { quotes: Quote[] }): React.JSX.Element {
   const list = usePagedList(firstPage, loadQuotesPage);
   const quotes = list.items;
   const [tab, setTab] = useState('todos');

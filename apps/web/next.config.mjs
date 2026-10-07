@@ -10,9 +10,7 @@ const monorepoRoot = path.join(
 const nextConfig = {
   // Standalone tracing needs symlink privileges that this Windows environment lacks.
   output: process.platform === 'win32' ? undefined : 'standalone',
-  experimental: {
-    outputFileTracingRoot: monorepoRoot,
-  },
+  outputFileTracingRoot: monorepoRoot,
   poweredByHeader: false,
 };
 

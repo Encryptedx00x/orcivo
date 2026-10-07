@@ -36,7 +36,7 @@ function ModalFrame({
   title: string;
   children: React.ReactNode;
   onClose: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div
       role="dialog"
@@ -107,7 +107,7 @@ export function PaymentEditModal({
   payment: EditablePayment;
   onClose: () => void;
   onChanged: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   const router = useRouter();
   const [amount, setAmount] = useState(payment.amount.replace('.', ','));
   const [method, setMethod] = useState<PaymentMethod>(payment.method ?? 'PIX');
@@ -271,7 +271,7 @@ export function PaymentDeleteModal({
   payment: EditablePayment;
   onClose: () => void;
   onChanged: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   const router = useRouter();
   const [justification, setJustification] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -368,7 +368,7 @@ function Field({
   label: string;
   htmlFor: string;
   children: React.ReactNode;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div>
       <label className="ov-label" htmlFor={htmlFor}>

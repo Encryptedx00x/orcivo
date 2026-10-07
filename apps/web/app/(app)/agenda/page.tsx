@@ -54,7 +54,7 @@ interface CustomerOpt {
   name: string;
 }
 
-export default function AgendaPage(): JSX.Element {
+export default function AgendaPage(): React.JSX.Element {
   const [base, setBase] = useState(new Date());
   const [appts, setAppts] = useState<Appt[]>([]);
   const [customers, setCustomers] = useState<CustomerOpt[]>([]);
@@ -362,7 +362,7 @@ function AppointmentModal({
   customers: CustomerOpt[];
   onClose: () => void;
   onCreated: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   const start = appointment ? new Date(appointment.starts_at) : new Date();
   const end = appointment?.ends_at ? new Date(appointment.ends_at) : null;
   const [f, setF] = useState({

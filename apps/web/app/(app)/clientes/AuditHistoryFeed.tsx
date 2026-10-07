@@ -188,7 +188,7 @@ export function AuditHistoryFeed({
   entityType: EntityType;
   entityId: string;
   revision?: string | number;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <HistoryRows
       key={`${entityType}:${entityId}:${revision}`}

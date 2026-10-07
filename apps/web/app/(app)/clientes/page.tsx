@@ -10,7 +10,7 @@ interface Customer {
   created_at: string | null;
 }
 
-export default async function ClientesPage(): Promise<JSX.Element> {
+export default async function ClientesPage(): Promise<React.JSX.Element> {
   const data = await apiFetch<{ data: Customer[] }>('/customers?limit=100');
   return <ClientesContent customers={data.data} />;
 }

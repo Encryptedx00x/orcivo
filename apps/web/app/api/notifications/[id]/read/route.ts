@@ -6,9 +6,10 @@ const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'private,
 
 export async function PATCH(
   _: Request,
-  { params }: { params: { id: string } },
+  props: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const token = cookies().get('access_token')?.value;
+  const params = await props.params;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) return NextResponse.json({ message: 'Não autenticado' }, { status: 401, headers });
 
   try {

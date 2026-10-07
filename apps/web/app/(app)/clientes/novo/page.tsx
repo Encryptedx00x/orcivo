@@ -32,7 +32,7 @@ const MASKS: Record<string, (v: string) => string> = {
 
 type Tipo = 'fisica' | 'empresa';
 
-export default function NovoClientePage(): JSX.Element {
+export default function NovoClientePage(): React.JSX.Element {
   const router = useRouter();
   const [tipo, setTipo] = useState<Tipo>('fisica');
   const [form, setForm] = useState(EMPTY_FORM);

@@ -10,7 +10,7 @@ export function CatalogForm({
 }: {
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   children: React.ReactNode;
-}): JSX.Element {
+}): React.JSX.Element {
   const [state, setState] = useState<FormState>({ error: '' });
   const [pending, setPending] = useState(false);
 

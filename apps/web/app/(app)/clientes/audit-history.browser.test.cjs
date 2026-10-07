@@ -16,9 +16,7 @@ test('detail history renders all entity feeds, loading, empty, errors, paginatio
   try {
     const page = await browser.newPage();
     await page.setContent('<div id="root"></div>');
-    for (const name of ['react', 'react-dom']) {
-      await page.addScriptTag({ path: path.join(path.dirname(require.resolve(`${name}/package.json`)), `umd/${name}.development.js`) });
-    }
+    await require('../../../test/browser-react.cjs').loadBrowserReact(page);
     const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, 'AuditHistoryFeed.tsx'), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React },
     }).outputText;

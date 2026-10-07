@@ -46,7 +46,7 @@ const TYPE_LABEL: Record<string, string> = {
   LABOR: 'Mão de obra',
 };
 
-export function CatalogoContent({ items }: { items: InventoryItem[] }): JSX.Element {
+export function CatalogoContent({ items }: { items: InventoryItem[] }): React.JSX.Element {
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('todos');
   const [statusFilter, setStatusFilter] = useState('todos');

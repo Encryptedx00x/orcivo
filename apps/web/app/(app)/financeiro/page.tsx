@@ -36,7 +36,7 @@ function ddmm(iso?: string | null): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export default async function FinanceiroPage(): Promise<JSX.Element> {
+export default async function FinanceiroPage(): Promise<React.JSX.Element> {
   const [paymentsRes, customersRes] = await Promise.all([
     apiFetch<{ data: ApiPayment[] }>('/payments'),
     apiFetch<{ data: Array<{ id: string; name: string }> }>('/customers?limit=200'),

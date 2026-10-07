@@ -12,7 +12,7 @@ interface Props {
  * its rendered size so strokes land under the finger. A full-screen pad gives more
  * room on phones and hands the result back to the inline pad.
  */
-export function SignatureCanvas({ onSign }: Props): JSX.Element {
+export function SignatureCanvas({ onSign }: Props): React.JSX.Element {
   const inlineRef = useRef<HTMLCanvasElement>(null);
   const [full, setFull] = useState(false);
   const [hasInk, setHasInk] = useState(false);
@@ -76,10 +76,10 @@ function Pad({
   height,
   onChange,
 }: {
-  canvasRef: RefObject<HTMLCanvasElement>;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
   height: number | string;
   onChange: (canvas: HTMLCanvasElement, inked: boolean) => void;
-}): JSX.Element {
+}): React.JSX.Element {
   const drawing = useRef(false);
 
   // Match the backing store to the rendered size (× DPR) so strokes are crisp and aligned.
@@ -167,7 +167,7 @@ function FullScreenPad({
 }: {
   onCancel: () => void;
   onDone: (canvas: HTMLCanvasElement) => void;
-}): JSX.Element {
+}): React.JSX.Element {
   const ref = useRef<HTMLCanvasElement>(null);
   const [inked, setInked] = useState(false);
 

@@ -6,9 +6,10 @@ const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 /** Proxy para o PDF do orçamento — injeta token JWT do cookie httpOnly. */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  props: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const token = cookies().get('access_token')?.value;
+  const params = await props.params;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) {
     return NextResponse.json({ message: 'Não autenticado' }, { status: 401 });
   }

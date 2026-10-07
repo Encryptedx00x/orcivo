@@ -34,7 +34,7 @@ export function useEasyMode(): [boolean, (on: boolean) => void] {
 }
 
 /** Rendered by the standard (app) layout. */
-export function EasyModeGlue(): JSX.Element | null {
+export function EasyModeGlue(): React.JSX.Element | null {
   const [easyOn] = useEasyMode();
   const pathname = usePathname();
   const router = useRouter();

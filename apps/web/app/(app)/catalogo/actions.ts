@@ -14,7 +14,7 @@ function selectedPhoto(formData: FormData): File | null {
 }
 
 async function uploadCatalogPhoto(itemId: string, photo: File): Promise<void> {
-  const token = cookies().get('access_token')?.value;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) throw new Error('Not authenticated');
 
   const payload = new FormData();
@@ -29,7 +29,7 @@ async function uploadCatalogPhoto(itemId: string, photo: File): Promise<void> {
 }
 
 async function removeCatalogPhoto(itemId: string): Promise<void> {
-  const token = cookies().get('access_token')?.value;
+  const token = (await cookies()).get('access_token')?.value;
   if (!token) throw new Error('Not authenticated');
 
   const response = await fetch(`${API_URL}/catalog/${itemId}/photo`, {

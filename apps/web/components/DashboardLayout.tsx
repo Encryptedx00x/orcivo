@@ -5,7 +5,7 @@ import { LayoutGrid, List } from 'lucide-react';
 import { setEasyMode } from './EasyMode';
 
 /** Standard dashboard wrapper with the Padrão/Fácil switch (Fácil opens /facil). */
-export function DashboardLayout({ children }: { children: React.ReactNode }): JSX.Element {
+export function DashboardLayout({ children }: { children: React.ReactNode }): React.JSX.Element {
   const router = useRouter();
   return (
     <div className="ov-dash">

@@ -166,7 +166,7 @@ const TABS = [
   { id: 'modo', label: 'Modo fácil', icon: Smile },
 ];
 
-export default function ConfiguracoesPage(): JSX.Element {
+export default function ConfiguracoesPage(): React.JSX.Element {
   const [tab, setTab] = useState('empresa');
   const [methods, setMethods] = useState<Method[]>(ALL_METHODS);
   const [loading, setLoading] = useState(true);

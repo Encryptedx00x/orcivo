@@ -46,7 +46,7 @@ function notificationTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function TopBar(): JSX.Element {
+export function TopBar(): React.JSX.Element {
   const router = useRouter();
   const { company } = useAuth();
   const { toggle } = useMobileSidebar();

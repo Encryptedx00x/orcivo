@@ -89,7 +89,7 @@ function NavItem({
   );
 }
 
-export function AppSidebar(): JSX.Element {
+export function AppSidebar(): React.JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
   const { user, company } = useAuth();

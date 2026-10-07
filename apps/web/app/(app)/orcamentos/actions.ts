@@ -38,15 +38,15 @@ export interface QuoteActionInput {
 
 export type QuoteActionResult = { error?: string; quote?: QuoteWithActions };
 
-function authToken(): string | null {
-  return cookies().get('access_token')?.value ?? null;
+async function authToken(): Promise<string | null> {
+  return (await cookies()).get('access_token')?.value ?? null;
 }
 
 export async function quoteAction(id: string, input: QuoteActionInput): Promise<QuoteActionResult> {
   const route = ACTION_ROUTES[input.action];
   if (!route) return { error: `Ação inválida: ${input.action}` };
 
-  const token = authToken();
+  const token = await authToken();
   if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
 
   let res: Response;
@@ -77,7 +77,7 @@ export async function updateQuote(
   id: string,
   dto: Partial<QuoteUpdateDto>,
 ): Promise<QuoteActionResult> {
-  const token = authToken();
+  const token = await authToken();
   if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
 
   let res: Response;

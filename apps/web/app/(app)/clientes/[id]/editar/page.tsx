@@ -34,7 +34,7 @@ interface CustomerData {
   type?: string;
 }
 
-export default function EditarClientePage(): JSX.Element {
+export default function EditarClientePage(): React.JSX.Element {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
 

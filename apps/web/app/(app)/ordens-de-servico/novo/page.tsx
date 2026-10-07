@@ -14,7 +14,7 @@ interface CustomerOption {
   city: string | null;
 }
 
-function NovaOSContent(): JSX.Element {
+function NovaOSContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedClientId = searchParams.get('client_id') ?? '';
@@ -562,7 +562,7 @@ function NovaOSContent(): JSX.Element {
   );
 }
 
-export default function NovaOSPage(): JSX.Element {
+export default function NovaOSPage(): React.JSX.Element {
   return (
     <Suspense
       fallback={

@@ -95,7 +95,11 @@ function useTotals() {
   }, [draft]);
 }
 
-export function QuoteFlow({ step }: { step: 'q1' | 'q2' | 'q3' | 'sign' | 'done' }): JSX.Element {
+export function QuoteFlow({
+  step,
+}: {
+  step: 'q1' | 'q2' | 'q3' | 'sign' | 'done';
+}): React.JSX.Element {
   if (step === 'q1') return <Q1 />;
   if (step === 'q2') return <Q2 />;
   if (step === 'q3') return <Q3 />;
@@ -268,7 +272,7 @@ export function NewClientForm({
   onName: (v: string) => void;
   onPhone: (v: string) => void;
   onClose?: () => void;
-}): JSX.Element {
+}): React.JSX.Element {
   return (
     <div
       style={{

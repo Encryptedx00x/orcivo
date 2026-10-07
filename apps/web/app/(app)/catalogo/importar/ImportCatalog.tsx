@@ -35,7 +35,7 @@ const JSON_TEMPLATE = JSON.stringify(
   2,
 );
 
-export function ImportCatalog(): JSX.Element {
+export function ImportCatalog(): React.JSX.Element {
   const [selection, setSelection] = useState<{
     content: string;
     format: ImportFormat;

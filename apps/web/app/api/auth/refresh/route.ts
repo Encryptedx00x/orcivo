@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 export async function POST() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const refreshToken = cookieStore.get('refresh_token')?.value;
 
   if (!refreshToken) return NextResponse.json({ message: 'Sem refresh token' }, { status: 401 });
@@ -21,7 +21,12 @@ export async function POST() {
   }
 
   const data = await res.json();
-  const cookieOpts = { httpOnly: true, sameSite: 'strict' as const, secure: process.env['NODE_ENV'] === 'production', path: '/' };
+  const cookieOpts = {
+    httpOnly: true,
+    sameSite: 'strict' as const,
+    secure: process.env['NODE_ENV'] === 'production',
+    path: '/',
+  };
   cookieStore.set('access_token', data.access_token, cookieOpts);
   if (data.refresh_token) cookieStore.set('refresh_token', data.refresh_token, cookieOpts);
 

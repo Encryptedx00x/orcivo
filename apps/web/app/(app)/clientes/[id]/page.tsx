@@ -29,11 +29,10 @@ interface Quote {
   created_at: string;
 }
 
-export default async function ClienteDetailPage({
-  params,
-}: {
-  params: { id: string };
-}): Promise<JSX.Element> {
+export default async function ClienteDetailPage(props: {
+  params: Promise<{ id: string }>;
+}): Promise<React.JSX.Element> {
+  const params = await props.params;
   let customer: Customer | null = null;
   const quotes: Quote[] = [];
 

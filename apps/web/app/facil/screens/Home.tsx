@@ -40,7 +40,7 @@ const iconBox: React.CSSProperties = {
   justifyContent: 'center',
 };
 
-export function HomeScreen(): JSX.Element {
+export function HomeScreen(): React.JSX.Element {
   const { go, tab, setDraft } = useNav();
   const desktop = useIsDesktop();
   const { data, error, loading, reload } = useLoad(loadSummary);

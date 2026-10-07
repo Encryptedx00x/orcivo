@@ -1,6 +1,6 @@
 import type { InventoryItem } from './inventory';
 
-export function InventoryFields({ item }: { item?: InventoryItem }): JSX.Element {
+export function InventoryFields({ item }: { item?: InventoryItem }): React.JSX.Element {
   return (
     <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Preços e estoque</legend>

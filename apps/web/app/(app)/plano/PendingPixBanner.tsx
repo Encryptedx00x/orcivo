@@ -4,7 +4,7 @@ import { formatMoney } from '@orcivo/shared-types';
 import { PixPaymentView } from './PixPaymentView';
 import type { PendingPix } from './actions';
 
-export function PendingPixBanner({ pix }: { pix: PendingPix }): JSX.Element {
+export function PendingPixBanner({ pix }: { pix: PendingPix }): React.JSX.Element {
   const [open, setOpen] = useState(false);
 
   return (

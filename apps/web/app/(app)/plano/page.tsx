@@ -54,11 +54,10 @@ function ddmmyy(iso?: string | null): string {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
-export default async function PlanoPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}): Promise<JSX.Element> {
+export default async function PlanoPage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<React.JSX.Element> {
+  const searchParams = await props.searchParams;
   const [sub, paymentsRes, members, pendingPix] = await Promise.all([
     apiFetch<Subscription>('/billing/subscription'),
     apiFetch<{ data: SubPayment[] }>('/billing/payments'),

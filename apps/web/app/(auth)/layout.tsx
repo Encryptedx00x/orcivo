@@ -1,7 +1,7 @@
 import { AuthArtPanel } from '../../components/AuthArtPanel';
 import { BrandMark } from '../../components/BrandMark';
 
-export default function AuthLayout({ children }: { children: React.ReactNode }): JSX.Element {
+export default function AuthLayout({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <div
       className="ov-auth-grid"

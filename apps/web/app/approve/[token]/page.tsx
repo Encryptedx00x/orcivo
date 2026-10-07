@@ -28,7 +28,7 @@ type ApproveTab = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_S
 
 const PHOTO_MAX_SIZE = 1_500_000;
 
-export default function ApprovePage(): JSX.Element {
+export default function ApprovePage(): React.JSX.Element {
   const params = useParams();
   const token = params.token as string;
 

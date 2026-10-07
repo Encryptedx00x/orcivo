@@ -8,10 +8,11 @@ import { CatalogPhotoField } from '../../CatalogPhotoField';
 import type { InventoryItem } from '../../inventory';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function EditarCatalogoPage({ params }: Props): Promise<JSX.Element> {
+export default async function EditarCatalogoPage(props: Props): Promise<React.JSX.Element> {
+  const params = await props.params;
   let item: InventoryItem | null = null;
   let loadError = false;
 

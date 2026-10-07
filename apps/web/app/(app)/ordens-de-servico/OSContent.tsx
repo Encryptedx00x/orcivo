@@ -49,7 +49,7 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): JSX.Element {
+export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React.JSX.Element {
   const list = usePagedList(firstPage, loadWorkOrdersPage);
   const orders = list.items;
   const [q, setQ] = useState('');

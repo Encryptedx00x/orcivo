@@ -5,7 +5,7 @@ const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 
 /** Proxy para criação de orçamento — injeta token JWT do cookie httpOnly. */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   if (!token) {
     return NextResponse.json({ message: 'Não autenticado' }, { status: 401 });

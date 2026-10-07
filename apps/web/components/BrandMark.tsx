@@ -1,4 +1,4 @@
-export function BrandMark({ size = 32 }: { size?: number }): JSX.Element {
+export function BrandMark({ size = 32 }: { size?: number }): React.JSX.Element {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <span

@@ -46,7 +46,7 @@ const PAGE = 20;
 const tel = (phone: string | null) => (phone ? `tel:${onlyDigits(phone)}` : undefined);
 const wa = (phone: string | null) => (phone ? `https://wa.me/55${onlyDigits(phone)}` : undefined);
 
-export function ClientsScreen(): JSX.Element {
+export function ClientsScreen(): React.JSX.Element {
   const { go } = useNav();
   const clients = useLoad(listClients);
   const [q, setQ] = useState('');
@@ -185,7 +185,7 @@ const linkBtn: React.CSSProperties = {
   textDecoration: 'none',
 };
 
-export function ClientScreen(): JSX.Element {
+export function ClientScreen(): React.JSX.Element {
   const { params, go, tab, setDraft } = useNav();
   const toast = useToast();
   const id = params.id ?? '';
@@ -343,7 +343,7 @@ export function ClientScreen(): JSX.Element {
           >
             <span style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               <span style={{ fontSize: 18, fontWeight: 700 }}>Mais opções</span>
-              <span style={{ fontSize: 15, color: C.fg3 }}>WhatsApp, editar dados</span>
+              <span style={{ fontSize: 15, color: C.fg3 }}>WhatsApp, editar, excluir</span>
             </span>
             {more ? (
               <ChevronUp size={26} color={C.fg2} aria-hidden="true" />
@@ -428,7 +428,7 @@ export const menuRow: React.CSSProperties = {
   textDecoration: 'none',
 };
 
-export function ClientNewScreen(): JSX.Element {
+export function ClientNewScreen(): React.JSX.Element {
   const { tab } = useNav();
   const toast = useToast();
   const [name, setName] = useState('');

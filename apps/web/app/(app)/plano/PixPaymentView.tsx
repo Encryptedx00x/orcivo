@@ -8,7 +8,7 @@ export interface PixPaymentData {
   ticketUrl?: string | null;
 }
 
-export function PixPaymentView({ pix }: { pix: PixPaymentData }): JSX.Element {
+export function PixPaymentView({ pix }: { pix: PixPaymentData }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
 
   const copy = async (): Promise<void> => {

@@ -5,7 +5,7 @@ import { InventoryFields } from '../InventoryFields';
 import { CatalogForm } from '../CatalogForm';
 import { CatalogPhotoField } from '../CatalogPhotoField';
 
-export default function NovoCatalogoPage(): JSX.Element {
+export default function NovoCatalogoPage(): React.JSX.Element {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
