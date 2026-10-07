@@ -1,4 +1,7 @@
 import {
+  decimalPercentage,
+  formatMoney,
+  multiplyDecimal,
   PLAN_LIMITS,
   PLAN_PRESENTATION,
   PLAN_PRICING,
@@ -7,11 +10,6 @@ import {
 } from '@orcivo/shared-types';
 
 export type BillingCycle = 'yearly' | 'monthly';
-
-const currency = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-});
 
 export function getPlans() {
   return (Object.keys(PLAN_LIMITS) as PlanLimitCode[]).map((code) => ({
@@ -24,16 +22,19 @@ export function getPlans() {
 }
 
 export function priceLabel(code: PlanLimitCode, cycle: BillingCycle): string {
-  const price = Number(PLAN_PRICING[code][cycle]);
-  if (price === 0) return 'Grátis';
-  return `${currency.format(price).replace(/\s/g, '')}/${cycle === 'yearly' ? 'ano' : 'mês'}`;
+  const price = formatMoney(PLAN_PRICING[code][cycle]);
+  if (price === 'R$ 0,00') return 'Grátis';
+  return `${price.replace(/\s/g, '')}/${cycle === 'yearly' ? 'ano' : 'mês'}`;
 }
 
 // Desconto mínimo entre os planos pagos, sem prometer uma economia maior
 // que a disponível. Doze converte o preço mensal em um ano de assinatura.
 export function annualDiscount(): number {
   const discounts = Object.values(PLAN_PRICING)
-    .filter(({ monthly }) => Number(monthly) > 0)
-    .map(({ monthly, yearly }) => Math.floor((1 - Number(yearly) / (Number(monthly) * 12)) * 100));
+    .filter(({ monthly }) => formatMoney(monthly) !== 'R$ 0,00')
+    // Percent only (not money): yearly as a share of twelve monthly payments.
+    .map(({ monthly, yearly }) =>
+      Math.floor(100 - Number(decimalPercentage(yearly, multiplyDecimal(monthly, '12')))),
+    );
   return discounts.length ? Math.max(0, Math.min(...discounts)) : 0;
 }

@@ -9,8 +9,9 @@ export const metadata = pageMetadata(
 );
 
 import Link from 'next/link';
+import type { JSX } from 'react';
 
-export default function PrivacidadePage() {
+export default function PrivacidadePage(): JSX.Element {
   return (
     <div className="min-h-screen bg-white">
       <header className="border-b border-slate-100">

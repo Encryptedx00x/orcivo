@@ -4,7 +4,18 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { QuoteDocOptions } from '@orcivo/shared-types';
 import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
-import { MessageCircle, Download, X, Send, Pencil, Undo2, Wrench, XCircle } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  MessageCircle,
+  Download,
+  X,
+  Send,
+  Pencil,
+  Undo2,
+  Wrench,
+  XCircle,
+} from 'lucide-react';
 import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
 import { SignatureCanvas } from '../../../approve/[token]/SignatureCanvas';
@@ -517,6 +528,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
                     }}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
+                  <CopyLink url={approvalUrl} />
                   {quote.customer.phone && (
                     <button
                       onClick={() =>
@@ -761,6 +773,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
                     }}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
+                  <CopyLink url={currentApprovalUrl} />
                 </div>
               </div>
             )}
@@ -1232,6 +1245,25 @@ const sectionTitle: React.CSSProperties = {
   marginBottom: 16,
   color: '#0A0A0F',
 };
+/** Copies the approval link; the label confirms for 2 s. */
+function CopyLink({ url }: { url: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void navigator.clipboard.writeText(url).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+      }
+      style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
+    >
+      {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copiado' : 'Copiar link'}
+    </button>
+  );
+}
+
 const btnPrimary: React.CSSProperties = {
   ...actionBase,
   backgroundColor: '#6D28D9',

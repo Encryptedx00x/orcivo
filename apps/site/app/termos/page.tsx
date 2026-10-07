@@ -10,8 +10,9 @@ export const metadata = pageMetadata(
 );
 
 import Link from 'next/link';
+import type { JSX } from 'react';
 
-export default function TermosPage() {
+export default function TermosPage(): JSX.Element {
   const plans = getPlans();
 
   return (
