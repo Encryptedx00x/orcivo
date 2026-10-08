@@ -28,6 +28,10 @@ try { Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop } catch { }
 
 function ConvertFrom-JsonTyped {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Json, [int]$MaxLen = 8000000, [int]$RecursionLimit = 64)
+    if ($Json.Length -gt $MaxLen) { throw "JSON exceeds MaxLen ($MaxLen)" }
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        return ($Json | ConvertFrom-Json -AsHashtable -Depth $RecursionLimit)
+    }
     $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
     $ser.MaxJsonLength = $MaxLen
     $ser.RecursionLimit = $RecursionLimit

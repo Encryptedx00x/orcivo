@@ -1,4 +1,4 @@
-<# GL-01..GL-17 GLM (nvidia/z-ai/glm-5.3 via OpenCode) provider integration suite.
+<# GL-01..GL-18 GLM 5.3 (Z.AI primary, NVIDIA NIM quota fallback) provider integration suite.
    Deterministic: no model calls; provider health is pinned through the harness
    fault seam and CLI resolution through a fixture config. #>
 param()
@@ -18,26 +18,27 @@ try{
     $env:PATH="$testBin;$originalPath"
     $runtime=Join-Path $root 'provider-runtime.v1.json';$script:DeepSeekRuntimePath=$runtime;$script:DeepSeekBudgetDir=Join-Path $root 'budgets';$registry=Join-Path $root 'deepseek-price-registry.v1.json';Copy-Item (Join-Path $v2 'deepseek-price-registry.v1.json') $registry;$script:DeepSeekPriceRegistryPath=$registry
     $manifest=Read-V2Json $registry
-    function New-GlmRuntime([string]$GlmModel='nvidia/z-ai/glm-5.3',[string[]]$Enabled=@('glm','deepseek')){
-        return [ordered]@{schemaVersion='orcivo.orchestration.v2.provider-runtime/1';enabled=$true;enabledProviders=$Enabled;excludedProviders=@('claude','codex');budgets=[ordered]@{monthlyDeepSeekBudgetUsd=5};deepseek=[ordered]@{baseUrl='https://api.deepseek.com/';wireApi='responses';envKey='DEEPSEEK_API_KEY';codexHomeRoot='orcivo-dispatcher/providers/deepseek-codex';profiles=[ordered]@{FAST=[ordered]@{model='deepseek-v4-flash';reasoning='low';maxEstimatedUsd=0.03};BALANCED=[ordered]@{model='deepseek-v4-pro';reasoning='high';maxEstimatedUsd=0.20};REASONING=[ordered]@{model='deepseek-v4-pro';reasoning='high';maxEstimatedUsd=0.20}};pricing=[ordered]@{status='VERIFIED';manifestHash=[string]$manifest.manifestHash}};codex=[ordered]@{profiles=[ordered]@{CRITICAL=[ordered]@{model='gpt-5.6-terra';reasoning='high'}}};glm=[ordered]@{model=$GlmModel}}
+    function New-GlmRuntime([string]$GlmModel='zai-coding-plan/glm-5.3',[string[]]$Enabled=@('glm')){
+        return [ordered]@{schemaVersion='orcivo.orchestration.v2.provider-runtime/1';enabled=$true;enabledProviders=$Enabled;excludedProviders=@('deepseek','claude','codex');budgets=[ordered]@{monthlyDeepSeekBudgetUsd=5};deepseek=[ordered]@{baseUrl='https://api.deepseek.com/';wireApi='responses';envKey='DEEPSEEK_API_KEY';codexHomeRoot='orcivo-dispatcher/providers/deepseek-codex';profiles=[ordered]@{FAST=[ordered]@{model='deepseek-v4-flash';reasoning='low';maxEstimatedUsd=0.03};BALANCED=[ordered]@{model='deepseek-v4-pro';reasoning='high';maxEstimatedUsd=0.20};REASONING=[ordered]@{model='deepseek-v4-pro';reasoning='high';maxEstimatedUsd=0.20}};pricing=[ordered]@{status='VERIFIED';manifestHash=[string]$manifest.manifestHash}};codex=[ordered]@{profiles=[ordered]@{CRITICAL=[ordered]@{model='gpt-5.6-terra';reasoning='high'}}};glm=[ordered]@{model=$GlmModel}}
     }
     $cfg=New-GlmRuntime;Write-TestJson $runtime $cfg
 
     Check 'GL-01' {
-        Assert-True ((Get-GlmModelId) -eq 'nvidia/z-ai/glm-5.3') 'model contract id drifted'
+        Assert-True ((Get-GlmModelId) -eq 'zai-coding-plan/glm-5.3') 'primary model contract id drifted'
+        Assert-True ((Get-GlmFallbackModelId) -eq 'nvidia/z-ai/glm-5.3') 'fallback model contract id drifted'
         $args=@(Get-GlmInvocationArgs)
-        Assert-True (($args -join ' ') -eq 'run --model nvidia/z-ai/glm-5.3 --format json --pure') "invocation args drifted: $($args -join ' ')"
+        Assert-True (($args -join ' ') -eq 'run --model zai-coding-plan/glm-5.3 --format json --pure') "invocation args drifted: $($args -join ' ')"
         Assert-True ($args -notcontains '--variant') 'variant selector must never be pinned'
         Assert-True ($args -notcontains '--continue' -and $args -notcontains '--session') 'session continuation must never be pinned'
     }
     Check 'GL-02' {
         foreach($profile in @('FAST','BALANCED','REASONING')){
             $plan=Get-GlmRuntimePlan -Profile $profile
-            Assert-True ($plan.ok -and $plan.model -eq 'nvidia/z-ai/glm-5.3') "$profile did not resolve the exact model"
+            Assert-True ($plan.ok -and $plan.model -eq 'zai-coding-plan/glm-5.3') "$profile did not resolve the exact primary model"
         }
+        Assert-True ((Get-GlmRuntimePlan -Profile REASONING -ModelId (Get-GlmFallbackModelId)).ok) 'NVIDIA NIM fallback route was rejected'
         Assert-True (-not (Get-GlmRuntimePlan -Profile CRITICAL).ok) 'CRITICAL must stay reserved for Codex Plus Terra'
-        Write-TestJson $runtime (New-GlmRuntime -GlmModel 'glm-drifted-model')
-        Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING).ok) 'runtime model drift was accepted'
+        Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING -ModelId 'glm-drifted-model').ok) 'runtime model drift was accepted'
         $disabled=New-GlmRuntime;$disabled.enabled=$false;Write-TestJson $runtime $disabled
         Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING).ok) 'disabled runtime was accepted'
         Write-TestJson $runtime (New-GlmRuntime)
@@ -52,8 +53,10 @@ try{
             $script:V2Config=$fixturePath;$script:V2Dir=$localV2
             $r=Resolve-Provider -Profile REASONING -Provider 'glm'
             Assert-True ($r.ok) "glm route failed: $($r.reason)"
-            Assert-True ($r.model -eq 'nvidia/z-ai/glm-5.3') "glm route model drifted: $($r.model)"
-            Assert-True (($r.invocationArgs -join ' ') -match 'nvidia/z-ai/glm-5.3') 'route args lost the exact model'
+            Assert-True ($r.model -eq 'zai-coding-plan/glm-5.3') "glm primary route model drifted: $($r.model)"
+            Assert-True (($r.invocationArgs -join ' ') -match 'zai-coding-plan/glm-5.3') 'route args lost the primary model'
+            $fallback=Resolve-Provider -Profile REASONING -Provider 'glm' -ModelOverride (Get-GlmFallbackModelId)
+            Assert-True ($fallback.ok -and $fallback.model -eq 'nvidia/z-ai/glm-5.3') 'NVIDIA NIM fallback override was rejected'
             $bad=Resolve-Provider -Profile REASONING -Provider 'glm' -ModelOverride 'other-model'
             Assert-True (-not $bad.ok) 'model override was accepted'
             $fixtureCfg.providers.glm.bin='opencode-cli-missing-glmtest'
@@ -106,20 +109,15 @@ try{
         Assert-True ($incomplete -eq 'INCOMPLETE_PROVIDER_RESULT' -and -not (Test-IsCanonicalProviderClass $incomplete)) 'exit-zero without terminal must stay fail-closed INCOMPLETE'
     }
     Check 'GL-06' {
-        Assert-True ((Get-OrcivoEnabledProviders) -join ',' -eq 'glm,deepseek') 'enabled set must be glm,deepseek with glm first'
-        $rv=Select-Reviewer -ImplementerProvider 'glm' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('glm','deepseek')
-        Assert-True ($rv.reviewer -eq 'deepseek' -and $rv.crossProvider) 'GLM implementer must be reviewed by DeepSeek'
-        $rv=Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('glm','deepseek')
-        Assert-True ($rv.reviewer -eq 'glm' -and $rv.crossProvider) 'DeepSeek implementer must be reviewed by GLM (current candidate)'
-        $rv=Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('deepseek')
-        Assert-True (-not $rv.ok -and $rv.escalate) 'opposite unavailable must escalate, never same-provider'
-        Assert-True ((Get-OrcivoOppositeProvider -Provider 'codex' -Candidates @('claude','codex','deepseek','glm')) -eq 'deepseek') 'codex opposite drifted'
-        Assert-True ((Get-OrcivoOppositeProvider -Provider 'claude' -Candidates @('claude','codex')) -eq 'codex') 'claude opposite drifted'
+        Assert-True ((Get-OrcivoEnabledProviders) -join ',' -eq 'glm') 'only GLM may be enabled in the owner-approved chain'
+        $rv=Get-OrcivoReviewProviderWithSelfFallback -Provider 'glm' -Candidates @('glm')
+        Assert-True ($rv.provider -eq 'glm' -and $rv.selfReview) 'GLM fresh-session self-review fallback was not selected'
+        Assert-True ((Get-OrcivoOppositeProvider -Provider 'glm' -Candidates @('glm')) -eq $null) 'an excluded reviewer leaked into the chain'
     }
     Check 'GL-07' {
         $oldV2=$script:V2Dir;$oldCfg=$script:V2Config;$oldLedger=$script:LedgerDir;$oldRuntime=$script:DeepSeekRuntimePath;$oldBudget=$script:DeepSeekBudgetDir;$oldRegistry=$script:DeepSeekPriceRegistryPath
         try{
-            $localV2=Join-Path $root 'v2resume';New-Item -ItemType Directory -Force -Path $localV2|Out-Null;Copy-Item (Join-Path (Get-RepoRoot) '.orchestration\v2\config.v2.json') (Join-Path $localV2 'config.v2.json')
+            $localV2=Join-Path $root 'v2resume';New-Item -ItemType Directory -Force -Path $localV2|Out-Null;Copy-Item (Join-Path (Get-RepoRoot) '.orchestration\v2\config.v2.json') (Join-Path $localV2 'config.v2.json');Write-TestJson $runtime (New-GlmRuntime -Enabled @('glm','deepseek'))
             $script:V2Dir=$localV2;$script:V2Config=Join-Path $localV2 'config.v2.json';$script:LedgerDir=Join-Path $localV2 'ledger';$script:DeepSeekRuntimePath=$runtime;$script:DeepSeekBudgetDir=Join-Path $localV2 'budgets';$script:DeepSeekPriceRegistryPath=$registry
             $tv='a'*64;$run='run-glm-current-candidate'
             Initialize-LedgerTask -TaskVersionId $tv -Identity @{taskId='PB1-P02-audit-service'}|Out-Null
@@ -180,13 +178,13 @@ try{
     }
     Check 'GL-09' {
         $route=Resolve-Provider -Profile BALANCED -Provider 'glm'
-        Assert-True (-not $route.ok -or $route.model -eq 'nvidia/z-ai/glm-5.3') 'resolved glm route lost the exact model'
-        Assert-True ((Get-GlmRuntimePlan -Profile BALANCED).model -eq 'nvidia/z-ai/glm-5.3') 'plan model drifted'
+        Assert-True (-not $route.ok -or $route.model -eq 'zai-coding-plan/glm-5.3') 'resolved glm route lost the primary model'
+        Assert-True ((Get-GlmRuntimePlan -Profile BALANCED).model -eq 'zai-coding-plan/glm-5.3') 'primary plan model drifted'
     }
     Check 'GL-10' {
         $cfg2=New-GlmRuntime -Enabled @('glm','deepseek','claude','codex');Write-TestJson $runtime $cfg2
         $enabled=Get-OrcivoEnabledProviders
-        Assert-True (($enabled -join ',') -eq 'glm,deepseek') "excluded providers leaked into the enabled set: $($enabled -join ',')"
+        Assert-True (($enabled -join ',') -eq 'glm') "excluded providers leaked into the enabled set: $($enabled -join ',')"
         Write-TestJson $runtime (New-GlmRuntime)
     }
     Check 'GL-11' {
@@ -235,8 +233,8 @@ try{
         Assert-True (-not (Test-DispatcherAuthorizedReviewSuccessionEligible -State $state -Task $task -Contract $contract -TaskSource $source)) 'eligibility accepted a state without the preserved workspace'
     }
     Check 'GL-13' {
-        $pinned=[ordered]@{authorizedReviewRoute=[ordered]@{provider='glm';model='nvidia/z-ai/glm-5.3';profile='REASONING'}}
-        $okRoute=[ordered]@{ok=$true;provider='glm';model='nvidia/z-ai/glm-5.3'}
+        $pinned=[ordered]@{authorizedReviewRoute=[ordered]@{provider='glm';model='zai-coding-plan/glm-5.3';profile='REASONING'}}
+        $okRoute=[ordered]@{ok=$true;provider='glm';model='zai-coding-plan/glm-5.3'}
         Assert-DispatcherAuthorizedReviewRoute -State $pinned -Reviewer 'glm' -Profile 'REASONING' -Route $okRoute
         foreach($bad in @(
             @{reviewer='deepseek';profile='REASONING';route=$okRoute},
@@ -250,7 +248,7 @@ try{
         }
         Assert-DispatcherAuthorizedReviewRoute -State ([ordered]@{}) -Reviewer 'codex' -Profile 'CRITICAL' -Route ([ordered]@{ok=$false}) # no pin -> no-op
         Assert-True (-not (Resolve-Provider -Profile CRITICAL -Provider 'glm').ok) 'generic CRITICAL implementation route was relaxed for GLM'
-        Assert-True ((Resolve-Provider -Profile REASONING -Provider 'glm').model -eq 'nvidia/z-ai/glm-5.3') 'pinned REASONING review route lost the exact model'
+        Assert-True ((Resolve-Provider -Profile REASONING -Provider 'glm').model -eq 'zai-coding-plan/glm-5.3') 'pinned REASONING review route lost the primary model'
     }
     Check 'GL-14' {
         # The closed succession may never be reachable from a well-formed but
@@ -299,14 +297,10 @@ try{
         Assert-True ($blocks.Count -eq 2 -and "$($blocks[0].tag)" -eq 'js' -and "$($blocks[1].tag)" -eq 'json') 'bounded fence scanner mis-parsed tags or blocks'
     }
     Check 'GL-17' {
-        # NVIDIA NIM backend migration regression.  The retired
-        # zai-coding-plan/glm-5.3 id may never come back as the LIVE runtime
-        # model, but historical evidence bound to it stays valid immutable
-        # proof: a receipt recovers under the model bound to its own
-        # invocation and is never silently reinterpreted under the migrated
-        # id, and the invocation-boundary sync moves ONLY the durable current
-        # route - historical provider history and the attempt counter are
-        # never rewritten, and an unresolvable route refuses the sync.
+        # Owner decision 2026-10-07: Z.AI is primary and NVIDIA NIM is the
+        # same-model quota/rate fallback. Receipts remain bound to the route
+        # used by their invocation; invocation-boundary sync preserves the
+        # selected durable fallback and never rewrites history.
         $oldV2=$script:V2Dir;$oldCfg=$script:V2Config;$oldLedger=$script:LedgerDir;$oldRuntime=$script:DeepSeekRuntimePath;$oldBudget=$script:DeepSeekBudgetDir
         try{
             $localV2=Join-Path $root 'v2migration';New-Item -ItemType Directory -Force -Path $localV2|Out-Null
@@ -315,7 +309,7 @@ try{
             Copy-Item (Join-Path (Get-RepoRoot) '.orchestration\v2\schemas\*.json') (Join-Path $localV2 'schemas')
             $script:V2Dir=$localV2;$script:V2Config=Join-Path $localV2 'config.v2.json';$script:LedgerDir=Join-Path $localV2 'ledger';$script:DeepSeekBudgetDir=Join-Path $localV2 'budgets'
             Write-TestJson $runtime (New-GlmRuntime -GlmModel 'zai-coding-plan/glm-5.3')
-            Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING).ok) 'the retired zai-coding-plan route was accepted as the live runtime model'
+            Assert-True ((Get-GlmRuntimePlan -Profile REASONING).ok) 'the owner-approved Z.AI primary route was rejected'
             Write-TestJson $runtime (New-GlmRuntime)
             $logs=Join-Path $root 'gl17-logs';New-Item -ItemType Directory -Force -Path $logs|Out-Null
             function New-Gl17Invocation([string]$Model,[int]$Attempt){
@@ -329,30 +323,30 @@ try{
                 [void](ConvertTo-RealAgentInvocationResult -Provider glm -Role 'implementer' -InvocationId $id -Attempt $Attempt -Profile 'REASONING' -Route ([ordered]@{model=$Model;reasoningIntent='high';capabilityVersion=''}) -ExitCode 0 -DurationSec 0.1 -StdoutText $raw -PromptFile $promptPath -StdoutLog $stdoutPath -StderrLog $stderrPath)
                 return @{id=$id;model=$Model;attempt=$Attempt;promptPath=$promptPath}
             }
-            $hist=New-Gl17Invocation 'zai-coding-plan/glm-5.3' 7
-            $current=New-Gl17Invocation 'nvidia/z-ai/glm-5.3' 8
-            $histRecovered=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $hist.id -Attempt 7 -Profile 'REASONING' -Model 'zai-coding-plan/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $hist.promptPath -PromptHash (New-FileHash $hist.promptPath)
-            Assert-True ("$($histRecovered.outcome)" -eq 'RECOVERED_TERMINAL_RESULT' -and [string]$histRecovered.source -eq 'AGENT_RESULT_RECEIPT' -and [string]$histRecovered.agentResult.model -eq 'zai-coding-plan/glm-5.3') 'a receipt bound to the retired model no longer validates as immutable historical evidence'
-            $histReinterpreted=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $hist.id -Attempt 7 -Profile 'REASONING' -Model 'nvidia/z-ai/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $hist.promptPath -PromptHash (New-FileHash $hist.promptPath)
-            Assert-True ("$($histReinterpreted.outcome)" -eq 'UNRECOVERABLE_OR_AMBIGUOUS' -and "$($histReinterpreted.reason)" -match 'receipt binding mismatch') 'historical Z.ai evidence was reinterpreted under the migrated model id'
-            $currentRecovered=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $current.id -Attempt 8 -Profile 'REASONING' -Model 'nvidia/z-ai/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $current.promptPath -PromptHash (New-FileHash $current.promptPath)
-            Assert-True ("$($currentRecovered.outcome)" -eq 'RECOVERED_TERMINAL_RESULT' -and [string]$currentRecovered.agentResult.model -eq 'nvidia/z-ai/glm-5.3') 'a receipt bound to the NVIDIA model did not validate under the current contract'
-            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId='run-gl17-migration';taskId='PB1-P02-audit-service';taskVersionId=('a'*64);status='RUNNING';stage='IMPLEMENT';reason='';workspace='C:\nowhere';branch='main';baseSha=('b'*40);provider='glm';profile='REASONING';model='zai-coding-plan/glm-5.3';attempt=7;cycle=0;implementationComplete=$false;providerHistory=@([ordered]@{invocationId=$hist.id;role='IMPLEMENTER';provider='glm';model='zai-coding-plan/glm-5.3';attempt=7;resultClass='SUCCESS'});workspaceInvocationSnapshots=@();workspaceInvocationResultSnapshots=@()}
+            $hist=New-Gl17Invocation 'nvidia/z-ai/glm-5.3' 7
+            $current=New-Gl17Invocation 'zai-coding-plan/glm-5.3' 8
+            $histRecovered=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $hist.id -Attempt 7 -Profile 'REASONING' -Model 'nvidia/z-ai/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $hist.promptPath -PromptHash (New-FileHash $hist.promptPath)
+            Assert-True ("$($histRecovered.outcome)" -eq 'RECOVERED_TERMINAL_RESULT' -and [string]$histRecovered.source -eq 'AGENT_RESULT_RECEIPT' -and [string]$histRecovered.agentResult.model -eq 'nvidia/z-ai/glm-5.3') 'a receipt bound to the NIM fallback no longer validates as immutable historical evidence'
+            $histReinterpreted=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $hist.id -Attempt 7 -Profile 'REASONING' -Model 'zai-coding-plan/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $hist.promptPath -PromptHash (New-FileHash $hist.promptPath)
+            Assert-True ("$($histReinterpreted.outcome)" -eq 'UNRECOVERABLE_OR_AMBIGUOUS' -and "$($histReinterpreted.reason)" -match 'receipt binding mismatch') 'historical NIM evidence was reinterpreted under the primary model id'
+            $currentRecovered=Recover-RealAgentResultFromArtifacts -Provider glm -Role 'IMPLEMENTER' -InvocationId $current.id -Attempt 8 -Profile 'REASONING' -Model 'zai-coding-plan/glm-5.3' -ReasoningEffort 'high' -LogsDir $logs -PromptArtifact $current.promptPath -PromptHash (New-FileHash $current.promptPath)
+            Assert-True ("$($currentRecovered.outcome)" -eq 'RECOVERED_TERMINAL_RESULT' -and [string]$currentRecovered.agentResult.model -eq 'zai-coding-plan/glm-5.3') 'a receipt bound to the Z.AI primary did not validate under the current contract'
+            $state=[ordered]@{schemaVersion='orcivo.orchestration.v2.dispatch-state/1';runId='run-gl17-migration';taskId='PB1-P02-audit-service';taskVersionId=('a'*64);status='RUNNING';stage='IMPLEMENT';reason='';workspace='C:\nowhere';branch='main';baseSha=('b'*40);provider='glm';profile='REASONING';model='nvidia/z-ai/glm-5.3';attempt=7;cycle=0;implementationComplete=$false;providerHistory=@([ordered]@{invocationId=$hist.id;role='IMPLEMENTER';provider='glm';model='nvidia/z-ai/glm-5.3';attempt=7;resultClass='SUCCESS'});workspaceInvocationSnapshots=@();workspaceInvocationResultSnapshots=@()}
             Write-DispatcherState $state|Out-Null
             $sync=Sync-DispatcherInvocationRoute (Get-DispatcherState)
-            Assert-True ([bool]$sync.ok -and [bool]$sync.synced) "invocation route sync failed: $($sync.reason)"
+            Assert-True ([bool]$sync.ok -and -not [bool]$sync.synced) "durable fallback route was not preserved: $($sync.reason)"
             $synced=Get-DispatcherState
-            Assert-True ([string]$synced.model -eq 'nvidia/z-ai/glm-5.3' -and [string]$synced.provider -eq 'glm' -and [string]$synced.profile -eq 'REASONING') 'the sync did not persist the resolved NVIDIA route as the durable current route'
-            Assert-True ([string]$synced.providerHistory[0].model -eq 'zai-coding-plan/glm-5.3' -and [int]$synced.attempt -eq 7) 'the sync rewrote historical provider history or the attempt counter'
+            Assert-True ([string]$synced.model -eq 'nvidia/z-ai/glm-5.3' -and [string]$synced.provider -eq 'glm' -and [string]$synced.profile -eq 'REASONING') 'the invocation boundary did not preserve the selected NIM fallback route'
+            Assert-True ([string]$synced.providerHistory[0].model -eq 'nvidia/z-ai/glm-5.3' -and [int]$synced.attempt -eq 7) 'the sync rewrote historical provider history or the attempt counter'
             $failCfg=Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) '.orchestration\v2\config.v2.json')|ConvertFrom-Json
             $failCfg.providers.glm.bin='opencode-cli-missing-gl17'
             $failPath=Join-Path $localV2 'config.missing-glm.v2.json';Write-TestJson $failPath $failCfg
             $script:V2Config=$failPath
-            $stale=Get-DispatcherState;$stale.model='zai-coding-plan/glm-5.3';Write-DispatcherState $stale|Out-Null
+            $stale=Get-DispatcherState;$stale.model='nvidia/z-ai/glm-5.3';Write-DispatcherState $stale|Out-Null
             $refused=Sync-DispatcherInvocationRoute (Get-DispatcherState)
             Assert-True (-not [bool]$refused.ok -and -not [bool]$refused.synced -and "$($refused.reason)" -match 'not installed') 'an unresolvable invocation route was reported as synced'
             $refusedState=Get-DispatcherState
-            Assert-True ([string]$refusedState.model -eq 'zai-coding-plan/glm-5.3' -and [int]$refusedState.attempt -eq 7 -and [string]$refusedState.providerHistory[0].model -eq 'zai-coding-plan/glm-5.3') 'a refused sync mutated the durable route, the attempt counter, or historical evidence'
+            Assert-True ([string]$refusedState.model -eq 'nvidia/z-ai/glm-5.3' -and [int]$refusedState.attempt -eq 7 -and [string]$refusedState.providerHistory[0].model -eq 'nvidia/z-ai/glm-5.3') 'a refused sync mutated the durable route, the attempt counter, or historical evidence'
         }finally{$script:V2Dir=$oldV2;$script:V2Config=$oldCfg;$script:LedgerDir=$oldLedger;$script:DeepSeekRuntimePath=$oldRuntime;$script:DeepSeekBudgetDir=$oldBudget}
     }
     Check 'GL-18' {
