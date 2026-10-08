@@ -2225,6 +2225,9 @@ function New-ImplementerPrompt {
 You are the real $Role for one dispatcher-controlled task. Work only inside the current isolated clone.
 Do not commit, push, fetch, alter remotes, or modify files outside the declared scope.
 Implement the task completely and run relevant checks. Do not change acceptance criteria or orchestration policy.
+The dispatcher already verified the clone and Git lineage. Do not run broad repository inventories, `git status`,
+`git log`, or repository-wide glob/search commands. Inspect only the declared scope and start the smallest
+acceptance-critical implementation immediately; keep verification bounded to the commands named in Acceptance.
 
 Task version: $($Contract.taskVersionId)
 Task: $($Task.taskId) - $($Task.title)
