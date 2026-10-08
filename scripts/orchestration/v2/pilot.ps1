@@ -506,7 +506,7 @@ switch ($Command) {
         $source=Read-DispatcherTaskSource $TaskFile
         $task=@($source.tasks|Where-Object{[string]$_.taskId -eq $TaskId})
         if($task.Count -ne 1){throw 'recover-r5b-glm-review-request-changes: task source binding is absent or ambiguous'}
-        $task=[hashtable]$task[0];$state=Get-DispatcherState;$contract=Get-Contract $TaskVersionId
+        $task=[hashtable]$task[0];$state=_ToHashtable ((ConvertTo-CanonicalJson (Get-DispatcherState))|ConvertFrom-Json);$contract=Get-Contract $TaskVersionId
         $prior=@($state.reviewSchemaRequestChangesRecoveryHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})
         if($prior.Count -eq 1 -and [string]$state.status -eq 'RUNNING' -and [string]$state.stage -eq 'IMPLEMENT' -and [string]$state.reviewVerdict -eq 'REQUEST_CHANGES'){
             [ordered]@{status='ALREADY_RECOVERED';taskId=$TaskId;taskVersionId=$TaskVersionId;runId=$RunId;invocationId=$InvocationId;cycle=[int]$state.cycle;providerInvocationRequired=$false;proofHash=[string]$prior[0].proofHash}|ConvertTo-Json -Depth 8;break
