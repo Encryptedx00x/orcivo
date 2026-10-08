@@ -39,10 +39,10 @@ const EXTRA_KEYS = Object.keys(WORK_ORDER_EXTRA_STATUSES) as [
 ];
 
 /** Lista de status extras aceita no toggle da empresa (sem duplicados). */
-export const WorkOrderExtraStatusListSchema = z
-  .array(z.enum(EXTRA_KEYS))
-  .max(EXTRA_KEYS.length)
-  .transform((statuses) => [...new Set(statuses)]);
+export const WorkOrderExtraStatusListSchema = z.preprocess(
+  (statuses) => (Array.isArray(statuses) ? [...new Set(statuses)] : statuses),
+  z.array(z.enum(EXTRA_KEYS)).max(EXTRA_KEYS.length),
+);
 
 /** Ações de domínio da OS (P-01 / ADR-016 / D-4 / R5b). */
 export type WorkOrderAction =

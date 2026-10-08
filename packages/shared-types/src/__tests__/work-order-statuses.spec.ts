@@ -10,7 +10,6 @@ import {
   WorkOrderStatusEnum,
   woActionsFor,
   type StatusAction,
-  type WorkOrderStatus,
 } from '../work-order/work-order-statuses';
 
 // R5b — máquina de estados da OS centralizada em shared-types (backend/web/app consomem daqui).
@@ -34,14 +33,20 @@ describe('work order statuses (R5b)', () => {
     }
   });
 
-  it('specs: cada ação tem destino único, origens válidas e evento de auditoria', () => {
-    const targets = new Set<WorkOrderStatus>();
+  it('specs: evento de auditoria único por ação e transições origem→destino sem sobreposição', () => {
+    const auditActions = new Set<string>();
+    const edges = new Set<string>();
     for (const action of Object.keys(STATUS_ACTION_SPECS) as StatusAction[]) {
       const spec = STATUS_ACTION_SPECS[action];
       expect(spec.allowedFrom.length).toBeGreaterThan(0);
       expect(spec.auditAction).toMatch(/^work_order\./);
-      expect(targets.has(spec.to)).toBe(false);
-      targets.add(spec.to);
+      expect(auditActions.has(spec.auditAction)).toBe(false);
+      auditActions.add(spec.auditAction);
+      for (const from of spec.allowedFrom) {
+        const edge = `${from}->${spec.to}`;
+        expect(edges.has(edge)).toBe(false);
+        edges.add(edge);
+      }
     }
   });
 

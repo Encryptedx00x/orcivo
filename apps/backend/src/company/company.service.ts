@@ -245,7 +245,7 @@ export class CompanyService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.company.update({
         where: { id: companyId },
-        data: { work_order_statuses: statuses } as never,
+        data: { work_order_statuses: statuses },
         select: COMPANY_SELECT,
       });
       await this.audit.record(tx, {
