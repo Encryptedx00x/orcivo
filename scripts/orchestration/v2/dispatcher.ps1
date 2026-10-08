@@ -4671,7 +4671,7 @@ function Update-DispatcherPreLaunchAttempt {
 # increment, no provider launch, no pre-invocation snapshot).
 function Sync-DispatcherInvocationRoute {
     param([Parameter(Mandatory)]$State)
-    $route=Resolve-Provider -Profile ([string]$State.profile) -Provider ([string]$State.provider)
+    $route=Resolve-Provider -Profile ([string]$State.profile) -Provider ([string]$State.provider) -ModelOverride $(if([string]$State.provider -eq 'glm') {[string]$State.model} else {''})
     if(-not $route.ok){return [ordered]@{ok=$false;synced=$false;reason=[string]$route.reason}}
     if([string]$State.provider -eq [string]$route.provider -and [string]$State.model -eq [string]$route.model){
         return [ordered]@{ok=$true;synced=$false;reason='durable route already matches the resolved invocation route'}
@@ -4965,7 +4965,7 @@ if($needsFreshDispatch){
                 if($mem.logicalProjectId){$state.logicalProjectId=[string]$mem.logicalProjectId}
                 $prompt=New-ImplementerPrompt -Task $Task -Contract $contract -Findings @($state.findings) -Role $role.ToLowerInvariant() -Continuation $continuation -MemoryContext $mem.text
                 $preLaunch={param($launch) New-DispatcherWorkspaceInvocationSnapshot -State $state -Task $Task -InvocationId ([string]$launch.invocationId) -PromptArtifact ([string]$launch.promptArtifact) -PromptHash ([string]$launch.promptHash) -Provider ([string]$launch.provider) -Model ([string]$launch.model) -ReasoningEffort ([string]$launch.reasoningEffort) -Attempt ([int]$launch.attempt)|Out-Null}
-                $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint) -BeforeLaunch $preLaunch
+                $ar=Invoke-RealAgent -Provider $state.provider -Role 'implementer' -TaskVersion $state.taskVersionId -Profile $state.profile -Workspace $state.workspace -StructuredPrompt $prompt -ArtifactDir (Join-Path (Get-V2Dir) "runs\$($state.runId)\logs") -TimeoutSec ([int]$pcfg.realAgentTimeoutSec) -Attempt $state.attempt -ContinuationCheckpoint ([string]$state.continuationCheckpoint) -ModelOverride ([string]$state.model) -BeforeLaunch $preLaunch
                 $finalized=Complete-DispatcherAgentInvocation -State $state -Task $Task -AgentResult $ar -Role $role
                 if(Set-DispatcherStoppedAfterAgentIfRequested $state){return $state}
                 if("$($finalized.disposition)" -eq 'POLICY_RETRY'){continue}
@@ -4975,6 +4975,11 @@ if($needsFreshDispatch){
                     $state.rollovers=[int]$state.rollovers+1; $cp=Save-DispatcherCheckpoint $state 'fresh invocation of same provider and task';$state.continuationCheckpoint=$cp.checkpointHash;Write-DispatcherState $state|Out-Null;continue
                 }
                 if("$($finalized.disposition)" -eq 'PROVIDER_FAILURE'){
+                    if([string]$state.provider -eq 'glm' -and [string]$state.model -eq (Get-GlmModelId) -and [string]$ar.providerClass -in @('PROVIDER_QUOTA','PROVIDER_RATE_LIMIT','QUOTA_EXHAUSTED','RATE_LIMIT')){
+                        $oldModel=[string]$state.model;$state.model=Get-GlmFallbackModelId;$state.glmRouteFallback=@{from=$oldModel;to=[string]$state.model;class=[string]$ar.providerClass;at=(Get-Date).ToUniversalTime().ToString('o')}
+                        Add-LedgerEvent -TaskVersionId $state.taskVersionId -Event 'glm-route-failover' -ToState 'RUNNING' -RunId $state.runId -Note "$oldModel -> $($state.model) ($($ar.providerClass))"|Out-Null
+                        Write-DispatcherState $state|Out-Null;continue
+                    }
                     $state.unavailableProviders=@(@($state.unavailableProviders)+$state.provider|Select-Object -Unique)
                     if(Get-DispatcherPinnedQuarantinedRetryRoute $state){return (Enter-DispatcherProviderWait $state $ar.providerClass $state.provider)}
                     $failoverDecision=Get-FailoverDecision -CurrentProvider ([string]$state.provider) -Class ([string]$ar.providerClass) -FailoversSoFar ([int]$state.failovers) -UnavailableProviders @($state.unavailableProviders)

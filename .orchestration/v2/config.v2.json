@@ -448,7 +448,7 @@
   },
   "providerFailover": {
     "$comment": "PARTE 13/14/15. Automatic provider switch ONLY for a class in classification.providerClasses coming from the control channel. TEST_FAILED / BUG / BUILD_FAILED / REVIEW_REQUEST_CHANGES / INVALID_IMPLEMENTATION never fail over. Both providers unavailable -> WAITING_PROVIDER; the supervisor keeps polling and auto-resumes with no human action.",
-    "order": ["claude", "codex"],
+    "order": ["glm"],
     "maxCrossProviderFailoversPerLineage": 1,
     "bothUnavailableState": "WAITING_PROVIDER",
     "pollBackoffSec": [30, 60, 120, 300, 600],
@@ -527,8 +527,8 @@
     "idleSleepSec": 15,
     "stopFile": "PILOT_STOP",
     "realExecutionAuthFile": "REAL_EXECUTION_AUTHORIZED",
-    "batchPlanFile": ".planning/product/MVP-LAUNCH-BATCH-2.plan.json",
-    "taskSourceFile": ".planning/product/MVP-LAUNCH-BATCH-2.tasks.json",
+    "batchPlanFile": ".planning/product/IMPROVEMENT-BATCH-3.plan.json",
+    "taskSourceFile": ".planning/product/IMPROVEMENT-BATCH-3.tasks.json",
     "realAgentTimeoutSec": 1800,
     "docker": {
       "image": "orcivo-agent-runner:v1",

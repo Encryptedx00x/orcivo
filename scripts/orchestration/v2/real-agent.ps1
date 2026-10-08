@@ -425,6 +425,7 @@ function Invoke-RealAgent {
         [int]$TimeoutSec = 900,
         [int]$Attempt = 1,
         [string]$ContinuationCheckpoint = '',
+        [string]$ModelOverride = '',
         [string]$InvocationId = '',
         [scriptblock]$BeforeLaunch = $null
     )
@@ -438,7 +439,7 @@ function Invoke-RealAgent {
     $stdoutLog = Join-Path $ArtifactDir "$stamp.stdout.log"
     $stderrLog = Join-Path $ArtifactDir "$stamp.stderr.log"
 
-    $route = Resolve-Provider -Profile $Profile -Provider $Provider -ReviewOnly:($Role -eq 'reviewer')
+    $route = Resolve-Provider -Profile $Profile -Provider $Provider -ModelOverride $ModelOverride -ReviewOnly:($Role -eq 'reviewer')
     if (-not $route.ok) {
         # Route resolution failed before any provider child existed, so there
         # is no provider output to receipt; the dispatcher-side failure class

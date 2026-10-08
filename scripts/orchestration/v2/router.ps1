@@ -151,19 +151,20 @@ function Resolve-Provider {
         [switch]$ReviewOnly
     )
     if($Provider -eq 'glm'){
-        # GLM runs through the OpenCode CLI with a FIXED model contract; the
-        # model id is never a knob and an override is never accepted.
-        if($ModelOverride -and $ModelOverride -ne (Get-GlmModelId)){return [ordered]@{ok=$false;provider='glm';reason="GLM model override '$ModelOverride' violates the fixed model contract"}}
+        # GLM runs through the OpenCode CLI.  The only permitted route change
+        # is the owner-approved Z.AI -> NVIDIA fallback for the same GLM 5.3.
+        $glmModel=$(if($ModelOverride){$ModelOverride}else{Get-GlmModelId})
+        if(-not(Test-GlmModelId $glmModel)){return [ordered]@{ok=$false;provider='glm';reason="GLM model override '$ModelOverride' is not an approved GLM 5.3 route"}}
         if($Profile -eq 'CRITICAL' -and -not $ReviewOnly){return [ordered]@{ok=$false;provider='glm';reason='CRITICAL implementation work is reserved for Codex Plus Terra'}}
         # A cross-provider review of CRITICAL work uses GLM's strongest
         # supported review profile without making it eligible to implement
         # (mirrors the DeepSeek carve-out immediately below).
         $glmProfile=$(if($Profile -eq 'CRITICAL' -and $ReviewOnly){'REASONING'}else{$Profile})
-        $plan=Get-GlmRuntimePlan -Profile $glmProfile;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
+        $plan=Get-GlmRuntimePlan -Profile $glmProfile -ModelId $glmModel;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
         $cfg=Get-V2Config;$bin=$cfg.providers.glm.bin
         if(-not(Get-Command $bin -ErrorAction SilentlyContinue)){return [ordered]@{ok=$false;provider='glm';reason="OpenCode CLI '$bin' not installed"}}
         $intent=[string]$cfg.router.profileIntent.$glmProfile.reasoning
-        return [ordered]@{ok=$true;provider='glm';bin=$bin;profile=$Profile;reasoningIntent=$intent;model=(Get-GlmModelId);maxInvocationsPerTask=$null;invocationArgs=(Get-GlmInvocationArgs);environment=@{};outputJson=$true;freshContextFlag='(opencode run starts a fresh session per invocation)';sandboxFlag='(--pure external plugins disabled)';supportsExplicitReasoning=$false;limitations=@("glm model is fixed by contract: $(Get-GlmModelId); no variant/reasoning selector is pinned");capabilityVersion='';estimatedUsd=[decimal]0}
+        return [ordered]@{ok=$true;provider='glm';bin=$bin;profile=$Profile;reasoningIntent=$intent;model=$glmModel;maxInvocationsPerTask=$null;invocationArgs=(Get-GlmInvocationArgs -ModelId $glmModel);environment=@{};outputJson=$true;freshContextFlag='(opencode run starts a fresh session per invocation)';sandboxFlag='(--pure external plugins disabled)';supportsExplicitReasoning=$false;limitations=@("glm route is owner-pinned: $glmModel; no variant/reasoning selector is pinned");capabilityVersion='';estimatedUsd=[decimal]0}
     }
     if($Provider -eq 'deepseek'){
         if($Profile -eq 'CRITICAL' -and -not $ReviewOnly){return [ordered]@{ok=$false;provider='deepseek';reason='CRITICAL implementation work is reserved for Codex Plus Terra'}}
@@ -365,14 +366,13 @@ function Test-RouterSelftest {
         if ($rv.reviewer -ne 'glm' -or -not $rv.crossProvider) { $fail += "reviewer for deepseek impl should be glm" }
         $rv = Select-Reviewer -ImplementerProvider 'deepseek' -ReviewStrength 'CROSS_PROVIDER_REQUIRED' -HealthyProviders @('deepseek')
         if ($rv.ok -or -not $rv.escalate) { $fail += "deepseek impl + glm down should escalate, never same-provider" }
-        if ((Get-GlmModelId) -ne 'nvidia/z-ai/glm-5.3') { $fail += "glm model contract drifted" }
+        if ((Get-GlmModelId) -ne 'zai-coding-plan/glm-5.3') { $fail += "glm primary route drifted" }
         $plan = Get-GlmRuntimePlan -Profile REASONING
-        if (-not $plan.ok -or $plan.model -ne 'nvidia/z-ai/glm-5.3') { $fail += "glm plan did not pin the exact model id: $(if($plan.ok){$plan.model}else{$plan.reason})" }
-        if (@(Get-GlmInvocationArgs) -notcontains 'nvidia/z-ai/glm-5.3') { $fail += "glm invocation args do not carry the exact model id" }
+        if (-not $plan.ok -or $plan.model -ne 'zai-coding-plan/glm-5.3') { $fail += "glm plan did not pin the Z.AI route: $(if($plan.ok){$plan.model}else{$plan.reason})" }
+        if (@(Get-GlmInvocationArgs) -notcontains 'zai-coding-plan/glm-5.3') { $fail += "glm invocation args do not carry the Z.AI route" }
+        if (@(Get-GlmInvocationArgs -ModelId (Get-GlmFallbackModelId)) -notcontains 'nvidia/z-ai/glm-5.3') { $fail += "glm fallback invocation args do not carry the NIM route" }
         if ((Get-GlmRuntimePlan -Profile CRITICAL).ok) { $fail += "glm CRITICAL should be reserved for Codex Plus Terra" }
-        $drift = [ordered]@{} + $glmRuntime; $drift.glm = [ordered]@{ model = 'glm-wrong-model' }
-        Write-V2JsonCanonical $runtimePath $drift
-        if ((Get-GlmRuntimePlan -Profile REASONING).ok) { $fail += "glm runtime model drift was accepted" }
+        if ((Get-GlmRuntimePlan -Profile REASONING -ModelId 'glm-wrong-model').ok) { $fail += "glm route drift was accepted" }
     } finally {
         if ($hadRuntime) { [System.IO.File]::WriteAllText($runtimePath, $savedRuntime, (New-Utf8NoBom)) }
         elseif (Test-Path -LiteralPath $runtimePath) { Remove-Item -LiteralPath $runtimePath -Force }

@@ -36,27 +36,38 @@ is copied into config, artifacts, arguments, state, or environment maps.
 . (Join-Path $PSScriptRoot 'lib-v2.ps1')
 . (Join-Path $PSScriptRoot 'deepseek.ps1')
 
-# FIXED MODEL CONTRACT - the autopilot must call GLM with exactly this id.
-$script:GlmModelId = 'nvidia/z-ai/glm-5.3'
+# Owner decision (2026-10-07): keep the same GLM 5.3 model, first through the
+# Z.AI Coding Plan and, only after a structured quota/rate-limit result,
+# through NVIDIA NIM.  Authentication stays entirely in OpenCode/the
+# environment; these are public model-route identifiers, never credentials.
+$script:GlmPrimaryModelId = 'zai-coding-plan/glm-5.3'
+$script:GlmFallbackModelId = 'nvidia/z-ai/glm-5.3'
 
-function Get-GlmModelId { return $script:GlmModelId }
+function Get-GlmModelId { return $script:GlmPrimaryModelId }
+function Get-GlmFallbackModelId { return $script:GlmFallbackModelId }
+function Test-GlmModelId {
+    param([string]$ModelId)
+    return $ModelId -in @($script:GlmPrimaryModelId, $script:GlmFallbackModelId)
+}
 
 function Get-GlmRuntimePlan {
-    param([Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile)
+    param([Parameter(Mandatory)][ValidateSet('FAST','BALANCED','REASONING','CRITICAL')][string]$Profile, [string]$ModelId = (Get-GlmModelId))
     $runtime = Get-DeepSeekRuntimeConfig -SkipPricingBinding
     if (-not $runtime.enabled) { return [ordered]@{ ok = $false; reason = [string]$runtime.reason } }
-    if ($runtime.glm -and "$($runtime.glm.model)" -and "$($runtime.glm.model)" -ne $script:GlmModelId) {
-        return [ordered]@{ ok = $false; reason = "configured GLM model '$($runtime.glm.model)' does not match the required '$($script:GlmModelId)' - refusing to launch a drifted model" }
+    if (-not (Test-GlmModelId $ModelId)) {
+        return [ordered]@{ ok = $false; reason = "GLM model '$ModelId' is not an approved GLM 5.3 route" }
     }
     if ($Profile -eq 'CRITICAL') { return [ordered]@{ ok = $false; reason = 'CRITICAL work is reserved for Codex Plus Terra' } }
-    return [ordered]@{ ok = $true; model = $script:GlmModelId }
+    return [ordered]@{ ok = $true; model = $ModelId }
 }
 
 function Get-GlmInvocationArgs {
     # `run` starts a fresh session every invocation (no --continue/--session);
     # --pure disables external plugins; --format json is the structured
     # control channel; the prompt arrives on stdin.
-    return @('run', '--model', (Get-GlmModelId), '--format', 'json', '--pure')
+    param([string]$ModelId = (Get-GlmModelId))
+    if (-not (Test-GlmModelId $ModelId)) { throw "GLM model '$ModelId' is not an approved route" }
+    return @('run', '--model', $ModelId, '--format', 'json', '--pure')
 }
 
 function Test-GlmFinalStructuredEvent {
