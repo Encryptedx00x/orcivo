@@ -517,7 +517,9 @@ switch ($Command) {
         if((Get-GitHeadV2 ([string]$state.workspace)) -ne [string]$state.candidateHead){throw 'recover-r5b-glm-review-request-changes: candidate HEAD drift'}
         $wsStatus=Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'r5b-review-schema-recovery-status'
         if($wsStatus.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){throw 'recover-r5b-glm-review-request-changes: candidate workspace is dirty'}
-        if(-not(Test-DispatcherReviewArtifactRecord -Record $state.reviewArtifactRecord -State $state)){throw 'recover-r5b-glm-review-request-changes: frozen review artifacts drifted'}
+        $reviewArtifactRecord=_ToHashtable ((ConvertTo-CanonicalJson $state.reviewArtifactRecord)|ConvertFrom-Json)
+        if(-not(Test-DispatcherReviewArtifactRecord -Record $reviewArtifactRecord -State $state)){throw 'recover-r5b-glm-review-request-changes: frozen review artifacts drifted'}
+        $state.reviewArtifactRecord=$reviewArtifactRecord
         $history=@($state.providerHistory|Where-Object{$_});$attempts=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
         if($attempts.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){throw 'recover-r5b-glm-review-request-changes: reviewer invocation is absent or not the history tail'}
         $attempt=$attempts[0]
