@@ -30,7 +30,9 @@ function ConvertFrom-JsonTyped {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Json, [int]$MaxLen = 8000000, [int]$RecursionLimit = 64)
     if ($Json.Length -gt $MaxLen) { throw "JSON exceeds MaxLen ($MaxLen)" }
     if ($PSVersionTable.PSVersion.Major -ge 6) {
-        return ($Json | ConvertFrom-Json -AsHashtable -Depth $RecursionLimit)
+        $jsonArgs = @{ InputObject = $Json; AsHashtable = $true; Depth = $RecursionLimit }
+        if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $jsonArgs.DateKind = 'String' }
+        return (ConvertFrom-Json @jsonArgs)
     }
     $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
     $ser.MaxJsonLength = $MaxLen
