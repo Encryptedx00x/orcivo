@@ -518,7 +518,11 @@ switch ($Command) {
         $wsStatus=Invoke-GitV2 -Dir ([string]$state.workspace) -Arguments @('status','--porcelain=v1') -LogLabel 'r5b-review-schema-recovery-status'
         if($wsStatus.exitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([string]$wsStatus.stdout)){throw 'recover-r5b-glm-review-request-changes: candidate workspace is dirty'}
         $reviewArtifactRecord=_ToHashtable ((ConvertTo-CanonicalJson $state.reviewArtifactRecord)|ConvertFrom-Json)
-        if(-not(Test-DispatcherReviewArtifactRecord -Record $reviewArtifactRecord -State $state)){throw 'recover-r5b-glm-review-request-changes: frozen review artifacts drifted'}
+        $recordSigned=[ordered]@{};foreach($key in $reviewArtifactRecord.Keys){if([string]$key -ne 'recordHash'){$recordSigned[[string]$key]=$reviewArtifactRecord[$key]}}
+        if((New-StringHash (ConvertTo-CanonicalJson $recordSigned)) -ne [string]$reviewArtifactRecord.recordHash){throw 'recover-r5b-glm-review-request-changes: frozen review record hash drifted'}
+        foreach($key in @('taskId','taskVersionId','runId','candidateBase','candidateHead','candidateTree','diffHash')){if([string]$reviewArtifactRecord[$key] -ne [string]$state[$key]){throw "recover-r5b-glm-review-request-changes: frozen review identity drifted at $key"}}
+        $currentReviewRecord=New-DispatcherReviewArtifactRecord -DataDir ([string]$reviewArtifactRecord.dataDir) -State $state
+        if([string]$currentReviewRecord.snapshotHash -ne [string]$reviewArtifactRecord.snapshotHash -or (ConvertTo-CanonicalJson $currentReviewRecord.artifacts) -ne (ConvertTo-CanonicalJson $reviewArtifactRecord.artifacts)){throw 'recover-r5b-glm-review-request-changes: frozen review snapshot or artifact list drifted'}
         $state.reviewArtifactRecord=$reviewArtifactRecord
         $history=@($state.providerHistory|Where-Object{$_});$attempts=@($history|Where-Object{[string]$_.invocationId -eq $InvocationId})
         if($attempts.Count -ne 1 -or [string]$history[-1].invocationId -ne $InvocationId){throw 'recover-r5b-glm-review-request-changes: reviewer invocation is absent or not the history tail'}
