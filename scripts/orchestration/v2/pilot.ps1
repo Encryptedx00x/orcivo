@@ -537,7 +537,7 @@ switch ($Command) {
         $old=@((Get-Attestations -TaskVersionId $TaskVersionId -Kind review)|Where-Object{[string]$_.attestationId -eq [string]$state.reviewAttestationId})
         if($old.Count -ne 1 -or [string]$old[0].result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$old[0].producer.invocationId -ne $InvocationId -or [string]$old[0].payload.reason -ne 'schema validation failed'){throw 'recover-r5b-glm-review-request-changes: historical schema hold attestation mismatch'}
         $problems=@($old[0].payload.problems|Where-Object{$_})
-        if($problems.Count -ne 1 -or [string]$problems[0] -notlike '$.criteria[3].id : does not match *'){throw 'recover-r5b-glm-review-request-changes: schema hold is not limited to the known criterion-id formatting defect'}
+        if($problems.Count -ne 1 -or -not ([string]$problems[0]).StartsWith('$.criteria[3].id : does not match ')){throw 'recover-r5b-glm-review-request-changes: schema hold is not limited to the known criterion-id formatting defect'}
         $oldFresh=Test-AttestationFresh -Attestation $old[0] -WorktreeDir ([string]$state.workspace) -BaseSha ([string]$state.candidateBase) -HeadSha ([string]$state.candidateHead)
         if(-not $oldFresh.fresh -or -not [bool]$state.verification.pass){throw 'recover-r5b-glm-review-request-changes: candidate attestations are stale or checks are not PASS'}
         if(@($contract.acceptanceCriteriaIds).Count -ne 0){throw 'recover-r5b-glm-review-request-changes: contract unexpectedly has named acceptance criteria'}
