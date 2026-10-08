@@ -155,11 +155,9 @@ function Resolve-Provider {
         # is the owner-approved Z.AI -> NVIDIA fallback for the same GLM 5.3.
         $glmModel=$(if($ModelOverride){$ModelOverride}else{Get-GlmModelId})
         if(-not(Test-GlmModelId $glmModel)){return [ordered]@{ok=$false;provider='glm';reason="GLM model override '$ModelOverride' is not an approved GLM 5.3 route"}}
-        if($Profile -eq 'CRITICAL' -and -not $ReviewOnly){return [ordered]@{ok=$false;provider='glm';reason='CRITICAL implementation work is reserved for Codex Plus Terra'}}
-        # A cross-provider review of CRITICAL work uses GLM's strongest
-        # supported review profile without making it eligible to implement
-        # (mirrors the DeepSeek carve-out immediately below).
-        $glmProfile=$(if($Profile -eq 'CRITICAL' -and $ReviewOnly){'REASONING'}else{$Profile})
+        # Owner decision 2026-10-07: GLM is the only implementation/review
+        # model in this queue. CRITICAL maps to its strongest supported plan.
+        $glmProfile=$(if($Profile -eq 'CRITICAL'){'REASONING'}else{$Profile})
         $plan=Get-GlmRuntimePlan -Profile $glmProfile -ModelId $glmModel;if(-not $plan.ok){return [ordered]@{ok=$false;provider='glm';reason=$plan.reason}}
         $cfg=Get-V2Config;$bin=$cfg.providers.glm.bin
         if(-not(Get-Command $bin -ErrorAction SilentlyContinue)){return [ordered]@{ok=$false;provider='glm';reason="OpenCode CLI '$bin' not installed"}}
@@ -371,7 +369,7 @@ function Test-RouterSelftest {
         if (-not $plan.ok -or $plan.model -ne 'zai-coding-plan/glm-5.3') { $fail += "glm plan did not pin the Z.AI route: $(if($plan.ok){$plan.model}else{$plan.reason})" }
         if (@(Get-GlmInvocationArgs) -notcontains 'zai-coding-plan/glm-5.3') { $fail += "glm invocation args do not carry the Z.AI route" }
         if (@(Get-GlmInvocationArgs -ModelId (Get-GlmFallbackModelId)) -notcontains 'nvidia/z-ai/glm-5.3') { $fail += "glm fallback invocation args do not carry the NIM route" }
-        if ((Get-GlmRuntimePlan -Profile CRITICAL).ok) { $fail += "glm CRITICAL should be reserved for Codex Plus Terra" }
+        if (-not (Get-GlmRuntimePlan -Profile CRITICAL).ok) { $fail += "glm CRITICAL owner-approved route was rejected" }
         if ((Get-GlmRuntimePlan -Profile REASONING -ModelId 'glm-wrong-model').ok) { $fail += "glm route drift was accepted" }
     } finally {
         if ($hadRuntime) { [System.IO.File]::WriteAllText($runtimePath, $savedRuntime, (New-Utf8NoBom)) }

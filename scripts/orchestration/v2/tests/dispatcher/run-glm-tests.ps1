@@ -37,7 +37,7 @@ try{
             Assert-True ($plan.ok -and $plan.model -eq 'zai-coding-plan/glm-5.3') "$profile did not resolve the exact primary model"
         }
         Assert-True ((Get-GlmRuntimePlan -Profile REASONING -ModelId (Get-GlmFallbackModelId)).ok) 'NVIDIA NIM fallback route was rejected'
-        Assert-True (-not (Get-GlmRuntimePlan -Profile CRITICAL).ok) 'CRITICAL must stay reserved for Codex Plus Terra'
+        Assert-True ((Get-GlmRuntimePlan -Profile CRITICAL).ok) 'CRITICAL owner-approved GLM route was rejected'
         Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING -ModelId 'glm-drifted-model').ok) 'runtime model drift was accepted'
         $disabled=New-GlmRuntime;$disabled.enabled=$false;Write-TestJson $runtime $disabled
         Assert-True (-not (Get-GlmRuntimePlan -Profile REASONING).ok) 'disabled runtime was accepted'
@@ -247,7 +247,7 @@ try{
             Assert-True ($failed) 'route pin accepted a wrong reviewer, profile, model, or unavailable route'
         }
         Assert-DispatcherAuthorizedReviewRoute -State ([ordered]@{}) -Reviewer 'codex' -Profile 'CRITICAL' -Route ([ordered]@{ok=$false}) # no pin -> no-op
-        Assert-True (-not (Resolve-Provider -Profile CRITICAL -Provider 'glm').ok) 'generic CRITICAL implementation route was relaxed for GLM'
+        Assert-True ((Resolve-Provider -Profile CRITICAL -Provider 'glm').ok) 'CRITICAL implementation route did not use the owner-approved GLM chain'
         Assert-True ((Resolve-Provider -Profile REASONING -Provider 'glm').model -eq 'zai-coding-plan/glm-5.3') 'pinned REASONING review route lost the primary model'
     }
     Check 'GL-14' {

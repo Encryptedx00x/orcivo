@@ -57,7 +57,6 @@ function Get-GlmRuntimePlan {
     if (-not (Test-GlmModelId $ModelId)) {
         return [ordered]@{ ok = $false; reason = "GLM model '$ModelId' is not an approved GLM 5.3 route" }
     }
-    if ($Profile -eq 'CRITICAL') { return [ordered]@{ ok = $false; reason = 'CRITICAL work is reserved for Codex Plus Terra' } }
     return [ordered]@{ ok = $true; model = $ModelId }
 }
 
