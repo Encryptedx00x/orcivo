@@ -214,7 +214,7 @@ function ConvertTo-RealAgentInvocationResult {
         [Parameter(Mandatory)]$Route,
         [Parameter(Mandatory)][int]$ExitCode,
         [Parameter(Mandatory)][double]$DurationSec,
-        [Parameter(Mandatory)][string]$StdoutText,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$StdoutText,
         [Parameter(Mandatory)][string]$PromptFile,
         [Parameter(Mandatory)][string]$StdoutLog,
         [Parameter(Mandatory)][string]$StderrLog,

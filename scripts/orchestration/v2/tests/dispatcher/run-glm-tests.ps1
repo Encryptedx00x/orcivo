@@ -356,6 +356,13 @@ try{
         $parsed=ConvertFrom-RealGlmOutput $raw
         Assert-True ($parsed.structured -and [string]$parsed.structured.schemaVersion -eq 'orcivo.orchestration.v2.review-envelope/1' -and [string]$parsed.structured.verdict -eq 'APPROVE') 'a terminal GLM review envelope was discarded by the live adapter'
     }
+    Check 'GL-19' {
+        $dir=Join-Path $root 'gl19';New-Item -ItemType Directory -Force -Path $dir|Out-Null
+        $prompt=Join-Path $dir 'implementer-001-glm-empty.prompt.txt';$stdout=Join-Path $dir 'implementer-001-glm-empty.stdout.log';$stderr=Join-Path $dir 'implementer-001-glm-empty.stderr.log'
+        [IO.File]::WriteAllText($prompt,'empty timeout fixture',(New-Utf8NoBom));[IO.File]::WriteAllText($stdout,'',(New-Utf8NoBom));[IO.File]::WriteAllText($stderr,'',(New-Utf8NoBom))
+        $result=ConvertTo-RealAgentInvocationResult -Provider glm -Role implementer -InvocationId ('att-'+('9'*32)) -Attempt 1 -Profile REASONING -Route ([ordered]@{model=(Get-GlmModelId);reasoningIntent='high';capabilityVersion=''}) -ExitCode 124 -DurationSec 1800 -StdoutText '' -PromptFile $prompt -StdoutLog $stdout -StderrLog $stderr
+        Assert-True ($result.providerClass -eq 'INCOMPLETE_PROVIDER_RESULT' -and $result.resultClass -eq 'AGENT_FAILURE') 'empty GLM timeout did not fail closed as an incomplete provider result'
+    }
 }finally{
     if($null -ne $originalPath){$env:PATH=$originalPath}
     $results|ForEach-Object{Write-Output $_}
