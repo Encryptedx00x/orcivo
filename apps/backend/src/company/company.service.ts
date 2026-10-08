@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CompanyProfileUpdateDto } from './company-profile-update.schema';
+import { WORK_ORDER_EXTRA_STATUSES, type WorkOrderExtraStatus } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
@@ -29,6 +30,7 @@ const COMPANY_SELECT = {
   quote_default_payment_terms: true,
   quote_default_warranty: true,
   work_order_fields: true,
+  work_order_statuses: true,
   plan_code: true,
   allowed_approval_methods: true,
 } as const;
@@ -219,6 +221,45 @@ export class CompanyService {
         humanText:
           `Métodos de aprovação de "${before.trade_name}" alterados para ` +
           `${methods.join(', ') || '(nenhum)'}`,
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * Status extras da OS ligados para a empresa (R5b — Configurações → Ordem de
+   * serviço). Desligar um extra não move OS existentes: a transição volta a
+   * ser bloqueada e o botão some, o histórico permanece no audit trail.
+   */
+  async updateWorkOrderStatuses(
+    companyId: string,
+    statuses: WorkOrderExtraStatus[],
+    userId: string,
+  ) {
+    const before = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { trade_name: true, work_order_statuses: true },
+    });
+    if (!before) throw new NotFoundException();
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: { work_order_statuses: statuses } as never,
+        select: COMPANY_SELECT,
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.work_order_statuses_changed',
+        entityType: 'company',
+        entityId: companyId,
+        from: [...before.work_order_statuses],
+        to: [...statuses],
+        humanText:
+          `Status extras da OS de "${before.trade_name}" alterados para ` +
+          `${statuses.map((s) => WORK_ORDER_EXTRA_STATUSES[s].label).join(', ') || '(nenhum)'}`,
       });
       return updated;
     });

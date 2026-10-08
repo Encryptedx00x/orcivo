@@ -18,6 +18,9 @@ const mockTx = {
 const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
 
 const mockPrisma = {
+  company: {
+    findUnique: jest.fn().mockResolvedValue({ work_order_statuses: [] }),
+  },
   workOrder: {
     create: jest.fn(),
     findMany: jest.fn(),
@@ -66,6 +69,8 @@ describe('WorkOrderService — state machine (P-01)', () => {
     mockPrisma.$transaction.mockImplementation(
       async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx),
     );
+    // R5b: por padrão a empresa não ligou nenhum status extra.
+    mockPrisma.company.findUnique.mockResolvedValue({ work_order_statuses: [] });
     mockTx.workOrder.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.workOrder.updateMany.mockResolvedValue({ count: 1 });
     const module: TestingModule = await Test.createTestingModule({
@@ -93,6 +98,10 @@ describe('WorkOrderService — state machine (P-01)', () => {
   };
   const mockUpdatedWo = (status: string) => {
     mockTx.workOrder.findUnique.mockResolvedValue({ ...pendingWo, status });
+  };
+  /** R5b: liga status extras para a empresa das chamadas seguintes. */
+  const enableExtras = (...statuses: ('AWAITING_PAYMENT' | 'WARRANTY')[]) => {
+    mockPrisma.company.findUnique.mockResolvedValue({ work_order_statuses: statuses });
   };
 
   // ── allowedActions ────────────────────────────────────────────────────────
@@ -215,6 +224,39 @@ describe('WorkOrderService — state machine (P-01)', () => {
     it('sem papel informado, ações admin ficam de fora', () => {
       expect(service.allowedActions('DONE')).toEqual([]);
       expect(service.allowedActions('IN_PROGRESS')).toEqual(['concluir', 'cancelar']);
+    });
+
+    it('R5b: ações de status extra só aparecem com o extra ligado na empresa', () => {
+      expect(service.allowedActions('DONE', 'TECNICO')).toEqual([]);
+      expect(service.allowedActions('DONE', 'ADMIN')).toEqual(['reabrir', 'corrigir']);
+      expect(service.allowedActions('DONE', 'TECNICO', ['AWAITING_PAYMENT'])).toEqual([
+        'aguardar_pagamento',
+      ]);
+      expect(service.allowedActions('DONE', 'TECNICO', ['WARRANTY'])).toEqual(['acionar_garantia']);
+      expect(service.allowedActions('DONE', 'ADMIN', ['AWAITING_PAYMENT', 'WARRANTY'])).toEqual([
+        'reabrir',
+        'corrigir',
+        'aguardar_pagamento',
+        'acionar_garantia',
+      ]);
+    });
+
+    it('R5b: AWAITING_PAYMENT/WARRANTY expõem reabrir/corrigir só para admin', () => {
+      expect(service.allowedActions('AWAITING_PAYMENT', 'TECNICO', ['AWAITING_PAYMENT'])).toEqual(
+        ['receber_pagamento'],
+      );
+      expect(service.allowedActions('AWAITING_PAYMENT', 'ADMIN', ['AWAITING_PAYMENT'])).toEqual([
+        'receber_pagamento',
+        'reabrir',
+        'corrigir',
+      ]);
+      expect(service.allowedActions('WARRANTY', 'TECNICO', ['WARRANTY'])).toEqual([]);
+      expect(service.allowedActions('WARRANTY', 'OWNER', ['WARRANTY'])).toEqual([
+        'reabrir',
+        'corrigir',
+      ]);
+      // extra desligado depois: OS já no extra continua saindo por reabrir/corrigir
+      expect(service.allowedActions('WARRANTY', 'OWNER')).toEqual(['reabrir', 'corrigir']);
     });
   });
 
@@ -437,6 +479,157 @@ describe('WorkOrderService — state machine (P-01)', () => {
     });
   });
 
+  // ── status extras (R5b — AWAITING_PAYMENT / WARRANTY) ─────────────────────
+
+  describe('status extras (R5b) — transições auditadas com extra ligado', () => {
+    it.each([
+      ['DONE', 'AWAITING_PAYMENT', 'work_order.awaiting_payment'],
+      ['AWAITING_PAYMENT', 'DONE', 'work_order.payment_received'],
+      ['DONE', 'WARRANTY', 'work_order.warranty_claimed'],
+    ] as const)('audita %s ? %s com justificativa', async (from, to, action) => {
+      enableExtras('AWAITING_PAYMENT', 'WARRANTY');
+      mockCurrentWo({ status: from, finished_at: new Date('2026-01-01T12:00:00Z') });
+      mockUpdatedWo(to);
+      await service.changeStatus('wo-1', 'comp-1', 'user-1', to, 'Pagamento em dia', 'ADMIN');
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          companyId: 'comp-1',
+          actorType: 'USER',
+          actorUserId: 'user-1',
+          entityType: 'work_order',
+          entityId: 'wo-1',
+          from,
+          to,
+          action,
+          reason: 'Pagamento em dia',
+        }),
+      );
+    });
+
+    it('aguardar_pagamento preserva started_at/finished_at (marcação pós-conclusão)', async () => {
+      enableExtras('AWAITING_PAYMENT');
+      mockCurrentWo({
+        status: 'DONE',
+        started_at: new Date('2026-01-01T10:00:00Z'),
+        finished_at: new Date('2026-01-01T12:00:00Z'),
+      });
+      mockUpdatedWo('AWAITING_PAYMENT');
+
+      const result = await service.awaitPayment('wo-1', 'comp-1', 'user-1', 'TECNICO');
+
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'wo-1', status: 'DONE' },
+        data: { status: 'AWAITING_PAYMENT' },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.awaiting_payment',
+          from: 'DONE',
+          to: 'AWAITING_PAYMENT',
+        }),
+      );
+      expect(result.allowed_actions).toEqual(['receber_pagamento']);
+    });
+
+    it('receber_pagamento: AWAITING_PAYMENT → DONE devolve a OS a concluída', async () => {
+      enableExtras('AWAITING_PAYMENT');
+      mockCurrentWo({ status: 'AWAITING_PAYMENT' });
+      mockUpdatedWo('DONE');
+
+      await service.receivePayment('wo-1', 'comp-1', 'user-1');
+
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'wo-1', status: 'AWAITING_PAYMENT' },
+        data: { status: 'DONE' },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.payment_received',
+          from: 'AWAITING_PAYMENT',
+          to: 'DONE',
+        }),
+      );
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('pagamento recebido');
+    });
+
+    it('acionar_garantia: DONE → WARRANTY com auditoria própria', async () => {
+      enableExtras('WARRANTY');
+      mockCurrentWo({ status: 'DONE' });
+      mockUpdatedWo('WARRANTY');
+
+      await service.claimWarranty('wo-1', 'comp-1', 'user-1');
+
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.warranty_claimed',
+          from: 'DONE',
+          to: 'WARRANTY',
+        }),
+      );
+      expect(mockAudit.record.mock.calls[0][1].humanText).toContain('em garantia');
+    });
+
+    it('reabrir sai dos status extras: limpa finished_at e grava motivo (AC1/AC2)', async () => {
+      const started = new Date('2026-01-01T10:00:00Z');
+      mockCurrentWo({
+        status: 'WARRANTY',
+        started_at: started,
+        finished_at: new Date('2026-01-01T12:00:00Z'),
+      });
+      mockUpdatedWo('IN_PROGRESS');
+
+      await service.reopen('wo-1', 'comp-1', 'user-1', 'Retorno coberto pela garantia', 'ADMIN');
+
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'wo-1', status: 'WARRANTY' },
+        data: { status: 'IN_PROGRESS', finished_at: null, started_at: started },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.reopened',
+          from: 'WARRANTY',
+          to: 'IN_PROGRESS',
+          reason: 'Retorno coberto pela garantia',
+        }),
+      );
+    });
+
+    it('extra desligado: transição bloqueada com BadRequest, sem mutação nem auditoria', async () => {
+      mockCurrentWo({ status: 'DONE' });
+
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', 'AWAITING_PAYMENT', 'Ajuste', 'ADMIN'),
+      ).rejects.toThrow('não está ativado');
+      await expect(service.awaitPayment('wo-1', 'comp-1', 'user-1')).rejects.toThrow(
+        'não está ativado',
+      );
+      expect(mockTx.workOrder.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['AWAITING_PAYMENT', 'CANCELLED'],
+      ['AWAITING_PAYMENT', 'WARRANTY'],
+      ['WARRANTY', 'DONE'],
+      ['WARRANTY', 'CANCELLED'],
+      ['PENDING', 'AWAITING_PAYMENT'],
+      ['IN_PROGRESS', 'WARRANTY'],
+    ] as const)('rejeita %s para %s sem mutação', async (from, to) => {
+      enableExtras('AWAITING_PAYMENT', 'WARRANTY');
+      mockCurrentWo({ status: from });
+      await expect(
+        service.changeStatus('wo-1', 'comp-1', 'user-1', to, 'Ajuste', 'ADMIN'),
+      ).rejects.toThrow('Transição inválida');
+      expect(mockTx.workOrder.updateMany).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+  });
+
   // ── corrigir ───────────────────────────────────────────────────────────────
 
   describe('correct() — corrigir (pós-encerramento, não muda status)', () => {
@@ -535,14 +728,17 @@ describe('WorkOrderService — state machine (P-01)', () => {
   // ── alias legado PATCH {status} (compatibilidade mobile) ──────────────────
 
   describe('update() — dispatch de status para ações de domínio', () => {
-    it.each(['DONE', 'CANCELLED'])('nega edição genérica de OS %s', async (status) => {
-      mockPrisma.workOrder.findFirst.mockResolvedValue({ ...pendingWo, status });
-      await expect(
-        service.update('wo-1', { title: 'adulterado' }, 'comp-1', 'tech'),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockPrisma.workOrder.update).not.toHaveBeenCalled();
-      expect(mockPrisma.workOrder.updateMany).not.toHaveBeenCalled();
-    });
+    it.each(['DONE', 'CANCELLED', 'AWAITING_PAYMENT', 'WARRANTY'])(
+      'nega edição genérica de OS %s',
+      async (status) => {
+        mockPrisma.workOrder.findFirst.mockResolvedValue({ ...pendingWo, status });
+        await expect(
+          service.update('wo-1', { title: 'adulterado' }, 'comp-1', 'tech'),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockPrisma.workOrder.update).not.toHaveBeenCalled();
+        expect(mockPrisma.workOrder.updateMany).not.toHaveBeenCalled();
+      },
+    );
 
     it('não permite forjar datas de início e conclusão pelo PATCH', async () => {
       mockPrisma.workOrder.findFirst.mockResolvedValue(pendingWo);
@@ -574,6 +770,23 @@ describe('WorkOrderService — state machine (P-01)', () => {
         service.update('wo-1', { status: 'CANCELLED' } as never, 'comp-1', 'user-1'),
       ).rejects.toThrow(BadRequestException);
       expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('status AWAITING_PAYMENT roteia para aguardar_pagamento (R5b, valida extra)', async () => {
+      enableExtras('AWAITING_PAYMENT');
+      mockCurrentWo({ status: 'DONE' });
+      mockUpdatedWo('AWAITING_PAYMENT');
+
+      await service.update('wo-1', { status: 'AWAITING_PAYMENT' } as never, 'comp-1', 'user-1');
+
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'wo-1', status: 'DONE' },
+        data: { status: 'AWAITING_PAYMENT' },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({ action: 'work_order.awaiting_payment' }),
+      );
     });
 
     it('status PENDING → BadRequestException (não é ação de domínio)', async () => {

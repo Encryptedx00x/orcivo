@@ -27,6 +27,7 @@ export * from './quote/quote-doc-options';
 export * from './work-order/work-order-create.dto';
 export * from './work-order/work-order-update.dto';
 export * from './work-order/work-order-fields';
+export * from './work-order/work-order-statuses';
 export * from './plan/plan-feature.enum';
 export * from './auth/forgot-password.dto';
 export * from './auth/reset-password.dto';
