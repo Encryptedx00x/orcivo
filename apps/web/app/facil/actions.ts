@@ -9,7 +9,9 @@ import type {
   QuoteDocOptions,
   QuotePaymentTerms,
   WorkOrderAction,
+  WorkOrderDetails,
   WorkOrderExtraStatus,
+  WorkOrderField,
   WorkOrderStatus,
 } from '@orcivo/shared-types';
 import { apiFetch } from '../../lib/api';
@@ -230,6 +232,7 @@ export interface EasyWorkOrder {
   number: number;
   title: string;
   notes?: string | null;
+  details?: WorkOrderDetails | null;
   status: WorkOrderStatus;
   scheduled_at?: string | null;
   created_at?: string;
@@ -264,6 +267,20 @@ export async function completeWorkOrder(id: string): Promise<Result<EasyWorkOrde
         method: 'PATCH',
       }),
     'Não foi possível finalizar o serviço.',
+  );
+}
+
+export async function updateEasyWorkOrderDetails(
+  id: string,
+  details: WorkOrderDetails,
+): Promise<Result<EasyWorkOrder>> {
+  return run(
+    () =>
+      apiFetch<EasyWorkOrder>(`/work-orders/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ details }),
+      }),
+    'Não foi possível salvar os dados do serviço.',
   );
 }
 
@@ -418,6 +435,7 @@ export interface EasyCompany {
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
   work_order_statuses?: WorkOrderExtraStatus[];
+  work_order_fields?: WorkOrderField[];
 }
 export async function getCompany(): Promise<Result<EasyCompany>> {
   return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');

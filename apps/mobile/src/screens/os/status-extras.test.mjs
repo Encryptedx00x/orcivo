@@ -14,7 +14,10 @@ test('os-status cobre todos os status publicados, inclusive os extras (R5b)', ()
     assert.ok(osStatus.EASY_STATUS[status], `chip do modo fácil sem config: ${status}`);
   }
   // Labels dos extras vêm do shared-types (regra única), não são reescritos.
-  assert.equal(osStatus.EASY_STATUS.AWAITING_PAYMENT.label, WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT);
+  assert.equal(
+    osStatus.EASY_STATUS.AWAITING_PAYMENT.label,
+    WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT,
+  );
   assert.equal(osStatus.EASY_STATUS.WARRANTY.label, WORK_ORDER_STATUS_LABELS.WARRANTY);
 });
 
@@ -70,7 +73,7 @@ function easyData(api) {
     .replace(/^import .*;$/gm, '')
     .replaceAll('export const ', 'const ')
     .replaceAll('export function ', 'function ');
-  return runInNewContext(`${source}\neasy`, { api });
+  return runInNewContext(`${source}\neasy`, { api, newIdempotencyKey: () => 'test-key' });
 }
 
 test('workOrderAction roteia os extras para await-payment/receive-payment/claim-warranty', async () => {
@@ -107,16 +110,37 @@ test('cancelar/reabrir seguem mandando o motivo obrigatório', async () => {
   ]);
 });
 
+test('modo fácil salva os detalhes da OS pela rota validada do backend', async () => {
+  const calls = [];
+  const easy = easyData({
+    async patch(path, body, options) {
+      calls.push([path, body, options]);
+      return { id: 'os-1', details: body.details };
+    },
+  });
+  await easy.updateWorkOrderDetails('os 1', { brand: 'LG', model: 'X1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    [
+      '/work-orders/os%201',
+      { details: { brand: 'LG', model: 'X1' } },
+      { idempotencyKey: 'test-key' },
+    ],
+  ]);
+});
+
 test('telas não duplicam a união de status nem os labels do shared-types', () => {
   const detail = readFileSync(new URL('../WorkOrderDetailScreen.tsx', import.meta.url), 'utf8');
   const list = readFileSync(new URL('../WorkOrderListScreen.tsx', import.meta.url), 'utf8');
-  const services = readFileSync(new URL('../../easy/screens/Services.tsx', import.meta.url), 'utf8');
+  const services = readFileSync(
+    new URL('../../easy/screens/Services.tsx', import.meta.url),
+    'utf8',
+  );
   for (const [name, src] of [
     ['detail', detail],
     ['list', list],
     ['easy services', services],
   ]) {
-    assert.ok(!src.includes("type WorkOrderStatus ="), `${name} redeclara o tipo de status`);
+    assert.ok(!src.includes('type WorkOrderStatus ='), `${name} redeclara o tipo de status`);
     assert.ok(
       !src.includes("'PENDING' | 'IN_PROGRESS'"),
       `${name} duplica a união de status em texto`,
@@ -126,4 +150,7 @@ test('telas não duplicam a união de status nem os labels do shared-types', () 
       `${name} não consome a regra publicada`,
     );
   }
+  assert.ok(services.includes('cleanWorkOrderDetails'));
+  assert.ok(services.includes('work_order_fields'));
+  assert.ok(services.includes('maxLength={300}'));
 });

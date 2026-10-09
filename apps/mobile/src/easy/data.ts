@@ -7,9 +7,11 @@ import type {
   QuoteDocOptions,
   QuotePaymentTerms,
   WorkOrderAction,
+  WorkOrderDetails,
+  WorkOrderField,
   WorkOrderStatus,
 } from '@orcivo/shared-types';
-import { api } from '../services/api';
+import { api, newIdempotencyKey } from '../services/api';
 import { workOrderService } from '../services/work-order.service';
 
 export interface EasySummary {
@@ -84,6 +86,7 @@ export interface EasyWorkOrder {
   number: number;
   title: string;
   notes?: string | null;
+  details?: WorkOrderDetails | null;
   /** União publicada no shared-types (inclui os extras AWAITING_PAYMENT/WARRANTY). */
   status: WorkOrderStatus;
   /** Ações liberadas pelo backend (estado + papel + status extras da empresa). */
@@ -236,6 +239,12 @@ export const easy = {
   startWorkOrder: (id: string) => api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/start`, {}),
   completeWorkOrder: (id: string) =>
     api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/complete`, {}),
+  updateWorkOrderDetails: (id: string, details: WorkOrderDetails) =>
+    api.patch<EasyWorkOrder>(
+      `/work-orders/${enc(id)}`,
+      { details },
+      { idempotencyKey: newIdempotencyKey() },
+    ),
   /** Ação de domínio → rota do backend (mesmo mapa do web; transições ficam no backend). */
   workOrderAction: (
     id: string,
@@ -390,6 +399,7 @@ export interface EasyCompany {
   quote_default_doc_options?: QuoteDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
+  work_order_fields?: WorkOrderField[];
 }
 
 export const RECEIPT_METHODS = [

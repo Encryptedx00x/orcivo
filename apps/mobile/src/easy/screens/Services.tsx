@@ -20,6 +20,12 @@ import {
   X,
 } from 'lucide-react-native';
 import { easy, errorText, type EasyWorkOrder } from '../data';
+import {
+  cleanWorkOrderDetails,
+  WORK_ORDER_FIELDS,
+  type WorkOrderDetails,
+  type WorkOrderField,
+} from '@orcivo/shared-types';
 import { useEasyNav } from '../draft';
 import { reasonSheet, useSheet, type SheetAction } from '../sheet';
 import type { EasyStackParamList } from '../EasyNavigator';
@@ -37,6 +43,7 @@ import {
   Chip,
   EmptyBox,
   ErrorBox,
+  Field,
   H1,
   Loading,
   More,
@@ -60,6 +67,90 @@ const EXTRA_ICONS: Record<WorkOrderExtraAction, typeof Hourglass> = {
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
 
 const PAGE = 10;
+
+function EasyDetailsCard({
+  id,
+  fields,
+  initial,
+  editable,
+}: {
+  id: string;
+  fields: WorkOrderField[];
+  initial: WorkOrderDetails;
+  editable: boolean;
+}) {
+  const [saved, setSaved] = useState<WorkOrderDetails>(initial);
+  const [value, setValue] = useState<WorkOrderDetails>(initial);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const shown = (Object.keys(WORK_ORDER_FIELDS) as WorkOrderField[]).filter(
+    (key) => fields.includes(key) || saved[key],
+  );
+  if (!shown.length) return null;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const clean = cleanWorkOrderDetails(value);
+      await easy.updateWorkOrderDetails(id, clean);
+      setSaved(clean);
+      setEditing(false);
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível salvar os dados do serviço.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card style={{ padding: 16, gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Text style={[s.body, { flex: 1, fontWeight: '700', fontSize: 19 }]}>
+          Dados do equipamento
+        </Text>
+        {editable && !editing ? (
+          <Btn tone="link" height={44} onPress={() => setEditing(true)}>
+            Editar
+          </Btn>
+        ) : null}
+      </View>
+      {editing ? (
+        <>
+          {shown.map((key) => (
+            <Field
+              key={key}
+              label={WORK_ORDER_FIELDS[key].label}
+              placeholder={WORK_ORDER_FIELDS[key].placeholder}
+              value={value[key] ?? ''}
+              maxLength={300}
+              onChange={(next) => setValue((current) => ({ ...current, [key]: next }))}
+            />
+          ))}
+          <Btn busy={busy} onPress={() => void save()}>
+            Salvar
+          </Btn>
+          <Btn
+            tone="outline"
+            disabled={busy}
+            onPress={() => {
+              setValue(saved);
+              setEditing(false);
+            }}
+          >
+            Cancelar
+          </Btn>
+        </>
+      ) : (
+        shown.map((key) => (
+          <View key={key} style={{ gap: 2 }}>
+            <Text style={s.muted}>{WORK_ORDER_FIELDS[key].label}</Text>
+            <Text style={s.body}>{saved[key]?.trim() || '—'}</Text>
+          </View>
+        ))
+      )}
+    </Card>
+  );
+}
 
 /** "Mais ações" of a service card (same as the web): remarcar, abrir completo, extras (R5b), cancelar/reabrir. */
 function useServiceMore(onChanged: () => void) {
@@ -272,6 +363,7 @@ export function RunScreen({
   const { id } = route.params;
   const load = useCallback(() => easy.workOrder(id), [id]);
   const order = useLoad(load, 'Não foi possível carregar este serviço.');
+  const company = useLoad(easy.company, 'Não foi possível carregar os campos do serviço.');
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -400,6 +492,12 @@ export function RunScreen({
           {o.notes?.trim() || 'Sem observações neste serviço.'}
         </Text>
       </Card>
+      <EasyDetailsCard
+        id={o.id}
+        fields={company.data?.work_order_fields ?? []}
+        initial={o.details ?? {}}
+        editable={open}
+      />
       <Card style={{ padding: 16, gap: 12 }}>
         <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Fotos</Text>
         {photos.length ? (

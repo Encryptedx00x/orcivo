@@ -54,6 +54,17 @@ export const WorkOrderDetailsSchema = z
   .refine((d) => Object.keys(d).length <= FIELD_KEYS.length);
 export type WorkOrderDetails = Partial<Record<WorkOrderField, string>>;
 
+/** Validates, trims and removes blank OS details before persistence. */
+export function cleanWorkOrderDetails(details: WorkOrderDetails): WorkOrderDetails {
+  const parsed = WorkOrderDetailsSchema.parse(details);
+  return Object.fromEntries(
+    FIELD_KEYS.flatMap((key) => {
+      const value = parsed[key]?.trim();
+      return value ? [[key, value]] : [];
+    }),
+  ) as WorkOrderDetails;
+}
+
 /** Filled fields, in catalog order, ready to print. */
 export function describeWorkOrderDetails(
   details: WorkOrderDetails | null | undefined,

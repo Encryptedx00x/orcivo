@@ -19,16 +19,22 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import {
+  cleanWorkOrderDetails,
   WO_CLOSED_STATUSES,
+  WORK_ORDER_FIELDS,
   WORK_ORDER_STATUS_LABELS,
   type WorkOrderAction,
+  type WorkOrderDetails,
+  type WorkOrderField,
   type WorkOrderStatus,
 } from '@orcivo/shared-types';
 import {
   completeWorkOrder,
+  getCompany,
   getWorkOrder,
   listWorkOrders,
   startWorkOrder,
+  updateEasyWorkOrderDetails,
   type EasyWorkOrder,
 } from '../actions';
 import { uploadWorkOrderPhoto } from '../../../lib/upload-photo';
@@ -41,6 +47,7 @@ import {
   Chip,
   EmptyBox,
   ErrorBox,
+  Field,
   H1,
   Loading,
   card,
@@ -51,6 +58,93 @@ import {
 } from '../ui';
 
 const PAGE = 10;
+
+function EasyDetailsCard({
+  id,
+  fields,
+  initial,
+  editable,
+}: {
+  id: string;
+  fields: WorkOrderField[];
+  initial: WorkOrderDetails;
+  editable: boolean;
+}): React.JSX.Element | null {
+  const [saved, setSaved] = useState<WorkOrderDetails>(initial);
+  const [value, setValue] = useState<WorkOrderDetails>(initial);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const shown = (Object.keys(WORK_ORDER_FIELDS) as WorkOrderField[]).filter(
+    (key) => fields.includes(key) || saved[key],
+  );
+  if (!shown.length) return null;
+
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    const clean = cleanWorkOrderDetails(value);
+    const result = await updateEasyWorkOrderDetails(id, clean);
+    setBusy(false);
+    if (!result.ok) return setError(result.message);
+    setSaved(clean);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ flex: 1, fontSize: 19, fontWeight: 700 }}>Dados do equipamento</span>
+        {editable && !editing && (
+          <Btn tone="link" height={44} onClick={() => setEditing(true)}>
+            Editar
+          </Btn>
+        )}
+      </div>
+      {editing ? (
+        <>
+          {shown.map((key) => (
+            <Field
+              key={key}
+              label={WORK_ORDER_FIELDS[key].label}
+              placeholder={WORK_ORDER_FIELDS[key].placeholder}
+              value={value[key] ?? ''}
+              maxLength={300}
+              onChange={(next) => setValue((current) => ({ ...current, [key]: next }))}
+            />
+          ))}
+          {error && (
+            <span role="alert" style={{ color: '#B91C1C' }}>
+              {error}
+            </span>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn disabled={busy} onClick={() => void save()}>
+              {busy ? 'Salvando…' : 'Salvar'}
+            </Btn>
+            <Btn
+              tone="outline"
+              disabled={busy}
+              onClick={() => {
+                setValue(saved);
+                setEditing(false);
+              }}
+            >
+              Cancelar
+            </Btn>
+          </div>
+        </>
+      ) : (
+        shown.map((key) => (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 14, color: C.fg3 }}>{WORK_ORDER_FIELDS[key].label}</span>
+            <span style={{ fontSize: 17 }}>{saved[key]?.trim() || '—'}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
 
 // Labels dos 4 status base no linguagem do Modo fácil; os status extras
 // (R5b) usam o label publicado no shared-types (regra única).
@@ -317,6 +411,7 @@ export function RunScreen(): React.JSX.Element {
   const toast = useToast();
   const id = params.id ?? '';
   const order = useLoad(() => getWorkOrder(id), [id]);
+  const company = useLoad(getCompany);
   const more = useServiceMore(order.reload);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
@@ -443,6 +538,12 @@ export function RunScreen(): React.JSX.Element {
           </span>
         </div>
       )}
+      <EasyDetailsCard
+        id={o.id}
+        fields={company.data?.work_order_fields ?? []}
+        initial={o.details ?? {}}
+        editable={o.status === 'PENDING' || o.status === 'IN_PROGRESS'}
+      />
       <div
         style={{
           display: 'flex',

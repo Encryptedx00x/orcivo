@@ -274,6 +274,7 @@ export function Field({
   keyboard,
   big,
   multiline,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -282,6 +283,7 @@ export function Field({
   keyboard?: 'default' | 'phone-pad' | 'number-pad';
   big?: boolean;
   multiline?: boolean;
+  maxLength?: number;
 }) {
   return (
     <View style={{ gap: 8 }}>
@@ -294,6 +296,7 @@ export function Field({
         keyboardType={keyboard ?? 'default'}
         multiline={multiline}
         accessibilityLabel={label}
+        maxLength={maxLength}
         style={[
           s.input,
           big && { fontSize: 20, fontWeight: '700' },

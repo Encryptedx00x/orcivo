@@ -301,6 +301,7 @@ export function Field({
   placeholder,
   inputMode,
   big,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -308,6 +309,7 @@ export function Field({
   placeholder?: string;
   inputMode?: 'text' | 'numeric' | 'tel';
   big?: boolean;
+  maxLength?: number;
 }): React.JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -318,6 +320,7 @@ export function Field({
         placeholder={placeholder}
         inputMode={inputMode}
         type={inputMode === 'tel' ? 'tel' : 'text'}
+        maxLength={maxLength}
         style={{
           height: 60,
           borderRadius: 14,

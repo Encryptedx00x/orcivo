@@ -1,4 +1,5 @@
 import {
+  cleanWorkOrderDetails,
   describeWorkOrderDetails,
   WorkOrderDetailsSchema,
   WorkOrderFieldListSchema,
@@ -18,5 +19,12 @@ describe('work order fields', () => {
     expect(WorkOrderDetailsSchema.safeParse({ price: '10' }).success).toBe(false);
     expect(WorkOrderDetailsSchema.safeParse({ brand: 'x'.repeat(301) }).success).toBe(false);
     expect(WorkOrderFieldListSchema.safeParse(['brand', 'nope']).success).toBe(false);
+  });
+
+  it('trims configured values and removes blank details before saving', () => {
+    expect(cleanWorkOrderDetails({ brand: ' LG ', model: '  ', capacity: '12.000 BTUs' })).toEqual({
+      brand: 'LG',
+      capacity: '12.000 BTUs',
+    });
   });
 });
