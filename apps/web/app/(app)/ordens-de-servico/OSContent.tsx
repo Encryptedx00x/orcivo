@@ -82,6 +82,10 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
   const preferenceKey = viewPreferenceKey(user?.id);
 
   useEffect(() => {
+    // A preference belongs to one authenticated user. Reset first so a user
+    // without a saved value (or a signed-out session) never inherits the
+    // previous user's selection.
+    setView('list');
     if (!preferenceKey) return;
     try {
       // Migrate the former browser-wide key once, so an existing preference
