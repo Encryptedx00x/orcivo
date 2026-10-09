@@ -131,7 +131,7 @@
       "type": "FEATURE",
       "source": "CONTINUE §3 R5b",
       "description": "Registrar a decisão técnica no resultado estruturado da tarefa e implementar taxa de deslocamento como item opcional de catálogo/orçamento, sem Number e sem regra duplicada. Não criar ADR, plano ou arquivo em .planning.",
-      "acceptance": "Decisão registrada somente no resultado estruturado da tarefa; nenhum arquivo fora do escopo declarado. Valor usa Decimal/string decimal/formatMoney; regra no backend/shared-types e nas superfícies aplicáveis; regras do reviewChecklist. Verificar: build shared-types se alterado; typecheck backend/web/mobile; specs de quote/catalog tocadas em runInBand.",
+      "acceptance": "Decisão registrada somente no resultado estruturado da tarefa; nenhum arquivo fora do escopo declarado. Valor usa Decimal/string decimal/formatMoney; regra no backend/shared-types e nas superfícies aplicáveis; regras do reviewChecklist. Infra local de teste disponível em PostgreSQL localhost:5433, Redis localhost:6380 e S3 localhost:9002. Verificar: build shared-types se alterado; typecheck backend/web/mobile; specs de quote/catalog tocadas em runInBand com testTimeout de 30000 ms e forceExit.",
       "dependencies": ["R5B-os-tabs"],
       "scope": ["apps/backend/src/quote", "apps/backend/src/catalog", "apps/web/app", "apps/mobile/src", "packages/shared-types"],
       "touchesPaths": ["apps/backend/src/quote", "apps/backend/src/catalog", "apps/web/app", "apps/mobile/src", "packages/shared-types"],
