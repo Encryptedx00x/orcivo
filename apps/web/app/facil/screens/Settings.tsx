@@ -13,13 +13,16 @@ import {
   UserCheck,
   UserRound,
   Users,
+  Wrench,
 } from 'lucide-react';
 import {
   COMPANY_DOC_FIELDS,
+  WORK_ORDER_EXTRA_STATUSES,
   formatMoney,
   maskCpfCnpj,
   maskPhone,
   onlyDigits,
+  type WorkOrderExtraStatus,
 } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
@@ -39,8 +42,10 @@ import {
   getApprovalMethods,
   getClientFull,
   getCompany,
+  getWorkOrderStatuses,
   listCatalog,
   setApprovalMethods,
+  setWorkOrderStatuses,
   updateCatalogItem,
   updateClient,
   updateCompany,
@@ -77,6 +82,15 @@ export const approvalsSummary = (on: ApprovalMethod[]) =>
   APPROVALS.filter((a) => on.includes(a.k))
     .map((a) => a.label)
     .join(', ') || 'Botão Aprovar';
+
+/** Sub do menu "Ordem de serviço": extras ligados (labels do shared-types). */
+export const osStatusesSummary = (on: WorkOrderExtraStatus[] | undefined) =>
+  (on ?? []).map((s) => WORK_ORDER_EXTRA_STATUSES[s].label).join(', ') || 'Sem status extras';
+
+const OS_EXTRA_SUBS: Record<WorkOrderExtraStatus, string> = {
+  AWAITING_PAYMENT: 'Serviço pronto, esperando receber',
+  WARRANTY: 'Cliente acionou a garantia',
+};
 
 const DEFAULT_TERMS =
   'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.';
@@ -164,6 +178,12 @@ export function SettingsScreen(): React.JSX.Element {
             label="Condições padrão"
             sub="Texto e validade que vão nos orçamentos"
             onClick={() => go('edit', { kind: 'terms' })}
+          />
+          <MenuRow
+            icon={Wrench}
+            label="Ordem de serviço"
+            sub={osStatusesSummary(c.work_order_statuses)}
+            onClick={() => go('osStatuses')}
           />
           <MenuRow icon={Users} label="Equipe" sub="Membros e convites" href="/equipe" />
           <MenuRow
@@ -262,6 +282,97 @@ export function ApprovalsScreen(): React.JSX.Element {
                     {a.sub}
                     {isOn && on.length === 1 ? ' · única ligada' : ''}
                   </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Ordem de serviço (status extras, R5b) ─────────────────────────────
+export function OsStatusesScreen(): React.JSX.Element {
+  const toast = useToast();
+  const statuses = useLoad(getWorkOrderStatuses);
+  const on = statuses.data ?? [];
+
+  const toggle = async (k: WorkOrderExtraStatus) => {
+    const next = on.includes(k) ? on.filter((s) => s !== k) : [...on, k];
+    const prev = on;
+    statuses.setData(next);
+    const r = await setWorkOrderStatuses(next);
+    if (!r.ok) {
+      statuses.setData(prev);
+      toast(r.message);
+    }
+  };
+
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <H1 size={30}>Ordem de serviço</H1>
+        <span style={{ fontSize: 17, lineHeight: '24px', color: C.fg3 }}>
+          Ligue os status extras que aparecem nos serviços depois de prontos. Desligar não mexe nos
+          serviços que já existem.
+        </span>
+      </div>
+      {statuses.loading && !statuses.data ? (
+        <Loading />
+      ) : statuses.error ? (
+        <ErrorBox
+          title="Não foi possível carregar os status da OS."
+          onRetry={statuses.reload}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(Object.keys(WORK_ORDER_EXTRA_STATUSES) as WorkOrderExtraStatus[]).map((k) => {
+            const isOn = on.includes(k);
+            return (
+              <button
+                key={k}
+                type="button"
+                role="checkbox"
+                aria-checked={isOn}
+                onClick={() => void toggle(k)}
+                style={{
+                  minHeight: 72,
+                  width: '100%',
+                  borderRadius: 16,
+                  border: `2px solid ${isOn ? C.purple : C.border}`,
+                  background: isOn ? C.purple50 : '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  color: C.ink,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9,
+                    border: `2px solid ${isOn ? C.purple : '#94A3B8'}`,
+                    background: isOn ? C.purple : '#FFFFFF',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {isOn && <Check size={18} aria-hidden="true" />}
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 17, fontWeight: 600 }}>
+                    {WORK_ORDER_EXTRA_STATUSES[k].label}
+                  </span>
+                  <span style={{ fontSize: 15, color: C.fg3 }}>{OS_EXTRA_SUBS[k]}</span>
                 </span>
               </button>
             );

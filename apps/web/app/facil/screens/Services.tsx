@@ -8,13 +8,22 @@ import {
   ChevronRight,
   ClipboardList,
   FileText,
+  HandCoins,
+  Hourglass,
   Image as ImageIcon,
   Play,
   Ban,
   Calendar,
   MoreHorizontal,
   RotateCcw,
+  ShieldAlert,
 } from 'lucide-react';
+import {
+  WO_CLOSED_STATUSES,
+  WORK_ORDER_STATUS_LABELS,
+  type WorkOrderAction,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
 import {
   completeWorkOrder,
   getWorkOrder,
@@ -43,15 +52,46 @@ import {
 
 const PAGE = 10;
 
-const STATUS: Record<EasyWorkOrder['status'], { kind: ChipKind; label: string }> = {
+// Labels dos 4 status base no linguagem do Modo fácil; os status extras
+// (R5b) usam o label publicado no shared-types (regra única).
+const STATUS: Record<WorkOrderStatus, { kind: ChipKind; label: string }> = {
   PENDING: { kind: 'wait', label: 'Para fazer' },
   IN_PROGRESS: { kind: 'doing', label: 'Fazendo' },
   DONE: { kind: 'ok', label: 'Feito' },
   CANCELLED: { kind: 'draft', label: 'Cancelado' },
+  AWAITING_PAYMENT: { kind: 'wait', label: WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT },
+  WARRANTY: { kind: 'doing', label: WORK_ORDER_STATUS_LABELS.WARRANTY },
 };
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
 
-/** "Mais ações" of a service: remarcar, abrir completo, cancelar ou reabrir (motivo obrigatório). */
+/** Ações de status extra (R5b): ícone e confirmação pós-ação. */
+const EXTRA_ACTIONS: Record<
+  'aguardar_pagamento' | 'receber_pagamento' | 'acionar_garantia',
+  { label: string; sub: string; icon: typeof Hourglass; toast: string }
+> = {
+  aguardar_pagamento: {
+    label: 'Aguardando pagamento',
+    sub: 'Serviço feito, falta receber',
+    icon: Hourglass,
+    toast: 'Serviço aguardando pagamento.',
+  },
+  receber_pagamento: {
+    label: 'Receber pagamento',
+    sub: 'Conclui o serviço de vez',
+    icon: HandCoins,
+    toast: 'Pagamento recebido — serviço concluído.',
+  },
+  acionar_garantia: {
+    label: 'Acionar garantia',
+    sub: 'O cliente acionou a garantia',
+    icon: ShieldAlert,
+    toast: 'Garantia acionada.',
+  },
+};
+type ExtraAction = keyof typeof EXTRA_ACTIONS;
+const isExtraAction = (a: WorkOrderAction): a is ExtraAction => a in EXTRA_ACTIONS;
+
+/** "Mais ações" of a service: remarcar, abrir completo, extras (R5b), cancelar ou reabrir. */
 function useServiceMore(onChanged: () => void) {
   const sheet = useSheet();
   const toast = useToast();
@@ -71,8 +111,18 @@ function useServiceMore(onChanged: () => void) {
       },
       action === 'cancelar' ? Ban : RotateCcw,
     );
+  // Status extras (R5b): transições diretas, sem motivo — só aparecem quando
+  // a empresa ligou o extra e o backend liberou a ação (allowed_actions).
+  const extra = async (o: EasyWorkOrder, action: ExtraAction) => {
+    const r = await workOrderAction(o.id, { action });
+    if (r.error) return toast(r.error);
+    toast(EXTRA_ACTIONS[action].toast);
+    onChanged();
+  };
   return (o: EasyWorkOrder) => {
     const open = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
+    const allowed = o.allowed_actions;
+    const canReopen = allowed ? allowed.includes('reabrir') : !open;
     const actions: SheetAction[] = [
       {
         label: 'Remarcar',
@@ -87,15 +137,31 @@ function useServiceMore(onChanged: () => void) {
         icon: FileText,
         run: () => (window.location.href = `/ordens-de-servico/${o.id}`),
       },
-      open
-        ? { label: 'Cancelar serviço', icon: Ban, danger: true, run: () => act(o, 'cancelar') }
-        : {
-            label: 'Reabrir serviço',
-            sub: 'Para serviço já finalizado ou cancelado',
-            icon: RotateCcw,
-            run: () => act(o, 'reabrir'),
-          },
     ];
+    for (const a of allowed ?? []) {
+      if (!isExtraAction(a)) continue;
+      actions.push({
+        label: EXTRA_ACTIONS[a].label,
+        sub: EXTRA_ACTIONS[a].sub,
+        icon: EXTRA_ACTIONS[a].icon,
+        run: () => void extra(o, a),
+      });
+    }
+    if (open) {
+      actions.push({
+        label: 'Cancelar serviço',
+        icon: Ban,
+        danger: true,
+        run: () => act(o, 'cancelar'),
+      });
+    } else if (canReopen) {
+      actions.push({
+        label: 'Reabrir serviço',
+        sub: 'Para serviço já finalizado ou cancelado',
+        icon: RotateCcw,
+        run: () => act(o, 'reabrir'),
+      });
+    }
     sheet({ title: o.title, sub: o.customer?.name ?? `Serviço #${o.number}`, actions });
   };
 }
@@ -161,7 +227,7 @@ export function ServicesScreen(): React.JSX.Element {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {list.map((o) => {
             const st = STATUS[o.status];
-            const primary = o.status !== 'DONE';
+            const primary = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
             const Icon =
               o.status === 'PENDING' ? Play : o.status === 'IN_PROGRESS' ? ChevronRight : FileText;
             return (
@@ -279,6 +345,13 @@ export function RunScreen(): React.JSX.Element {
     const r = await completeWorkOrder(o.id);
     if (!r.ok) return toast(r.message);
     setDone(true);
+  };
+  // R5b: extra "Aguardando pagamento" ligado — recebe e conclui a OS.
+  const receive = async () => {
+    const r = await workOrderAction(o.id, { action: 'receber_pagamento' });
+    if (r.error) return toast(r.error);
+    toast('Pagamento recebido — serviço concluído.');
+    order.reload();
   };
 
   if (done)
@@ -478,11 +551,18 @@ export function RunScreen(): React.JSX.Element {
         </span>
       </label>
       <MoreButton icon={MoreHorizontal} onClick={() => more(o)} />
-      {o.status !== 'DONE' && o.status !== 'CANCELLED' && (
+      {!WO_CLOSED_STATUSES.includes(o.status) && (
         <ActionBar>
           {o.status === 'PENDING' && <Hint>Toque em Finalizar quando terminar.</Hint>}
           <Btn icon={CheckCircle} onClick={() => void finish()}>
             Finalizar serviço
+          </Btn>
+        </ActionBar>
+      )}
+      {o.status === 'AWAITING_PAYMENT' && o.allowed_actions?.includes('receber_pagamento') && (
+        <ActionBar>
+          <Btn icon={HandCoins} onClick={() => void receive()}>
+            Receber pagamento
           </Btn>
         </ActionBar>
       )}

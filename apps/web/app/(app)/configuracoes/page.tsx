@@ -5,9 +5,11 @@ import {
   COMPANY_DOC_FIELDS,
   type QuoteDocOptions,
   type QuotePaymentTerms,
+  type WorkOrderExtraStatus,
   type WorkOrderField,
 } from '@orcivo/shared-types';
 import { OsFieldsSettings } from './OsFieldsSettings';
+import { OsStatusesSettings } from './OsStatusesSettings';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
 import {
@@ -83,6 +85,7 @@ interface CompanyMeResponse {
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
   work_order_fields?: WorkOrderField[];
+  work_order_statuses?: WorkOrderExtraStatus[];
 }
 
 const DEFAULT_TERMS =
@@ -212,6 +215,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
   const [osFields, setOsFields] = useState<WorkOrderField[] | null>(null);
+  const [osStatuses, setOsStatuses] = useState<WorkOrderExtraStatus[] | null>(null);
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
@@ -242,6 +246,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         setPayTerms(d.quote_default_payment_terms ?? null);
         setWarranty(d.quote_default_warranty ?? '');
         setOsFields(d.work_order_fields ?? []);
+        setOsStatuses(d.work_order_statuses ?? []);
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -1036,7 +1041,12 @@ export default function ConfiguracoesPage(): React.JSX.Element {
             </div>
           )}
 
-          {tab === 'os' && osFields && <OsFieldsSettings initial={osFields} />}
+          {tab === 'os' && (
+            <>
+              {osStatuses && <OsStatusesSettings initial={osStatuses} />}
+              {osFields && <OsFieldsSettings initial={osFields} />}
+            </>
+          )}
 
           {tab === 'modo' && (
             <div className="ov-card ov-card-body" style={{ padding: 24 }}>

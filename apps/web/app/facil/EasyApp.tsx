@@ -12,7 +12,7 @@ import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
 import { MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
-import { SettingsScreen, ApprovalsScreen, CatalogScreen, EditScreen } from './screens/Settings';
+import { SettingsScreen, ApprovalsScreen, OsStatusesScreen, CatalogScreen, EditScreen } from './screens/Settings';
 import { SheetProvider } from './sheet';
 import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { NoticesScreen } from './screens/Notices';
@@ -40,6 +40,7 @@ export type Screen =
   | 'receiptNew'
   | 'settings'
   | 'approvals'
+  | 'osStatuses'
   | 'catalog'
   | 'edit'
   | 'notices';
@@ -151,6 +152,7 @@ const BACK_SCREENS: Screen[] = [
   'receiptNew',
   'settings',
   'approvals',
+  'osStatuses',
   'catalog',
   'edit',
 ];
@@ -380,6 +382,8 @@ function CurrentScreen({ screen }: { screen: Screen }) {
       return <SettingsScreen />;
     case 'approvals':
       return <ApprovalsScreen />;
+    case 'osStatuses':
+      return <OsStatusesScreen />;
     case 'catalog':
       return <CatalogScreen />;
     case 'edit':

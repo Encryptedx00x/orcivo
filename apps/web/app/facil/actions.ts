@@ -8,6 +8,9 @@ import type {
   QuoteCreateDto,
   QuoteDocOptions,
   QuotePaymentTerms,
+  WorkOrderAction,
+  WorkOrderExtraStatus,
+  WorkOrderStatus,
 } from '@orcivo/shared-types';
 import { apiFetch } from '../../lib/api';
 
@@ -227,11 +230,13 @@ export interface EasyWorkOrder {
   number: number;
   title: string;
   notes?: string | null;
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  status: WorkOrderStatus;
   scheduled_at?: string | null;
   created_at?: string;
   customer: { id: string; name: string };
   photos?: Array<{ id: string; photo_stage: 'BEFORE' | 'DURING' | 'AFTER'; file_url: string }>;
+  /** Calculado pelo backend por estado + papel + status extras da empresa (R5b). */
+  allowed_actions?: WorkOrderAction[];
 }
 export async function listWorkOrders(): Promise<Result<EasyWorkOrder[]>> {
   return run(async () => {
@@ -260,6 +265,25 @@ export async function completeWorkOrder(id: string): Promise<Result<EasyWorkOrde
       }),
     'Não foi possível finalizar o serviço.',
   );
+}
+
+// ── Status extras da OS (R5b — Configurações > Ordem de serviço) ──────
+export async function getWorkOrderStatuses(): Promise<Result<WorkOrderExtraStatus[]>> {
+  return run(async () => {
+    const me = await apiFetch<{ work_order_statuses?: WorkOrderExtraStatus[] }>('/company/me');
+    return me.work_order_statuses ?? [];
+  }, 'Não foi possível carregar os status da OS.');
+}
+export async function setWorkOrderStatuses(
+  statuses: WorkOrderExtraStatus[],
+): Promise<Result<WorkOrderExtraStatus[]>> {
+  return run(async () => {
+    await apiFetch('/company/work-order-statuses', {
+      method: 'PATCH',
+      body: JSON.stringify({ statuses }),
+    });
+    return statuses;
+  }, 'Não foi possível salvar os status da OS.');
 }
 
 // ── Agenda ────────────────────────────────────────────────────────────
@@ -393,6 +417,7 @@ export interface EasyCompany {
   quote_default_doc_options?: QuoteDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
+  work_order_statuses?: WorkOrderExtraStatus[];
 }
 export async function getCompany(): Promise<Result<EasyCompany>> {
   return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');

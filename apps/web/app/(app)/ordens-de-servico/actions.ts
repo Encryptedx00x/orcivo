@@ -2,13 +2,18 @@
 
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
+import type { WorkOrderAction, WorkOrderStatus } from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
 
+export type { WorkOrderAction } from '@orcivo/shared-types';
+
 /**
- * Ações de domínio da OS (P-01 / ADR-016): transições explícitas com motivo
+ * Ações de domínio da OS (P-01 / ADR-016 / R5b): transições explícitas com motivo
  * obrigatório em cancelar/reabrir/corrigir. Os botões da página de detalhe
- * derivam de `allowed_actions` (calculado pelo backend por estado + papel),
- * garantindo que a UI só oferece o que a máquina de estados permite (AC4).
+ * derivam de `allowed_actions` (calculado pelo backend por estado + papel +
+ * status extras da empresa), garantindo que a UI só oferece o que a máquina
+ * de estados permite (AC4). Tipos e transições vêm do shared-types — nada é
+ * duplicado aqui.
  */
 
 const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
@@ -20,11 +25,13 @@ const ACTION_ROUTES: Record<WorkOrderAction, string> = {
   cancelar: 'cancel',
   reabrir: 'reopen',
   corrigir: 'correct',
+  aguardar_pagamento: 'await-payment',
+  receber_pagamento: 'receive-payment',
+  acionar_garantia: 'claim-warranty',
 };
 
-export type WorkOrderAction = 'iniciar' | 'concluir' | 'cancelar' | 'reabrir' | 'corrigir';
-
-export type WorkOrderWithActions = WorkOrder & {
+export type WorkOrderWithActions = Omit<WorkOrder, 'status'> & {
+  status: WorkOrderStatus;
   customer: WorkOrder['customer'] & { phone?: string | null };
   allowed_actions?: WorkOrderAction[];
   /** Presente na resposta do backend, ausente do tipo legado da lib. */
@@ -39,7 +46,7 @@ export interface WorkOrderActionInput {
   title?: string;
   notes?: string;
   /** A seleção manual usa a mesma máquina de ações no backend. */
-  status?: WorkOrder['status'];
+  status?: WorkOrderStatus;
 }
 
 export type WorkOrderActionResult = { error?: string; order?: WorkOrderWithActions };
