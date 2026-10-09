@@ -900,13 +900,17 @@ function Get-DispatcherReviewTimeoutRetryProof {
         if([string]$State.provider -eq $retryProvider -and -not[bool]$reviewChoice.selfReview){return &$deny "$retryProvider cannot independently review its own implementation"}
         $retryRoute=Resolve-Provider -Profile $retryProfile -Provider $retryProvider -ReviewOnly
         if(-not $retryRoute.ok){return &$deny "$retryProvider review fallback is unavailable: $($retryRoute.reason)"}
-        $terminal=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
-        if($terminal.eligible){return &$deny 'immutable output contains a revalidatable terminal verdict; use terminal-JSON recovery'}
-        $expectedTerminalReasons=@('reviewer invocation is not the exact exit-zero framing-only AGENT_FAILURE','GLM provider stream carries no completed text result','last GLM text does not carry exactly one review-envelope marker')
-        if([string]$terminal.reason -notin $expectedTerminalReasons){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
+        $schemaRetry=([string]$State.reason -eq 'HUMAN_REVIEW_REQUIRED: schema validation failed')
+        if(-not $schemaRetry){
+            $terminal=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
+            if($terminal.eligible){return &$deny 'immutable output contains a revalidatable terminal verdict; use terminal-JSON recovery'}
+            $expectedTerminalReasons=@('reviewer invocation is not the exact exit-zero framing-only AGENT_FAILURE','GLM provider stream carries no completed text result','last GLM text does not carry exactly one review-envelope marker')
+            if([string]$terminal.reason -notin $expectedTerminalReasons){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
+        }
 
         $review=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind review -RunId $RunId -HeadSha ([string]$State.candidateHead)
-        if(-not $review -or [string]$review.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.producer.invocationId -ne $InvocationId -or [string]$review.payload.reason -ne 'reviewer process did not exit 0 / timed out'){return &$deny 'latest review is not the exact no-verdict timeout attestation'}
+        $expectedReviewReason=$(if($schemaRetry){'schema validation failed'}else{'reviewer process did not exit 0 / timed out'})
+        if(-not $review -or [string]$review.result -ne 'HUMAN_REVIEW_REQUIRED' -or [string]$review.attestationId -ne [string]$State.reviewAttestationId -or [string]$review.producer.invocationId -ne $InvocationId -or [string]$review.payload.reason -ne $expectedReviewReason){return &$deny 'latest review is not the exact retryable review attestation'}
         $reviewFresh=Test-AttestationFresh -Attestation $review -WorktreeDir ([string]$State.workspace) -BaseSha ([string]$State.candidateBase) -HeadSha ([string]$State.candidateHead)
         if(-not $reviewFresh.fresh){return &$deny 'timeout review attestation is stale or tampered'}
 
@@ -929,7 +933,9 @@ function Get-DispatcherReviewTimeoutRetryProof {
 
         $attempts=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId});if($attempts.Count -ne 1 -or [string]$State.providerHistory[-1].invocationId -ne $InvocationId){return &$deny 'timed-out reviewer invocation is absent or not the history tail'}
         $attempt=$attempts[0]
-        if([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -ne 124 -or [string]$attempt.providerClass -ne 'INCOMPLETE_PROVIDER_RESULT' -or -not[bool]$attempt.telemetryConsistent){return &$deny 'review timeout is not the exact bounded GLM incomplete-result shape'}
+        if($schemaRetry){
+            if([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -notin @('APPROVE','REQUEST_CHANGES') -or [int]$attempt.exitCode -ne 0 -or [string]$attempt.providerClass -ne 'NONE' -or -not[bool]$attempt.telemetryConsistent){return &$deny 'review schema retry is not bound to a successful GLM reviewer result'}
+        }elseif([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -ne 124 -or [string]$attempt.providerClass -ne 'INCOMPLETE_PROVIDER_RESULT' -or -not[bool]$attempt.telemetryConsistent){return &$deny 'review timeout is not the exact bounded GLM incomplete-result shape'}
         if($history.Count){$prior=$history[-1];if([string]$prior.retryProvider -ne 'glm' -or [string]$prior.retryModel -ne (Get-GlmModelId) -or [string]$prior.retryProfile -ne 'REASONING' -or [string]$State.authorizedReviewRoute.provider -ne 'glm' -or [string]$State.authorizedReviewRoute.model -ne (Get-GlmModelId) -or [string]$State.authorizedReviewRoute.profile -ne 'REASONING'){return &$deny 'GLM self-review retry provenance is not the exact pinned route'}}
         $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-timeout-retry-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$review.attestationId;failedReviewAttestationHash=[string]$review.attestationHash;failedResultReceiptHash=[string]$attempt.resultReceiptHash;failedStdoutHash=[string]$attempt.stdoutHash;retryOrdinal=($history.Count+1);priorRetryProofHash=$(if($history.Count){[string]$history[-1].proofHash}else{''});checkAttestationId=[string]$check.attestationId;retryProvider=$retryProvider;retryModel=[string]$retryRoute.model;retryProfile=$retryProfile}
         $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
