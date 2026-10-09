@@ -19,6 +19,9 @@ import {
   Hourglass,
   HandCoins,
   ShieldAlert,
+  CalendarDays,
+  ClipboardList,
+  WalletCards,
 } from 'lucide-react';
 import {
   MANDATORY_REASON_ACTIONS,
@@ -197,6 +200,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
   const [editingPayment, setEditingPayment] = useState<EditablePayment | null>(null);
   const [deletingPayment, setDeletingPayment] = useState<EditablePayment | null>(null);
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [activeTab, setActiveTab] = useState<'servico' | 'agenda' | 'financeiro'>('servico');
   const fileInputRefs = useRef<Partial<Record<PhotoStage, HTMLInputElement | null>>>({});
 
   // AC4: os botões vêm direto da lista de ações permitidas calculada pelo
@@ -795,7 +799,40 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
           )}
         </div>
 
-        {/* 2-column layout */}
+        <div
+          role="tablist"
+          aria-label="Detalhes da ordem de serviço"
+          style={{ display: 'flex', gap: 4, padding: '0 24px', marginBottom: 16, borderBottom: '1px solid #E2E8F0' }}
+        >
+          {[
+            { id: 'servico' as const, label: 'Serviço', icon: ClipboardList },
+            { id: 'agenda' as const, label: 'Agenda', icon: CalendarDays },
+            { id: 'financeiro' as const, label: 'Financeiro', icon: WalletCards },
+          ].map(({ id, label, icon: Icon }) => {
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                id={`os-tab-${id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`os-panel-${id}`}
+                onClick={() => setActiveTab(id)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 12px',
+                  border: 'none', borderBottom: `2px solid ${selected ? '#6D28D9' : 'transparent'}`,
+                  background: 'transparent', color: selected ? '#6D28D9' : '#64748B',
+                  font: '600 13px inherit', cursor: 'pointer', marginBottom: -1,
+                }}
+              >
+                <Icon size={15} /> {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Conteúdo da aba e contexto persistente da OS. */}
         <div
           className="ov-row-detail"
           style={{
@@ -806,7 +843,13 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
           }}
         >
           {/* LEFT */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div
+            id={`os-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`os-tab-${activeTab}`}
+            style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
+            {activeTab === 'servico' && <>
             {/* Informações */}
             <div style={card}>
               <div style={cardHeader}>
@@ -972,6 +1015,24 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                 })}
               </div>
             </div>
+            </>}
+
+            {activeTab === 'agenda' && (
+              <div style={card}>
+                <div style={cardHeader}><h3 style={cardTitle}>Agenda do serviço</h3></div>
+                <div className="ov-grid-3" style={{ padding: '14px 18px' }}>
+                  <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
+                  <KV label="Iniciada em" value={formatDate(order.started_at)} />
+                  <KV label="Concluída em" value={formatDate(order.finished_at)} />
+                  <KV label="Técnico responsável" value={order.technician?.name ?? 'Sem técnico atribuído'} />
+                </div>
+                {!order.scheduled_at && (
+                  <p style={{ padding: '0 18px 14px', margin: 0, fontSize: 13, color: '#64748B' }}>
+                    Esta OS ainda não possui horário agendado.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* RIGHT PANEL */}
@@ -1031,8 +1092,8 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
               </div>
             </div>
 
-            {/* Financeiro */}
-            <div style={card}>
+            {/* Financeiro: recebimentos e custos ficam juntos nesta aba. */}
+            {activeTab === 'financeiro' && <div style={card}>
               <div style={{ padding: '14px 18px' }}>
                 <div
                   style={{
@@ -1155,7 +1216,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                   <Plus size={14} /> Registrar recebimento
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* Histórico */}
             <div style={card}>
