@@ -10,9 +10,12 @@ import {
   ChevronRight,
   ClipboardList,
   FileText,
+  HandCoins,
+  Hourglass,
   Image as ImageIcon,
   MoreHorizontal,
   Play,
+  ShieldAlert,
   Undo2,
   X,
 } from 'lucide-react-native';
@@ -20,6 +23,13 @@ import { easy, errorText, type EasyWorkOrder } from '../data';
 import { useEasyNav } from '../draft';
 import { reasonSheet, useSheet, type SheetAction } from '../sheet';
 import type { EasyStackParamList } from '../EasyNavigator';
+import {
+  EASY_STATUS,
+  EXTRA_ACTION_UI,
+  isExtraAction,
+  woIsClosed,
+  type WorkOrderExtraAction,
+} from '../../screens/os/os-status';
 import {
   Btn,
   C,
@@ -38,20 +48,20 @@ import {
   longDate,
   s,
   useLoad,
-  type ChipKind,
 } from '../ui';
 
-const STATUS: Record<EasyWorkOrder['status'], { kind: ChipKind; label: string }> = {
-  PENDING: { kind: 'wait', label: 'Para fazer' },
-  IN_PROGRESS: { kind: 'doing', label: 'Fazendo' },
-  DONE: { kind: 'ok', label: 'Feito' },
-  CANCELLED: { kind: 'draft', label: 'Cancelado' },
+/** Ícones das ações de status extra (R5b) — mesmo conjunto do web. */
+const EXTRA_ICONS: Record<WorkOrderExtraAction, typeof Hourglass> = {
+  aguardar_pagamento: Hourglass,
+  receber_pagamento: HandCoins,
+  acionar_garantia: ShieldAlert,
 };
+
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
 
 const PAGE = 10;
 
-/** "Mais ações" of a service card (same as the web): remarcar, abrir completo, cancelar/reabrir. */
+/** "Mais ações" of a service card (same as the web): remarcar, abrir completo, extras (R5b), cancelar/reabrir. */
 function useServiceMore(onChanged: () => void) {
   const nav = useEasyNav();
   const sheet = useSheet();
@@ -72,8 +82,21 @@ function useServiceMore(onChanged: () => void) {
       },
       action === 'cancel' ? X : Undo2,
     );
+  // Status extras (R5b): transições diretas, sem motivo — só aparecem quando
+  // a empresa ligou o extra e o backend liberou a ação (allowed_actions).
+  const extra = async (o: EasyWorkOrder, action: WorkOrderExtraAction) => {
+    try {
+      await easy.workOrderAction(o.id, action);
+      Alert.alert('Pronto', EXTRA_ACTION_UI[action].doneEasy);
+      onChanged();
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
+    }
+  };
   return (o: EasyWorkOrder) => {
     const open = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
+    const allowed = o.allowed_actions;
+    const canReopen = allowed ? allowed.includes('reabrir') : !open;
     const actions: SheetAction[] = [
       {
         label: 'Remarcar',
@@ -91,15 +114,31 @@ function useServiceMore(onChanged: () => void) {
         icon: FileText,
         run: () => nav.navigate('WorkOrderDetail', { id: o.id }),
       },
-      open
-        ? { label: 'Cancelar serviço', icon: X, danger: true, run: () => act(o, 'cancel') }
-        : {
-            label: 'Reabrir serviço',
-            sub: 'Para serviço já finalizado ou cancelado',
-            icon: Undo2,
-            run: () => act(o, 'reopen'),
-          },
     ];
+    for (const a of allowed ?? []) {
+      if (!isExtraAction(a)) continue;
+      actions.push({
+        label: EXTRA_ACTION_UI[a].label,
+        sub: EXTRA_ACTION_UI[a].sub,
+        icon: EXTRA_ICONS[a],
+        run: () => void extra(o, a),
+      });
+    }
+    if (open) {
+      actions.push({
+        label: 'Cancelar serviço',
+        icon: X,
+        danger: true,
+        run: () => act(o, 'cancel'),
+      });
+    } else if (canReopen) {
+      actions.push({
+        label: 'Reabrir serviço',
+        sub: 'Para serviço já finalizado ou cancelado',
+        icon: Undo2,
+        run: () => act(o, 'reopen'),
+      });
+    }
     sheet({ title: o.title, sub: o.customer?.name ?? `Serviço #${o.number}`, actions });
   };
 }
@@ -165,7 +204,7 @@ export function ServicesScreen() {
         </>
       ) : null}
       {list.map((o) => {
-        const st = STATUS[o.status];
+        const st = EASY_STATUS[o.status];
         const Icon =
           o.status === 'PENDING' ? Play : o.status === 'IN_PROGRESS' ? ChevronRight : FileText;
         return (
@@ -289,6 +328,17 @@ export function RunScreen({
     }
   };
 
+  // R5b: extra "Aguardando pagamento" ligado — recebe e conclui o serviço.
+  const extra = async (action: WorkOrderExtraAction) => {
+    try {
+      await easy.workOrderAction(o.id, action);
+      Alert.alert('Pronto', EXTRA_ACTION_UI[action].doneEasy);
+      void order.refresh();
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível concluir agora.'));
+    }
+  };
+
   if (done)
     return (
       <Page
@@ -323,6 +373,8 @@ export function RunScreen({
     );
 
   const open = o.status === 'PENDING' || o.status === 'IN_PROGRESS';
+  const canReceive =
+    o.status === 'AWAITING_PAYMENT' && o.allowed_actions?.includes('receber_pagamento');
   return (
     <Page
       bar={
@@ -330,11 +382,15 @@ export function RunScreen({
           <Btn icon={CheckCircle} busy={finishing} onPress={() => void finish()}>
             Finalizar serviço
           </Btn>
+        ) : canReceive ? (
+          <Btn icon={HandCoins} onPress={() => void extra('receber_pagamento')}>
+            Receber pagamento
+          </Btn>
         ) : undefined
       }
     >
       <View style={{ gap: 6 }}>
-        <Chip kind={STATUS[o.status].kind} label={STATUS[o.status].label} />
+        <Chip kind={EASY_STATUS[o.status].kind} label={EASY_STATUS[o.status].label} />
         <H1 size={28}>{o.title}</H1>
         <Sub>{o.customer?.name}</Sub>
       </View>
@@ -402,10 +458,19 @@ export function RunScreen({
             label="Abrir ordem de serviço completa"
             onPress={() => navigation.navigate('WorkOrderDetail', { id: o.id })}
           />
+          {(o.allowed_actions ?? []).filter(isExtraAction).map((a) => (
+            <Row
+              key={a}
+              icon={EXTRA_ICONS[a]}
+              label={EXTRA_ACTION_UI[a].label}
+              sub={EXTRA_ACTION_UI[a].sub}
+              onPress={() => void extra(a)}
+            />
+          ))}
           {open ? (
             <Row icon={X} label="Cancelar serviço" danger onPress={() => setAction('cancel')} />
           ) : null}
-          {o.status === 'DONE' || o.status === 'CANCELLED' ? (
+          {woIsClosed(o.status) ? (
             <Row icon={Undo2} label="Reabrir serviço" onPress={() => setAction('reopen')} />
           ) : null}
         </Card>

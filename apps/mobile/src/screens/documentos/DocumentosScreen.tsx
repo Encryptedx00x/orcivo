@@ -17,7 +17,7 @@ import { ClipboardList, Download, FileText, Inbox, Plus, ReceiptText } from 'luc
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, WORK_ORDER_STATUS_LABELS } from '@orcivo/shared-types';
 import { API_URL } from '../../config';
 import { refreshSession } from '../../services/api';
 import { quoteService } from '../../services/quote.service';
@@ -41,7 +41,14 @@ const WORK_ORDER_PILL: Record<WorkOrderStatus, { label: string; bg: string; colo
   PENDING: { label: 'Pendente', bg: '#F1F5F9', color: '#334155' },
   IN_PROGRESS: { label: 'Em andamento', bg: '#E0F2FE', color: '#075985' },
   DONE: { label: 'Concluída', bg: '#DCFCE7', color: '#166534' },
-  CANCELLED: { label: 'Cancelado', bg: '#F1F5F9', color: '#64748B' },
+  CANCELLED: { label: 'Cancelada', bg: '#F1F5F9', color: '#64748B' },
+  // Status extras (R5b): label publicado no shared-types.
+  AWAITING_PAYMENT: {
+    label: WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT,
+    bg: '#DBEAFE',
+    color: '#1E40AF',
+  },
+  WARRANTY: { label: WORK_ORDER_STATUS_LABELS.WARRANTY, bg: '#EDE9FE', color: '#4C1D95' },
 };
 
 function Pill({ config }: { config: { label: string; bg: string; color: string } }) {

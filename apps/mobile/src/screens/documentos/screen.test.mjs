@@ -25,6 +25,9 @@ function compile(relativePath, modules) {
 
 // Exercise the real money formatter rather than duplicating Decimal.js rules.
 const shared = compile('../../../../../packages/shared-types/src/helpers/money.ts', { 'decimal.js': require('decimal.js') });
+// Labels dos status (R5b) vêm do pacote publicado — nada de copiar no teste.
+const sharedTypes = require('@orcivo/shared-types');
+shared.WORK_ORDER_STATUS_LABELS = sharedTypes.WORK_ORDER_STATUS_LABELS;
 
 function createElement(type, props, ...children) {
   return typeof type === 'function' ? type({ ...props, children }) : { type, props: props ?? {}, children: children.flat(Infinity) };

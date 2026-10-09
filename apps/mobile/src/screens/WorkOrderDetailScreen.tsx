@@ -13,17 +13,29 @@ import {
 import {
   Camera,
   CheckCircle,
+  HandCoins,
   History,
+  Hourglass,
   MessageCircle,
   RotateCcw,
+  ShieldAlert,
   XCircle,
 } from 'lucide-react-native';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, WORK_ORDER_STATUS_LABELS } from '@orcivo/shared-types';
 import { easy, errorText } from '../easy/data';
 import { reasonSheet, useSheet } from '../easy/sheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { workOrderService, WorkOrder, WorkOrderPhoto } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import {
+  EXTRA_ACTION_UI,
+  STATUS_COLORS,
+  woIsClosed,
+  woScreenActions,
+  type WorkOrderAction,
+  type WorkOrderExtraAction,
+  type WorkOrderStatus,
+} from './os/os-status';
 import { OsDetailsSection } from './os/OsDetailsFields';
 
 import {
@@ -38,8 +50,6 @@ import {
 } from '../services/audit.service';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderDetail'>;
-
-type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
 const dateText = (iso?: string | null) =>
   iso
@@ -59,13 +69,6 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 type PhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
-
-const STATUS_CONFIG: Record<WorkOrderStatus, { label: string; color: string; bg: string }> = {
-  PENDING: { label: 'Pendente', color: '#374151', bg: '#F3F4F6' },
-  IN_PROGRESS: { label: 'Em andamento', color: '#FFFFFF', bg: '#2563EB' },
-  DONE: { label: 'Concluída', color: '#FFFFFF', bg: '#16A34A' },
-  CANCELLED: { label: 'Cancelada', color: '#FFFFFF', bg: '#DC2626' },
-};
 
 const STAGE_LABELS: Record<PhotoStage, string> = {
   BEFORE: 'Antes',
@@ -309,6 +312,20 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
     );
   };
 
+  // Status extras (R5b): confirmação direta, sem motivo — a ação só é
+  // oferecida quando o backend a liberou (extras ligados + papel + estado).
+  const handleExtraAction = (action: WorkOrderExtraAction) => {
+    if (!order) return;
+    const ui = EXTRA_ACTION_UI[action];
+    Alert.alert(ui.question, undefined, [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: ui.confirm,
+        onPress: () => void runAction(() => easy.workOrderAction(order.id, action), ui.doneFull),
+      },
+    ]);
+  };
+
   const navigateToPhoto = (stage: PhotoStage) => {
     navigation.navigate('WorkOrderPhoto', { workOrderId: id, stage, onPhotoUploaded: load });
   };
@@ -332,8 +349,10 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
     );
   }
 
-  const status = order.status as WorkOrderStatus;
-  const statusCfg = STATUS_CONFIG[status];
+  const status = order.status;
+  const statusCfg = STATUS_COLORS[status] ?? STATUS_COLORS.PENDING;
+  // AC4: ações vindas do backend (estado + papel + status extras da empresa).
+  const allowed: readonly WorkOrderAction[] = woScreenActions(status, order.allowed_actions);
 
   return (
     <ScrollView style={styles.container}>
@@ -342,7 +361,9 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
         <View style={styles.headerRow}>
           <Text style={styles.orderNumber}>OS #{order.number}</Text>
           <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
-            <Text style={[styles.statusText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+            <Text style={[styles.statusText, { color: statusCfg.color }]}>
+              {WORK_ORDER_STATUS_LABELS[status]}
+            </Text>
           </View>
         </View>
         <Text style={styles.title}>{order.title}</Text>
@@ -376,16 +397,16 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
         key={order.id}
         id={order.id}
         initial={order.details ?? {}}
-        editable={order.status === 'PENDING' || order.status === 'IN_PROGRESS'}
+        editable={!woIsClosed(order.status)}
       />
 
-      {/* Ações de status */}
+      {/* Ações de status — apenas as liberadas para o estado/papel (AC4) */}
       {updatingStatus ? (
         <ActivityIndicator style={styles.statusLoader} color="#6D28D9" />
       ) : (
-        <View style={styles.actions}>
-          {status === 'PENDING' && (
-            <>
+        allowed.length > 0 && (
+          <View style={styles.actions}>
+            {allowed.includes('iniciar') && (
               <TouchableOpacity
                 style={styles.actionBtn}
                 onPress={() => handleStatusChange('IN_PROGRESS')}
@@ -393,23 +414,8 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
                 <CheckCircle size={18} color="#FFFFFF" />
                 <Text style={styles.actionBtnText}>Iniciar OS</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnDanger]}
-                onPress={() => handleStatusChange('CANCELLED')}
-              >
-                <XCircle size={18} color="#FFFFFF" />
-                <Text style={styles.actionBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          {(status === 'DONE' || status === 'CANCELLED') && (
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleStatusChange('REOPEN')}>
-              <RotateCcw size={18} color="#FFFFFF" />
-              <Text style={styles.actionBtnText}>Reabrir OS</Text>
-            </TouchableOpacity>
-          )}
-          {status === 'IN_PROGRESS' && (
-            <>
+            )}
+            {allowed.includes('concluir') && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnSuccess]}
                 onPress={() => handleStatusChange('DONE')}
@@ -417,6 +423,8 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
                 <CheckCircle size={18} color="#FFFFFF" />
                 <Text style={styles.actionBtnText}>Concluir</Text>
               </TouchableOpacity>
+            )}
+            {allowed.includes('cancelar') && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnDanger]}
                 onPress={() => handleStatusChange('CANCELLED')}
@@ -424,9 +432,45 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
                 <XCircle size={18} color="#FFFFFF" />
                 <Text style={styles.actionBtnText}>Cancelar</Text>
               </TouchableOpacity>
-            </>
-          )}
-        </View>
+            )}
+            {allowed.includes('aguardar_pagamento') && (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnWaiting]}
+                onPress={() => handleExtraAction('aguardar_pagamento')}
+              >
+                <Hourglass size={18} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Aguardando pagamento</Text>
+              </TouchableOpacity>
+            )}
+            {allowed.includes('receber_pagamento') && (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnSuccess]}
+                onPress={() => handleExtraAction('receber_pagamento')}
+              >
+                <HandCoins size={18} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Receber pagamento</Text>
+              </TouchableOpacity>
+            )}
+            {allowed.includes('acionar_garantia') && (
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => handleExtraAction('acionar_garantia')}
+              >
+                <ShieldAlert size={18} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Acionar garantia</Text>
+              </TouchableOpacity>
+            )}
+            {allowed.includes('reabrir') && (
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => handleStatusChange('REOPEN')}
+              >
+                <RotateCcw size={18} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Reabrir OS</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )
       )}
 
       {/* Fotos por etapa */}
@@ -491,6 +535,7 @@ const styles = StyleSheet.create({
   },
   actionBtnSuccess: { backgroundColor: '#16A34A' },
   actionBtnDanger: { backgroundColor: '#DC2626' },
+  actionBtnWaiting: { backgroundColor: '#1E40AF' },
   actionBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   statusLoader: { marginVertical: 20 },
   photosSection: { padding: 20 },
