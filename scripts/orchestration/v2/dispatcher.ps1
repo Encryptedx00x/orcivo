@@ -1227,7 +1227,8 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         if(Test-Path -LiteralPath $receiptPath){
             $receipt=Read-V2Json $receiptPath
             if(-not(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$proof.proofHash))){
-                $priorReceipt=($PermitExactSignedTransplantHead -and -not $alreadyRecovered -and $history.Count -eq 1 -and (Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$history[0].proofHash)) -and [string]$receipt.receiptHash -eq [string]$history[0].receiptHash)
+                $matchingHistory=@($history|Where-Object{(Test-DispatcherDisjointTargetAdvanceReceipt -Receipt $receipt -ExpectedProofHash ([string]$_.proofHash)) -and [string]$receipt.receiptHash -eq [string]$_.receiptHash})
+                $priorReceipt=(-not $alreadyRecovered -and $matchingHistory.Count -eq 1)
                 if($priorReceipt){$receipt=$null}else{return &$deny 'recovery receipt is invalid or conflicts with the proof'}
             }
         }
