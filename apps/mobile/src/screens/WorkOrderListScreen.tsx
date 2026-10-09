@@ -8,28 +8,22 @@ import {
   View,
 } from 'react-native';
 import { CheckCircle, ClipboardList, Clock, Plus } from 'lucide-react-native';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, WORK_ORDER_STATUS_LABELS } from '@orcivo/shared-types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { usePagedList } from '../hooks/usePagedList';
 import { workOrderService, WorkOrder } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import { STATUS_COLORS, type WorkOrderStatus } from './os/os-status';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderList'>;
 
-type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
-
-const STATUS_CONFIG: Record<WorkOrderStatus, { label: string; color: string; bg: string }> = {
-  PENDING: { label: 'Pendente', color: '#374151', bg: '#F3F4F6' },
-  IN_PROGRESS: { label: 'Em andamento', color: '#FFFFFF', bg: '#2563EB' },
-  DONE: { label: 'Concluída', color: '#FFFFFF', bg: '#16A34A' },
-  CANCELLED: { label: 'Cancelada', color: '#FFFFFF', bg: '#DC2626' },
-};
-
 function StatusBadge({ status }: { status: WorkOrderStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
+  const cfg = STATUS_COLORS[status] ?? STATUS_COLORS.PENDING;
   return (
     <View style={[styles.badge, { backgroundColor: cfg.bg }]}>
-      <Text style={[styles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
+      <Text style={[styles.badgeText, { color: cfg.color }]}>
+        {WORK_ORDER_STATUS_LABELS[status]}
+      </Text>
     </View>
   );
 }
@@ -58,7 +52,7 @@ export function WorkOrderListScreen({ navigation }: Props) {
       <View style={styles.cardHeader}>
         <ClipboardList size={16} color="#6D28D9" />
         <Text style={styles.orderNumber}>OS #{item.number}</Text>
-        <StatusBadge status={item.status as WorkOrderStatus} />
+        <StatusBadge status={item.status} />
       </View>
       <Text style={styles.orderTitle}>{item.title}</Text>
       <View style={styles.cardFooter}>

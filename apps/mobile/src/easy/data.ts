@@ -6,6 +6,8 @@ import type {
   QuoteCreateDto,
   QuoteDocOptions,
   QuotePaymentTerms,
+  WorkOrderAction,
+  WorkOrderStatus,
 } from '@orcivo/shared-types';
 import { api } from '../services/api';
 import { workOrderService } from '../services/work-order.service';
@@ -82,7 +84,10 @@ export interface EasyWorkOrder {
   number: number;
   title: string;
   notes?: string | null;
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  /** União publicada no shared-types (inclui os extras AWAITING_PAYMENT/WARRANTY). */
+  status: WorkOrderStatus;
+  /** Ações liberadas pelo backend (estado + papel + status extras da empresa). */
+  allowed_actions?: readonly WorkOrderAction[];
   scheduled_at?: string | null;
   created_at?: string;
   customer: { id: string; name: string };
@@ -112,6 +117,15 @@ export interface EasyPayment {
 
 const list = <T>(res: { data: T[] } | T[]): T[] => (Array.isArray(res) ? res : res.data);
 const enc = encodeURIComponent;
+
+/** Ação → rota do backend (R5b): plumbing de API, a regra fica no backend. */
+const WO_ACTION_ROUTES = {
+  cancel: 'cancel',
+  reopen: 'reopen',
+  aguardar_pagamento: 'await-payment',
+  receber_pagamento: 'receive-payment',
+  acionar_garantia: 'claim-warranty',
+} as const;
 
 /** Multipart file part from a local file URI (camera, gallery or a rendered signature). */
 export function filePart(uri: string): Blob {
@@ -222,8 +236,12 @@ export const easy = {
   startWorkOrder: (id: string) => api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/start`, {}),
   completeWorkOrder: (id: string) =>
     api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/complete`, {}),
-  workOrderAction: (id: string, action: 'cancel' | 'reopen', reason: string) =>
-    api.patch(`/work-orders/${enc(id)}/${action}`, { reason }),
+  /** Ação de domínio → rota do backend (mesmo mapa do web; transições ficam no backend). */
+  workOrderAction: (
+    id: string,
+    action: 'cancel' | 'reopen' | 'aguardar_pagamento' | 'receber_pagamento' | 'acionar_garantia',
+    reason?: string,
+  ) => api.patch(`/work-orders/${enc(id)}/${WO_ACTION_ROUTES[action]}`, reason ? { reason } : {}),
   uploadPhoto: (id: string, uri: string, stage: 'BEFORE' | 'DURING' | 'AFTER') =>
     workOrderService.uploadPhoto(id, uri, stage),
 

@@ -1,3 +1,4 @@
+import type { WorkOrderAction, WorkOrderStatus } from '@orcivo/shared-types';
 import { api, WriteOptions } from './api';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
@@ -19,7 +20,10 @@ export interface WorkOrder {
   id: string;
   number: number;
   title: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  /** União publicada no shared-types (inclui os extras AWAITING_PAYMENT/WARRANTY). */
+  status: WorkOrderStatus;
+  /** Ações liberadas pelo backend (estado + papel + status extras da empresa). */
+  allowed_actions?: readonly WorkOrderAction[];
   customer: WorkOrderCustomer;
   scheduled_at?: string;
   finished_at?: string | null;
