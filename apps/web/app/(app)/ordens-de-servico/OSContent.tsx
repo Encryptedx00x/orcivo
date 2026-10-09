@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
-import { ClipboardList, Search, ChevronRight, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ClipboardList, Columns3, List, Search, ChevronRight, Plus } from 'lucide-react';
 import {
   WORK_ORDER_STATUS_LABELS,
   formatMoney,
@@ -9,6 +9,7 @@ import {
 } from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
+import { useAuth } from '../../../components/AuthProvider';
 import { loadWorkOrdersPage } from './list-actions';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from './actions';
 
@@ -21,6 +22,14 @@ const SM: Record<WorkOrderStatus, string> = {
   AWAITING_PAYMENT: 'info',
   WARRANTY: 'purple',
 };
+
+const VIEW_PREFERENCE_KEY = 'orcivo:work-orders:view';
+type WorkOrderView = 'list' | 'columns';
+
+function viewPreferenceKey(userId?: string): string | null {
+  if (!userId) return null;
+  return `${VIEW_PREFERENCE_KEY}:${encodeURIComponent(userId)}`;
+}
 
 function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {
   const COLORS: Record<string, { background: string; color: string }> = {
@@ -60,14 +69,51 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
 }
 
 export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React.JSX.Element {
+  const { user } = useAuth();
   const list = usePagedList(firstPage, loadWorkOrdersPage);
   const orders = list.items;
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [techFilter, setTechFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('este-mes');
+  const [view, setView] = useState<WorkOrderView>('list');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const preferenceKey = viewPreferenceKey(user?.id);
+
+  useEffect(() => {
+    // A preference belongs to one authenticated user. Reset first so a user
+    // without a saved value (or a signed-out session) never inherits the
+    // previous user's selection.
+    setView('list');
+    if (!preferenceKey) return;
+    try {
+      // Migrate the former browser-wide key once, so an existing preference
+      // is retained while subsequent changes stay scoped to this user.
+      const savedForUser = window.localStorage.getItem(preferenceKey);
+      const legacyView = window.localStorage.getItem(VIEW_PREFERENCE_KEY);
+      const savedView = savedForUser ?? legacyView;
+      if (savedView === 'list' || savedView === 'columns') {
+        setView(savedView);
+        window.localStorage.setItem(preferenceKey, savedView);
+      }
+      // Consume the browser-wide legacy value. Keeping it would make every
+      // subsequent user inherit the first user's former preference.
+      if (legacyView !== null) window.localStorage.removeItem(VIEW_PREFERENCE_KEY);
+    } catch {
+      // Storage can be unavailable in private or restricted browser contexts.
+    }
+  }, [preferenceKey]);
+
+  function selectView(nextView: WorkOrderView): void {
+    setView(nextView);
+    if (!preferenceKey) return;
+    try {
+      window.localStorage.setItem(preferenceKey, nextView);
+    } catch {
+      // The selected view remains available until this page is closed.
+    }
+  }
 
   // Quick forward steps straight from the list; cancel/reopen need a reason, so they stay in the detail.
   async function quick(order: WorkOrder, action: WorkOrderAction): Promise<void> {
@@ -108,6 +154,30 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
 
   const fmtMoney = (v?: string | null) => (v ? formatMoney(v) : '—');
 
+  function quickActions(order: WorkOrder): React.JSX.Element | null {
+    const actions = (['iniciar', 'concluir'] as const).filter((action) =>
+      ((order as WorkOrderWithActions).allowed_actions ?? []).includes(action),
+    );
+    if (actions.length === 0) return null;
+
+    return (
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {actions.map((action) => (
+          <button
+            key={action}
+            type="button"
+            className="ov-btn ov-btn-secondary"
+            disabled={busyId === order.id}
+            onClick={() => void quick(order, action)}
+            style={{ padding: '4px 10px', fontSize: 12 }}
+          >
+            {busyId === order.id ? '…' : action === 'iniciar' ? 'Iniciar' : 'Concluir'}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="ov-page-header">
@@ -128,7 +198,45 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
             {list.done ? '' : '+'} no total
           </div>
         </div>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            role="group"
+            aria-label="Visualização das ordens de serviço"
+            style={{ display: 'inline-flex', padding: 3, border: '1px solid #E2E8F0', borderRadius: 10 }}
+          >
+            <button
+              type="button"
+              className="ov-btn"
+              aria-pressed={view === 'list'}
+              onClick={() => selectView('list')}
+              title="Visualizar como lista"
+              style={{
+                minHeight: 32,
+                padding: '0 9px',
+                background: view === 'list' ? '#F1F5F9' : 'transparent',
+                color: view === 'list' ? '#0F172A' : '#64748B',
+              }}
+            >
+              <List size={16} aria-hidden="true" />
+              <span className="sr-only">Lista</span>
+            </button>
+            <button
+              type="button"
+              className="ov-btn"
+              aria-pressed={view === 'columns'}
+              onClick={() => selectView('columns')}
+              title="Visualizar por status"
+              style={{
+                minHeight: 32,
+                padding: '0 9px',
+                background: view === 'columns' ? '#F1F5F9' : 'transparent',
+                color: view === 'columns' ? '#0F172A' : '#64748B',
+              }}
+            >
+              <Columns3 size={16} aria-hidden="true" />
+              <span className="sr-only">Por status</span>
+            </button>
+          </div>
           <Link
             href="/ordens-de-servico/novo"
             className="ov-btn ov-btn-primary"
@@ -219,8 +327,8 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
         </div>
       )}
 
-      {/* Table */}
-      {filtered.length > 0 && (
+      {/* List */}
+      {filtered.length > 0 && view === 'list' && (
         <div className="ov-card" style={{ overflow: 'hidden' }}>
           <table className="ov-table">
             <thead>
@@ -292,22 +400,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                     {fmtMoney(order.total ?? order.quote?.total)}
                   </td>
                   <td data-label="" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {(['iniciar', 'concluir'] as const)
-                      .filter((a) =>
-                        ((order as WorkOrderWithActions).allowed_actions ?? []).includes(a),
-                      )
-                      .map((a) => (
-                        <button
-                          key={a}
-                          type="button"
-                          className="ov-btn ov-btn-secondary"
-                          disabled={busyId === order.id}
-                          onClick={() => void quick(order, a)}
-                          style={{ padding: '4px 10px', fontSize: 12, marginRight: 8 }}
-                        >
-                          {busyId === order.id ? '…' : a === 'iniciar' ? 'Iniciar' : 'Concluir'}
-                        </button>
-                      ))}
+                    {quickActions(order)}
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
                       style={{ color: '#94A3B8', display: 'inline-flex' }}
@@ -319,6 +412,78 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {/* Columns by status — deliberately no drag-and-drop: status changes keep using the domain actions. */}
+      {filtered.length > 0 && view === 'columns' && (
+        <div
+          aria-label="Ordens de serviço por status"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${Object.keys(WORK_ORDER_STATUS_LABELS).length}, minmax(250px, 1fr))`,
+            gap: 14,
+            overflowX: 'auto',
+            paddingBottom: 4,
+          }}
+        >
+          {(Object.keys(WORK_ORDER_STATUS_LABELS) as WorkOrderStatus[]).map((status) => {
+            const statusOrders = filtered.filter((order) => order.status === status);
+            return (
+              <section
+                key={status}
+                aria-labelledby={`status-column-${status}`}
+                style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <h2
+                    id={`status-column-${status}`}
+                    style={{ color: '#334155', fontSize: 13, fontWeight: 700, margin: 0 }}
+                  >
+                    {WORK_ORDER_STATUS_LABELS[status]}
+                  </h2>
+                  <span aria-label={`${statusOrders.length} ordens`} style={{ color: '#64748B', fontSize: 12 }}>
+                    {statusOrders.length}
+                  </span>
+                </div>
+                {statusOrders.map((order) => (
+                  <article key={order.id} className="ov-card" style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <Link
+                          href={`/ordens-de-servico/${order.id}`}
+                          style={{ color: '#6D28D9', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+                        >
+                          #{order.number}
+                        </Link>
+                        <Link
+                          href={`/ordens-de-servico/${order.id}`}
+                          style={{ color: '#0A0A0F', display: 'block', fontSize: 14, fontWeight: 650, marginTop: 5, overflow: 'hidden', textDecoration: 'none', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {order.title ?? 'Serviço sem título'}
+                        </Link>
+                      </div>
+                      <Pill k={SM[order.status] ?? 'slate'}>{WORK_ORDER_STATUS_LABELS[order.status]}</Pill>
+                    </div>
+                    <p style={{ color: '#475569', fontSize: 13, margin: '10px 0 4px' }}>
+                      {order.customer?.name ?? 'Cliente não informado'}
+                    </p>
+                    <p style={{ color: '#64748B', fontSize: 12, margin: 0 }}>
+                      {order.technician?.name ?? 'Sem técnico'} · Agendada: {fmtDate(order.scheduled_at)}
+                    </p>
+                    <div style={{ alignItems: 'center', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12, paddingTop: 10 }}>
+                      <span style={{ color: '#0A0A0F', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700 }}>
+                        {fmtMoney(order.total ?? order.quote?.total)}
+                      </span>
+                      {quickActions(order)}
+                    </div>
+                  </article>
+                ))}
+                {statusOrders.length === 0 && (
+                  <p style={{ color: '#94A3B8', fontSize: 12, margin: 0, padding: '12px 0' }}>Nenhuma OS</p>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
       <LoadMore list={list} />

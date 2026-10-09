@@ -2,6 +2,8 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
 export interface AuthUser {
+  /** Immutable authenticated-user identifier, when supplied by the session endpoint. */
+  id?: string;
   name: string;
 }
 
