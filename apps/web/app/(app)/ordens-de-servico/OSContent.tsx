@@ -26,9 +26,9 @@ const SM: Record<WorkOrderStatus, string> = {
 const VIEW_PREFERENCE_KEY = 'orcivo:work-orders:view';
 type WorkOrderView = 'list' | 'columns';
 
-function viewPreferenceKey(userName?: string): string {
-  const user = userName?.trim().toLocaleLowerCase('pt-BR') || 'anonymous';
-  return `${VIEW_PREFERENCE_KEY}:${encodeURIComponent(user)}`;
+function viewPreferenceKey(userId?: string): string | null {
+  if (!userId) return null;
+  return `${VIEW_PREFERENCE_KEY}:${encodeURIComponent(userId)}`;
 }
 
 function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {
@@ -79,9 +79,10 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
   const [view, setView] = useState<WorkOrderView>('list');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
-  const preferenceKey = viewPreferenceKey(user?.name);
+  const preferenceKey = viewPreferenceKey(user?.id);
 
   useEffect(() => {
+    if (!preferenceKey) return;
     try {
       // Migrate the former browser-wide key once, so an existing preference
       // is retained while subsequent changes stay scoped to this user.
@@ -102,6 +103,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
 
   function selectView(nextView: WorkOrderView): void {
     setView(nextView);
+    if (!preferenceKey) return;
     try {
       window.localStorage.setItem(preferenceKey, nextView);
     } catch {
