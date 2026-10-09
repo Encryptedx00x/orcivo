@@ -1072,11 +1072,12 @@ function Get-DispatcherDisjointTargetAdvanceRecoveryProof {
         $ledger=Get-LedgerState $TaskVersionId
         if($ledger.corrupt){return &$deny 'ledger is corrupt'}
         $events=@(Get-DispatcherLedgerEvents $TaskVersionId)
-        $starts=@($events|Where-Object{[string]$_.event -eq 'integrate-start' -and [string]$_.toState -eq 'INTEGRATING' -and [string]$_.runId -eq $RunId})
         $failedState=[string]$ir.status
         $fails=@($events|Where-Object{[string]$_.event -eq 'integrate-failed' -and [string]$_.toState -eq $failedState -and [string]$_.runId -eq $RunId -and [string]$_.note -eq [string]$ir.reason})
-        if($starts.Count -ne 1 -or $fails.Count -ne 1 -or [int]$fails[0].seq -ne ([int]$starts[0].seq+1)){return &$deny 'ledger does not carry exactly one matching integrate-start/integrate-failed pair for this run'}
+        if($fails.Count -ne 1){return &$deny 'ledger does not carry exactly one matching integrate-failed event for this hold'}
         $failSeq=[int]$fails[0].seq
+        $starts=@($events|Where-Object{[string]$_.event -eq 'integrate-start' -and [string]$_.toState -eq 'INTEGRATING' -and [string]$_.runId -eq $RunId -and [int]$_.seq -eq ($failSeq-1)})
+        if($starts.Count -ne 1){return &$deny 'ledger does not carry the adjacent integrate-start for this hold'}
 
         $expectedPrefix=@()
         if($falsePositiveEvidence){$expectedPrefix+=@(@{event='secret-false-positive-reviewed';to='READY'})}
