@@ -3,6 +3,10 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FileText, ExternalLink, Inbox } from 'lucide-react';
+import {
+  WORK_ORDER_STATUS_LABELS,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { loadQuotesPage } from '../orcamentos/list-actions';
 import { loadWorkOrdersPage } from '../ordens-de-servico/list-actions';
@@ -21,7 +25,7 @@ export interface DocWorkOrder {
   id: string;
   number: number;
   title: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  status: WorkOrderStatus;
   customer: { name: string };
   finished_at?: string;
 }
@@ -37,6 +41,13 @@ const PILL: Record<string, { label: string; bg: string; color: string }> = {
   PENDING: { label: 'Pendente', bg: '#F1F5F9', color: '#334155' },
   IN_PROGRESS: { label: 'Em andamento', bg: '#E0F2FE', color: '#075985' },
   DONE: { label: 'Concluída', bg: '#DCFCE7', color: '#166534' },
+  // Status extras (R5b) — label publicado no shared-types (regra única).
+  AWAITING_PAYMENT: {
+    label: WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT,
+    bg: '#DBEAFE',
+    color: '#1E40AF',
+  },
+  WARRANTY: { label: WORK_ORDER_STATUS_LABELS.WARRANTY, bg: '#EDE9FE', color: '#4C1D95' },
 };
 
 function Pill({ k }: { k: string }) {

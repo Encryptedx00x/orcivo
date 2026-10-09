@@ -2,17 +2,24 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ClipboardList, Search, ChevronRight, Plus } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import {
+  WORK_ORDER_STATUS_LABELS,
+  formatMoney,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { loadWorkOrdersPage } from './list-actions';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from './actions';
 
-const SM: Record<WorkOrder['status'], [string, string]> = {
-  PENDING: ['warning', 'Pendente'],
-  IN_PROGRESS: ['warning', 'Em execução'],
-  DONE: ['success', 'Finalizada'],
-  CANCELLED: ['danger', 'Cancelada'],
+/** Cor por status (visual only) — o texto vem do shared-types (regra única). */
+const SM: Record<WorkOrderStatus, string> = {
+  PENDING: 'warning',
+  IN_PROGRESS: 'warning',
+  DONE: 'success',
+  CANCELLED: 'danger',
+  AWAITING_PAYMENT: 'info',
+  WARRANTY: 'purple',
 };
 
 function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {
@@ -21,6 +28,8 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
     warning: { background: '#FEF3C7', color: '#92400E' },
     success: { background: '#DCFCE7', color: '#166534' },
     danger: { background: '#FEE2E2', color: '#991B1B' },
+    info: { background: '#DBEAFE', color: '#1E40AF' },
+    purple: { background: '#EDE9FE', color: '#4C1D95' },
   };
   const c = COLORS[k] ?? COLORS.slate;
   return (
@@ -67,7 +76,9 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
     const result = await workOrderAction(order.id, { action });
     setBusyId(null);
     if (result.error) setActionError(`OS #${order.number}: ${result.error}`);
-    else if (result.order) list.replace({ ...order, ...result.order });
+    // Lib types the list with the legacy status union; the action result can
+    // carry the R5b extras — runtime is the same object shape.
+    else if (result.order) list.replace({ ...order, ...result.order } as WorkOrder);
   }
 
   const technicianNames = Array.from(
@@ -156,10 +167,11 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
           onChange={(e) => setStatusFilter(e.target.value)}
         >
           <option value="todos">Todos os status</option>
-          <option value="PENDING">Pendente</option>
-          <option value="IN_PROGRESS">Em execução</option>
-          <option value="DONE">Finalizada</option>
-          <option value="CANCELLED">Cancelada</option>
+          {(Object.keys(WORK_ORDER_STATUS_LABELS) as WorkOrderStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {WORK_ORDER_STATUS_LABELS[s]}
+            </option>
+          ))}
         </select>
         <select
           className="ov-input"
@@ -250,8 +262,8 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                     {order.technician?.name ?? '—'}
                   </td>
                   <td data-label="Status">
-                    <Pill k={SM[order.status]?.[0] ?? 'slate'}>
-                      {SM[order.status]?.[1] ?? order.status}
+                    <Pill k={SM[order.status] ?? 'slate'}>
+                      {WORK_ORDER_STATUS_LABELS[order.status]}
                     </Pill>
                   </td>
                   <td

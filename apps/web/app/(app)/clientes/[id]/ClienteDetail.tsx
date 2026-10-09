@@ -5,11 +5,13 @@ import { Plus, ChevronRight, Pencil } from 'lucide-react';
 import { AuditHistoryFeed } from '../AuditHistoryFeed';
 import { contactLinks } from '../contact-links';
 import {
+  WORK_ORDER_STATUS_LABELS,
   formatMoney as money,
   maskCep,
   maskCpfCnpj,
   maskPhone,
   sumDecimal,
+  type WorkOrderStatus,
 } from '@orcivo/shared-types';
 import { methodLabel } from '../../../../lib/receipts';
 
@@ -35,7 +37,7 @@ export interface CustomerWorkOrder {
   id: string;
   number: number;
   title: string;
-  status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+  status: WorkOrderStatus;
   scheduled_at?: string | null;
   created_at?: string;
 }
@@ -56,6 +58,8 @@ const WO_STATUS: Record<CustomerWorkOrder['status'], { label: string; k: string 
   IN_PROGRESS: { label: 'Em execução', k: 'info' },
   DONE: { label: 'Concluída', k: 'success' },
   CANCELLED: { label: 'Cancelada', k: 'slate' },
+  AWAITING_PAYMENT: { label: WORK_ORDER_STATUS_LABELS.AWAITING_PAYMENT, k: 'info' },
+  WARRANTY: { label: WORK_ORDER_STATUS_LABELS.WARRANTY, k: 'purple' },
 };
 
 interface Quote {
@@ -82,6 +86,7 @@ const PILL_COLORS: Record<string, { bg: string; color: string }> = {
   success: { bg: '#DCFCE7', color: '#166534' },
   danger: { bg: '#FEE2E2', color: '#991B1B' },
   warning: { bg: '#FEF3C7', color: '#92400E' },
+  purple: { bg: '#EDE9FE', color: '#4C1D95' },
 };
 
 function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode }) {

@@ -16,13 +16,21 @@ import {
   Pencil,
   Undo2,
   Wrench,
+  Hourglass,
+  HandCoins,
+  ShieldAlert,
 } from 'lucide-react';
-import { formatMoney, sumDecimal } from '@orcivo/shared-types';
-import type {
-  WorkOrder,
-  WorkOrderPayment,
-  WorkOrderPhoto,
-} from '../../../../lib/work-order.service';
+import {
+  MANDATORY_REASON_ACTIONS,
+  STATUS_ACTION_SPECS,
+  WO_CLOSED_STATUSES,
+  WORK_ORDER_STATUS_LABELS,
+  formatMoney,
+  sumDecimal,
+  type StatusAction,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
+import type { WorkOrderPayment, WorkOrderPhoto } from '../../../../lib/work-order.service';
 import { uploadWorkOrderPhoto } from '../../../../lib/upload-photo';
 import { workOrderAction, type WorkOrderAction, type WorkOrderWithActions } from '../actions';
 import { contactLinks } from '../../clientes/contact-links';
@@ -47,32 +55,35 @@ const STAGE_LABELS: Record<PhotoStage, string> = {
   AFTER: 'Depois',
 };
 
-const STATUS_MAP: Record<WorkOrder['status'], { label: string; bg: string; color: string }> = {
-  PENDING: { label: 'Pendente', bg: '#FEF3C7', color: '#92400E' },
-  IN_PROGRESS: { label: 'Em execução', bg: '#FEF3C7', color: '#92400E' },
-  DONE: { label: 'Finalizada', bg: '#DCFCE7', color: '#166534' },
-  CANCELLED: { label: 'Cancelada', bg: '#FEE2E2', color: '#991B1B' },
+const STATUS_MAP: Record<WorkOrderStatus, { bg: string; color: string }> = {
+  PENDING: { bg: '#FEF3C7', color: '#92400E' },
+  IN_PROGRESS: { bg: '#FEF3C7', color: '#92400E' },
+  DONE: { bg: '#DCFCE7', color: '#166534' },
+  CANCELLED: { bg: '#FEE2E2', color: '#991B1B' },
+  AWAITING_PAYMENT: { bg: '#DBEAFE', color: '#1E40AF' },
+  WARRANTY: { bg: '#EDE9FE', color: '#4C1D95' },
 };
 
 /**
  * Fallback caso a resposta não traga allowed_actions (nunca deve acontecer
  * com o backend atual): sem saber o papel do usuário, só ações não-admin.
+ * Extras ficam de fora — dependem da empresa tê-los ligado.
  */
-const FALLBACK_ACTIONS: Record<WorkOrder['status'], WorkOrderAction[]> = {
+const FALLBACK_ACTIONS: Record<WorkOrderStatus, WorkOrderAction[]> = {
   PENDING: ['iniciar', 'cancelar'],
   IN_PROGRESS: ['concluir', 'cancelar'],
   DONE: [],
   CANCELLED: [],
+  AWAITING_PAYMENT: [],
+  WARRANTY: [],
 };
 
-const ACTION_STATUS: Partial<Record<WorkOrderAction, WorkOrder['status']>> = {
-  iniciar: 'IN_PROGRESS',
-  concluir: 'DONE',
-  cancelar: 'CANCELLED',
-  reabrir: 'IN_PROGRESS',
-};
+/** Status de destino de cada ação — vem de STATUS_ACTION_SPECS (regra única). */
+function targetStatus(action: WorkOrderAction): WorkOrderStatus | undefined {
+  return action === 'corrigir' ? undefined : STATUS_ACTION_SPECS[action as StatusAction].to;
+}
 
-const REASON_REQUIRED: WorkOrderAction[] = ['cancelar', 'reabrir', 'corrigir'];
+const REASON_REQUIRED: readonly WorkOrderAction[] = MANDATORY_REASON_ACTIONS;
 
 function ReasonModal({
   children,
@@ -102,7 +113,7 @@ function ReasonModal({
   );
 }
 
-function Pill({ status }: { status: WorkOrder['status'] }) {
+function Pill({ status }: { status: WorkOrderStatus }) {
   const s = STATUS_MAP[status];
   return (
     <span
@@ -127,7 +138,7 @@ function Pill({ status }: { status: WorkOrder['status'] }) {
           flexShrink: 0,
         }}
       />
-      {s.label}
+      {WORK_ORDER_STATUS_LABELS[status]}
     </span>
   );
 }
@@ -173,7 +184,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
   const contact = contactLinks(order.customer.phone);
   const [pendingAction, setPendingAction] = useState<WorkOrderAction | null>(null);
-  const [manualStatus, setManualStatus] = useState<WorkOrder['status'] | null>(null);
+  const [manualStatus, setManualStatus] = useState<WorkOrderStatus | null>(null);
   const [reason, setReason] = useState('');
   const [correctTitle, setCorrectTitle] = useState(initial.title ?? '');
   const [correctNotes, setCorrectNotes] = useState(initial.notes ?? '');
@@ -195,7 +206,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
 
   async function handleAction(
     action: WorkOrderAction,
-    input?: { reason?: string; title?: string; notes?: string; status?: WorkOrder['status'] },
+    input?: { reason?: string; title?: string; notes?: string; status?: WorkOrderStatus },
   ): Promise<void> {
     setStatusError(null);
     setStatusLoading(true);
@@ -231,8 +242,12 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
       setStatusError('Informe o motivo para continuar.');
       return;
     }
-    const input: { reason?: string; title?: string; notes?: string; status?: WorkOrder['status'] } =
-      {};
+    const input: {
+      reason?: string;
+      title?: string;
+      notes?: string;
+      status?: WorkOrderStatus;
+    } = {};
     if (manualStatus) {
       input.status = manualStatus;
       input.reason = reason.trim();
@@ -390,7 +405,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                   style={btnOutline}
                   onChange={(event) => {
                     const action = event.target.value as WorkOrderAction;
-                    const target = ACTION_STATUS[action];
+                    const target = targetStatus(action);
                     if (target) {
                       openAction(action);
                       setManualStatus(target);
@@ -399,10 +414,10 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                 >
                   <option value="">Selecione um status</option>
                   {(order.allowed_actions ?? [])
-                    .filter((action) => ACTION_STATUS[action])
+                    .filter((action) => targetStatus(action))
                     .map((action) => (
                       <option key={action} value={action}>
-                        {STATUS_MAP[ACTION_STATUS[action]!].label}
+                        {WORK_ORDER_STATUS_LABELS[targetStatus(action)!]}
                       </option>
                     ))}
                 </select>
@@ -415,7 +430,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                     setManualStatus(null);
                   }}
                 >
-                  <strong>Alterar status para {STATUS_MAP[manualStatus].label}?</strong>
+                  <strong>Alterar status para {WORK_ORDER_STATUS_LABELS[manualStatus]}?</strong>
                   <label htmlFor="manual-status-reason">
                     Justificativa obrigatória — registrada no histórico
                   </label>
@@ -491,6 +506,30 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                   <Wrench size={15} /> Corrigir OS
                 </button>
               )}
+              {allowedActions.includes('aguardar_pagamento') && !pendingAction && (
+                <button
+                  onClick={() => openAction('aguardar_pagamento')}
+                  style={{ ...btnOutline, color: '#1E40AF', borderColor: '#BFDBFE' }}
+                >
+                  <Hourglass size={15} /> Aguardando pagamento
+                </button>
+              )}
+              {allowedActions.includes('receber_pagamento') && !pendingAction && (
+                <button
+                  onClick={() => openAction('receber_pagamento')}
+                  style={{ ...btnPrimary, background: '#16A34A' }}
+                >
+                  <HandCoins size={15} /> Receber pagamento
+                </button>
+              )}
+              {allowedActions.includes('acionar_garantia') && !pendingAction && (
+                <button
+                  onClick={() => openAction('acionar_garantia')}
+                  style={{ ...btnOutline, color: '#4C1D95', borderColor: '#DDD6FE' }}
+                >
+                  <ShieldAlert size={15} /> Acionar garantia
+                </button>
+              )}
 
               {pendingAction === 'concluir' && !manualStatus && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -503,6 +542,90 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                     style={{ ...btnSmall, background: '#16A34A', color: '#fff' }}
                   >
                     Sim, concluir
+                  </button>
+                  <button
+                    onClick={() => setPendingAction(null)}
+                    style={{
+                      ...btnSmall,
+                      background: '#fff',
+                      color: '#334155',
+                      border: '1px solid #E2E8F0',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
+              {pendingAction === 'aguardar_pagamento' && !manualStatus && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#334155' }}>
+                    Marcar como aguardando pagamento?
+                  </span>
+                  <button
+                    onClick={() => {
+                      void handleAction('aguardar_pagamento');
+                    }}
+                    disabled={statusLoading}
+                    style={{ ...btnSmall, background: '#1D4ED8', color: '#fff' }}
+                  >
+                    {statusLoading ? 'Salvando…' : 'Sim, aguardar'}
+                  </button>
+                  <button
+                    onClick={() => setPendingAction(null)}
+                    style={{
+                      ...btnSmall,
+                      background: '#fff',
+                      color: '#334155',
+                      border: '1px solid #E2E8F0',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
+              {pendingAction === 'receber_pagamento' && !manualStatus && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#334155' }}>
+                    Confirmar o pagamento desta OS?
+                  </span>
+                  <button
+                    onClick={() => {
+                      void handleAction('receber_pagamento');
+                    }}
+                    disabled={statusLoading}
+                    style={{ ...btnSmall, background: '#16A34A', color: '#fff' }}
+                  >
+                    {statusLoading ? 'Salvando…' : 'Sim, receber'}
+                  </button>
+                  <button
+                    onClick={() => setPendingAction(null)}
+                    style={{
+                      ...btnSmall,
+                      background: '#fff',
+                      color: '#334155',
+                      border: '1px solid #E2E8F0',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
+              {pendingAction === 'acionar_garantia' && !manualStatus && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#334155' }}>
+                    Acionar a garantia desta OS?
+                  </span>
+                  <button
+                    onClick={() => {
+                      void handleAction('acionar_garantia');
+                    }}
+                    disabled={statusLoading}
+                    style={{ ...btnSmall, background: '#6D28D9', color: '#fff' }}
+                  >
+                    {statusLoading ? 'Salvando…' : 'Sim, acionar'}
                   </button>
                   <button
                     onClick={() => setPendingAction(null)}
@@ -716,7 +839,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
               id={order.id}
               fields={osFields}
               initial={(order.details ?? {}) as WorkOrderDetails}
-              editable={order.status === 'PENDING' || order.status === 'IN_PROGRESS'}
+              editable={!WO_CLOSED_STATUSES.includes(order.status)}
             />
 
             {/* Fotos */}

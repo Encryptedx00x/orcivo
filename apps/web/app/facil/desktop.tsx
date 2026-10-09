@@ -57,7 +57,7 @@ const NAV: Array<{ screen: Screen; label: string; icon: LucideIcon; covers: Scre
     screen: 'settings',
     label: 'Configurações',
     icon: Settings,
-    covers: ['settings', 'approvals', 'edit'],
+    covers: ['settings', 'approvals', 'osStatuses', 'edit'],
   },
   { screen: 'menu', label: 'Mais', icon: MenuIcon, covers: ['menu'] },
 ];
@@ -84,6 +84,7 @@ const LABELS: Record<Screen, string> = {
   receiptNew: 'Recibos · Novo recibo',
   settings: 'Configurações',
   approvals: 'Configurações · Como o cliente aprova',
+  osStatuses: 'Configurações · Ordem de serviço',
   catalog: 'Meus serviços e preços',
   edit: 'Configurações · Editar',
   notices: 'Avisos',

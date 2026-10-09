@@ -1,7 +1,11 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import type {
+  QuoteDocOptions,
+  QuotePaymentTerms,
+  WorkOrderExtraStatus,
+} from '@orcivo/shared-types';
 
 type Result = { ok: true } | { ok: false; message: string };
 type Account = { id: string; name: string; email: string };
@@ -72,6 +76,43 @@ export async function updateCompanyPix(body: {
 /** Configurações > Ordem de serviço: segment fields shown on every OS. */
 export async function updateWorkOrderFields(work_order_fields: string[]): Promise<Result> {
   return patchCompanyMe({ work_order_fields });
+}
+
+/**
+ * Configurações > Ordem de serviço: status extras da OS ligados para a
+ * empresa (R5b). Endpoint dedicado (@AdminOnly) — a lista aceita é validada
+ * pelo backend com o schema do shared-types.
+ */
+export async function updateWorkOrderStatuses(
+  statuses: WorkOrderExtraStatus[],
+): Promise<Result> {
+  const token = (await cookies()).get('access_token')?.value;
+  if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
+  try {
+    const response = await fetch(
+      `${process.env['API_URL'] ?? 'http://localhost:3000'}/company/work-order-statuses`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statuses }),
+        cache: 'no-store',
+      },
+    );
+    if (!response.ok) {
+      const messages: Record<number, string> = {
+        401: 'Sua sessão expirou. Entre novamente.',
+        403: 'Só o dono ou um administrador da empresa pode mudar os status da OS.',
+      };
+      return {
+        ok: false,
+        message:
+          messages[response.status] ?? 'Não foi possível salvar a alteração. Tente novamente.',
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, message: 'Não foi possível conectar. Tente novamente.' };
+  }
 }
 
 /** Configurações > Condições padrão (prefilled on every new quote). */
