@@ -1,8 +1,8 @@
 {
   "schemaVersion": "orcivo.orchestration.v2.provider-runtime/1",
   "enabled": true,
-  "enabledProviders": ["glm"],
-  "excludedProviders": ["deepseek", "claude", "codex"],
+  "enabledProviders": ["codex"],
+  "excludedProviders": ["deepseek", "claude", "glm"],
   "maxCrossProviderFailoversPerLineage": 0,
   "budgets": {"allowCodexExtraCredits": false, "allowCodexSubscription": true, "maxBoundedCorrectionsNormal": 1, "maxParallel": 1, "monthlyAnthropicApiBudgetUsd": 0, "monthlyDeepSeekBudgetUsd": 5, "monthlyOpenAiApiBudgetUsd": 0},
   "codex": {"profiles": {"CRITICAL": {"model": "gpt-5.6-terra", "reasoning": "high"}}},

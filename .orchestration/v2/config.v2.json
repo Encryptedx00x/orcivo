@@ -448,7 +448,7 @@
   },
   "providerFailover": {
     "$comment": "PARTE 13/14/15. Automatic provider switch ONLY for a class in classification.providerClasses coming from the control channel. TEST_FAILED / BUG / BUILD_FAILED / REVIEW_REQUEST_CHANGES / INVALID_IMPLEMENTATION never fail over. Both providers unavailable -> WAITING_PROVIDER; the supervisor keeps polling and auto-resumes with no human action.",
-    "order": ["glm"],
+    "order": ["codex"],
     "maxCrossProviderFailoversPerLineage": 1,
     "bothUnavailableState": "WAITING_PROVIDER",
     "pollBackoffSec": [30, 60, 120, 300, 600],
