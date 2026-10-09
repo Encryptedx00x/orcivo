@@ -22,7 +22,8 @@ import {
 import {
   formatMoney,
   maskPhone,
-  multiplyDecimal,
+  calculateQuoteTotals,
+  isPositiveDecimal,
   type QuoteCreateDto,
   QUOTE_DOC_TITLES,
   resolveQuoteDocOptions,
@@ -186,7 +187,7 @@ export function QuoteItemsScreen() {
     }));
 
   const price = centsToDecimal(nDigits);
-  const newOk = nName.trim().length > 1 && Number(price) > 0;
+  const newOk = nName.trim().length > 1 && isPositiveDecimal(price);
   const addNew = async () => {
     if (!newOk || saving) return;
     let catalogId: string | undefined;
@@ -570,7 +571,9 @@ export function QuoteReviewScreen() {
         <Text style={s.muted}>
           Para {draft.client?.name} · {draft.items.length}{' '}
           {draft.items.length === 1 ? 'item' : 'itens'}
-          {Number(totals.discount) > 0 ? ` · desconto de ${formatMoney(totals.discount)}` : ''}
+          {isPositiveDecimal(totals.discount)
+            ? ` · desconto de ${formatMoney(totals.discount)}`
+            : ''}
         </Text>
       </Card>
 
@@ -584,7 +587,13 @@ export function QuoteReviewScreen() {
               {i.qty}× {i.name}
             </Text>
             <Text style={[s.body, { fontWeight: '600' }]}>
-              {formatMoney(multiplyDecimal(i.price, String(i.qty)))}
+              {formatMoney(
+                calculateQuoteTotals(
+                  [{ quantity: String(i.qty), unit_price: i.price }],
+                  'FIXED',
+                  '0',
+                ).subtotal,
+              )}
             </Text>
           </View>
         ))}
@@ -674,7 +683,7 @@ export function QuoteReviewScreen() {
               const d = v.replace(/\D/g, '');
               setDraft((x) => ({
                 ...x,
-                discountDigits: pct ? String(Math.min(Number(d || 0), 100) || '') : d.slice(0, 10),
+                discountDigits: pct ? d.slice(0, 3) : d.slice(0, 10),
               }));
             }}
             placeholder={pct ? '0' : 'R$ 0,00'}

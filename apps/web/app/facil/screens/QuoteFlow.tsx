@@ -21,12 +21,12 @@ import {
 } from 'lucide-react';
 import {
   QUOTE_DOC_TITLES,
+  calculateQuoteTotals,
   formatMoney,
+  isPositiveDecimal,
   maskPhone,
-  multiplyDecimal,
   describePaymentTerms,
   resolveQuoteDocOptions,
-  sumDecimal,
   isFeminineDocTitle,
 } from '@orcivo/shared-types';
 import {
@@ -80,21 +80,13 @@ const centsToDecimal = (digits: string) => {
 function useTotals() {
   const { draft } = useNav();
   return useMemo(() => {
-    const subtotal = draft.items.length
-      ? sumDecimal(draft.items.map((i) => multiplyDecimal(i.price, String(i.qty))))
-      : '0.00';
-    let discount = '0.00';
-    if (draft.discountDigits) {
-      if (draft.discountType === 'PERCENT') {
-        const pct = Math.min(Number(draft.discountDigits), 100);
-        discount = multiplyDecimal(subtotal, (pct / 100).toFixed(4));
-      } else {
-        const fixed = centsToDecimal(draft.discountDigits);
-        discount = Number(fixed) > Number(subtotal) ? subtotal : fixed;
-      }
-    }
-    const total = sumDecimal([subtotal, `-${discount}`]);
-    return { subtotal, discount, total: total.startsWith('-') ? '0.00' : total };
+    return calculateQuoteTotals(
+      draft.items.map((item) => ({ quantity: String(item.qty), unit_price: item.price })),
+      draft.discountType,
+      draft.discountType === 'PERCENT'
+        ? draft.discountDigits || '0'
+        : centsToDecimal(draft.discountDigits),
+    );
   }, [draft]);
 }
 
@@ -361,7 +353,7 @@ function Q2() {
       items: d.items.map((x) => (x.key === it.key ? { ...x, qty: x.qty + delta } : x)),
     }));
   };
-  const niValid = niName.trim().length > 1 && Number(niDigits) > 0;
+  const niValid = niName.trim().length > 1 && isPositiveDecimal(centsToDecimal(niDigits));
   const addNew = async () => {
     if (!niValid) return;
     const price = centsToDecimal(niDigits);
@@ -710,7 +702,13 @@ function Q2() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {formatMoney(multiplyDecimal(it.price, String(it.qty)))}
+                        {formatMoney(
+                          calculateQuoteTotals(
+                            [{ quantity: String(it.qty), unit_price: it.price }],
+                            'FIXED',
+                            '0',
+                          ).subtotal,
+                        )}
                       </span>
                     </div>
                     <div
@@ -984,7 +982,7 @@ function Q3() {
   };
 
   const bits = [
-    Number(discount) > 0 ? `Desconto de ${formatMoney(discount)}` : null,
+    isPositiveDecimal(discount) ? `Desconto de ${formatMoney(discount)}` : null,
     `Vale por ${draft.validityDays} dias`,
     draft.terms.trim() ? 'com condições' : null,
     describePaymentTerms(draft.paymentTerms),
@@ -1018,7 +1016,7 @@ function Q3() {
           >
             {formatMoney(total)}
           </span>
-          {Number(discount) > 0 && (
+          {isPositiveDecimal(discount) && (
             <span style={{ fontSize: 16, color: C.purple800 }}>
               Já com desconto de {formatMoney(discount)} (era {formatMoney(subtotal)})
             </span>
@@ -1086,7 +1084,13 @@ function Q3() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {formatMoney(multiplyDecimal(i.price, String(i.qty)))}
+                {formatMoney(
+                  calculateQuoteTotals(
+                    [{ quantity: String(i.qty), unit_price: i.price }],
+                    'FIXED',
+                    '0',
+                  ).subtotal,
+                )}
               </span>
             </div>
           ))}

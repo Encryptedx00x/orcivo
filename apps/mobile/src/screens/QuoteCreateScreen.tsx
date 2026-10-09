@@ -18,8 +18,9 @@ import {
 import { Pencil, Plus, ShoppingBag, Trash2, X } from 'lucide-react-native';
 import {
   formatMoney,
-  multiplyDecimal,
-  sumDecimal,
+  calculateQuoteTotals,
+  isNonNegativeDecimal,
+  isPositiveDecimal,
   type QuoteDocOptions,
   type QuotePaymentTerms,
 } from '@orcivo/shared-types';
@@ -50,11 +51,8 @@ interface FormItem {
 
 function safeDecimalPreview(quantity: string, unit_price: string): string {
   try {
-    if (!quantity || !unit_price) return '0.00';
-    const q = parseFloat(quantity);
-    const u = parseFloat(unit_price);
-    if (isNaN(q) || isNaN(u) || q <= 0 || u < 0) return '0.00';
-    return multiplyDecimal(quantity, unit_price);
+    if (!isPositiveDecimal(quantity) || !isNonNegativeDecimal(unit_price)) return '0.00';
+    return calculateQuoteTotals([{ quantity, unit_price }], 'FIXED', '0').total;
   } catch {
     return '0.00';
   }
@@ -126,7 +124,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
           warranty?: string | null;
         };
         if (full.discount_type) setDiscountType(full.discount_type);
-        if (full.discount_value && Number(full.discount_value) > 0)
+        if (full.discount_value && isPositiveDecimal(full.discount_value))
           setDiscountValue(full.discount_value);
         setNotes(full.notes ?? '');
         setDocOptions(full.doc_options ?? null);
@@ -213,18 +211,25 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, [field]: value } : i)));
   };
 
-  const subtotal = sumDecimal(items.map((i) => safeDecimalPreview(i.quantity, i.unit_price)));
-  // Display only (same math as the backend): percent capped at 100, fixed capped at the subtotal.
   const discountRaw = discountValue.replace(',', '.').trim() || '0';
   const discountOk = /^\d+(\.\d{1,2})?$/.test(discountRaw);
-  const discount = !discountOk
-    ? '0.00'
-    : discountType === 'PERCENT'
-      ? multiplyDecimal(subtotal, (Math.min(Number(discountRaw), 100) / 100).toFixed(4))
-      : Number(discountRaw) > Number(subtotal)
-        ? subtotal
-        : discountRaw;
-  const total = sumDecimal([subtotal, `-${discount}`]);
+  const quoteTotals = (() => {
+    try {
+      return calculateQuoteTotals(
+        items.map((item) => ({
+          quantity: isNonNegativeDecimal(item.quantity) ? item.quantity : '0',
+          unit_price: isNonNegativeDecimal(item.unit_price) ? item.unit_price : '0',
+        })),
+        discountType,
+        discountOk ? discountRaw : '0',
+      );
+    } catch {
+      return { itemTotals: [], subtotal: '0.00', discount: '0.00', total: '0.00' };
+    }
+  })();
+  const subtotal = quoteTotals.subtotal;
+  const discount = discountOk ? quoteTotals.discount : '0.00';
+  const total = discountOk ? quoteTotals.total : subtotal;
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -233,9 +238,9 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
     if (!discountOk) newErrors['discount'] = 'Desconto inválido';
     items.forEach((item) => {
       if (!item.description.trim()) newErrors[`item_desc_${item.key}`] = 'Descrição obrigatória';
-      if (isNaN(parseFloat(item.quantity)) || parseFloat(item.quantity) <= 0)
+      if (!isPositiveDecimal(item.quantity))
         newErrors[`item_qty_${item.key}`] = 'Quantidade inválida';
-      if (isNaN(parseFloat(item.unit_price)) || parseFloat(item.unit_price) < 0)
+      if (!isNonNegativeDecimal(item.unit_price))
         newErrors[`item_price_${item.key}`] = 'Preço inválido';
     });
     setErrors(newErrors);

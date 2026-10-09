@@ -10,7 +10,6 @@ import { Queue } from 'bullmq';
 import { Prisma, type MemberRole } from '@prisma/client';
 import { buildPaymentSchedule, type QuotePaymentTerms } from '@orcivo/shared-types';
 import * as crypto from 'crypto';
-import Decimal from 'decimal.js';
 import {
   ApproveQuoteDto,
   QuoteAction,
@@ -20,6 +19,7 @@ import {
   QuoteUpdateDto,
   assertValidQuoteAction,
   quoteAllowedActions,
+  calculateQuoteTotals,
 } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -61,20 +61,10 @@ export class QuoteService {
 
   private computeTotals(
     items: Array<{ quantity: string; unit_price: string }>,
-    discountType: string,
+    discountType: 'PERCENT' | 'FIXED',
     discountValue: string,
   ) {
-    // NUNCA usar number/float — sempre Decimal.js
-    const itemTotals = items.map((i) => new Decimal(i.quantity).mul(new Decimal(i.unit_price)));
-    const subtotal = itemTotals.reduce((acc, t) => acc.add(t), new Decimal(0));
-    const discountDec = new Decimal(discountValue || '0');
-    const discount = discountType === 'PERCENT' ? subtotal.mul(discountDec).div(100) : discountDec;
-    const total = subtotal.sub(discount);
-    return {
-      itemTotals: itemTotals.map((t) => t.toFixed(2)),
-      subtotal: subtotal.toFixed(2),
-      total: total.toFixed(2),
-    };
+    return calculateQuoteTotals(items, discountType, discountValue);
   }
 
   private async nextQuoteNumber(companyId: string): Promise<number> {

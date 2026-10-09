@@ -3,8 +3,8 @@ import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  multiplyDecimal,
-  sumDecimal,
+  calculateQuoteTotals,
+  isPositiveDecimal,
   type QuoteDocOptions,
   type QuotePaymentTerms,
 } from '@orcivo/shared-types';
@@ -92,6 +92,9 @@ const decimalToDigits = (v: string) => {
   return `${a}${b.padEnd(2, '0').slice(0, 2)}`.replace(/^0+/, '');
 };
 
+const decimalToDisplay = (value: string) =>
+  value.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+
 /** A draft quote (corrected or never sent) back in the 3 steps. */
 export function draftFromQuote(q: EasyQuoteFull): Draft {
   const days = q.valid_until
@@ -109,12 +112,11 @@ export function draftFromQuote(q: EasyQuoteFull): Draft {
       qty: Number(i.quantity),
     })),
     discountType: q.discount_type,
-    discountDigits:
-      Number(q.discount_value) === 0
-        ? ''
-        : q.discount_type === 'PERCENT'
-          ? String(Number(q.discount_value))
-          : decimalToDigits(q.discount_value),
+    discountDigits: !isPositiveDecimal(q.discount_value)
+      ? ''
+      : q.discount_type === 'PERCENT'
+        ? decimalToDisplay(q.discount_value)
+        : decimalToDigits(q.discount_value),
     validityDays: days > 0 ? days : 15,
     terms: q.notes ?? '',
     docOptions: q.doc_options ?? null,
@@ -126,21 +128,13 @@ export function draftFromQuote(q: EasyQuoteFull): Draft {
 /** Same math as the web Modo fácil (display only; the backend recomputes). */
 export function useTotals(draft: Draft) {
   return useMemo(() => {
-    const subtotal = draft.items.length
-      ? sumDecimal(draft.items.map((i) => multiplyDecimal(i.price, String(i.qty))))
-      : '0.00';
-    let discount = '0.00';
-    if (draft.discountDigits) {
-      if (draft.discountType === 'PERCENT') {
-        const pct = Math.min(Number(draft.discountDigits), 100);
-        discount = multiplyDecimal(subtotal, (pct / 100).toFixed(4));
-      } else {
-        const fixed = centsToDecimal(draft.discountDigits);
-        discount = Number(fixed) > Number(subtotal) ? subtotal : fixed;
-      }
-    }
-    const total = sumDecimal([subtotal, `-${discount}`]);
-    return { subtotal, discount, total: total.startsWith('-') ? '0.00' : total };
+    return calculateQuoteTotals(
+      draft.items.map((item) => ({ quantity: String(item.qty), unit_price: item.price })),
+      draft.discountType,
+      draft.discountType === 'PERCENT'
+        ? draft.discountDigits || '0'
+        : centsToDecimal(draft.discountDigits),
+    );
   }, [draft]);
 }
 

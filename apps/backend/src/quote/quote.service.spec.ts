@@ -188,6 +188,41 @@ describe('QuoteService', () => {
         }),
       );
     });
+
+    it('inclui uma taxa de deslocamento do catálogo como item comum e soma em Decimal', async () => {
+      mockRedis.incr.mockResolvedValue(2);
+      mockPrisma.quote.create.mockResolvedValue({ id: 'q-travel', items: [] });
+
+      await service.create(
+        {
+          customer_id: 'cust-uuid',
+          items: [
+            {
+              catalog_item_id: '11111111-1111-4111-8111-111111111111',
+              description: 'Instalação',
+              quantity: '1.000',
+              unit_price: '100.00',
+            },
+            {
+              catalog_item_id: '22222222-2222-4222-8222-222222222222',
+              description: 'Taxa de deslocamento',
+              quantity: '1.000',
+              unit_price: '35.50',
+            },
+          ],
+          discount_type: 'FIXED',
+          discount_value: '0.00',
+        },
+        'comp-1',
+        'user-1',
+      );
+
+      expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ subtotal: '135.50', total: '135.50' }),
+        }),
+      );
+    });
   });
 
   describe('duplicate()', () => {

@@ -8,10 +8,11 @@ import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm'
 import { Plus, BookOpen, X, Check, FileText, Share2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  multiplyDecimal,
-  sumDecimal,
   formatMoney,
   CustomerCreateSchema,
+  calculateQuoteTotals,
+  isNonNegativeDecimal,
+  isPositiveDecimal,
 } from '@orcivo/shared-types';
 import { maskPhone } from '@orcivo/shared-types';
 
@@ -57,18 +58,22 @@ interface QuoteItemRow {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function safeMultiply(a: string, b: string): string {
+function safeQuoteTotals(
+  items: QuoteItemRow[],
+  discountType: 'PERCENT' | 'FIXED',
+  discountValue: string,
+) {
   try {
-    return multiplyDecimal(a || '0', b || '0');
+    return calculateQuoteTotals(
+      items.map((item) => ({
+        quantity: isNonNegativeDecimal(item.quantity) ? item.quantity : '0',
+        unit_price: isNonNegativeDecimal(item.unit_price) ? item.unit_price : '0',
+      })),
+      discountType,
+      isNonNegativeDecimal(discountValue) ? discountValue : '0',
+    );
   } catch {
-    return '0.00';
-  }
-}
-function safeSum(vals: string[]): string {
-  try {
-    return sumDecimal(vals);
-  } catch {
-    return '0.00';
+    return { itemTotals: [], subtotal: '0.00', discount: '0.00', total: '0.00' };
   }
 }
 
@@ -286,28 +291,16 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   }
 
   // ── Calculations (Decimal.js) ────────────────────────────────────
-  const itemTotals = items.map((it) => safeMultiply(it.quantity || '0', it.unit_price || '0'));
-  const subtotal = safeSum(itemTotals.length ? itemTotals : ['0']);
-  const discountAmount = (() => {
-    try {
-      if (discountType === 'PERCENT')
-        return safeMultiply(subtotal, safeMultiply(discountValue || '0', '0.01'));
-      return discountValue || '0.00';
-    } catch {
-      return '0.00';
-    }
-  })();
-  const total = (() => {
-    try {
-      const t = safeSum([subtotal, `-${discountAmount || '0'}`]);
-      return t.startsWith('-') ? '0.00' : t;
-    } catch {
-      return subtotal;
-    }
-  })();
+  const quoteTotals = safeQuoteTotals(items, discountType, discountValue);
+  const { subtotal, discount: discountAmount, total } = quoteTotals;
 
   // ── Validation gate — não permite gerar/salvar sem cliente e itens ──
-  const validItems = items.filter((it) => it.description.trim() && Number(it.quantity) > 0);
+  const validItems = items.filter(
+    (it) =>
+      it.description.trim() &&
+      isPositiveDecimal(it.quantity) &&
+      isNonNegativeDecimal(it.unit_price),
+  );
   const canSave = !!customerId && validItems.length > 0;
 
   // Stepper reflects real completeness: required steps turn red once visited
@@ -316,7 +309,12 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   useEffect(() => setFurthest((f) => Math.max(f, step)), [step]);
   const itemsComplete =
     items.length > 0 &&
-    items.every((it) => it.description.trim() && Number(it.quantity) > 0 && it.unit_price !== '');
+    items.every(
+      (it) =>
+        it.description.trim() &&
+        isPositiveDecimal(it.quantity) &&
+        isNonNegativeDecimal(it.unit_price),
+    );
   const stepStatus: StepStatus[] = STEPS.map((_, i) => {
     const visited = i < furthest || (i === furthest && i !== step);
     if (i === 0) return customerId ? 'done' : visited ? 'error' : 'todo';
@@ -544,7 +542,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
                     color: T.ink,
                   }}
                 >
-                  {formatMoney(safeMultiply(item.quantity || '0', item.unit_price || '0'))}
+                  {formatMoney(quoteTotals.itemTotals[idx] ?? '0.00')}
                 </span>
               </div>
               <button
@@ -715,7 +713,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
                 {it.quantity}× {it.description}
               </div>
               <div style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: T.ink }}>
-                {formatMoney(safeMultiply(it.quantity || '0', it.unit_price || '0'))}
+                {formatMoney(quoteTotals.itemTotals[i] ?? '0.00')}
               </div>
             </div>
           ))}
