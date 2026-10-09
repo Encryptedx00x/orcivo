@@ -893,14 +893,16 @@ function Get-DispatcherReviewTimeoutRetryProof {
         $history=@($State.reviewTimeoutRetryHistory|Where-Object{$_})
         if($history.Count -ge 2){return &$deny 'review timeout retry budget exhausted'}
         if($history.Count -eq 1 -and [string]$history[0].failedInvocationId -eq $InvocationId){return &$deny 'review timeout retry budget exhausted for this invocation'}
-        $retryProvider=$(if($history.Count -eq 0){'glm'}else{'claude'})
+        $reviewChoice=Get-OrcivoReviewProviderWithSelfFallback -Provider ([string]$State.provider) -Candidates @(Get-OrcivoEnabledProviders|Where-Object{@($State.unavailableProviders)-notcontains $_})
+        $retryProvider=[string]$reviewChoice.provider
         $retryProfile='REASONING'
-        if([string]$State.provider -eq $retryProvider){return &$deny "$retryProvider cannot independently review its own implementation"}
+        if(-not $retryProvider){return &$deny 'no approved review provider is available'}
+        if([string]$State.provider -eq $retryProvider -and -not[bool]$reviewChoice.selfReview){return &$deny "$retryProvider cannot independently review its own implementation"}
         $retryRoute=Resolve-Provider -Profile $retryProfile -Provider $retryProvider -ReviewOnly
         if(-not $retryRoute.ok){return &$deny "$retryProvider review fallback is unavailable: $($retryRoute.reason)"}
         $terminal=Get-DispatcherReviewTerminalJsonHoldRecoveryProof -State $State -Task $Task -TaskSource $TaskSource -Contract $Contract -TaskVersionId $TaskVersionId -RunId $RunId -InvocationId $InvocationId
         if($terminal.eligible){return &$deny 'immutable output contains a revalidatable terminal verdict; use terminal-JSON recovery'}
-        $expectedTerminalReasons=$(if($history.Count -eq 0){@('last agent_message does not carry exactly one valid terminal review-envelope suffix')}else{@('GLM provider stream carries no completed text result','last GLM text does not carry exactly one review-envelope marker')})
+        $expectedTerminalReasons=@('reviewer invocation is not the exact exit-zero framing-only AGENT_FAILURE','GLM provider stream carries no completed text result','last GLM text does not carry exactly one review-envelope marker')
         if([string]$terminal.reason -notin $expectedTerminalReasons){return &$deny "immutable reviewer evidence is not an exact no-verdict timeout: $($terminal.reason)"}
 
         $review=Get-LatestAuthoritative -TaskVersionId $TaskVersionId -Kind review -RunId $RunId -HeadSha ([string]$State.candidateHead)
@@ -925,12 +927,10 @@ function Get-DispatcherReviewTimeoutRetryProof {
         $ledger=Get-LedgerState $TaskVersionId;$tail=@(Get-DispatcherLedgerEvents $TaskVersionId)|Select-Object -Last 1
         if($ledger.corrupt -or [string]$ledger.state -ne 'WAITING_HUMAN' -or -not $tail -or [string]$tail.event -ne 'review-hold' -or [string]$tail.runId -ne $RunId -or [string]$tail.note -ne 'HUMAN_REVIEW_REQUIRED'){return &$deny 'ledger tail is not the exact timed-out review hold'}
 
-        $attempt=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId})[0]
-        if($history.Count -eq 1){
-            $prior=$history[0]
-            if([string]$prior.retryProvider -ne 'glm' -or [string]$prior.retryModel -ne (Get-GlmModelId) -or [string]$prior.retryProfile -ne 'REASONING' -or [string]$State.authorizedReviewRoute.provider -ne 'glm' -or [string]$State.authorizedReviewRoute.model -ne (Get-GlmModelId) -or [string]$State.authorizedReviewRoute.profile -ne 'REASONING'){return &$deny 'GLM fallback provenance is not the exact pinned first retry'}
-            if(-not $attempt -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -ne 0 -or [long]$attempt.usage.outputTokens -ne 0 -or [long]$attempt.usage.reasoningTokens -le 0){return &$deny 'GLM fallback did not end in an exact exit-zero reasoning-only no-output result'}
-        }
+        $attempts=@($State.providerHistory|Where-Object{[string]$_.invocationId -eq $InvocationId});if($attempts.Count -ne 1 -or [string]$State.providerHistory[-1].invocationId -ne $InvocationId){return &$deny 'timed-out reviewer invocation is absent or not the history tail'}
+        $attempt=$attempts[0]
+        if([string]$attempt.role -ne 'REVIEWER' -or [string]$attempt.provider -ne 'glm' -or [string]$attempt.model -ne (Get-GlmModelId) -or [string]$attempt.resultClass -ne 'AGENT_FAILURE' -or [int]$attempt.exitCode -ne 124 -or [string]$attempt.providerClass -ne 'INCOMPLETE_PROVIDER_RESULT' -or -not[bool]$attempt.telemetryConsistent){return &$deny 'review timeout is not the exact bounded GLM incomplete-result shape'}
+        if($history.Count){$prior=$history[-1];if([string]$prior.retryProvider -ne 'glm' -or [string]$prior.retryModel -ne (Get-GlmModelId) -or [string]$prior.retryProfile -ne 'REASONING' -or [string]$State.authorizedReviewRoute.provider -ne 'glm' -or [string]$State.authorizedReviewRoute.model -ne (Get-GlmModelId) -or [string]$State.authorizedReviewRoute.profile -ne 'REASONING'){return &$deny 'GLM self-review retry provenance is not the exact pinned route'}}
         $proof=[ordered]@{schemaVersion='orcivo.orchestration.v2.review-timeout-retry-proof/1';taskId=[string]$State.taskId;taskVersionId=$TaskVersionId;runId=$RunId;candidateBase=[string]$State.candidateBase;candidateHead=[string]$State.candidateHead;candidateTree=[string]$State.candidateTree;diffHash=[string]$State.diffHash;failedInvocationId=$InvocationId;failedReviewAttestationId=[string]$review.attestationId;failedReviewAttestationHash=[string]$review.attestationHash;failedResultReceiptHash=[string]$attempt.resultReceiptHash;failedStdoutHash=[string]$attempt.stdoutHash;retryOrdinal=($history.Count+1);priorRetryProofHash=$(if($history.Count){[string]$history[-1].proofHash}else{''});checkAttestationId=[string]$check.attestationId;retryProvider=$retryProvider;retryModel=[string]$retryRoute.model;retryProfile=$retryProfile}
         $proof.proofHash=New-StringHash (ConvertTo-CanonicalJson $proof)
         return [ordered]@{eligible=$true;reason="exact no-verdict timeout is eligible for bounded same-candidate $retryProvider review fallback";providerInvocationRequired=$true;retryProvider=$retryProvider;retryModel=[string]$retryRoute.model;retryProfile=$retryProfile;candidateHead=[string]$State.candidateHead;proof=$proof}
