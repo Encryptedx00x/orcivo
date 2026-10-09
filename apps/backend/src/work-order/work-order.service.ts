@@ -6,7 +6,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { MemberRole, Prisma } from '@prisma/client';
-import { WorkOrderCreateDto, WorkOrderUpdateDto } from '@orcivo/shared-types';
+import {
+  ADMIN_ONLY_ACTIONS,
+  STATUS_ACTION_SPECS,
+  WO_CLOSED_STATUSES,
+  WORK_ORDER_EXTRA_STATUSES,
+  WorkOrderCreateDto,
+  WorkOrderUpdateDto,
+  woActionsFor,
+  type StatusAction,
+  type WorkOrderAction,
+  type WorkOrderExtraStatus,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
@@ -14,51 +26,20 @@ import { TenantOwnershipService } from '../common/tenant/tenant-ownership.servic
 import { AuditService } from '../audit/audit.service';
 import { StorageService, PHOTO_BUCKET } from '../storage/storage.service';
 
-export type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
-
-/** Ações de domínio da OS (P-01 / ADR-016 / D-4). */
-export type WorkOrderAction = 'iniciar' | 'concluir' | 'cancelar' | 'reabrir' | 'corrigir';
-
-/**
- * Ações disponíveis em cada estado. Estados terminais (DONE/CANCELLED) deixam
- * de ser dead-ends: ganham saídas controladas (`reabrir`/`corrigir`, @AdminOnly).
- */
-export const WO_ACTIONS: Record<WorkOrderStatus, readonly WorkOrderAction[]> = {
-  PENDING: ['iniciar', 'cancelar'],
-  IN_PROGRESS: ['concluir', 'cancelar'],
-  DONE: ['reabrir', 'corrigir'],
-  CANCELLED: ['reabrir', 'corrigir'],
-};
-
-/** Restritas a OWNER/ADMIN (AC2) — enforced pelo RoleGuard via @AdminOnly no controller. */
-export const ADMIN_ONLY_ACTIONS: readonly WorkOrderAction[] = ['reabrir', 'corrigir'];
-
-/** Exigem motivo obrigatório (AC1) — o motivo vai só para o audit trail, nunca sobrescreve dados. */
-export const MANDATORY_REASON_ACTIONS: readonly WorkOrderAction[] = [
-  'cancelar',
-  'reabrir',
-  'corrigir',
-];
-
-type StatusAction = Exclude<WorkOrderAction, 'corrigir'>;
-
-const STATUS_ACTION_SPECS: Record<
+// Máquina de estados centralizada em shared-types (R5b) — reexportada para
+// compatibilidade de quem já importava do service.
+export {
+  ADMIN_ONLY_ACTIONS,
+  MANDATORY_REASON_ACTIONS,
+  STATUS_ACTION_SPECS,
+  WO_ACTIONS,
+} from '@orcivo/shared-types';
+export type {
   StatusAction,
-  { allowedFrom: WorkOrderStatus[]; to: WorkOrderStatus; auditAction: string }
-> = {
-  iniciar: { allowedFrom: ['PENDING'], to: 'IN_PROGRESS', auditAction: 'work_order.started' },
-  concluir: { allowedFrom: ['IN_PROGRESS'], to: 'DONE', auditAction: 'work_order.completed' },
-  cancelar: {
-    allowedFrom: ['PENDING', 'IN_PROGRESS'],
-    to: 'CANCELLED',
-    auditAction: 'work_order.cancelled',
-  },
-  reabrir: {
-    allowedFrom: ['DONE', 'CANCELLED'],
-    to: 'IN_PROGRESS',
-    auditAction: 'work_order.reopened',
-  },
-};
+  WorkOrderAction,
+  WorkOrderExtraStatus,
+  WorkOrderStatus,
+} from '@orcivo/shared-types';
 
 const WO_DETAIL_INCLUDE = {
   customer: true,
@@ -92,16 +73,30 @@ export class WorkOrderService {
     return { ...wo, photos };
   }
 
-  // ── Máquina de ações de domínio (P-01 / ADR-016) ───────────────────────────
+  // ── Máquina de ações de domínio (P-01 / ADR-016 / R5b) ─────────────────────
 
   /**
    * Ações permitidas no estado dado para o papel dado (AC4 — a web renderiza
-   * os botões a partir desta lista). Sem papel informado, só ações não-admin.
+   * os botões a partir desta lista). Ações de status extra só aparecem quando
+   * a empresa ligou o extra (R5b). Sem papel informado, só ações não-admin.
    */
-  allowedActions(status: WorkOrderStatus, role?: MemberRole | null): WorkOrderAction[] {
-    const actions = WO_ACTIONS[status] ?? [];
+  allowedActions(
+    status: WorkOrderStatus,
+    role?: MemberRole | null,
+    enabledExtras: readonly WorkOrderExtraStatus[] = [],
+  ): WorkOrderAction[] {
+    const actions = woActionsFor(status, enabledExtras);
     if (role === 'OWNER' || role === 'ADMIN') return [...actions];
     return actions.filter((action) => !ADMIN_ONLY_ACTIONS.includes(action));
+  }
+
+  /** Status extras ligados para a empresa (Configurações → Ordem de serviço, R5b). */
+  private async enabledExtraStatuses(companyId: string): Promise<WorkOrderExtraStatus[]> {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { work_order_statuses: true },
+    });
+    return (company?.work_order_statuses ?? []) as WorkOrderExtraStatus[];
   }
 
   async changeStatus(
@@ -120,7 +115,14 @@ export class WorkOrderService {
     if (!action) {
       throw new BadRequestException(`Transição inválida: ${wo.status} → ${status}`);
     }
-    if (!this.allowedActions(wo.status as WorkOrderStatus, role).includes(action)) {
+    const spec = STATUS_ACTION_SPECS[action];
+    const enabledExtras = await this.enabledExtraStatuses(companyId);
+    if (spec.requiresExtra && !enabledExtras.includes(spec.requiresExtra)) {
+      throw new BadRequestException(
+        `O status extra "${WORK_ORDER_EXTRA_STATUSES[spec.requiresExtra].label}" não está ativado nas configurações da empresa.`,
+      );
+    }
+    if (!this.allowedActions(wo.status as WorkOrderStatus, role, enabledExtras).includes(action)) {
       throw new ForbiddenException('Apenas administradores podem reabrir uma OS encerrada.');
     }
     return this.applyStatusAction(
@@ -130,6 +132,7 @@ export class WorkOrderService {
       action,
       this.requireReason(reason, action),
       role,
+      enabledExtras,
     );
   }
 
@@ -155,7 +158,7 @@ export class WorkOrderService {
     );
   }
 
-  /** reabrir (@AdminOnly): DONE/CANCELLED → IN_PROGRESS. Motivo obrigatório (AC1/AC2). */
+  /** reabrir (@AdminOnly): pós-conclusão → IN_PROGRESS. Motivo obrigatório (AC1/AC2). */
   async reopen(id: string, companyId: string, userId: string, reason?: string, role?: MemberRole) {
     return this.applyStatusAction(
       id,
@@ -165,6 +168,23 @@ export class WorkOrderService {
       this.requireReason(reason, 'reabrir'),
       role,
     );
+  }
+
+  // ── Status extras (R5b): só rodam com o extra ligado na empresa ────────────
+
+  /** aguardar_pagamento: DONE → AWAITING_PAYMENT (extra opt-in). */
+  async awaitPayment(id: string, companyId: string, userId: string, role?: MemberRole) {
+    return this.applyStatusAction(id, companyId, userId, 'aguardar_pagamento', null, role);
+  }
+
+  /** receber_pagamento: AWAITING_PAYMENT → DONE (extra opt-in). */
+  async receivePayment(id: string, companyId: string, userId: string, role?: MemberRole) {
+    return this.applyStatusAction(id, companyId, userId, 'receber_pagamento', null, role);
+  }
+
+  /** acionar_garantia: DONE → WARRANTY (extra opt-in). */
+  async claimWarranty(id: string, companyId: string, userId: string, role?: MemberRole) {
+    return this.applyStatusAction(id, companyId, userId, 'acionar_garantia', null, role);
   }
 
   /**
@@ -188,9 +208,9 @@ export class WorkOrderService {
     const reason = this.requireReason(input.reason, 'corrigir');
     const wo = await this.findOne(id, companyId);
     const from = wo.status as WorkOrderStatus;
-    if (from !== 'DONE' && from !== 'CANCELLED') {
+    if (!WO_CLOSED_STATUSES.includes(from)) {
       throw new BadRequestException(
-        `Corrigir é permitido apenas em OS encerrada (DONE/CANCELLED) — status atual: ${from}`,
+        `Corrigir é permitido apenas em OS encerrada (DONE/CANCELLED/AWAITING_PAYMENT/WARRANTY) — status atual: ${from}`,
       );
     }
 
@@ -275,8 +295,9 @@ export class WorkOrderService {
 
   /**
    * Núcleo transacional compartilhado pelas ações que mudam status: valida o
-   * estado de origem, grava a mudança e a auditoria na MESMA transação
-   * (ADR-015) e usa updateMany condicional para não perder corrida concorrente.
+   * estado de origem e o status extra (R5b), grava a mudança e a auditoria na
+   * MESMA transação (ADR-015) e usa updateMany condicional para não perder
+   * corrida concorrente.
    */
   private async applyStatusAction(
     id: string,
@@ -285,12 +306,19 @@ export class WorkOrderService {
     action: StatusAction,
     reason: string | null,
     role?: MemberRole,
+    enabledExtras?: readonly WorkOrderExtraStatus[],
   ) {
     const wo = await this.findOne(id, companyId);
     const from = wo.status as WorkOrderStatus;
     const spec = STATUS_ACTION_SPECS[action];
     if (!spec.allowedFrom.includes(from)) {
       throw new BadRequestException(`Transição inválida: ${from} → ${spec.to} (${action})`);
+    }
+    const extras = enabledExtras ?? (await this.enabledExtraStatuses(companyId));
+    if (spec.requiresExtra && !extras.includes(spec.requiresExtra)) {
+      throw new BadRequestException(
+        `O status extra "${WORK_ORDER_EXTRA_STATUSES[spec.requiresExtra].label}" não está ativado nas configurações da empresa.`,
+      );
     }
 
     const data: Record<string, unknown> = { status: spec.to };
@@ -302,6 +330,8 @@ export class WorkOrderService {
       data.finished_at = null;
       data.started_at = wo.started_at ?? new Date();
     }
+    // Status extras (aguardar/receber pagamento, garantia) preservam as datas
+    // de início/conclusão: são marcações pós-conclusão, não nova execução.
 
     return this.prisma.$transaction(async (tx) => {
       const result = await tx.workOrder.updateMany({ where: { id, status: from }, data });
@@ -328,7 +358,7 @@ export class WorkOrderService {
           reason,
         ),
       });
-      return this.withAllowedActions(updated, role);
+      return this.withAllowedActions(updated, role, extras);
     });
   }
 
@@ -349,14 +379,24 @@ export class WorkOrderService {
         return reason ? `${ctx} cancelada: ${reason}` : `${ctx} cancelada`;
       case 'reabrir':
         return `${ctx} reaberta para execução: ${reason}`;
+      case 'aguardar_pagamento':
+        return `${ctx} aguardando pagamento`;
+      case 'receber_pagamento':
+        return `${ctx} com pagamento recebido`;
+      case 'acionar_garantia':
+        return `${ctx} em garantia`;
     }
   }
 
   private withAllowedActions<T extends { status: string }>(
     wo: T,
     role?: MemberRole,
+    enabledExtras: readonly WorkOrderExtraStatus[] = [],
   ): T & { allowed_actions: WorkOrderAction[] } {
-    return { ...wo, allowed_actions: this.allowedActions(wo.status as WorkOrderStatus, role) };
+    return {
+      ...wo,
+      allowed_actions: this.allowedActions(wo.status as WorkOrderStatus, role, enabledExtras),
+    };
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -429,19 +469,26 @@ export class WorkOrderService {
   }
 
   async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole, customerId?: string) {
-    const data = await this.prisma.workOrder.findMany({
-      where: { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) },
-      orderBy: { created_at: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-      include: {
-        customer: { select: { id: true, name: true } },
-        photos: true,
-        quote: WO_DETAIL_INCLUDE.quote,
-      },
-    });
+    const [data, enabledExtras] = await Promise.all([
+      this.prisma.workOrder.findMany({
+        where: { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          customer: { select: { id: true, name: true } },
+          photos: true,
+          quote: WO_DETAIL_INCLUDE.quote,
+        },
+      }),
+      this.enabledExtraStatuses(companyId),
+    ]);
     const signed = await Promise.all(data.map((wo) => this.withPhotoUrls(wo)));
-    return { data: signed.map((wo) => this.withAllowedActions(wo, role)), page, limit };
+    return {
+      data: signed.map((wo) => this.withAllowedActions(wo, role, enabledExtras)),
+      page,
+      limit,
+    };
   }
 
   /** Detalhe da OS com as ações permitidas para o papel do chamador (AC4). */
@@ -451,7 +498,8 @@ export class WorkOrderService {
       include: WO_DETAIL_INCLUDE,
     });
     if (!wo) throw new NotFoundException();
-    return this.withAllowedActions(await this.withPhotoUrls(wo), role);
+    const enabledExtras = await this.enabledExtraStatuses(companyId);
+    return this.withAllowedActions(await this.withPhotoUrls(wo), role, enabledExtras);
   }
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {
@@ -462,18 +510,19 @@ export class WorkOrderService {
       // P-01 (ADR-016): transições por `status` livre foram substituídas por
       // ações de domínio. Este caminho segue apenas como alias de
       // compatibilidade (mobile) e roteia para a ação equivalente — com a
-      // mesma validação de estado e a mesma auditoria. `cancelar` exige
-      // motivo aqui também; o mobile ainda não envia motivo e recebe 400
-      // até migrar para PATCH /work-orders/:id/cancel (P-18: paridade
-      // mobile não bloqueia o MVP).
+      // mesma validação de estado, de extra (R5b) e a mesma auditoria.
+      // `cancelar` exige motivo aqui também; o mobile ainda não envia motivo e
+      // recebe 400 até migrar para PATCH /work-orders/:id/cancel (P-18).
       if (status === 'IN_PROGRESS') return this.start(id, companyId, userId);
       if (status === 'DONE') return this.complete(id, companyId, userId);
       if (status === 'CANCELLED') return this.cancel(id, companyId, userId);
+      if (status === 'AWAITING_PAYMENT') return this.awaitPayment(id, companyId, userId);
+      if (status === 'WARRANTY') return this.claimWarranty(id, companyId, userId);
       throw new BadRequestException(
         `Transição inválida via status: ${status}. Use as ações de domínio (iniciar, concluir, cancelar).`,
       );
     }
-    if (workOrder.status === 'DONE' || workOrder.status === 'CANCELLED') {
+    if (WO_CLOSED_STATUSES.includes(workOrder.status as WorkOrderStatus)) {
       throw new BadRequestException('Use a correção administrativa para alterar uma OS encerrada.');
     }
     if (rest.started_at !== undefined || rest.finished_at !== undefined) {

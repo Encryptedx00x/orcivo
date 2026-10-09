@@ -16,7 +16,11 @@ import {
 import type { MemberRole } from '@prisma/client';
 import { z } from 'zod';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { WorkOrderCreateSchema, WorkOrderUpdateSchema } from '@orcivo/shared-types';
+import {
+  WorkOrderCreateSchema,
+  WorkOrderStatusEnum,
+  WorkOrderUpdateSchema,
+} from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { WorkOrderPhotoService } from './work-order-photo.service';
@@ -32,7 +36,7 @@ interface TenantRequest {
 
 const VALID_STAGES = ['BEFORE', 'DURING', 'AFTER'] as const;
 const ManualStatusSchema = z.object({
-  status: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'CANCELLED']),
+  status: WorkOrderStatusEnum,
   reason: z.string().trim().min(1, 'Informe o motivo para alterar o status.'),
 });
 type PhotoStage = (typeof VALID_STAGES)[number];
@@ -128,12 +132,35 @@ export class WorkOrderController {
 
   // reabrir/corrigir são ações de correção sobre estados terminais — @AdminOnly (P-01).
 
-  /** reabrir: DONE/CANCELLED → IN_PROGRESS — motivo obrigatório, @AdminOnly. */
+  /** reabrir: DONE/CANCELLED/AWAITING_PAYMENT/WARRANTY → IN_PROGRESS — motivo obrigatório, @AdminOnly. */
   @Patch(':id/reopen')
   @AdminOnly()
   @HttpCode(200)
   reopen(@Param('id') id: string, @Req() req: TenantRequest, @Body('reason') reason?: string) {
     return this.workOrderService.reopen(id, req.companyId, req.user.userId, reason, req.role);
+  }
+
+  // ── Status extras (R5b): transições só rodam com o extra ligado na empresa ──
+
+  /** aguardar_pagamento: DONE → AWAITING_PAYMENT (extra "Aguardando pagamento"). */
+  @Patch(':id/await-payment')
+  @HttpCode(200)
+  awaitPayment(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.workOrderService.awaitPayment(id, req.companyId, req.user.userId, req.role);
+  }
+
+  /** receber_pagamento: AWAITING_PAYMENT → DONE (extra "Aguardando pagamento"). */
+  @Patch(':id/receive-payment')
+  @HttpCode(200)
+  receivePayment(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.workOrderService.receivePayment(id, req.companyId, req.user.userId, req.role);
+  }
+
+  /** acionar_garantia: DONE → WARRANTY (extra "Em garantia"). */
+  @Patch(':id/claim-warranty')
+  @HttpCode(200)
+  claimWarranty(@Param('id') id: string, @Req() req: TenantRequest) {
+    return this.workOrderService.claimWarranty(id, req.companyId, req.user.userId, req.role);
   }
 
   /** corrigir: ajuste pós-encerramento — não muda status, motivo obrigatório, @AdminOnly. */

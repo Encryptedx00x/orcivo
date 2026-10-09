@@ -1,6 +1,7 @@
 import {
   QuoteDocOptionsSchema,
   QuotePaymentTermsSchema,
+  WorkOrderExtraStatusListSchema,
   WorkOrderFieldListSchema,
 } from '@orcivo/shared-types';
 import { z } from 'zod';
@@ -93,4 +94,9 @@ export const ApprovalMethodsSchema = z.object({
     .min(1, 'Pelo menos uma forma de aprovação fica ligada.')
     .max(4)
     .transform((m) => [...new Set(m)]),
+});
+
+/** Status extras da OS ligados para a empresa (R5b); lista vazia desliga todos. */
+export const WorkOrderStatusesSchema = z.object({
+  statuses: WorkOrderExtraStatusListSchema,
 });

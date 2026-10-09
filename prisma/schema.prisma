@@ -64,6 +64,8 @@ model Company {
   quote_default_warranty      String?
   /// Extra OS fields turned on for the segment (keys of WORK_ORDER_FIELDS).
   work_order_fields           String[]  @default([])
+  /// Extra OS statuses turned on for the company (keys of WORK_ORDER_EXTRA_STATUSES, R5b).
+  work_order_statuses         WorkOrderExtraStatus[] @default([])
   plan_code                   PlanCode         @default(LIVRE)
   allowed_approval_methods    ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
 
@@ -331,6 +333,14 @@ enum WorkOrderStatus {
   IN_PROGRESS
   DONE
   CANCELLED
+  AWAITING_PAYMENT
+  WARRANTY
+}
+
+/// Status extras da OS (R5b) que a empresa pode ligar em Configurações → Ordem de serviço.
+enum WorkOrderExtraStatus {
+  AWAITING_PAYMENT
+  WARRANTY
 }
 
 enum PhotoStage {

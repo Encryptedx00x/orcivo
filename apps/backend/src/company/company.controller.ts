@@ -10,7 +10,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApprovalMethodsSchema, CompanyProfileUpdateSchema } from './company-profile-update.schema';
+import {
+  ApprovalMethodsSchema,
+  CompanyProfileUpdateSchema,
+  WorkOrderStatusesSchema,
+} from './company-profile-update.schema';
 import { CompanyService } from './company.service';
 import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { SubscriptionService } from '../billing/subscription.service';
@@ -75,6 +79,21 @@ export class CompanyController {
       methods: ('APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE')[];
     };
     return this.companyService.updateApprovalMethods(req.companyId, methods, req.user.userId);
+  }
+
+  /** R5b: liga/desliga os status extras da OS (AWAITING_PAYMENT / WARRANTY). */
+  @AdminOnly()
+  @Patch('work-order-statuses')
+  updateWorkOrderStatuses(
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(WorkOrderStatusesSchema)) body: unknown,
+  ) {
+    const { statuses } = body as { statuses: ('AWAITING_PAYMENT' | 'WARRANTY')[] };
+    return this.companyService.updateWorkOrderStatuses(
+      req.companyId,
+      statuses,
+      req.user.userId,
+    );
   }
 
   @Get('me/plan-limits')
