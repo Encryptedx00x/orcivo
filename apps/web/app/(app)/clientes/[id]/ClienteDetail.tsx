@@ -21,6 +21,9 @@ interface Customer {
   tax_id: string | null;
   phone: string | null;
   phone2: string | null;
+  origin: 'INDICATION' | 'INSTAGRAM' | 'GOOGLE' | 'FACEBOOK' | 'OTHER' | null;
+  birthday: string | null;
+  internal_notes: string | null;
   email: string | null;
   cep: string | null;
   street: string | null;
@@ -273,6 +276,28 @@ export function ClienteDetail({
           {customer.phone && <KV k="Telefone" v={maskPhone(customer.phone)} />}
           {customer.phone2 && <KV k="Telefone secundário" v={customer.phone2} />}
           {customer.email && <KV k="Email" v={customer.email} />}
+          {customer.origin && (
+            <KV
+              k="Origem"
+              v={
+                (
+                  {
+                    INDICATION: 'Indicação',
+                    INSTAGRAM: 'Instagram',
+                    GOOGLE: 'Google',
+                    FACEBOOK: 'Facebook',
+                    OTHER: 'Outro',
+                  } as const
+                )[customer.origin]
+              }
+            />
+          )}
+          {customer.birthday && (
+            <KV
+              k="Aniversário"
+              v={new Date(customer.birthday).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+            />
+          )}
 
           {/* Address */}
           {(customer.street || customer.city || customer.state) && (
@@ -298,11 +323,11 @@ export function ClienteDetail({
             </>
           )}
 
-          {customer.notes && (
+          {(customer.internal_notes || customer.notes) && (
             <>
               <h3 style={{ ...kvHead, marginTop: 18 }}>Observações</h3>
               <div style={{ fontSize: 13, color: '#64748B', lineHeight: '20px' }}>
-                {customer.notes}
+                {customer.internal_notes || customer.notes}
               </div>
             </>
           )}

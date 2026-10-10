@@ -18,6 +18,7 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { StockService } from '../stock/stock.service';
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
 
@@ -88,6 +89,7 @@ describe('QuoteService.send — assinatura do técnico só neste orçamento', ()
         },
         { provide: AuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
         { provide: UsersService, useValue: users },
+        { provide: StockService, useValue: { deductForQuoteApproval: jest.fn() } },
       ],
     }).compile();
     service = module.get(QuoteService);

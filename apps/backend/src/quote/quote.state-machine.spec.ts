@@ -23,6 +23,7 @@ import { TenantOwnershipService } from '../common/tenant/tenant-ownership.servic
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
+import { StockService } from '../stock/stock.service';
 
 // PB1-P01 — Quote domain-action state machine (unit, mocked Prisma/Audit).
 // A matriz de transições inválidas é derivada de QUOTE_ACTIONS: o serviço tem
@@ -168,6 +169,7 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
           provide: UsersService,
           useValue: { getSignatureBuffer: jest.fn().mockResolvedValue(null) },
         },
+        { provide: StockService, useValue: { deductForQuoteApproval: jest.fn() } },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);

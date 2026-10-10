@@ -13,6 +13,7 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AuthService } from '../auth/auth.service';
+import { StockService } from '../stock/stock.service';
 
 assertEphemeralDatabase();
 
@@ -26,6 +27,7 @@ describe('Security approval/session transactions (real disposable DB)', () => {
   const db = prisma as PrismaService;
   const ownership = new TenantOwnershipService(db);
   const limits = { enforceLimit: jest.fn().mockResolvedValue(undefined) };
+  const stock = new StockService(audit);
   const pdf = { generate: jest.fn().mockResolvedValue(Buffer.from('fixture-pdf')) };
   const storage = {
     deleteObject: jest.fn().mockResolvedValue(undefined),
@@ -34,9 +36,17 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     assertUploadable: jest.fn(),
     inlineImage: jest.fn(async (key: string | null) => key),
   };
-  const workOrders = new WorkOrderService(db, redis, limits as never, ownership, audit, {
-    resolveUrl: async (_b: string, key: string) => key,
-  } as never);
+  const workOrders = new WorkOrderService(
+    db,
+    redis,
+    limits as never,
+    ownership,
+    audit,
+    {
+      resolveUrl: async (_b: string, key: string) => key,
+    } as never,
+    stock,
+  );
   const quotes = new QuoteService(
     db,
     redis,
@@ -49,6 +59,7 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     ownership,
     audit,
     {} as never,
+    stock,
   );
   const auth = new AuthService(db, new JwtService(), config, redis, {} as never, audit);
   let companyId: string;

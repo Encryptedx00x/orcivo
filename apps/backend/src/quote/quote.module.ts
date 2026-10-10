@@ -7,9 +7,15 @@ import { QuotePdfService } from './quote-pdf.service';
 import { QuoteService } from './quote.service';
 import { WorkOrderModule } from '../work-order/work-order.module';
 import { UsersModule } from '../users/users.module';
+import { StockModule } from '../stock/stock.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'quote-expiry' }), WorkOrderModule, UsersModule],
+  imports: [
+    BullModule.registerQueue({ name: 'quote-expiry' }),
+    WorkOrderModule,
+    UsersModule,
+    StockModule,
+  ],
   controllers: [QuoteController, QuotePublicController],
   providers: [QuoteService, QuoteExpiryProcessor, QuotePdfService],
   exports: [QuoteService],

@@ -5,6 +5,7 @@ import {
   CatalogImportRowSchema,
   CatalogItemCreateDto,
   CatalogItemUpdateDto,
+  calculateSalePrice,
 } from '@orcivo/shared-types';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -23,6 +24,10 @@ type CatalogItemRow = {
   cost_price: Prisma.Decimal;
   sale_price: Prisma.Decimal;
   unit: string | null;
+  internal_code: string | null;
+  brand: string | null;
+  margin_percent: Prisma.Decimal | null;
+  markup_percent: Prisma.Decimal | null;
   photo_url: string | null;
   is_active: boolean;
   created_at: Date;
@@ -39,6 +44,10 @@ type CatalogWriteData = {
   cost_price: string;
   sale_price: string;
   unit: string | null;
+  internal_code: string | null;
+  brand: string | null;
+  margin_percent: string | null;
+  markup_percent: string | null;
   photo_url?: string | null;
   is_active: boolean;
 };
@@ -48,6 +57,7 @@ type Queryable = Pick<PrismaService, '$queryRaw'>;
 const inventoryColumns = Prisma.sql`
   "id", "company_id", "name", "description", "type", "unit_price",
   "quantity", "low_stock_threshold", "cost_price", "sale_price", "unit",
+  "internal_code", "brand", "margin_percent", "markup_percent",
   "photo_url", "is_active", "created_at", "updated_at"
 `;
 
@@ -95,7 +105,9 @@ export class CatalogService {
   }
 
   async update(id: string, dto: CatalogItemUpdateDto, companyId: string) {
-    const item = await this.updateRow(this.prisma, id, companyId, this.toCatalogData(dto));
+    const current = await this.findOneRow(this.prisma, id, companyId);
+    if (!current) throw new NotFoundException();
+    const item = await this.updateRow(this.prisma, id, companyId, this.toCatalogData(dto, current));
     if (!item) throw new NotFoundException();
     return this.withLowStock(item);
   }
@@ -219,12 +231,13 @@ export class CatalogService {
       INSERT INTO "catalog_items" (
         "id", "company_id", "name", "description", "type", "unit_price",
         "quantity", "low_stock_threshold", "cost_price", "sale_price", "unit",
-        "is_active", "updated_at"
+        "internal_code", "brand", "margin_percent", "markup_percent", "is_active", "updated_at"
       ) VALUES (
         ${id}, ${companyId}, ${data.name}, ${data.description},
         ${data.type}::"CatalogItemType", ${data.unit_price}::DECIMAL(12,2), ${data.quantity},
         ${data.low_stock_threshold}, ${data.cost_price}::DECIMAL(12,2),
-        ${data.sale_price}::DECIMAL(12,2), ${data.unit},
+        ${data.sale_price}::DECIMAL(12,2), ${data.unit}, ${data.internal_code}, ${data.brand},
+        ${data.margin_percent}::DECIMAL(7,3), ${data.markup_percent}::DECIMAL(7,3),
         ${data.is_active}, NOW()
       ) RETURNING ${inventoryColumns}
     `;
@@ -264,13 +277,23 @@ export class CatalogService {
     if (data.sale_price !== undefined)
       assignments.push(Prisma.sql`"sale_price" = ${data.sale_price}::DECIMAL(12,2)`);
     if (data.unit !== undefined) assignments.push(Prisma.sql`"unit" = ${data.unit}`);
+    if (data.internal_code !== undefined)
+      assignments.push(Prisma.sql`"internal_code" = ${data.internal_code}`);
+    if (data.brand !== undefined) assignments.push(Prisma.sql`"brand" = ${data.brand}`);
+    if (data.margin_percent !== undefined)
+      assignments.push(Prisma.sql`"margin_percent" = ${data.margin_percent}::DECIMAL(7,3)`);
+    if (data.markup_percent !== undefined)
+      assignments.push(Prisma.sql`"markup_percent" = ${data.markup_percent}::DECIMAL(7,3)`);
     if (data.photo_url !== undefined) assignments.push(Prisma.sql`"photo_url" = ${data.photo_url}`);
     if (data.is_active !== undefined) assignments.push(Prisma.sql`"is_active" = ${data.is_active}`);
     return assignments;
   }
 
   private toCatalogCreateData(dto: CatalogItemCreateDto | CatalogImportRowDto): CatalogWriteData {
-    const price = dto.sale_price ?? dto.unit_price;
+    const price =
+      dto.margin_percent || dto.markup_percent
+        ? calculateSalePrice(dto.cost_price ?? '0', dto)
+        : (dto.sale_price ?? dto.unit_price);
     if (!price) throw new BadRequestException('sale_price ou unit_price é obrigatório.');
     return {
       name: dto.name,
@@ -282,13 +305,33 @@ export class CatalogService {
       quantity: dto.quantity ?? 0,
       low_stock_threshold: dto.low_stock_threshold ?? 5,
       unit: dto.unit ?? null,
+      internal_code: dto.internal_code ?? null,
+      brand: dto.brand ?? null,
+      margin_percent: dto.margin_percent ?? null,
+      markup_percent: dto.markup_percent ?? null,
       is_active: dto.is_active ?? true,
     };
   }
 
-  private toCatalogData(dto: CatalogItemUpdateDto): Partial<CatalogWriteData> {
+  private toCatalogData(
+    dto: CatalogItemUpdateDto,
+    current: CatalogItemRow,
+  ): Partial<CatalogWriteData> {
     const { unit_price, sale_price, ...data } = dto;
-    const price = sale_price ?? unit_price;
+    const pricing = {
+      margin_percent:
+        dto.margin_percent === undefined ? current.margin_percent?.toString() : dto.margin_percent,
+      markup_percent:
+        dto.markup_percent === undefined ? current.markup_percent?.toString() : dto.markup_percent,
+    };
+    const shouldCalculate =
+      Boolean(pricing.margin_percent || pricing.markup_percent) &&
+      (dto.cost_price !== undefined ||
+        dto.margin_percent !== undefined ||
+        dto.markup_percent !== undefined);
+    const price = shouldCalculate
+      ? calculateSalePrice(dto.cost_price ?? current.cost_price.toString(), pricing)
+      : (sale_price ?? unit_price);
     return price === undefined ? data : { ...data, unit_price: price, sale_price: price };
   }
 

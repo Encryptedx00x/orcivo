@@ -68,6 +68,10 @@ model Company {
   work_order_statuses         WorkOrderExtraStatus[] @default([])
   plan_code                   PlanCode         @default(LIVRE)
   allowed_approval_methods    ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
+  stock_depletion_event       StockDepletionEvent @default(QUOTE_APPROVAL)
+  contact_save_preference     ContactSavePreference @default(ASK)
+  catalog_name                String @default("Catálogo")
+  catalog_units               String[] @default(["un", "h", "m", "m²", "kg", "l"])
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -85,6 +89,7 @@ model Company {
   appointments       Appointment[]
   idempotency_keys   RequestIdempotency[]
   notification_reads NotificationRead[]
+  stock_movements    StockMovement[]
 
   expenses Expense[]
 
@@ -101,6 +106,17 @@ enum PlanCode {
   SOLO
   MAIS
   EQUIPE
+}
+
+enum StockDepletionEvent {
+  QUOTE_APPROVAL
+  WORK_ORDER_COMPLETION
+}
+
+enum ContactSavePreference {
+  ALWAYS
+  NEVER
+  ASK
 }
 
 // ─── Membership (usuário ↔ empresa) ──────────────────────────────────────────
@@ -140,6 +156,9 @@ model Customer {
   tax_id              String?
   phone               String?
   phone2              String?
+  origin              CustomerOrigin?
+  birthday            DateTime?     @db.Date
+  internal_notes      String?
   email               String?
   cep                 String?
   street              String?
@@ -172,6 +191,14 @@ model Customer {
 enum CustomerType {
   PF
   PJ
+}
+
+enum CustomerOrigin {
+  INDICATION
+  INSTAGRAM
+  GOOGLE
+  FACEBOOK
+  OTHER
 }
 
 // ─── Refresh Token ────────────────────────────────────────────────────────────
@@ -210,6 +237,10 @@ model CatalogItem {
   cost_price          Decimal         @default(0) @db.Decimal(12, 2)
   sale_price          Decimal         @default(0) @db.Decimal(12, 2)
   unit                String?
+  internal_code       String?
+  brand               String?
+  margin_percent      Decimal?        @db.Decimal(7, 3)
+  markup_percent      Decimal?        @db.Decimal(7, 3)
   photo_url           String?
   is_active           Boolean         @default(true)
 
@@ -218,10 +249,52 @@ model CatalogItem {
 
   company     Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
   quote_items QuoteItem[]
+  stock_movements StockMovement[]
 
   @@index([company_id])
   @@index([company_id, is_active])
+  @@unique([company_id, internal_code])
   @@map("catalog_items")
+}
+
+enum StockMovementType {
+  DEBIT
+  CREDIT
+}
+
+enum StockMovementEvent {
+  QUOTE_APPROVAL
+  WORK_ORDER_COMPLETION
+  WORK_ORDER_CANCEL
+  WORK_ORDER_REOPEN
+  QUOTE_CORRECTION
+}
+
+model StockMovement {
+  id              String             @id @default(uuid())
+  company_id      String
+  catalog_item_id String
+  quote_id        String?
+  work_order_id   String?
+  reference_id    String
+  reversal_of_id  String?            @unique
+  type            StockMovementType
+  event           StockMovementEvent
+  quantity        Decimal            @db.Decimal(10, 3)
+  created_at      DateTime           @default(now())
+
+  company      Company      @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  catalog_item CatalogItem  @relation(fields: [catalog_item_id], references: [id], onDelete: Restrict)
+  quote        Quote?       @relation(fields: [quote_id], references: [id], onDelete: SetNull)
+  work_order   WorkOrder?   @relation(fields: [work_order_id], references: [id], onDelete: SetNull)
+  reversal_of  StockMovement? @relation("StockMovementReversal", fields: [reversal_of_id], references: [id], onDelete: Restrict)
+  reversal     StockMovement? @relation("StockMovementReversal")
+
+  @@unique([company_id, catalog_item_id, event, reference_id])
+  @@index([company_id, catalog_item_id, created_at])
+  @@index([company_id, quote_id])
+  @@index([company_id, work_order_id])
+  @@map("stock_movements")
 }
 
 // ─── Orçamento ────────────────────────────────────────────────────────────────
@@ -279,6 +352,7 @@ model Quote {
   items      QuoteItem[]
   approval   QuoteApproval?
   work_order WorkOrder?
+  stock_movements StockMovement[]
 
   @@unique([company_id, number])
   @@index([company_id])
@@ -375,6 +449,7 @@ model WorkOrder {
   assigned_to User?            @relation("WorkOrderAssignedTo", fields: [assigned_to_user_id], references: [id])
   created_by  User             @relation("WorkOrderCreatedBy", fields: [created_by_user_id], references: [id])
   photos      WorkOrderPhoto[]
+  stock_movements StockMovement[]
 
   @@unique([company_id, number])
   @@index([company_id])

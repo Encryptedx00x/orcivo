@@ -23,6 +23,7 @@ import {
   FileText,
   Smile,
   Wrench,
+  Package,
 } from 'lucide-react';
 import { LogoField } from '../../../components/LogoField';
 import { setEasyMode } from '../../../components/EasyMode';
@@ -86,6 +87,10 @@ interface CompanyMeResponse {
   quote_default_warranty?: string | null;
   work_order_fields?: WorkOrderField[];
   work_order_statuses?: WorkOrderExtraStatus[];
+  stock_depletion_event?: 'QUOTE_APPROVAL' | 'WORK_ORDER_COMPLETION';
+  contact_save_preference?: 'ALWAYS' | 'NEVER' | 'ASK';
+  catalog_name?: string;
+  catalog_units?: string[];
 }
 
 const DEFAULT_TERMS =
@@ -192,6 +197,7 @@ const TABS = [
   { id: 'aprovacao', label: 'Aprovação', icon: CheckSquare },
   { id: 'condicoes', label: 'Condições padrão', icon: FileText },
   { id: 'os', label: 'Ordem de serviço', icon: Wrench },
+  { id: 'catalogo', label: 'Clientes e catálogo', icon: Package },
   { id: 'modo', label: 'Modo fácil', icon: Smile },
 ];
 
@@ -219,6 +225,14 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsSaved, setTermsSaved] = useState(false);
   const [termsError, setTermsError] = useState('');
+  const [inventory, setInventory] = useState({
+    stock_depletion_event: 'QUOTE_APPROVAL' as 'QUOTE_APPROVAL' | 'WORK_ORDER_COMPLETION',
+    contact_save_preference: 'ASK' as 'ALWAYS' | 'NEVER' | 'ASK',
+    catalog_name: 'Catálogo',
+    catalog_units: ['un', 'h', 'm', 'm²', 'kg', 'l'],
+  });
+  const [inventorySaving, setInventorySaving] = useState(false);
+  const [inventorySaved, setInventorySaved] = useState(false);
 
   const [pix, setPix] = useState<PixForm>(EMPTY_PIX);
   const [pixSaving, setPixSaving] = useState(false);
@@ -247,6 +261,12 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         setWarranty(d.quote_default_warranty ?? '');
         setOsFields(d.work_order_fields ?? []);
         setOsStatuses(d.work_order_statuses ?? []);
+        setInventory({
+          stock_depletion_event: d.stock_depletion_event ?? 'QUOTE_APPROVAL',
+          contact_save_preference: d.contact_save_preference ?? 'ASK',
+          catalog_name: d.catalog_name ?? 'Catálogo',
+          catalog_units: d.catalog_units ?? ['un', 'h', 'm', 'm²', 'kg', 'l'],
+        });
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -1046,6 +1066,101 @@ export default function ConfiguracoesPage(): React.JSX.Element {
               {osStatuses && <OsStatusesSettings initial={osStatuses} />}
               {osFields && <OsFieldsSettings initial={osFields} />}
             </>
+          )}
+
+          {tab === 'catalogo' && (
+            <section className="ov-card ov-card-body" style={{ padding: 24, maxWidth: 760 }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: 17 }}>Clientes e catálogo</h3>
+              <p style={{ color: '#64748B', fontSize: 13 }}>
+                Preferências compartilhadas no web e no app.
+              </p>
+              <label className="ov-label" htmlFor="stock-event">
+                Baixar estoque
+              </label>
+              <select
+                id="stock-event"
+                className="ov-input"
+                value={inventory.stock_depletion_event}
+                onChange={(e) =>
+                  setInventory((v) => ({
+                    ...v,
+                    stock_depletion_event: e.target.value as typeof v.stock_depletion_event,
+                  }))
+                }
+              >
+                <option value="QUOTE_APPROVAL">Ao aprovar o orçamento</option>
+                <option value="WORK_ORDER_COMPLETION">Ao concluir a OS</option>
+              </select>
+              <label className="ov-label" htmlFor="contact-save" style={{ marginTop: 16 }}>
+                Salvar cliente nos contatos do celular
+              </label>
+              <select
+                id="contact-save"
+                className="ov-input"
+                value={inventory.contact_save_preference}
+                onChange={(e) =>
+                  setInventory((v) => ({
+                    ...v,
+                    contact_save_preference: e.target.value as typeof v.contact_save_preference,
+                  }))
+                }
+              >
+                <option value="ALWAYS">Sempre</option>
+                <option value="NEVER">Nunca</option>
+                <option value="ASK">Perguntar</option>
+              </select>
+              <label className="ov-label" htmlFor="catalog-name" style={{ marginTop: 16 }}>
+                Nome do catálogo
+              </label>
+              <input
+                id="catalog-name"
+                className="ov-input"
+                value={inventory.catalog_name}
+                onChange={(e) => setInventory((v) => ({ ...v, catalog_name: e.target.value }))}
+              />
+              <label className="ov-label" htmlFor="catalog-units" style={{ marginTop: 16 }}>
+                Unidades, separadas por vírgula
+              </label>
+              <input
+                id="catalog-units"
+                className="ov-input"
+                value={inventory.catalog_units.join(', ')}
+                onChange={(e) =>
+                  setInventory((v) => ({
+                    ...v,
+                    catalog_units: e.target.value
+                      .split(',')
+                      .map((x) => x.trim())
+                      .filter(Boolean),
+                  }))
+                }
+              />
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 20 }}>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-primary"
+                  disabled={inventorySaving}
+                  onClick={async () => {
+                    setInventorySaving(true);
+                    setInventorySaved(false);
+                    const response = await fetch('/api/company/inventory-settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(inventory),
+                    });
+                    setInventorySaving(false);
+                    setInventorySaved(response.ok);
+                  }}
+                >
+                  {inventorySaving ? 'Salvando…' : 'Salvar preferências'}
+                </button>
+                {inventorySaved ? (
+                  <span role="status" style={{ color: '#166534', fontSize: 13 }}>
+                    Preferências salvas.
+                  </span>
+                ) : null}
+              </div>
+            </section>
           )}
 
           {tab === 'modo' && (

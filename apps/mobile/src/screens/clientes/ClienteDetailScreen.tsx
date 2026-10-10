@@ -1,5 +1,13 @@
 import React, { useCallback } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ClientesStackParamList } from '../../navigation/AppTabs';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,24 +23,74 @@ export function ClienteDetailScreen({ route }: Props) {
   const { data: customer, loading, failed, refresh } = useFocusedResource(load);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#6D28D9" />}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#6D28D9" />
+      }
+    >
       {loading && <ActivityIndicator color="#6D28D9" accessibilityLabel="Carregando cliente" />}
-      {failed && <View accessibilityRole="alert">
-        <Text style={styles.value}>Não foi possível carregar o cliente. Verifique sua conexão; ele pode ter sido removido ou não estar disponível para sua conta.</Text>
-        <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={refresh}><Text style={styles.buttonText}>Tentar novamente</Text></TouchableOpacity>
-      </View>}
-      {customer && <>
-        <Text style={styles.title}>{customer.name}</Text>
-        <Text style={styles.heading}>Dados do cliente</Text>
-        {[
-          ['Tipo', customer.type === 'PJ' ? 'Pessoa jurídica' : customer.type === 'PF' ? 'Pessoa física' : null],
-          ['CPF/CNPJ', customer.tax_id],
-          ['Telefone', customer.phone],
-          ['E-mail', customer.email],
-          ['Cidade / UF', [customer.city, customer.state].filter(Boolean).join(' / ')],
-          ['Observações', customer.notes],
-        ].map(([label, value]) => <View key={label} style={styles.field}><Text style={styles.label}>{label}</Text><Text selectable style={styles.value}>{value || 'Não informado'}</Text></View>)}
-      </>}
+      {failed && (
+        <View accessibilityRole="alert">
+          <Text style={styles.value}>
+            Não foi possível carregar o cliente. Verifique sua conexão; ele pode ter sido removido
+            ou não estar disponível para sua conta.
+          </Text>
+          <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={refresh}>
+            <Text style={styles.buttonText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {customer && (
+        <>
+          <Text style={styles.title}>{customer.name}</Text>
+          <Text style={styles.heading}>Dados do cliente</Text>
+          {[
+            [
+              'Tipo',
+              customer.type === 'PJ'
+                ? 'Pessoa jurídica'
+                : customer.type === 'PF'
+                  ? 'Pessoa física'
+                  : null,
+            ],
+            ['CPF/CNPJ', customer.tax_id],
+            ['Telefone', customer.phone],
+            ['Segundo telefone', customer.phone2],
+            [
+              'Origem',
+              customer.origin
+                ? (
+                    {
+                      INDICATION: 'Indicação',
+                      INSTAGRAM: 'Instagram',
+                      GOOGLE: 'Google',
+                      FACEBOOK: 'Facebook',
+                      OTHER: 'Outro',
+                    } as const
+                  )[customer.origin]
+                : null,
+            ],
+            [
+              'Aniversário',
+              customer.birthday
+                ? new Date(customer.birthday).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+                : null,
+            ],
+            ['E-mail', customer.email],
+            ['Cidade / UF', [customer.city, customer.state].filter(Boolean).join(' / ')],
+            ['Observações internas', customer.internal_notes || customer.notes],
+          ].map(([label, value]) => (
+            <View key={label} style={styles.field}>
+              <Text style={styles.label}>{label}</Text>
+              <Text selectable style={styles.value}>
+                {value || 'Não informado'}
+              </Text>
+            </View>
+          ))}
+        </>
+      )}
     </ScrollView>
   );
 }

@@ -37,6 +37,7 @@ export * from './billing/subscription.dto';
 export * from './invite/invite.dto';
 export * from './notification';
 export * from './company/company-doc-fields';
+export * from './company/inventory-settings';
 export * from './quote/quote-payment-terms';
 export * from './quote/quote-totals';
 export * from './finance/expense';

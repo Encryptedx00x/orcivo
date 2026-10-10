@@ -31,6 +31,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AuditModule } from './audit/audit.module';
 import { SubscriptionStatusGuard } from './billing/subscription-status.guard';
 import { NotificationsModule } from './notifications/notifications.module';
+import { StockModule } from './stock/stock.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     AppointmentModule,
     DashboardModule,
     NotificationsModule,
+    StockModule,
   ],
   providers: [
     // Order matters (guards run top-to-bottom). See ADR-014.

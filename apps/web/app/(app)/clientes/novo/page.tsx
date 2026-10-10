@@ -12,6 +12,8 @@ const EMPTY_FORM = {
   cpf: '',
   phone: '',
   phone2: '',
+  origin: '',
+  birthday: '',
   email: '',
   cep: '',
   street: '',
@@ -20,7 +22,7 @@ const EMPTY_FORM = {
   neighborhood: '',
   city: '',
   state: '',
-  notes: '',
+  internal_notes: '',
 };
 
 const MASKS: Record<string, (v: string) => string> = {
@@ -91,7 +93,9 @@ export default function NovoClientePage(): React.JSX.Element {
         neighborhood: form.neighborhood || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
-        notes: form.notes || undefined,
+        origin: form.origin || undefined,
+        birthday: form.birthday || undefined,
+        internal_notes: form.internal_notes || undefined,
       }).filter(([, v]) => v !== undefined),
     );
     const parsed = CustomerCreateSchema.safeParse(payload);
@@ -296,6 +300,28 @@ export default function NovoClientePage(): React.JSX.Element {
                   />
                 </Field>
               </div>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}
+              >
+                <Field label="Origem">
+                  <select
+                    style={inp}
+                    value={form.origin}
+                    onChange={(e) => setForm((p) => ({ ...p, origin: e.target.value }))}
+                  >
+                    <option value="">Não informada</option>
+                    <option value="INDICATION">Indicação</option>
+                    <option value="INSTAGRAM">Instagram</option>
+                    <option value="GOOGLE">Google</option>
+                    <option value="FACEBOOK">Facebook</option>
+                    <option value="OTHER">Outro</option>
+                  </select>
+                </Field>
+                <Field label="Aniversário">
+                  <input style={inp} type="date" value={form.birthday} onChange={set('birthday')} />
+                </Field>
+              </div>
             </div>
 
             {/* Endereço */}
@@ -428,8 +454,8 @@ export default function NovoClientePage(): React.JSX.Element {
               </h3>
               <textarea
                 style={{ ...inp, height: 90, resize: 'vertical' }}
-                value={form.notes}
-                onChange={set('notes')}
+                value={form.internal_notes}
+                onChange={set('internal_notes')}
                 placeholder="Ex.: prefere atendimento pela manhã, paga sempre via Pix…"
               />
             </div>

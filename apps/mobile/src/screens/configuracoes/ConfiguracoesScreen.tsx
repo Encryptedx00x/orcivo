@@ -69,6 +69,13 @@ type ConfigNav = NativeStackNavigationProp<{
   QuoteSign: { standalone?: boolean } | undefined;
 }>;
 
+type InventorySettings = {
+  stock_depletion_event: 'QUOTE_APPROVAL' | 'WORK_ORDER_COMPLETION';
+  contact_save_preference: 'ALWAYS' | 'NEVER' | 'ASK';
+  catalog_name: string;
+  catalog_units: string[];
+};
+
 export function ConfiguracoesScreen() {
   const navigation = useNavigation<ConfigNav>();
   const { setEasy } = useEasyMode();
@@ -87,6 +94,14 @@ export function ConfiguracoesScreen() {
   const [pixError, setPixError] = useState('');
   const [profileSaved, setProfileSaved] = useState(false);
   const [pixSaved, setPixSaved] = useState(false);
+  const [inventory, setInventory] = useState<InventorySettings>({
+    stock_depletion_event: 'QUOTE_APPROVAL',
+    contact_save_preference: 'ASK',
+    catalog_name: 'Catálogo',
+    catalog_units: ['un', 'h', 'm', 'm²', 'kg', 'l'],
+  });
+  const [inventoryBusy, setInventoryBusy] = useState(false);
+  const [inventorySaved, setInventorySaved] = useState(false);
   const profileRequest = useRef<{ body: string; key: string } | null>(null);
   const pixRequest = useRef<{ body: string; key: string } | null>(null);
   const profileLock = useRef(false);
@@ -97,12 +112,18 @@ export function ConfiguracoesScreen() {
     setLoading(true);
     setLoadError('');
     void api
-      .get<CompanyResponse>('/company/me')
+      .get<CompanyResponse & InventorySettings>('/company/me')
       .then((company) => {
         if (!active) return;
         setProfile(profileFromCompany(company));
         const key = company.pix_key ?? '';
         setPix({ pix_key_type: inferPixKeyType(key), pix_key: key });
+        setInventory({
+          stock_depletion_event: company.stock_depletion_event,
+          contact_save_preference: company.contact_save_preference,
+          catalog_name: company.catalog_name,
+          catalog_units: company.catalog_units,
+        });
       })
       .catch(() => {
         if (active)
@@ -169,6 +190,19 @@ export function ConfiguracoesScreen() {
     } finally {
       pixLock.current = false;
       setPixBusy(false);
+    }
+  }
+
+  async function saveInventory() {
+    setInventoryBusy(true);
+    setInventorySaved(false);
+    try {
+      await api.patch('/company/inventory-settings', inventory, {
+        idempotencyKey: newIdempotencyKey(),
+      });
+      setInventorySaved(true);
+    } finally {
+      setInventoryBusy(false);
     }
   }
 
@@ -279,6 +313,99 @@ export function ConfiguracoesScreen() {
             label="Salvar alterações"
             busy={profileBusy}
             onPress={() => void saveProfile()}
+          />
+        </View>
+        <View style={styles.card}>
+          <Text accessibilityRole="header" style={styles.title}>
+            Clientes e catálogo
+          </Text>
+          <Text style={styles.description}>
+            Escolha quando baixar estoque e como salvar contatos.
+          </Text>
+          <Text style={styles.label}>Baixa automática</Text>
+          <View style={styles.types}>
+            {(
+              [
+                ['QUOTE_APPROVAL', 'Ao aprovar orçamento'],
+                ['WORK_ORDER_COMPLETION', 'Ao concluir OS'],
+              ] as const
+            ).map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.type,
+                  inventory.stock_depletion_event === value && styles.selectedType,
+                ]}
+                onPress={() =>
+                  setInventory((current) => ({ ...current, stock_depletion_event: value }))
+                }
+              >
+                <Text
+                  style={
+                    inventory.stock_depletion_event === value ? styles.selectedLabel : styles.label
+                  }
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.label}>Salvar cliente nos contatos</Text>
+          <View style={styles.types}>
+            {(
+              [
+                ['ALWAYS', 'Sempre'],
+                ['NEVER', 'Nunca'],
+                ['ASK', 'Perguntar'],
+              ] as const
+            ).map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.type,
+                  inventory.contact_save_preference === value && styles.selectedType,
+                ]}
+                onPress={() =>
+                  setInventory((current) => ({ ...current, contact_save_preference: value }))
+                }
+              >
+                <Text
+                  style={
+                    inventory.contact_save_preference === value
+                      ? styles.selectedLabel
+                      : styles.label
+                  }
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Field
+            label="Nome do catálogo"
+            value={inventory.catalog_name}
+            onChangeText={(value) =>
+              setInventory((current) => ({ ...current, catalog_name: value }))
+            }
+          />
+          <Field
+            label="Unidades (separadas por vírgula)"
+            value={inventory.catalog_units.join(', ')}
+            onChangeText={(value) =>
+              setInventory((current) => ({
+                ...current,
+                catalog_units: value
+                  .split(',')
+                  .map((unit) => unit.trim())
+                  .filter(Boolean),
+              }))
+            }
+          />
+          {inventorySaved ? <Text style={styles.success}>Configurações salvas.</Text> : null}
+          <SaveButton
+            label="Salvar clientes e catálogo"
+            busy={inventoryBusy}
+            onPress={() => void saveInventory()}
           />
         </View>
         <View style={styles.card}>

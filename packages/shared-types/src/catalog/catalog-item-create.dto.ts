@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import Decimal from 'decimal.js';
 
 export const decimalString = (decimals = 2) =>
   z.string().regex(new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`));
@@ -16,11 +17,50 @@ export const CatalogItemFieldsSchema = z.object({
   quantity: z.number().int().nonnegative().default(0),
   low_stock_threshold: z.number().int().nonnegative().default(5),
   unit: z.string().max(20).optional(),
+  internal_code: z.string().max(60).nullable().optional(),
+  brand: z.string().max(100).nullable().optional(),
+  margin_percent: decimalString(3).nullable().optional(),
+  markup_percent: decimalString(3).nullable().optional(),
   is_active: z.boolean().default(true),
 });
 
-function validatePrice(value: { unit_price?: string; sale_price?: string }, ctx: z.RefinementCtx) {
-  if (!value.unit_price && !value.sale_price) {
+export function calculateSalePrice(
+  cost: string,
+  input: { margin_percent?: string | null; markup_percent?: string | null },
+): string {
+  const base = new Decimal(cost);
+  if (input.margin_percent) {
+    return base
+      .div(new Decimal(1).minus(new Decimal(input.margin_percent).div(100)))
+      .toDecimalPlaces(2)
+      .toFixed(2);
+  }
+  if (input.markup_percent) {
+    return base
+      .mul(new Decimal(1).plus(new Decimal(input.markup_percent).div(100)))
+      .toDecimalPlaces(2)
+      .toFixed(2);
+  }
+  return base.toDecimalPlaces(2).toFixed(2);
+}
+
+export function validateCatalogPricing(
+  value: {
+    unit_price?: string;
+    sale_price?: string;
+    margin_percent?: string | null;
+    markup_percent?: string | null;
+  },
+  ctx: z.RefinementCtx,
+  requirePrice = true,
+) {
+  if (
+    requirePrice &&
+    !value.unit_price &&
+    !value.sale_price &&
+    !value.margin_percent &&
+    !value.markup_percent
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['sale_price'],
@@ -34,9 +74,23 @@ function validatePrice(value: { unit_price?: string; sale_price?: string }, ctx:
       message: 'sale_price deve ser igual a unit_price quando ambos forem informados.',
     });
   }
+  if (value.margin_percent && value.markup_percent) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['markup_percent'],
+      message: 'Informe margem ou markup, não ambos.',
+    });
+  }
+  if (value.margin_percent && new Decimal(value.margin_percent).gte(100)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['margin_percent'],
+      message: 'A margem deve ser menor que 100%.',
+    });
+  }
 }
 
-export const CatalogItemCreateSchema = CatalogItemFieldsSchema.superRefine(validatePrice);
+export const CatalogItemCreateSchema = CatalogItemFieldsSchema.superRefine(validateCatalogPricing);
 export type CatalogItemCreateDto = z.infer<typeof CatalogItemCreateSchema>;
 
 const csvBoolean = z.preprocess((value) => {
@@ -54,7 +108,7 @@ export const CatalogImportRowSchema = CatalogItemFieldsSchema.extend({
   quantity: z.coerce.number().int().nonnegative().default(0),
   low_stock_threshold: z.coerce.number().int().nonnegative().default(5),
   is_active: csvBoolean,
-}).superRefine(validatePrice);
+}).superRefine(validateCatalogPricing);
 
 export const CatalogImportRequestSchema = z.union([
   z.object({ items: z.array(CatalogImportRowSchema).min(1).max(1000) }),

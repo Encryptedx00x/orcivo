@@ -19,6 +19,7 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { StockService } from '../stock/stock.service';
 
 const mockTx = {
   quoteApproval: { create: jest.fn() },
@@ -103,6 +104,7 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3
 const mockUsersService = {
   getSignatureBuffer: jest.fn().mockResolvedValue(null),
 };
+const mockStock = { deductForQuoteApproval: jest.fn().mockResolvedValue(undefined) };
 
 describe('QuoteService', () => {
   let service: QuoteService;
@@ -132,6 +134,7 @@ describe('QuoteService', () => {
         },
         { provide: AuditService, useValue: mockAudit },
         { provide: UsersService, useValue: mockUsersService },
+        { provide: StockService, useValue: mockStock },
       ],
     }).compile();
     service = module.get<QuoteService>(QuoteService);

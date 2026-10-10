@@ -65,6 +65,24 @@ export default function NovoCatalogoPage(): React.JSX.Element {
 
           <InventoryFields />
 
+          <div
+            className="ov-row-stack"
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}
+          >
+            <div>
+              <label htmlFor="internal_code" style={labelStyle}>
+                Código interno
+              </label>
+              <input id="internal_code" name="internal_code" maxLength={60} style={inputStyle} />
+            </div>
+            <div>
+              <label htmlFor="brand" style={labelStyle}>
+                Marca
+              </label>
+              <input id="brand" name="brand" maxLength={100} style={inputStyle} />
+            </div>
+          </div>
+
           <CatalogPhotoField />
 
           {/* Unidade */}

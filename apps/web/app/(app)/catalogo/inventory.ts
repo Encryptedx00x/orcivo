@@ -8,6 +8,10 @@ export interface InventoryItem extends CatalogItem {
   low_stock_threshold?: number;
   cost_price?: string;
   sale_price?: string;
+  internal_code?: string | null;
+  brand?: string | null;
+  margin_percent?: string | null;
+  markup_percent?: string | null;
   photo_url?: string | null;
   is_low_stock?: boolean;
 }
@@ -34,6 +38,10 @@ export function parseCatalogForm(formData: FormData) {
     quantity: count('quantity'),
     low_stock_threshold: count('low_stock_threshold'),
     unit: text('unit'),
+    internal_code: text('internal_code') || null,
+    brand: text('brand') || null,
+    margin_percent: text('margin_percent').replace(',', '.') || null,
+    markup_percent: text('markup_percent').replace(',', '.') || null,
     is_active: formData.get('is_active') === 'true',
   });
   const errors = inventoryRangeErrors(item);

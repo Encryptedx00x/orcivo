@@ -8,6 +8,9 @@ interface Customer {
   tax_id: string | null;
   phone: string | null;
   phone2: string | null;
+  origin: 'INDICATION' | 'INSTAGRAM' | 'GOOGLE' | 'FACEBOOK' | 'OTHER' | null;
+  birthday: string | null;
+  internal_notes: string | null;
   email: string | null;
   cep: string | null;
   street: string | null;

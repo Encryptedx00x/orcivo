@@ -116,6 +116,36 @@ export default async function EditarCatalogoPage(props: Props): Promise<React.JS
 
           <InventoryFields item={item} />
 
+          <div
+            className="ov-row-stack"
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}
+          >
+            <div>
+              <label htmlFor="internal_code" style={labelStyle}>
+                Código interno
+              </label>
+              <input
+                id="internal_code"
+                name="internal_code"
+                maxLength={60}
+                defaultValue={item.internal_code ?? ''}
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label htmlFor="brand" style={labelStyle}>
+                Marca
+              </label>
+              <input
+                id="brand"
+                name="brand"
+                maxLength={100}
+                defaultValue={item.brand ?? ''}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
           <CatalogPhotoField photoUrl={item.photo_url} itemName={item.name} />
 
           {/* Unidade */}

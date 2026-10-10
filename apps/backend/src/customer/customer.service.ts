@@ -21,6 +21,7 @@ export class CustomerService {
       const customer = await tx.customer.create({
         data: {
           ...dto,
+          birthday: dto.birthday ? new Date(`${dto.birthday}T00:00:00.000Z`) : undefined,
           company_id: companyId,
         },
       });
@@ -69,7 +70,10 @@ export class CustomerService {
     return this.prisma.$transaction(async (tx) => {
       const customer = await tx.customer.update({
         where: { id },
-        data: dto,
+        data: {
+          ...dto,
+          birthday: dto.birthday ? new Date(`${dto.birthday}T00:00:00.000Z`) : undefined,
+        },
       });
       await this.audit.record(tx, {
         companyId,

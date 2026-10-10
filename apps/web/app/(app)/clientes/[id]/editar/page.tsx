@@ -22,6 +22,9 @@ interface CustomerData {
   tax_id: string | null;
   phone: string | null;
   phone2: string | null;
+  origin: string | null;
+  birthday: string | null;
+  internal_notes: string | null;
   email: string | null;
   cep: string | null;
   street: string | null;
@@ -30,7 +33,6 @@ interface CustomerData {
   neighborhood: string | null;
   city: string | null;
   state: string | null;
-  notes: string | null;
   type?: string;
 }
 
@@ -46,6 +48,8 @@ export default function EditarClientePage(): React.JSX.Element {
     cpf: '',
     phone: '',
     phone2: '',
+    origin: '',
+    birthday: '',
     email: '',
     cep: '',
     street: '',
@@ -54,7 +58,7 @@ export default function EditarClientePage(): React.JSX.Element {
     neighborhood: '',
     city: '',
     state: '',
-    notes: '',
+    internal_notes: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,6 +77,8 @@ export default function EditarClientePage(): React.JSX.Element {
           cpf: maskCpfCnpj(data.tax_id),
           phone: maskPhone(data.phone),
           phone2: maskPhone(data.phone2),
+          origin: data.origin ?? '',
+          birthday: data.birthday?.slice(0, 10) ?? '',
           email: data.email ?? '',
           cep: maskCep(data.cep),
           street: data.street ?? '',
@@ -81,7 +87,7 @@ export default function EditarClientePage(): React.JSX.Element {
           neighborhood: data.neighborhood ?? '',
           city: data.city ?? '',
           state: data.state ?? '',
-          notes: data.notes ?? '',
+          internal_notes: data.internal_notes ?? '',
         });
       })
       .catch(() => setFetchError('Erro ao carregar dados do cliente.'))
@@ -121,7 +127,9 @@ export default function EditarClientePage(): React.JSX.Element {
         neighborhood: form.neighborhood || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
-        notes: form.notes || undefined,
+        origin: form.origin || undefined,
+        birthday: form.birthday || undefined,
+        internal_notes: form.internal_notes || undefined,
       }).filter(([, v]) => v !== undefined),
     );
 
@@ -356,6 +364,28 @@ export default function EditarClientePage(): React.JSX.Element {
                   />
                 </Field>
               </div>
+              <div
+                className="ov-row-stack"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}
+              >
+                <Field label="Origem">
+                  <select
+                    style={inp}
+                    value={form.origin}
+                    onChange={(e) => setForm((p) => ({ ...p, origin: e.target.value }))}
+                  >
+                    <option value="">Não informada</option>
+                    <option value="INDICATION">Indicação</option>
+                    <option value="INSTAGRAM">Instagram</option>
+                    <option value="GOOGLE">Google</option>
+                    <option value="FACEBOOK">Facebook</option>
+                    <option value="OTHER">Outro</option>
+                  </select>
+                </Field>
+                <Field label="Aniversário">
+                  <input style={inp} type="date" value={form.birthday} onChange={set('birthday')} />
+                </Field>
+              </div>
             </div>
 
             {/* Endereço */}
@@ -452,8 +482,8 @@ export default function EditarClientePage(): React.JSX.Element {
               </h3>
               <textarea
                 style={{ ...inp, height: 90, resize: 'vertical', paddingTop: 10 }}
-                value={form.notes}
-                onChange={set('notes')}
+                value={form.internal_notes}
+                onChange={set('internal_notes')}
                 placeholder="Ex.: prefere atendimento pela manhã, paga sempre via Pix…"
               />
             </div>

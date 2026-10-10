@@ -21,6 +21,7 @@ import { SubscriptionService } from '../billing/subscription.service';
 import { AllowPastDue } from '../billing/allow-past-due.decorator';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { InventorySettingsSchema, type InventorySettingsDto } from '@orcivo/shared-types';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
@@ -89,9 +90,18 @@ export class CompanyController {
     @Body(new ZodValidationPipe(WorkOrderStatusesSchema)) body: unknown,
   ) {
     const { statuses } = body as { statuses: ('AWAITING_PAYMENT' | 'WARRANTY')[] };
-    return this.companyService.updateWorkOrderStatuses(
+    return this.companyService.updateWorkOrderStatuses(req.companyId, statuses, req.user.userId);
+  }
+
+  @AdminOnly()
+  @Patch('inventory-settings')
+  updateInventorySettings(
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(InventorySettingsSchema)) body: unknown,
+  ) {
+    return this.companyService.updateInventorySettings(
       req.companyId,
-      statuses,
+      body as InventorySettingsDto,
       req.user.userId,
     );
   }

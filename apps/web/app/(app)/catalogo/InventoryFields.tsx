@@ -29,6 +29,36 @@ export function InventoryFields({ item }: { item?: InventoryItem }): React.JSX.E
           />
         </div>
         <div>
+          <label htmlFor="margin_percent" style={labelStyle}>
+            Margem (%)
+          </label>
+          <input
+            className="ov-input"
+            id="margin_percent"
+            name="margin_percent"
+            type="text"
+            inputMode="decimal"
+            defaultValue={toComma(item?.margin_percent ?? '')}
+            placeholder="Ex.: 35"
+            pattern="\d{1,2}([.,]\d{1,3})?"
+          />
+        </div>
+        <div>
+          <label htmlFor="markup_percent" style={labelStyle}>
+            Markup (%)
+          </label>
+          <input
+            className="ov-input"
+            id="markup_percent"
+            name="markup_percent"
+            type="text"
+            inputMode="decimal"
+            defaultValue={toComma(item?.markup_percent ?? '')}
+            placeholder="Ex.: 50"
+            pattern="\d{1,7}([.,]\d{1,3})?"
+          />
+        </div>
+        <div>
           <label htmlFor="cost_price" style={labelStyle}>
             Preço de custo (R$) *
           </label>
@@ -79,7 +109,8 @@ export function InventoryFields({ item }: { item?: InventoryItem }): React.JSX.E
         </div>
       </div>
       <p id="price-help" style={helpStyle}>
-        Use vírgula ou ponto nos preços, com até duas casas decimais.
+        Use vírgula ou ponto. Ao informar margem ou markup, o preço de venda é recalculado pelo
+        custo.
       </p>
       <p id="stock-help" className="ov-stock-field" style={helpStyle}>
         Produtos com quantidade igual ou inferior ao limite recebem o aviso de estoque baixo.

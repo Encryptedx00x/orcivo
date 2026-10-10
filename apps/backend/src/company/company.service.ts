@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CompanyProfileUpdateDto } from './company-profile-update.schema';
-import { WORK_ORDER_EXTRA_STATUSES, type WorkOrderExtraStatus } from '@orcivo/shared-types';
+import {
+  WORK_ORDER_EXTRA_STATUSES,
+  type InventorySettingsDto,
+  type WorkOrderExtraStatus,
+} from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
@@ -33,6 +37,10 @@ const COMPANY_SELECT = {
   work_order_statuses: true,
   plan_code: true,
   allowed_approval_methods: true,
+  stock_depletion_event: true,
+  contact_save_preference: true,
+  catalog_name: true,
+  catalog_units: true,
 } as const;
 
 // pix_key_type is validation-only input (see company-profile-update.schema.ts) —
@@ -194,6 +202,39 @@ export class CompanyService {
       },
     });
     return members;
+  }
+
+  async updateInventorySettings(companyId: string, settings: InventorySettingsDto, userId: string) {
+    const before = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        trade_name: true,
+        stock_depletion_event: true,
+        contact_save_preference: true,
+        catalog_name: true,
+        catalog_units: true,
+      },
+    });
+    if (!before) throw new NotFoundException();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: settings,
+        select: COMPANY_SELECT,
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.inventory_settings_changed',
+        entityType: 'company',
+        entityId: companyId,
+        from: before,
+        to: settings,
+        humanText: `Configurações de clientes e estoque de "${before.trade_name}" atualizadas`,
+      });
+      return updated;
+    });
   }
 
   async updateApprovalMethods(companyId: string, methods: ApprovalMethod[], userId: string) {

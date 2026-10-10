@@ -25,6 +25,7 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService, PHOTO_BUCKET } from '../storage/storage.service';
+import { StockService } from '../stock/stock.service';
 
 // Máquina de estados centralizada em shared-types (R5b) — reexportada para
 // compatibilidade de quem já importava do service.
@@ -57,6 +58,7 @@ export class WorkOrderService {
     private readonly ownership: TenantOwnershipService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly stock: StockService,
   ) {}
 
   /** Photos are stored as object keys (P03-T07): readers get short-lived signed URLs. */
@@ -340,6 +342,13 @@ export class WorkOrderService {
       }
       const updated = await tx.workOrder.findUnique({ where: { id }, include: WO_DETAIL_INCLUDE });
       if (!updated) throw new ConflictException('OS não encontrada após atualização');
+      if (action === 'concluir') {
+        await this.stock.deductForWorkOrderCompletion(tx, companyId, id);
+      } else if (action === 'cancelar') {
+        await this.stock.restoreForWorkOrder(tx, companyId, id, 'WORK_ORDER_CANCEL');
+      } else if (action === 'reabrir') {
+        await this.stock.restoreForWorkOrder(tx, companyId, id, 'WORK_ORDER_REOPEN');
+      }
       await this.audit.record(tx, {
         companyId,
         actorType: 'USER',

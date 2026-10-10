@@ -31,6 +31,7 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { StockService } from '../stock/stock.service';
 
 const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
@@ -57,6 +58,7 @@ export class QuoteService {
     private readonly ownership: TenantOwnershipService,
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
+    private readonly stockService: StockService,
   ) {}
 
   private computeTotals(
@@ -693,6 +695,12 @@ export class QuoteService {
               due_date: p.due_date,
             })),
           });
+        await this.stockService.deductForQuoteApproval(
+          tx,
+          quote.company_id,
+          quote.id,
+          workOrder.id,
+        );
         await this.auditService.record(tx, {
           companyId: quote.company_id,
           actorType: 'CUSTOMER',

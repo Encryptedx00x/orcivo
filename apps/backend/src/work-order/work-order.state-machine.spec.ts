@@ -7,6 +7,7 @@ import { PlanLimitsService } from '../plan-limits/plan-limits.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
+import { StockService } from '../stock/stock.service';
 
 // PB1-P01 — WorkOrder domain-action state machine (unit, mocked Prisma/Audit).
 
@@ -87,6 +88,13 @@ describe('WorkOrderService — state machine (P-01)', () => {
         {
           provide: StorageService,
           useValue: { resolveUrl: jest.fn(async (_b: string, key: string) => `signed:${key}`) },
+        },
+        {
+          provide: StockService,
+          useValue: {
+            deductForWorkOrderCompletion: jest.fn(),
+            restoreForWorkOrder: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -242,9 +250,9 @@ describe('WorkOrderService — state machine (P-01)', () => {
     });
 
     it('R5b: AWAITING_PAYMENT/WARRANTY expõem reabrir/corrigir só para admin', () => {
-      expect(service.allowedActions('AWAITING_PAYMENT', 'TECNICO', ['AWAITING_PAYMENT'])).toEqual(
-        ['receber_pagamento'],
-      );
+      expect(service.allowedActions('AWAITING_PAYMENT', 'TECNICO', ['AWAITING_PAYMENT'])).toEqual([
+        'receber_pagamento',
+      ]);
       expect(service.allowedActions('AWAITING_PAYMENT', 'ADMIN', ['AWAITING_PAYMENT'])).toEqual([
         'receber_pagamento',
         'reabrir',

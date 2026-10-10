@@ -10,6 +10,14 @@ export interface CatalogItem {
   type: 'SERVICE' | 'PRODUCT';
   unit_price: string; // string decimal — nunca number
   unit?: string;
+  cost_price?: string;
+  sale_price?: string;
+  quantity?: number;
+  low_stock_threshold?: number;
+  internal_code?: string;
+  brand?: string;
+  margin_percent?: string;
+  markup_percent?: string;
   is_active: boolean;
 }
 

@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService } from '../services/catalog.service';
 import { newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import { calculateSalePrice } from '@orcivo/shared-types';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'CatalogItemForm'>;
 
@@ -29,6 +30,15 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
   const [unitPrice, setUnitPrice] = useState(existing?.unit_price ?? '');
   const [unit, setUnit] = useState(existing?.unit ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
+  const [costPrice, setCostPrice] = useState(existing?.cost_price ?? '0.00');
+  const [marginPercent, setMarginPercent] = useState(existing?.margin_percent ?? '');
+  const [markupPercent, setMarkupPercent] = useState(existing?.markup_percent ?? '');
+  const [quantity, setQuantity] = useState(String(existing?.quantity ?? 0));
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    String(existing?.low_stock_threshold ?? 5),
+  );
+  const [internalCode, setInternalCode] = useState(existing?.internal_code ?? '');
+  const [brand, setBrand] = useState(existing?.brand ?? '');
 
   const [nameError, setNameError] = useState('');
   const [priceError, setPriceError] = useState('');
@@ -42,8 +52,21 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
     } else {
       setNameError('');
     }
-    if (!unitPrice.trim() || !/^\d+(\.\d{1,2})?$/.test(unitPrice.trim())) {
+    const money = /^\d+([.,]\d{1,2})?$/;
+    const percent = /^\d+([.,]\d{1,3})?$/;
+    if (!(marginPercent || markupPercent) && (!unitPrice.trim() || !money.test(unitPrice.trim()))) {
       setPriceError('Informe um preço válido (ex: 150.00)');
+      valid = false;
+    } else if (
+      !money.test(costPrice.trim()) ||
+      (marginPercent !== '' && !percent.test(marginPercent.trim())) ||
+      (markupPercent !== '' && !percent.test(markupPercent.trim())) ||
+      (marginPercent !== '' && Number(marginPercent.replace(',', '.')) >= 100) ||
+      (marginPercent !== '' && markupPercent !== '') ||
+      !/^\d+$/.test(quantity) ||
+      !/^\d+$/.test(lowStockThreshold)
+    ) {
+      setPriceError('Revise custo, margem/markup e quantidades. Use apenas valores positivos.');
       valid = false;
     } else {
       setPriceError('');
@@ -55,10 +78,28 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const normalizedCost = costPrice.replace(',', '.');
+      const normalizedMargin = marginPercent.replace(',', '.');
+      const normalizedMarkup = markupPercent.replace(',', '.');
+      const calculatedPrice =
+        marginPercent || markupPercent
+          ? calculateSalePrice(normalizedCost, {
+              margin_percent: normalizedMargin || undefined,
+              markup_percent: normalizedMarkup || undefined,
+            })
+          : unitPrice.trim().replace(',', '.');
       const dto = {
         name: name.trim(),
         type,
-        unit_price: unitPrice.trim(),
+        unit_price: calculatedPrice,
+        sale_price: calculatedPrice,
+        cost_price: normalizedCost,
+        margin_percent: normalizedMargin || (existing ? null : undefined),
+        markup_percent: normalizedMarkup || (existing ? null : undefined),
+        quantity: Number.parseInt(quantity, 10),
+        low_stock_threshold: Number.parseInt(lowStockThreshold, 10),
+        internal_code: internalCode.trim() || (existing ? null : undefined),
+        brand: brand.trim() || (existing ? null : undefined),
         unit: unit.trim() || undefined,
         description: description.trim() || undefined,
       };
@@ -66,7 +107,7 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
         await catalogService.updateItem(existing.id, dto, { idempotencyKey: submitKey.current });
       } else {
         await catalogService.createItem(
-          { ...dto, is_active: true, cost_price: '0', quantity: 0, low_stock_threshold: 5 },
+          { ...dto, is_active: true },
           { idempotencyKey: submitKey.current },
         );
       }
@@ -128,6 +169,52 @@ export function CatalogItemFormScreen({ navigation, route }: Props) {
           keyboardType="decimal-pad"
         />
         {priceError ? <Text style={styles.errorText}>{priceError}</Text> : null}
+
+        <Text style={styles.label}>Preço de custo (R$)</Text>
+        <TextInput
+          style={styles.input}
+          value={costPrice}
+          onChangeText={setCostPrice}
+          keyboardType="decimal-pad"
+        />
+        <Text style={styles.label}>Margem (%)</Text>
+        <TextInput
+          style={styles.input}
+          value={marginPercent}
+          onChangeText={setMarginPercent}
+          keyboardType="decimal-pad"
+        />
+        <Text style={styles.label}>Markup (%)</Text>
+        <TextInput
+          style={styles.input}
+          value={markupPercent}
+          onChangeText={setMarkupPercent}
+          keyboardType="decimal-pad"
+        />
+
+        {type === 'PRODUCT' ? (
+          <>
+            <Text style={styles.label}>Quantidade em estoque</Text>
+            <TextInput
+              style={styles.input}
+              value={quantity}
+              onChangeText={setQuantity}
+              keyboardType="number-pad"
+            />
+            <Text style={styles.label}>Avisar quando chegar a</Text>
+            <TextInput
+              style={styles.input}
+              value={lowStockThreshold}
+              onChangeText={setLowStockThreshold}
+              keyboardType="number-pad"
+            />
+          </>
+        ) : null}
+
+        <Text style={styles.label}>Código interno</Text>
+        <TextInput style={styles.input} value={internalCode} onChangeText={setInternalCode} />
+        <Text style={styles.label}>Marca</Text>
+        <TextInput style={styles.input} value={brand} onChangeText={setBrand} />
 
         <Text style={styles.label}>Unidade (opcional)</Text>
         <TextInput
