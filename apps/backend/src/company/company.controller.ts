@@ -21,7 +21,12 @@ import { SubscriptionService } from '../billing/subscription.service';
 import { AllowPastDue } from '../billing/allow-past-due.decorator';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { InventorySettingsSchema, type InventorySettingsDto } from '@orcivo/shared-types';
+import {
+  HomeShortcutsSchema,
+  InventorySettingsSchema,
+  type HomeShortcutsDto,
+  type InventorySettingsDto,
+} from '@orcivo/shared-types';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
 interface TenantRequest {
@@ -102,6 +107,19 @@ export class CompanyController {
     return this.companyService.updateInventorySettings(
       req.companyId,
       body as InventorySettingsDto,
+      req.user.userId,
+    );
+  }
+
+  @AdminOnly()
+  @Patch('home-shortcuts')
+  updateHomeShortcuts(
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(HomeShortcutsSchema)) body: unknown,
+  ) {
+    return this.companyService.updateHomeShortcuts(
+      req.companyId,
+      body as HomeShortcutsDto,
       req.user.userId,
     );
   }

@@ -72,4 +72,18 @@ describe('PlanLimitsService', () => {
       /Limite de 15 OS\/mês atingido/,
     );
   });
+
+  it('enforceReports bloqueia Orcivo Livre e permite Orcivo Mais', async () => {
+    mockPrisma.company.findUniqueOrThrow.mockResolvedValue(livreCompany);
+    mockPrisma.planLimit.findUnique.mockResolvedValue(livreLimits);
+    await expect(service.enforceReports('c1')).rejects.toThrow(ForbiddenException);
+
+    mockPrisma.company.findUniqueOrThrow.mockResolvedValue({ ...livreCompany, plan_code: 'MAIS' });
+    mockPrisma.planLimit.findUnique.mockResolvedValue({
+      ...livreLimits,
+      plan_code: 'MAIS',
+      has_reports: true,
+    });
+    await expect(service.enforceReports('c1')).resolves.toBeUndefined();
+  });
 });

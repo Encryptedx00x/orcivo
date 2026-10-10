@@ -72,6 +72,8 @@ model Company {
   contact_save_preference     ContactSavePreference @default(ASK)
   catalog_name                String @default("Catálogo")
   catalog_units               String[] @default(["un", "h", "m", "m²", "kg", "l"])
+  /// Atalhos escolhidos pela empresa para a tela inicial (R8).
+  home_shortcuts              String[] @default(["CUSTOMER", "QUOTE", "WORK_ORDER", "APPOINTMENT", "PAYMENT", "CATALOG_ITEM"])
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

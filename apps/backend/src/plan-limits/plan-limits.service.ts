@@ -132,6 +132,24 @@ export class PlanLimitsService {
     }
   }
 
+  /** Relatórios financeiros são um recurso de Orcivo Mais e Orcivo Equipe. */
+  async enforceReports(companyId: string): Promise<void> {
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { plan_code: true },
+    });
+    const limits = await this.prisma.planLimit.findUnique({
+      where: { plan_code: company.plan_code },
+      select: { has_reports: true },
+    });
+    const allowed = limits?.has_reports ?? PLAN_LIMITS[company.plan_code].has_reports;
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Relatórios estão disponíveis nos planos Orcivo Mais e Orcivo Equipe.',
+      );
+    }
+  }
+
   /** Compatibilidade retroativa com o scaffold anterior */
   async check(companyId: string, feature: PlanFeature): Promise<PlanCheckResult> {
     if (feature === PlanFeature.PDF_WATERMARK) {

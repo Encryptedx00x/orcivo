@@ -24,7 +24,7 @@ export class DashboardService {
       this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
       this.prisma.company.findUnique({
         where: { id: companyId },
-        select: { trade_name: true, plan_code: true },
+        select: { trade_name: true, plan_code: true, home_shortcuts: true },
       }),
       // Orçamentos aguardando aprovação
       this.prisma.quote.aggregate({
@@ -69,6 +69,7 @@ export class DashboardService {
       company: {
         trade_name: company?.trade_name ?? '',
         plan_code: company?.plan_code ?? 'LIVRE',
+        home_shortcuts: company?.home_shortcuts ?? [],
       },
       kpis: {
         agenda_today: appointmentsToday,

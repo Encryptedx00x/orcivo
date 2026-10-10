@@ -14,6 +14,7 @@ import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
 import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderCreateScreen } from '../screens/WorkOrderCreateScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
+import { RelatoriosScreen } from '../screens/relatorios/RelatoriosScreen';
 import type { CatalogItem } from '../services/catalog.service';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from '../easy/screens/Receipts';
 import { NoticesScreen } from '../easy/screens/Notices';
@@ -34,6 +35,7 @@ export type MaisStackParamList = {
   Financeiro: undefined;
   Documentos: undefined;
   Plano: undefined;
+  Relatorios: undefined;
   EmBreve: { title: string };
   Notices: undefined;
   Receipts: undefined;
@@ -72,7 +74,8 @@ type MaisMenuItem =
         | 'Receipts'
         | 'Notices'
         | 'Documentos'
-        | 'Plano';
+        | 'Plano'
+        | 'Relatorios';
     }
   | { label: string; screen: 'EmBreve' };
 
@@ -80,6 +83,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Ordens de Serviço', screen: 'WorkOrderList' },
   { label: 'Catálogo', screen: 'Catalog' },
   { label: 'Financeiro', screen: 'Financeiro' },
+  { label: 'Relatórios', screen: 'Relatorios' },
   { label: 'Recibos', screen: 'Receipts' },
   { label: 'Avisos', screen: 'Notices' },
   { label: 'Documentos', screen: 'Documentos' },
@@ -157,6 +161,11 @@ export function MaisStack() {
         name="Plano"
         component={PlanoScreen}
         options={{ title: 'Plano e assinatura' }}
+      />
+      <Stack.Screen
+        name="Relatorios"
+        component={RelatoriosScreen}
+        options={{ title: 'Relatórios' }}
       />
       <Stack.Screen
         name="EmBreve"

@@ -8,7 +8,12 @@ import { refreshSession } from '../services/api';
  * Downloads an authenticated PDF (quote or receipt) to the cache and opens the
  * system share sheet (WhatsApp, e-mail, salvar…). Throws on failure.
  */
-export async function sharePdf(path: string, fileName: string, title: string): Promise<void> {
+export async function sharePdf(
+  path: string,
+  fileName: string,
+  title: string,
+  mimeType = 'application/pdf',
+): Promise<void> {
   const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
   const download = async () => {
     const token = await SecureStore.getItemAsync('access_token');
@@ -25,7 +30,7 @@ export async function sharePdf(path: string, fileName: string, title: string): P
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('Compartilhamento indisponível neste aparelho.');
   }
-  await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf', dialogTitle: title });
+  await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: title });
 }
 
 export const shareReceiptPdf = (id: string, number: string) =>

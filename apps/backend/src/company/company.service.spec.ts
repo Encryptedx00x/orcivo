@@ -157,3 +157,41 @@ describe('CompanyService.updateWorkOrderStatuses (R5b)', () => {
     expect(mockAudit.record.mock.calls[0][1].humanText).toContain('(nenhum)');
   });
 });
+
+describe('CompanyService.updateHomeShortcuts (R8)', () => {
+  const mockTx = { company: { update: jest.fn() } };
+  const txMockPrisma = {
+    company: { findUnique: jest.fn() },
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(mockTx)),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAudit.record.mockResolvedValue(undefined);
+  });
+
+  it('persiste somente os atalhos escolhidos pela empresa e registra auditoria', async () => {
+    const service = new CompanyService(txMockPrisma as never, mockAudit as never, {} as never);
+    txMockPrisma.company.findUnique.mockResolvedValue({
+      trade_name: 'Elétrica Silva',
+      home_shortcuts: ['CUSTOMER', 'QUOTE'],
+    });
+    mockTx.company.update.mockResolvedValue({ home_shortcuts: ['QUOTE', 'PAYMENT'] });
+
+    await service.updateHomeShortcuts('c1', { shortcuts: ['QUOTE', 'PAYMENT'] }, 'u1');
+
+    expect(mockTx.company.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { home_shortcuts: ['QUOTE', 'PAYMENT'] },
+      }),
+    );
+    expect(mockAudit.record).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        action: 'company.home_shortcuts_changed',
+        from: ['CUSTOMER', 'QUOTE'],
+        to: ['QUOTE', 'PAYMENT'],
+      }),
+    );
+  });
+});

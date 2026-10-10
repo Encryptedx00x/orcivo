@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { CompanyProfileUpdateDto } from './company-profile-update.schema';
 import {
   WORK_ORDER_EXTRA_STATUSES,
+  type HomeShortcutsDto,
   type InventorySettingsDto,
   type WorkOrderExtraStatus,
 } from '@orcivo/shared-types';
@@ -41,6 +42,7 @@ const COMPANY_SELECT = {
   contact_save_preference: true,
   catalog_name: true,
   catalog_units: true,
+  home_shortcuts: true,
 } as const;
 
 // pix_key_type is validation-only input (see company-profile-update.schema.ts) —
@@ -232,6 +234,33 @@ export class CompanyService {
         from: before,
         to: settings,
         humanText: `Configurações de clientes e estoque de "${before.trade_name}" atualizadas`,
+      });
+      return updated;
+    });
+  }
+
+  async updateHomeShortcuts(companyId: string, settings: HomeShortcutsDto, userId: string) {
+    const before = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { trade_name: true, home_shortcuts: true },
+    });
+    if (!before) throw new NotFoundException();
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data: { home_shortcuts: settings.shortcuts },
+        select: COMPANY_SELECT,
+      });
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.home_shortcuts_changed',
+        entityType: 'company',
+        entityId: companyId,
+        from: before.home_shortcuts,
+        to: settings.shortcuts,
+        humanText: `Atalhos iniciais de "${before.trade_name}" atualizados`,
       });
       return updated;
     });

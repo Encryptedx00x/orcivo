@@ -9,7 +9,7 @@ import {
   Package,
   Inbox,
 } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { DEFAULT_HOME_SHORTCUTS, formatMoney, type HomeShortcut } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
 import { DashboardLayout } from '../../../components/DashboardLayout';
 
@@ -32,7 +32,7 @@ const T = {
 
 interface Summary {
   user: { name: string };
-  company: { trade_name: string; plan_code: string };
+  company: { trade_name: string; plan_code: string; home_shortcuts?: HomeShortcut[] };
   kpis: {
     agenda_today: number;
     os_pending: number;
@@ -152,13 +152,13 @@ function activityDetail(a: Summary['activity'][number]): string {
   return `${ENTITY_LABEL[a.entity_type] ?? a.entity_type} — ${STEP_LABEL[a.action] ?? a.action}`;
 }
 
-const QUICK_ACTIONS: [typeof Users, string, string][] = [
-  [Users, 'Novo cliente', '/clientes/novo'],
-  [FileText, 'Novo orçamento', '/orcamentos/novo'],
-  [ClipboardList, 'Nova OS', '/ordens-de-servico/novo'],
-  [Calendar, 'Compromisso', '/agenda'],
-  [DollarSign, 'Recebimento', '/financeiro'],
-  [Package, 'Item catálogo', '/catalogo/novo'],
+const QUICK_ACTIONS: Array<[HomeShortcut, typeof Users, string, string]> = [
+  ['CUSTOMER', Users, 'Novo cliente', '/clientes/novo'],
+  ['QUOTE', FileText, 'Novo orçamento', '/orcamentos/novo'],
+  ['WORK_ORDER', ClipboardList, 'Nova OS', '/ordens-de-servico/novo'],
+  ['APPOINTMENT', Calendar, 'Compromisso', '/agenda'],
+  ['PAYMENT', DollarSign, 'Recebimento', '/financeiro'],
+  ['CATALOG_ITEM', Package, 'Item catálogo', '/catalogo/novo'],
 ];
 
 function relativeTime(iso: string): string {
@@ -205,6 +205,10 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   const dateCap = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
   const firstName = (s?.user.name ?? '').split(' ')[0] || 'técnico';
   const planLabel = PLAN_LABEL[s?.company.plan_code ?? 'LIVRE'] ?? 'Orcivo Livre';
+  const enabledShortcuts = new Set(
+    s?.company.home_shortcuts?.length ? s.company.home_shortcuts : DEFAULT_HOME_SHORTCUTS,
+  );
+  const quickActions = QUICK_ACTIONS.filter(([key]) => enabledShortcuts.has(key));
 
   const k = s?.kpis;
   const overdue = k?.receivables_overdue_count ?? 0;
@@ -418,7 +422,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                 </h3>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-                {QUICK_ACTIONS.map(([Icon, label, href], x) => (
+                {quickActions.map(([, Icon, label, href], x) => (
                   <Link
                     key={x}
                     href={href}

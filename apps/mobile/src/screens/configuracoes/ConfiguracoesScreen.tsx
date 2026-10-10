@@ -16,7 +16,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ApprovalMethodsPicker, LogoPicker } from '../../easy/screens/Settings';
 import { useEasyMode } from '../../easy/EasyModeContext';
-import { COMPANY_DOC_FIELDS } from '@orcivo/shared-types';
+import {
+  COMPANY_DOC_FIELDS,
+  DEFAULT_HOME_SHORTCUTS,
+  type HomeShortcut,
+} from '@orcivo/shared-types';
 import { api, newIdempotencyKey } from '../../services/api';
 import {
   inferPixKeyType,
@@ -74,6 +78,7 @@ type InventorySettings = {
   contact_save_preference: 'ALWAYS' | 'NEVER' | 'ASK';
   catalog_name: string;
   catalog_units: string[];
+  home_shortcuts?: HomeShortcut[];
 };
 
 export function ConfiguracoesScreen() {
@@ -102,6 +107,9 @@ export function ConfiguracoesScreen() {
   });
   const [inventoryBusy, setInventoryBusy] = useState(false);
   const [inventorySaved, setInventorySaved] = useState(false);
+  const [homeShortcuts, setHomeShortcuts] = useState<HomeShortcut[]>(DEFAULT_HOME_SHORTCUTS);
+  const [homeShortcutsBusy, setHomeShortcutsBusy] = useState(false);
+  const [homeShortcutsSaved, setHomeShortcutsSaved] = useState(false);
   const profileRequest = useRef<{ body: string; key: string } | null>(null);
   const pixRequest = useRef<{ body: string; key: string } | null>(null);
   const profileLock = useRef(false);
@@ -124,6 +132,7 @@ export function ConfiguracoesScreen() {
           catalog_name: company.catalog_name,
           catalog_units: company.catalog_units,
         });
+        if (company.home_shortcuts?.length) setHomeShortcuts(company.home_shortcuts);
       })
       .catch(() => {
         if (active)
@@ -203,6 +212,23 @@ export function ConfiguracoesScreen() {
       setInventorySaved(true);
     } finally {
       setInventoryBusy(false);
+    }
+  }
+
+  async function saveHomeShortcuts() {
+    setHomeShortcutsBusy(true);
+    setHomeShortcutsSaved(false);
+    try {
+      await api.patch(
+        '/company/home-shortcuts',
+        { shortcuts: homeShortcuts },
+        {
+          idempotencyKey: newIdempotencyKey(),
+        },
+      );
+      setHomeShortcutsSaved(true);
+    } finally {
+      setHomeShortcutsBusy(false);
     }
   }
 
@@ -406,6 +432,51 @@ export function ConfiguracoesScreen() {
             label="Salvar clientes e catálogo"
             busy={inventoryBusy}
             onPress={() => void saveInventory()}
+          />
+          <Text style={[styles.title, { marginTop: 24, fontSize: 18 }]}>
+            Atalhos da tela inicial
+          </Text>
+          <Text style={styles.description}>Escolha os atalhos exibidos no painel da empresa.</Text>
+          <View style={styles.types}>
+            {(
+              [
+                ['CUSTOMER', 'Novo cliente'],
+                ['QUOTE', 'Novo orçamento'],
+                ['WORK_ORDER', 'Nova OS'],
+                ['APPOINTMENT', 'Compromisso'],
+                ['PAYMENT', 'Recebimento'],
+                ['CATALOG_ITEM', 'Item catálogo'],
+              ] as const
+            ).map(([value, label]) => {
+              const selected = homeShortcuts.includes(value);
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.type, selected && styles.selectedType]}
+                  onPress={() => {
+                    setHomeShortcutsSaved(false);
+                    setHomeShortcuts((current) =>
+                      selected
+                        ? current.length > 1
+                          ? current.filter((item) => item !== value)
+                          : current
+                        : [...current, value],
+                    );
+                  }}
+                >
+                  <Text style={selected ? styles.selectedLabel : styles.label}>
+                    {selected ? '✓ ' : ''}
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {homeShortcutsSaved ? <Text style={styles.success}>Atalhos salvos.</Text> : null}
+          <SaveButton
+            label="Salvar atalhos"
+            busy={homeShortcutsBusy}
+            onPress={() => void saveHomeShortcuts()}
           />
         </View>
         <View style={styles.card}>

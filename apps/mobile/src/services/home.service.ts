@@ -1,7 +1,9 @@
 import { api } from './api';
 import type { Appointment } from './appointment.service';
+import type { HomeShortcut } from '@orcivo/shared-types';
 
 export interface HomeSummary {
+  company: { home_shortcuts?: HomeShortcut[] };
   kpis: {
     agenda_today: number;
     os_pending: number;

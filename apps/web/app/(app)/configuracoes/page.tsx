@@ -7,6 +7,8 @@ import {
   type QuotePaymentTerms,
   type WorkOrderExtraStatus,
   type WorkOrderField,
+  type HomeShortcut,
+  DEFAULT_HOME_SHORTCUTS,
 } from '@orcivo/shared-types';
 import { OsFieldsSettings } from './OsFieldsSettings';
 import { OsStatusesSettings } from './OsStatusesSettings';
@@ -91,6 +93,7 @@ interface CompanyMeResponse {
   contact_save_preference?: 'ALWAYS' | 'NEVER' | 'ASK';
   catalog_name?: string;
   catalog_units?: string[];
+  home_shortcuts?: HomeShortcut[];
 }
 
 const DEFAULT_TERMS =
@@ -233,6 +236,9 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   });
   const [inventorySaving, setInventorySaving] = useState(false);
   const [inventorySaved, setInventorySaved] = useState(false);
+  const [homeShortcuts, setHomeShortcuts] = useState<HomeShortcut[]>(DEFAULT_HOME_SHORTCUTS);
+  const [homeShortcutsSaving, setHomeShortcutsSaving] = useState(false);
+  const [homeShortcutsSaved, setHomeShortcutsSaved] = useState(false);
 
   const [pix, setPix] = useState<PixForm>(EMPTY_PIX);
   const [pixSaving, setPixSaving] = useState(false);
@@ -267,6 +273,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
           catalog_name: d.catalog_name ?? 'Catálogo',
           catalog_units: d.catalog_units ?? ['un', 'h', 'm', 'm²', 'kg', 'l'],
         });
+        if (d.home_shortcuts?.length) setHomeShortcuts(d.home_shortcuts);
         setEmpresa({
           trade_name: d.trade_name ?? '',
           document: d.document ?? '',
@@ -1157,6 +1164,76 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                 {inventorySaved ? (
                   <span role="status" style={{ color: '#166534', fontSize: 13 }}>
                     Preferências salvas.
+                  </span>
+                ) : null}
+              </div>
+              <hr style={{ border: 0, borderTop: '1px solid #E2E8F0', margin: '28px 0 20px' }} />
+              <h4 style={{ margin: '0 0 4px', fontSize: 15 }}>Atalhos da tela inicial</h4>
+              <p style={{ color: '#64748B', fontSize: 13 }}>
+                Escolha entre um e seis atalhos que aparecem no painel da empresa.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(
+                  [
+                    ['CUSTOMER', 'Novo cliente'],
+                    ['QUOTE', 'Novo orçamento'],
+                    ['WORK_ORDER', 'Nova OS'],
+                    ['APPOINTMENT', 'Compromisso'],
+                    ['PAYMENT', 'Recebimento'],
+                    ['CATALOG_ITEM', 'Item catálogo'],
+                  ] as const
+                ).map(([value, label]) => {
+                  const selected = homeShortcuts.includes(value);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      className="ov-btn ov-btn-outline"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setHomeShortcutsSaved(false);
+                        setHomeShortcuts((current) =>
+                          selected
+                            ? current.length > 1
+                              ? current.filter((item) => item !== value)
+                              : current
+                            : [...current, value],
+                        );
+                      }}
+                      style={
+                        selected
+                          ? { borderColor: '#6D28D9', color: '#5B21B6', background: '#F5F3FF' }
+                          : undefined
+                      }
+                    >
+                      {selected ? '✓ ' : ''}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 20 }}>
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-primary"
+                  disabled={homeShortcutsSaving}
+                  onClick={async () => {
+                    setHomeShortcutsSaving(true);
+                    setHomeShortcutsSaved(false);
+                    const response = await fetch('/api/company/home-shortcuts', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ shortcuts: homeShortcuts }),
+                    });
+                    setHomeShortcutsSaving(false);
+                    setHomeShortcutsSaved(response.ok);
+                  }}
+                >
+                  {homeShortcutsSaving ? 'Salvando…' : 'Salvar atalhos'}
+                </button>
+                {homeShortcutsSaved ? (
+                  <span role="status" style={{ color: '#166534', fontSize: 13 }}>
+                    Atalhos salvos.
                   </span>
                 ) : null}
               </div>

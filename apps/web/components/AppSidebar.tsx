@@ -10,6 +10,7 @@ import {
   Calendar,
   DollarSign,
   FolderOpen,
+  BarChart3,
   Settings,
   UserPlus,
   CreditCard,
@@ -42,6 +43,7 @@ const NAV_MAIN = [
   { label: 'Ordens de Serviço', href: '/ordens-de-servico', icon: ClipboardList },
   { label: 'Agenda', href: '/agenda', icon: Calendar },
   { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
+  { label: 'Relatórios', href: '/relatorios', icon: BarChart3 },
   { label: 'Documentos', href: '/documentos', icon: FolderOpen },
 ];
 
