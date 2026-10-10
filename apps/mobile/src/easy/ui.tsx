@@ -18,34 +18,29 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { ChevronDown, ChevronRight, ChevronUp, type LucideIcon } from 'lucide-react-native';
+import { statusTheme, theme } from '../theme';
 
 export const C = {
-  purple: '#6D28D9',
-  purple700: '#5B21B6',
-  purple800: '#4C1D95',
-  purple50: '#F5F3FF',
-  purple100: '#EDE9FE',
-  purple200: '#DDD6FE',
-  purple300: '#C4B5FD',
-  ink: '#0A0A0F',
-  fg2: '#334155',
-  fg3: '#475569',
-  fg4: '#64748B',
-  border: '#E2E8F0',
-  borderStrong: '#CBD5E1',
-  line: '#F1F5F9',
-  bg: '#F8FAFC',
-  green: '#16A34A',
-  red: '#DC2626',
+  purple: theme.colors.purple600,
+  purple700: theme.colors.purple700,
+  purple800: theme.colors.purple800,
+  purple50: theme.colors.purple50,
+  purple100: theme.colors.purple100,
+  purple200: theme.colors.purple200,
+  purple300: theme.colors.purple300,
+  ink: theme.colors.ink,
+  fg2: theme.colors.slate700,
+  fg3: theme.colors.slate600,
+  fg4: theme.colors.slate500,
+  border: theme.colors.slate200,
+  borderStrong: theme.colors.slate300,
+  line: theme.colors.slate100,
+  bg: theme.colors.slate50,
+  green: theme.colors.success,
+  red: theme.colors.danger,
 };
 
-export const CHIP = {
-  wait: { bg: '#FEF3C7', fg: '#92400E', dot: '#D97706' },
-  ok: { bg: '#DCFCE7', fg: '#166534', dot: '#16A34A' },
-  draft: { bg: '#F1F5F9', fg: '#334155', dot: '#64748B' },
-  late: { bg: '#FEE2E2', fg: '#991B1B', dot: '#DC2626' },
-  doing: { bg: '#EDE9FE', fg: '#4C1D95', dot: '#6D28D9' },
-} as const;
+export const CHIP = statusTheme;
 export type ChipKind = keyof typeof CHIP;
 
 export function Chip({ kind, label }: { kind: ChipKind; label: string }) {
