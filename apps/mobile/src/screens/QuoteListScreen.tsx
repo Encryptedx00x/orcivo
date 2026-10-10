@@ -13,6 +13,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { usePagedList } from '../hooks/usePagedList';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
+import { theme } from '../theme';
+
+const { colors, radius, space, type } = theme;
 
 type Props = NativeStackScreenProps<QuotesStackParamList, 'QuotesList'>;
 
@@ -26,11 +29,11 @@ const STATUS_LABEL: Record<QuoteStatus, string> = {
 };
 
 const STATUS_COLOR: Record<QuoteStatus, string> = {
-  DRAFT: '#6B7280',
-  SENT: '#F59E0B',
-  APPROVED: '#16A34A',
-  REJECTED: '#DC2626',
-  CANCELLED: '#374151',
+  DRAFT: colors.slate500,
+  SENT: colors.warning,
+  APPROVED: colors.success,
+  REJECTED: colors.danger,
+  CANCELLED: colors.slate700,
   EXPIRED: '#EA580C',
 };
 
@@ -71,7 +74,7 @@ export function QuoteListScreen({ navigation }: Props) {
       accessibilityRole="button"
     >
       <View style={styles.cardRow}>
-        <FileText size={20} color="#6D28D9" />
+        <FileText size={20} color={colors.purple600} />
         <View style={styles.cardInfo}>
           <Text style={styles.quoteTitle}>
             {item.title ? `#${item.number} — ${item.title}` : `Orçamento #${item.number}`}
@@ -94,7 +97,7 @@ export function QuoteListScreen({ navigation }: Props) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6D28D9" />
+        <ActivityIndicator size="large" color={colors.purple600} />
       </View>
     );
   }
@@ -121,7 +124,9 @@ export function QuoteListScreen({ navigation }: Props) {
         onEndReached={list.loadMore}
         onEndReachedThreshold={0.5}
         ListFooterComponent={
-          list.loadingMore ? <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} /> : null
+          list.loadingMore ? (
+            <ActivityIndicator color={colors.purple600} style={{ margin: 16 }} />
+          ) : null
         }
         contentContainerStyle={quotes.length === 0 ? styles.emptyContainer : undefined}
         ListEmptyComponent={
@@ -142,7 +147,7 @@ export function QuoteListScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('QuoteCreate')}
           accessibilityLabel="Criar orçamento"
         >
-          <Plus size={24} color="#FFFFFF" />
+          <Plus size={24} color={colors.white} />
         </TouchableOpacity>
       )}
     </View>
@@ -150,45 +155,50 @@ export function QuoteListScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  container: { flex: 1, backgroundColor: colors.white },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.xl },
   emptyContainer: { flex: 1 },
   card: {
-    padding: 16,
+    padding: space.lg,
     borderBottomWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.slate200,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  cardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   cardInfo: { flex: 1 },
   rightCol: { alignItems: 'flex-end', gap: 4 },
-  quoteTitle: { fontSize: 15, fontWeight: '600', color: '#0A0A0F', marginBottom: 2 },
-  clientName: { fontSize: 13, color: '#6B7280' },
-  total: { fontSize: 15, fontWeight: '700', color: '#0A0A0F' },
+  quoteTitle: {
+    fontSize: type.small,
+    fontWeight: type.semibold,
+    color: colors.ink,
+    marginBottom: 2,
+  },
+  clientName: { fontSize: 13, color: colors.slate500 },
+  total: { fontSize: type.small, fontWeight: type.bold, color: colors.ink },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: radius.sm,
   },
   badgeText: { fontSize: 12, fontWeight: '500' },
-  errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
+  errorText: { fontSize: 15, color: colors.danger, textAlign: 'center', marginBottom: space.lg },
   retryBtn: {
-    backgroundColor: '#6D28D9',
+    backgroundColor: colors.purple600,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radius.sm,
   },
-  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginBottom: 16 },
+  retryText: { color: colors.white, fontSize: 15, fontWeight: type.semibold },
+  emptyText: { fontSize: 15, color: colors.slate500, textAlign: 'center', marginBottom: space.lg },
   addBtn: {
-    backgroundColor: '#6D28D9',
+    backgroundColor: colors.purple600,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radius.sm,
   },
-  addBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  addBtnText: { color: colors.white, fontSize: 15, fontWeight: type.semibold },
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -196,7 +206,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#6D28D9',
+    backgroundColor: colors.purple600,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',

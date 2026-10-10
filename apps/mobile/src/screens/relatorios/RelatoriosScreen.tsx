@@ -11,6 +11,9 @@ import {
 import { formatMoney } from '@orcivo/shared-types';
 import { api } from '../../services/api';
 import { sharePdf } from '../../easy/share';
+import { theme } from '../../theme';
+
+const { colors, radius, space, type } = theme;
 
 type Report = {
   totals: { received: string; receivable: string; costs: string; result: string };
@@ -46,7 +49,7 @@ export function RelatoriosScreen() {
   if (loading)
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#6D28D9" />
+        <ActivityIndicator color={colors.purple600} />
         <Text>Carregando relatórios…</Text>
       </View>
     );
@@ -124,53 +127,53 @@ function List({ title, rows }: { title: string; rows: string[][] }) {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, backgroundColor: '#F8FAFC' },
+  content: { padding: space.lg, gap: space.lg, backgroundColor: colors.slate50 },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    padding: 24,
-    backgroundColor: '#FFF',
+    gap: space.md,
+    padding: space.xl,
+    backgroundColor: colors.white,
   },
-  title: { color: '#0A0A0F', fontSize: 22, fontWeight: '700' },
-  muted: { color: '#64748B', fontSize: 14, lineHeight: 20 },
+  title: { color: colors.ink, fontSize: 22, fontWeight: type.bold },
+  muted: { color: colors.slate500, fontSize: type.small, lineHeight: 20 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   card: {
     width: '48%',
     padding: 14,
-    backgroundColor: '#FFF',
-    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.slate200,
   },
-  label: { color: '#64748B', fontSize: 12 },
-  value: { color: '#0A0A0F', fontSize: 18, fontWeight: '700', marginTop: 6 },
+  label: { color: colors.slate500, fontSize: type.caption },
+  value: { color: colors.ink, fontSize: 18, fontWeight: type.bold, marginTop: 6 },
   section: {
     padding: 16,
-    backgroundColor: '#FFF',
-    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.slate200,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8, color: '#0A0A0F' },
+  sectionTitle: { fontSize: type.body, fontWeight: type.bold, marginBottom: 8, color: colors.ink },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: colors.slate100,
   },
-  rowLabel: { color: '#334155', flex: 1 },
-  rowValue: { color: '#0A0A0F', fontWeight: '600' },
+  rowLabel: { color: colors.slate700, flex: 1 },
+  rowValue: { color: colors.ink, fontWeight: type.semibold },
   button: {
-    backgroundColor: '#6D28D9',
-    borderRadius: 12,
+    backgroundColor: colors.purple600,
+    borderRadius: radius.md,
     minHeight: 48,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 12,
   },
-  buttonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  buttonText: { color: colors.white, fontSize: type.body, fontWeight: type.bold },
 });

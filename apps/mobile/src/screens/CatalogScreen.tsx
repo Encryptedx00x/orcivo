@@ -12,6 +12,9 @@ import { formatMoney } from '@orcivo/shared-types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { catalogService, CatalogItem } from '../services/catalog.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
+import { theme } from '../theme';
+
+const { colors, radius, space, type } = theme;
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'Catalog'>;
 
@@ -45,9 +48,9 @@ export function CatalogScreen({ navigation }: Props) {
     >
       <View style={styles.cardLeft}>
         {item.type === 'PRODUCT' ? (
-          <Package size={20} color="#6D28D9" />
+          <Package size={20} color={colors.purple600} />
         ) : (
-          <Wrench size={20} color="#6D28D9" />
+          <Wrench size={20} color={colors.purple600} />
         )}
         <View style={styles.cardInfo}>
           <Text style={styles.itemName}>{item.name}</Text>
@@ -57,9 +60,7 @@ export function CatalogScreen({ navigation }: Props) {
               item.type === 'PRODUCT' ? styles.badgeProduct : styles.badgeService,
             ]}
           >
-            <Text style={styles.badgeText}>
-              {item.type === 'PRODUCT' ? 'Produto' : 'Serviço'}
-            </Text>
+            <Text style={styles.badgeText}>{item.type === 'PRODUCT' ? 'Produto' : 'Serviço'}</Text>
           </View>
         </View>
       </View>
@@ -70,7 +71,7 @@ export function CatalogScreen({ navigation }: Props) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6D28D9" />
+        <ActivityIndicator size="large" color={colors.purple600} />
       </View>
     );
   }
@@ -113,7 +114,7 @@ export function CatalogScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('CatalogItemForm', {})}
           accessibilityLabel="Adicionar item ao catálogo"
         >
-          <Plus size={24} color="#FFFFFF" />
+          <Plus size={24} color={colors.white} />
         </TouchableOpacity>
       )}
     </View>
@@ -121,31 +122,46 @@ export function CatalogScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  container: { flex: 1, backgroundColor: colors.white },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.xl },
   emptyContainer: { flex: 1 },
   card: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: space.lg,
     borderBottomWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.slate200,
   },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1 },
   cardInfo: { flex: 1 },
-  itemName: { fontSize: 15, fontWeight: '600', color: '#0A0A0F', marginBottom: 4 },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  badgeService: { backgroundColor: '#EDE9FE' },
-  badgeProduct: { backgroundColor: '#DCFCE7' },
-  badgeText: { fontSize: 12, color: '#6D28D9', fontWeight: '500' },
-  price: { fontSize: 15, fontWeight: '700', color: '#0A0A0F' },
-  errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
-  retryBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginBottom: 16 },
-  addBtn: { backgroundColor: '#6D28D9', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  addBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  itemName: { fontSize: type.small, fontWeight: type.semibold, color: colors.ink, marginBottom: 4 },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  badgeService: { backgroundColor: colors.purple100 },
+  badgeProduct: { backgroundColor: colors.successBg },
+  badgeText: { fontSize: type.caption, color: colors.purple600, fontWeight: type.medium },
+  price: { fontSize: type.small, fontWeight: type.bold, color: colors.ink },
+  errorText: { fontSize: 15, color: colors.danger, textAlign: 'center', marginBottom: space.lg },
+  retryBtn: {
+    backgroundColor: colors.purple600,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+  },
+  retryText: { color: colors.white, fontSize: 15, fontWeight: type.semibold },
+  emptyText: { fontSize: 15, color: colors.slate500, textAlign: 'center', marginBottom: space.lg },
+  addBtn: {
+    backgroundColor: colors.purple600,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+  },
+  addBtnText: { color: colors.white, fontSize: 15, fontWeight: type.semibold },
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -153,7 +169,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#6D28D9',
+    backgroundColor: colors.purple600,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',

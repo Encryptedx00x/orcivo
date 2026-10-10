@@ -14,6 +14,9 @@ import { usePagedList } from '../hooks/usePagedList';
 import { workOrderService, WorkOrder } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 import { STATUS_COLORS, type WorkOrderStatus } from './os/os-status';
+import { theme } from '../theme';
+
+const { colors, radius, space, type } = theme;
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderList'>;
 
@@ -50,13 +53,13 @@ export function WorkOrderListScreen({ navigation }: Props) {
       accessibilityRole="button"
     >
       <View style={styles.cardHeader}>
-        <ClipboardList size={16} color="#6D28D9" />
+        <ClipboardList size={16} color={colors.purple600} />
         <Text style={styles.orderNumber}>OS #{item.number}</Text>
         <StatusBadge status={item.status} />
       </View>
       <Text style={styles.orderTitle}>{item.title}</Text>
       <View style={styles.cardFooter}>
-        <Clock size={14} color="#6B7280" />
+        <Clock size={14} color={colors.slate500} />
         <Text style={styles.customerName}>{item.customer.name}</Text>
         {item.quote?.total ? (
           <Text style={styles.total}>{formatMoney(item.quote.total)}</Text>
@@ -68,7 +71,7 @@ export function WorkOrderListScreen({ navigation }: Props) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6D28D9" />
+        <ActivityIndicator size="large" color={colors.purple600} />
       </View>
     );
   }
@@ -95,12 +98,14 @@ export function WorkOrderListScreen({ navigation }: Props) {
         onEndReached={list.loadMore}
         onEndReachedThreshold={0.5}
         ListFooterComponent={
-          list.loadingMore ? <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} /> : null
+          list.loadingMore ? (
+            <ActivityIndicator color={colors.purple600} style={{ margin: 16 }} />
+          ) : null
         }
         contentContainerStyle={orders.length === 0 ? styles.emptyContainer : undefined}
         ListEmptyComponent={
           <View style={styles.center}>
-            <CheckCircle size={48} color="#D1D5DB" />
+            <CheckCircle size={48} color={colors.slate300} />
             <Text style={styles.emptyText}>Nenhuma ordem de serviço encontrada</Text>
           </View>
         }
@@ -110,7 +115,7 @@ export function WorkOrderListScreen({ navigation }: Props) {
         style={styles.fab}
         onPress={() => navigation.navigate('WorkOrderCreate')}
       >
-        <Plus size={18} color="#FFFFFF" />
+        <Plus size={18} color={colors.white} />
         <Text style={styles.fabText}>Nova OS</Text>
       </TouchableOpacity>
     </View>
@@ -125,35 +130,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#6D28D9',
-    borderRadius: 24,
+    backgroundColor: colors.purple600,
+    borderRadius: radius.xl,
     paddingVertical: 12,
     paddingHorizontal: 18,
   },
-  fabText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  total: { marginLeft: 'auto', fontSize: 14, fontWeight: '700', color: '#0A0A0F' },
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  fabText: { color: colors.white, fontSize: 15, fontWeight: type.bold },
+  total: { marginLeft: 'auto', fontSize: type.small, fontWeight: type.bold, color: colors.ink },
+  container: { flex: 1, backgroundColor: colors.white },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.xl },
   emptyContainer: { flex: 1 },
   card: {
-    padding: 16,
+    padding: space.lg,
     borderBottomWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.slate200,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  orderNumber: { fontSize: 14, fontWeight: '700', color: '#0A0A0F', flex: 1 },
-  orderTitle: { fontSize: 15, color: '#0A0A0F', marginBottom: 8 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 6 },
+  orderNumber: { fontSize: type.small, fontWeight: type.bold, color: colors.ink, flex: 1 },
+  orderTitle: { fontSize: 15, color: colors.ink, marginBottom: 8 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  customerName: { fontSize: 13, color: '#6B7280' },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
-  badgeText: { fontSize: 12, fontWeight: '500' },
-  errorText: { fontSize: 15, color: '#DC2626', textAlign: 'center', marginBottom: 16 },
+  customerName: { fontSize: 13, color: colors.slate500 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
+  badgeText: { fontSize: type.caption, fontWeight: type.medium },
+  errorText: { fontSize: 15, color: colors.danger, textAlign: 'center', marginBottom: space.lg },
   retryBtn: {
-    backgroundColor: '#6D28D9',
+    backgroundColor: colors.purple600,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radius.sm,
   },
-  retryText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginTop: 16 },
+  retryText: { color: colors.white, fontSize: 15, fontWeight: type.semibold },
+  emptyText: { fontSize: 15, color: colors.slate500, textAlign: 'center', marginTop: space.lg },
 });
