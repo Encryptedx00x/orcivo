@@ -49,24 +49,24 @@ Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (c
 - [ ] Cliente: origem, aniversário, 2º telefone, observações internas · estoque com baixa automática (aprovação ou conclusão; devolve ao cancelar; auditado) · custo + margem/markup → preço · unidades editáveis.
 
 ### R8 — Relatórios, Home e dados · AB-18, AB-12, AB-19, AB-13
-- [ ] Relatórios (recebido × a receber, por forma, top 5 clientes, origem, receitas × custos) · atalhos da Home · exportar CSV/ZIP (portabilidade LGPD) · indicação (avaliar com billing).
+- [x] Relatórios (recebido × a receber, por forma, top 5 clientes, origem, receitas × custos) · atalhos da Home · exportar CSV/ZIP (portabilidade LGPD). Indicação permaneceu fora de billing por não haver regra de atribuição aprovada. Entrega: `e414ba9`.
 
 ### R9 — **App mobile com o mesmo design do web** (pedido do dono em 2026-10-07)
 O app (Expo) diverge visualmente do web desktop/mobile, nos dois modos. Objetivo: o técnico reconhecer
 o mesmo produto em qualquer superfície.
-- [ ] **Levantamento (1ª sessão, sem código):** para cada tela do app (modo completo: `src/screens/*`;
+- [x] **Levantamento (1ª sessão, sem código):** para cada tela do app (modo completo: `src/screens/*`;
       modo fácil: `src/easy/screens/*`), tirar print no Expo web a 375×812 e comparar com a mesma tela
       do web em 375px (`/facil` e páginas do modo completo). Registrar as diferenças numa tabela em
       `docs/qa/R9-APP-DESIGN-DIFF.md` (tela · web · app · ajuste). Fonte da verdade:
       `docs/design-handoff/orcivo-design-system/` (tokens em `colors_and_type.css`, UI kit mobile em
       `ui_kits/mobile/`) e `docs/FRONTEND_DESIGN_MASTER.md` §4.
-- [ ] **Tokens únicos no app:** um `src/theme.ts` com cores/raios/espaçamentos/tipografia dos tokens
+- [x] **Tokens únicos no app:** um `src/theme.ts` com cores/raios/espaçamentos/tipografia dos tokens
       (`--purple-600 #6D28D9`, `--ink #0A0A0F`, fundo branco). Hoje cada tela tem `StyleSheet` próprio
       (raios 8/12, cinzas variados) e o modo fácil usa `src/easy/ui.tsx` (`C`, `s`). Unificar os dois em cima do tema.
-- [ ] **Componentes base** (botão primário/secundário, card, input, chip, cabeçalho, linha de lista,
+- [x] **Componentes base** (botão primário/secundário, card, input, chip, cabeçalho, linha de lista,
       badge de status) iguais aos do web; aplicar tela a tela, modo fácil primeiro (é o que o técnico usa).
-- [ ] Ícones só Lucide (`lucide-react-native`), sem emoji; textos pt-BR; nomes de plano oficiais.
-- [ ] Aceite: prints lado a lado web × app de cada tela no `R9-APP-DESIGN-DIFF.md` sem divergência
+- [x] Ícones só Lucide (`lucide-react-native`), sem emoji; textos pt-BR; nomes de plano oficiais.
+- [~] Aceite: prints lado a lado web × app de cada tela no `R9-APP-DESIGN-DIFF.md` sem divergência
       relevante; testes do app (§7) verdes. **Mudar o design system em si é Nível C** — aqui é só aplicar o aprovado.
 
 ### Sempre
