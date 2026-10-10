@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { ChevronDown, ChevronRight, ChevronUp, type LucideIcon } from 'lucide-react-native';
 import { statusTheme, theme } from '../theme';
+import { StatusBadge } from '../components/AppUI';
 
 export const C = {
   purple: theme.colors.purple600,
@@ -44,13 +45,7 @@ export const CHIP = statusTheme;
 export type ChipKind = keyof typeof CHIP;
 
 export function Chip({ kind, label }: { kind: ChipKind; label: string }) {
-  const c = CHIP[kind];
-  return (
-    <View style={[s.chip, { backgroundColor: c.bg }]}>
-      <View style={[s.dot, { backgroundColor: c.dot }]} />
-      <Text style={[s.chipText, { color: c.fg }]}>{label}</Text>
-    </View>
-  );
+  return <StatusBadge kind={kind} label={label} />;
 }
 
 /** Scrollable page with optional fixed bottom action bar. */

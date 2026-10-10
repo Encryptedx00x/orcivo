@@ -13,6 +13,8 @@ import { usePagedList } from '../../hooks/usePagedList';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
 import type { ClientesStackParamList } from '../../navigation/AppTabs';
+import { AppButton, AppCard, ListRow, ScreenHeader } from '../../components/AppUI';
+import { User } from 'lucide-react-native';
 
 interface Customer {
   id: string;
@@ -38,6 +40,7 @@ export function ClientesScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      <ScreenHeader title="Clientes" subtitle="Pessoas e empresas atendidas" />
       {loading ? (
         <ActivityIndicator color="#6D28D9" />
       ) : failed ? (
@@ -60,29 +63,28 @@ export function ClientesScreen({ navigation }: Props) {
           contentContainerStyle={{ paddingBottom: 100 }}
           keyExtractor={(c) => c.id}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.item}
-              accessibilityRole="button"
-              accessibilityLabel={`Ver cliente ${item.name}`}
-              onPress={() => navigation.navigate('ClienteDetail', { id: item.id })}
-            >
-              <Text style={styles.name}>{item.name}</Text>
-              {item.phone && <Text style={styles.phone}>{item.phone}</Text>}
-            </TouchableOpacity>
+            <AppCard style={styles.item}>
+              <ListRow
+                icon={User}
+                label={item.name}
+                sub={item.phone ?? undefined}
+                onPress={() => navigation.navigate('ClienteDetail', { id: item.id })}
+              />
+            </AppCard>
           )}
           ListEmptyComponent={<Text style={styles.empty}>Nenhum cliente cadastrado ainda.</Text>}
         />
       )}
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('ClienteCreate')}>
-        <Text style={styles.fabText}>+ Novo cliente</Text>
-      </TouchableOpacity>
+      <View style={styles.fab}>
+        <AppButton label="Novo cliente" onPress={() => navigation.navigate('ClienteCreate')} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  item: { padding: 16, borderBottomWidth: 1, borderColor: '#E5E7EB' },
+  container: { flex: 1, backgroundColor: '#F8FAFC', padding: 16 },
+  item: { marginBottom: 8, paddingVertical: 0 },
   name: { fontSize: 16, fontWeight: '500', color: '#0A0A0F' },
   phone: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   empty: { textAlign: 'center', color: '#6B7280', marginTop: 48, fontSize: 14 },
@@ -90,10 +92,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 16,
-    backgroundColor: '#6D28D9',
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    width: 168,
   },
   fabText: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
 });
