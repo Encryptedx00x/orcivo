@@ -5,13 +5,13 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-07 19:25 BRT)
+## 1. Estado agora (atualizado 2026-10-10)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | último commit de docs após `2d7d2c0` (ver `git log`) |
+| `main` / `origin/main` | `17c0202` (lote R5b…R9 entregue; ver `git log`) |
 | Produção (app/site/api.orcivo.com.br) | `ffe0291` = código de `2d7d2c0` (R5a) — deploy 2026-10-07 22:15 UTC, saudável, migration `20261009100000_work_order_segment_fields` aplicada |
-| Última rodada concluída | R5a em produção. **Próxima tarefa: R5b → "Status extras da OS" (§3)** |
+| Última rodada concluída | R5b…R9 implementadas e publicadas em `main`; deploy ainda não autorizado. A rodada final está bloqueada pela infraestrutura local de integração: Redis `6380` recusado e credencial local de PostgreSQL inválida. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
 Antes de qualquer coisa: `git status --short`, `git log --oneline -5`, `git fetch && git status -sb`.
@@ -46,7 +46,7 @@ Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (c
 - [ ] Período (manhã/tarde/noite/comercial) ou horário exato · lembrete (5 min…1 dia) · status (não confirmado/agendado/concluído) · calendário mensal · recorrência (semanal/mensal/N meses → gera OS + cobrança; Orcivo Mais/Equipe). Detalhes em IMPROVEMENT-ROUNDS §R6.
 
 ### R7 — Cliente e catálogo · AB-15, AB-16, 999.13
-- [ ] Cliente: origem, aniversário, 2º telefone, observações internas · estoque com baixa automática (aprovação ou conclusão; devolve ao cancelar; auditado) · custo + margem/markup → preço · unidades editáveis.
+- [x] Cliente: origem, aniversário, 2º telefone, observações internas · estoque com baixa automática (aprovação ou conclusão; devolve ao cancelar; auditado) · custo + margem/markup → preço · unidades editáveis. Entrega: `af85782`.
 
 ### R8 — Relatórios, Home e dados · AB-18, AB-12, AB-19, AB-13
 - [x] Relatórios (recebido × a receber, por forma, top 5 clientes, origem, receitas × custos) · atalhos da Home · exportar CSV/ZIP (portabilidade LGPD). Indicação permaneceu fora de billing por não haver regra de atribuição aprovada. Entrega: `e414ba9`.
@@ -161,6 +161,7 @@ Depois: abrir https://app.orcivo.com.br e a tela mexida (conta do dono já logad
 
 | Data | Commit | Entrega | Produção |
 | --- | --- | --- | --- |
+| 2026-10-10 | `af85782`…`1d3edeb` | R7, R8 e R9: clientes/estoque, relatórios/portabilidade e tema/componentes do app | ⏳ validação final local bloqueada por Redis/PostgreSQL de teste; não implantado |
 | 2026-10-07 | `2d7d2c0` | R5a: campos da OS por segmento (Configurações → Ordem de serviço; Nova OS e "Dados do equipamento" no web e app completo) | ✅ 22:15 UTC |
 | 2026-10-07 | `be77dda`…`d2f0cf9` | Codex: segurança (capacidades públicas expiram, throttling), deploy falha se não saudável, dependências | ✅ |
 | 2026-10-07 | `beab4c9` | R3: formas de pagamento aceitas no PDF/link; laudo; campo morto removido | ✅ |

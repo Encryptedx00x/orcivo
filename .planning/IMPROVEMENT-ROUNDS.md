@@ -4,7 +4,7 @@ Fonte dos itens: benchmark `.planning/research/AGENDA-BOA-BENCHMARK.md` (AB-1…
 `docs/qa/2026-10-06-bateria-de-testes.md` (V1…V16) e backlog 999.x do `ROADMAP.md`.
 Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P/W).
 
-## Andamento (atualizado 2026-10-07)
+## Andamento (atualizado 2026-10-10)
 
 | Rodada | Status | Commits principais |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R1 | ✅ — app completo: criar OS, detalhe com valor/data/obs/WhatsApp, endereço da empresa, desconto + condições + opções no orçamento, validade corrigida (dava 400), desconto % exibido certo | `8d3ef40` |
 | R2 | ✅ produção — 6 tipos de documento, cor, contato do cliente, Instagram/site, registro profissional, frase de rodapé (PDF orçamento + recibo) | `f7df634`, `6b8a8ae` |
 | R3 | ✅ produção — duplicar orçamento (4 telas), condição de pagamento estruturada → **cobranças criadas na aprovação**, garantia; mensagens de limite com "Ver planos" | `7338121`, `1479e25` |
+| R5b…R9 | ⏳ código publicado em `main`; R7 clientes/estoque, R8 relatórios/portabilidade e R9 tema/app. Validação integrada local bloqueada por Redis `6380` e credencial PostgreSQL de teste. | `744fba8`…`1d3edeb` |
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
