@@ -654,6 +654,25 @@ enum AppointmentType {
   OUTRO
 }
 
+enum AppointmentStatus {
+  UNCONFIRMED
+  SCHEDULED
+  COMPLETED
+}
+
+enum AppointmentPeriod {
+  MORNING
+  AFTERNOON
+  EVENING
+  BUSINESS_HOURS
+}
+
+enum AppointmentRecurrence {
+  WEEKLY
+  MONTHLY
+  CUSTOM_MONTHS
+}
+
 model Appointment {
   id                 String          @id @default(uuid())
   company_id         String
@@ -661,9 +680,19 @@ model Appointment {
   work_order_id      String?
   title              String
   type               AppointmentType @default(OUTRO)
+  status             AppointmentStatus @default(SCHEDULED)
   notes              String?
   starts_at          DateTime
   ends_at            DateTime?
+  schedule_period    AppointmentPeriod?
+  reminder_minutes   Int?
+  reminder_sent_at   DateTime?
+  recurrence_type    AppointmentRecurrence?
+  recurrence_interval Int?
+  recurrence_series_id String?
+  recurrence_next_at DateTime?
+  recurrence_amount  Decimal? @db.Decimal(12, 2)
+  recurrence_active  Boolean @default(false)
   created_by_user_id String
   created_at         DateTime        @default(now())
   updated_at         DateTime        @updatedAt
@@ -673,6 +702,8 @@ model Appointment {
 
   @@index([company_id])
   @@index([company_id, starts_at])
+  @@index([company_id, recurrence_active, recurrence_next_at])
+  @@unique([company_id, recurrence_series_id, starts_at])
   @@map("appointments")
 }
 

@@ -40,3 +40,4 @@ export * from './company/company-doc-fields';
 export * from './quote/quote-payment-terms';
 export * from './quote/quote-totals';
 export * from './finance/expense';
+export * from './appointment/appointment';

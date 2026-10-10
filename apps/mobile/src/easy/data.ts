@@ -3,6 +3,9 @@
 import type {
   ExpenseCreateDto,
   FinanceSummary,
+  AppointmentCreateDto,
+  AppointmentPeriod,
+  AppointmentStatus,
   QuoteCreateDto,
   QuoteDocOptions,
   QuotePaymentTerms,
@@ -99,10 +102,13 @@ export interface EasyWorkOrder {
 export interface EasyAppointment {
   id: string;
   title: string;
-  type: string | null;
+  type: NonNullable<AppointmentCreateDto['type']> | null;
   starts_at: string;
   ends_at: string | null;
   customer: { id: string; name: string } | null;
+  status: AppointmentStatus;
+  schedule_period?: AppointmentPeriod | null;
+  reminder_minutes?: number | null;
 }
 export interface EasyPayment {
   id: string;
@@ -260,18 +266,16 @@ export const easy = {
         `/appointments?from=${enc(fromIso)}&to=${enc(toIso)}`,
       ),
     ),
-  createAppointment: (input: {
-    title: string;
-    type: string;
-    customer_id?: string;
-    starts_at: string;
-    ends_at: string;
-  }) => api.post<EasyAppointment>('/appointments', input),
+  createAppointment: (input: AppointmentCreateDto) =>
+    api.post<EasyAppointment>('/appointments', input),
   updateAppointment: (
     id: string,
     input: {
       title?: string;
       type?: string;
+      status?: AppointmentStatus;
+      schedule_period?: AppointmentPeriod | null;
+      reminder_minutes?: 5 | 15 | 30 | 60 | 1440 | null;
       customer_id?: string | null;
       starts_at?: string;
       ends_at?: string | null;

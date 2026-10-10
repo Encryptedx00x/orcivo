@@ -14,6 +14,12 @@ import {
   XCircle,
 } from 'lucide-react-native';
 import { Linking } from 'react-native';
+import type {
+  AppointmentCreateDto,
+  AppointmentPeriod,
+  AppointmentRecurrence,
+  AppointmentStatus,
+} from '@orcivo/shared-types';
 import { useSheet } from '../sheet';
 import { easy, errorText, type EasyAppointment } from '../data';
 import { useEasyNav } from '../draft';
@@ -24,6 +30,7 @@ import {
   Card,
   EmptyBox,
   ErrorBox,
+  Field,
   H1,
   Loading,
   Options,
@@ -71,6 +78,13 @@ const addDays = (d: Date, n: number) => {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
+};
+const monthDays = (value: string) => {
+  const selected = fromYmd(value);
+  const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  first.setDate(first.getDate() - offset);
+  return Array.from({ length: 42 }, (_, index) => addDays(first, index));
 };
 const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes();
 const mm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -148,11 +162,21 @@ export function AgendaScreen() {
     if (route.params?.day) setDay(route.params.day);
   }, [route.params?.day]);
   const load = useCallback(() => {
-    const from = fromYmd(day);
-    return easy.appointments(from.toISOString(), addDays(from, 1).toISOString());
+    const selected = fromYmd(day);
+    const from = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    const to = new Date(selected.getFullYear(), selected.getMonth() + 1, 1);
+    return easy.appointments(from.toISOString(), to.toISOString());
   }, [day]);
   const appts = useLoad(load, 'Não foi possível carregar a agenda.');
-  const events = (appts.data ?? []).slice().sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const events = (appts.data ?? [])
+    .filter((appointment) => ymd(new Date(appointment.starts_at)) === day)
+    .slice()
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const selectedMonth = fromYmd(day);
+  const days = monthDays(day);
+  const appointmentDays = new Set((appts.data ?? []).map((item) => ymd(new Date(item.starts_at))));
+  const shiftMonth = (amount: number) =>
+    setDay(ymd(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + amount, 1)));
 
   const sheet = useSheet();
   const call = async (clientId: string) => {
@@ -283,6 +307,64 @@ export function AgendaScreen() {
       <Btn icon={Plus} onPress={() => nav.navigate('AgendaNew', { day })}>
         Marcar
       </Btn>
+      <Card style={{ padding: 14, gap: 10 }}>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <Arrow label="Mês anterior" onPress={() => shiftMonth(-1)} left />
+          <Text style={[s.body, { fontWeight: '700', textTransform: 'capitalize' }]}>
+            {selectedMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+          </Text>
+          <Arrow label="Próximo mês" onPress={() => shiftMonth(1)} />
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((label) => (
+            <Text
+              key={label}
+              style={{ width: '14.285%', textAlign: 'center', fontSize: 11, color: C.fg3 }}
+            >
+              {label}
+            </Text>
+          ))}
+          {days.map((date) => {
+            const value = ymd(date);
+            const selected = value === day;
+            const muted = date.getMonth() !== selectedMonth.getMonth();
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityLabel={`Selecionar ${date.toLocaleDateString('pt-BR')}`}
+                accessibilityState={{ selected }}
+                onPress={() => setDay(value)}
+                style={{
+                  width: '14.285%',
+                  minHeight: 42,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 10,
+                  backgroundColor: selected ? C.purple : 'transparent',
+                }}
+              >
+                <Text style={{ color: selected ? '#FFFFFF' : muted ? C.fg3 : C.ink }}>
+                  {date.getDate()}
+                </Text>
+                {appointmentDays.has(value) ? (
+                  <View
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: 3,
+                      marginTop: 3,
+                      backgroundColor: selected ? '#FFFFFF' : C.purple,
+                    }}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </Card>
       <DayPicker value={day} onChange={setDay} />
       <Text style={s.section}>{dayTitle(day)}</Text>
       {appts.error ? <ErrorBox message={appts.error} onRetry={appts.refresh} /> : null}
@@ -322,6 +404,14 @@ export function AgendaNewScreen({
       : 60,
   );
   const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<AppointmentStatus>(editing?.status ?? 'SCHEDULED');
+  const [period, setPeriod] = useState<AppointmentPeriod | ''>(editing?.schedule_period ?? '');
+  const [reminder, setReminder] = useState<5 | 15 | 30 | 60 | 1440 | ''>(
+    (editing?.reminder_minutes as 5 | 15 | 30 | 60 | 1440 | null) ?? '',
+  );
+  const [recurrence, setRecurrence] = useState<AppointmentRecurrence | ''>('');
+  const [interval, setInterval] = useState('6');
+  const [amount, setAmount] = useState('');
 
   const options = useMemo(() => {
     const all = clients.data ?? [];
@@ -335,6 +425,10 @@ export function AgendaNewScreen({
 
   const submit = async () => {
     if (!type || saving) return;
+    if (!editing && recurrence && !client)
+      return Alert.alert('Escolha um cliente', 'A manutenção recorrente precisa de um cliente.');
+    if (!editing && recurrence && !/^\d+(\.\d{1,2})?$/.test(amount.replace(',', '.')))
+      return Alert.alert('Valor inválido', 'Informe o valor da cobrança recorrente.');
     setSaving(true);
     const start = fromYmd(day);
     start.setMinutes(time);
@@ -342,7 +436,19 @@ export function AgendaNewScreen({
     const title =
       editing?.title ??
       (client ? `${typeLabel(type)} · ${firstName(client.name)}` : typeLabel(type));
-    const body = { title, type, starts_at: start.toISOString(), ends_at: end.toISOString() };
+    const body: AppointmentCreateDto = {
+      title,
+      type: type as AppointmentCreateDto['type'],
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+      status,
+      schedule_period: period || undefined,
+      reminder_minutes: reminder || undefined,
+      recurrence_type: editing ? undefined : recurrence || undefined,
+      recurrence_interval:
+        !editing && recurrence === 'CUSTOM_MONTHS' ? Number(interval) : undefined,
+      recurrence_amount: !editing && recurrence ? amount.replace(',', '.') : undefined,
+    };
     try {
       if (editing)
         await easy.updateAppointment(editing.id, { ...body, customer_id: client?.id ?? null });
@@ -419,6 +525,83 @@ export function AgendaNewScreen({
           { value: 480, label: 'O dia' },
         ]}
       />
+
+      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Status</Text>
+      <Options
+        cols={3}
+        value={status}
+        onPick={setStatus}
+        options={[
+          { value: 'UNCONFIRMED' as const, label: 'Não confirmado' },
+          { value: 'SCHEDULED' as const, label: 'Agendado' },
+          { value: 'COMPLETED' as const, label: 'Concluído' },
+        ]}
+      />
+
+      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Período</Text>
+      <Options
+        cols={2}
+        value={period}
+        onPick={setPeriod}
+        options={[
+          { value: '' as const, label: 'Horário exato' },
+          { value: 'MORNING' as const, label: 'Manhã' },
+          { value: 'AFTERNOON' as const, label: 'Tarde' },
+          { value: 'EVENING' as const, label: 'Noite' },
+          { value: 'BUSINESS_HOURS' as const, label: 'Comercial' },
+        ]}
+      />
+
+      <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Lembrete</Text>
+      <Options
+        cols={3}
+        value={reminder}
+        onPick={setReminder}
+        options={[
+          { value: '' as const, label: 'Sem lembrete' },
+          { value: 5 as const, label: '5 min' },
+          { value: 15 as const, label: '15 min' },
+          { value: 30 as const, label: '30 min' },
+          { value: 60 as const, label: '1 hora' },
+          { value: 1440 as const, label: '1 dia' },
+        ]}
+      />
+
+      {!editing ? (
+        <>
+          <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>
+            Repetir (Orcivo Mais/Equipe)
+          </Text>
+          <Options
+            cols={2}
+            value={recurrence}
+            onPick={setRecurrence}
+            options={[
+              { value: '' as const, label: 'Não repetir' },
+              { value: 'WEEKLY' as const, label: 'Semanal' },
+              { value: 'MONTHLY' as const, label: 'Mensal' },
+              { value: 'CUSTOM_MONTHS' as const, label: 'A cada N meses' },
+            ]}
+          />
+          {recurrence === 'CUSTOM_MONTHS' ? (
+            <Field
+              label="Intervalo em meses"
+              value={interval}
+              onChange={setInterval}
+              keyboard="number-pad"
+            />
+          ) : null}
+          {recurrence ? (
+            <Field
+              label="Valor da cobrança"
+              value={amount}
+              onChange={setAmount}
+              keyboard="number-pad"
+              placeholder="180,00"
+            />
+          ) : null}
+        </>
+      ) : null}
     </Page>
   );
 }

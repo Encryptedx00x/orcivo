@@ -19,6 +19,11 @@ import { newIdempotencyKey } from '../../services/api';
 import { appointmentService, AppointmentType } from '../../services/appointment.service';
 import { workOrderService, WorkOrder } from '../../services/work-order.service';
 import type { AgendaStackParamList } from '../../navigation/AppTabs';
+import type {
+  AppointmentPeriod,
+  AppointmentRecurrence,
+  AppointmentStatus,
+} from '@orcivo/shared-types';
 
 type Props = NativeStackScreenProps<AgendaStackParamList, 'AgendaCreate'>;
 
@@ -77,6 +82,12 @@ export function AgendaCreateScreen({ navigation }: Props) {
 
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [status, setStatus] = useState<AppointmentStatus>('SCHEDULED');
+  const [period, setPeriod] = useState<AppointmentPeriod | ''>('');
+  const [reminder, setReminder] = useState<5 | 15 | 30 | 60 | 1440 | null>(null);
+  const [recurrence, setRecurrence] = useState<AppointmentRecurrence | ''>('');
+  const [recurrenceInterval, setRecurrenceInterval] = useState('6');
+  const [recurrenceAmount, setRecurrenceAmount] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -120,6 +131,9 @@ export function AgendaCreateScreen({ navigation }: Props) {
     if (!title.trim()) newErrors['title'] = 'Título obrigatório';
     if (!date.trim() || !time.trim()) newErrors['datetime'] = 'Informe data e horário de início';
     else if (!buildIsoDate(date, time)) newErrors['datetime'] = 'Data ou horário inválidos';
+    if (recurrence && !customerId) newErrors['recurrence'] = 'Escolha um cliente para repetir';
+    if (recurrence && !/^\d+(\.\d{1,2})?$/.test(recurrenceAmount.replace(',', '.')))
+      newErrors['recurrence'] = 'Informe o valor da cobrança recorrente';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -141,6 +155,13 @@ export function AgendaCreateScreen({ navigation }: Props) {
           work_order_id: workOrderId || undefined,
           notes: notes.trim() || undefined,
           starts_at: startsAt,
+          status,
+          schedule_period: period || undefined,
+          reminder_minutes: reminder ?? undefined,
+          recurrence_type: recurrence || undefined,
+          recurrence_interval:
+            recurrence === 'CUSTOM_MONTHS' ? Number(recurrenceInterval) : undefined,
+          recurrence_amount: recurrence ? recurrenceAmount.replace(',', '.') : undefined,
         },
         { idempotencyKey: submitKey.current },
       );
@@ -276,6 +297,116 @@ export function AgendaCreateScreen({ navigation }: Props) {
             </View>
           </View>
           {errors['datetime'] && <Text style={styles.fieldError}>{errors['datetime']}</Text>}
+
+          <Text style={styles.sectionLabel}>Status</Text>
+          <View style={styles.typeRow}>
+            {[
+              ['UNCONFIRMED', 'Não confirmado'],
+              ['SCHEDULED', 'Agendado'],
+              ['COMPLETED', 'Concluído'],
+            ].map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.typeChip, status === value && styles.typeChipActive]}
+                onPress={() => setStatus(value as AppointmentStatus)}
+              >
+                <Text style={[styles.typeChipText, status === value && styles.typeChipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sectionLabel}>Período ou horário exato</Text>
+          <View style={styles.typeRow}>
+            {[
+              ['', 'Horário exato'],
+              ['MORNING', 'Manhã'],
+              ['AFTERNOON', 'Tarde'],
+              ['EVENING', 'Noite'],
+              ['BUSINESS_HOURS', 'Comercial'],
+            ].map(([value, label]) => (
+              <TouchableOpacity
+                key={value || 'exact'}
+                style={[styles.typeChip, period === value && styles.typeChipActive]}
+                onPress={() => setPeriod(value as AppointmentPeriod | '')}
+              >
+                <Text style={[styles.typeChipText, period === value && styles.typeChipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sectionLabel}>Lembrete</Text>
+          <View style={styles.typeRow}>
+            {[
+              [null, 'Sem lembrete'],
+              [5, '5 min'],
+              [15, '15 min'],
+              [30, '30 min'],
+              [60, '1 hora'],
+              [1440, '1 dia'],
+            ].map(([value, label]) => (
+              <TouchableOpacity
+                key={String(value)}
+                style={[styles.typeChip, reminder === value && styles.typeChipActive]}
+                onPress={() => setReminder(value as typeof reminder)}
+              >
+                <Text
+                  style={[styles.typeChipText, reminder === value && styles.typeChipTextActive]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sectionLabel}>Repetir (Orcivo Mais/Equipe)</Text>
+          <View style={styles.typeRow}>
+            {[
+              ['', 'Não repetir'],
+              ['WEEKLY', 'Semanal'],
+              ['MONTHLY', 'Mensal'],
+              ['CUSTOM_MONTHS', 'A cada N meses'],
+            ].map(([value, label]) => (
+              <TouchableOpacity
+                key={value || 'none'}
+                style={[styles.typeChip, recurrence === value && styles.typeChipActive]}
+                onPress={() => setRecurrence(value as AppointmentRecurrence | '')}
+              >
+                <Text
+                  style={[styles.typeChipText, recurrence === value && styles.typeChipTextActive]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {recurrence ? (
+            <View style={styles.itemRow}>
+              {recurrence === 'CUSTOM_MONTHS' ? (
+                <TextInput
+                  style={[styles.input, styles.flex1]}
+                  value={recurrenceInterval}
+                  onChangeText={setRecurrenceInterval}
+                  keyboardType="number-pad"
+                  placeholder="Meses"
+                  maxLength={2}
+                />
+              ) : null}
+              <TextInput
+                style={[styles.input, styles.flex1]}
+                value={recurrenceAmount}
+                onChangeText={setRecurrenceAmount}
+                keyboardType="decimal-pad"
+                placeholder="Valor da cobrança"
+              />
+            </View>
+          ) : null}
+          {errors['recurrence'] ? (
+            <Text style={styles.fieldError}>{errors['recurrence']}</Text>
+          ) : null}
 
           <Text style={styles.sectionLabel}>Observações (opcional)</Text>
           <TextInput

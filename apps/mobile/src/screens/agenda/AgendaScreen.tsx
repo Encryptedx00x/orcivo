@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { CalendarClock, ChevronRight, Plus, User } from 'lucide-react-native';
+import { CalendarClock, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react-native';
 import type { AgendaStackParamList } from '../../navigation/AppTabs';
 import {
   appointmentService,
@@ -28,12 +28,6 @@ const TYPE_LABEL: Record<AppointmentType, string> = {
   OUTRO: 'Outro',
 };
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function formatDayLabel(date: Date): string {
   return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
@@ -46,20 +40,22 @@ export function AgendaScreen({ navigation }: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [month, setMonth] = useState(() => new Date());
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const from = startOfToday().toISOString();
-      const result = await appointmentService.fetchAppointments(from);
+      const from = new Date(month.getFullYear(), month.getMonth(), 1).toISOString();
+      const to = new Date(month.getFullYear(), month.getMonth() + 1, 1).toISOString();
+      const result = await appointmentService.fetchAppointments(from, to);
       setAppointments(result.data);
     } catch {
       setError('Não foi possível carregar a agenda.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,6 +64,7 @@ export function AgendaScreen({ navigation }: Props) {
   );
 
   const sections = groupByDay(appointments);
+  const monthDays = getMonthDays(month);
 
   return (
     <View style={styles.container}>
@@ -85,6 +82,64 @@ export function AgendaScreen({ navigation }: Props) {
           data={sections}
           keyExtractor={(s) => s.key}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <View style={styles.calendar}>
+              <View style={styles.calendarHead}>
+                <TouchableOpacity
+                  accessibilityLabel="Mês anterior"
+                  onPress={() =>
+                    setMonth(
+                      (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                    )
+                  }
+                >
+                  <ChevronLeft size={22} color="#6D28D9" />
+                </TouchableOpacity>
+                <Text style={styles.calendarTitle}>
+                  {month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                </Text>
+                <TouchableOpacity
+                  accessibilityLabel="Próximo mês"
+                  onPress={() =>
+                    setMonth(
+                      (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
+                    )
+                  }
+                >
+                  <ChevronRight size={22} color="#6D28D9" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.calendarGrid}>
+                {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((label) => (
+                  <Text key={label} style={styles.calendarWeekday}>
+                    {label}
+                  </Text>
+                ))}
+                {monthDays.map((day) => {
+                  const count = appointments.filter(
+                    (item) => new Date(item.starts_at).toDateString() === day.toDateString(),
+                  ).length;
+                  return (
+                    <View
+                      key={day.toISOString()}
+                      style={styles.calendarDay}
+                      accessibilityLabel={`${day.toLocaleDateString('pt-BR')}: ${count} compromisso(s)`}
+                    >
+                      <Text
+                        style={[
+                          styles.calendarDayText,
+                          day.getMonth() !== month.getMonth() && styles.calendarDayMuted,
+                        ]}
+                      >
+                        {day.getDate()}
+                      </Text>
+                      {count > 0 ? <View style={styles.calendarDot} /> : null}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          }
           renderItem={({ item: section }) => (
             <View>
               <Text style={styles.sectionHeader}>{section.label}</Text>
@@ -143,11 +198,31 @@ function groupByDay(appointments: Appointment[]): DaySection[] {
   return Array.from(map.values());
 }
 
+function getMonthDays(base: Date): Date[] {
+  const first = new Date(base.getFullYear(), base.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  first.setDate(first.getDate() - offset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(first);
+    day.setDate(first.getDate() + index);
+    return day;
+  });
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   loading: { marginTop: 48 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   listContent: { paddingBottom: 96 },
+  calendar: { padding: 16, gap: 10 },
+  calendarHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  calendarTitle: { fontSize: 17, fontWeight: '700', color: '#0A0A0F', textTransform: 'capitalize' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calendarWeekday: { width: '14.285%', textAlign: 'center', fontSize: 11, color: '#6B7280' },
+  calendarDay: { width: '14.285%', minHeight: 38, alignItems: 'center', justifyContent: 'center' },
+  calendarDayText: { fontSize: 14, color: '#0A0A0F' },
+  calendarDayMuted: { color: '#9CA3AF' },
+  calendarDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#6D28D9', marginTop: 2 },
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',

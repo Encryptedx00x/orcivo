@@ -4,6 +4,9 @@
 // standard screens use. No business rules live here — only fetch/compose.
 import type {
   ExpenseCreateDto,
+  AppointmentCreateDto,
+  AppointmentPeriod,
+  AppointmentStatus,
   FinanceSummary,
   QuoteCreateDto,
   QuoteDocOptions,
@@ -307,10 +310,13 @@ export async function setWorkOrderStatuses(
 export interface EasyAppointment {
   id: string;
   title: string;
-  type: string | null;
+  type: NonNullable<AppointmentCreateDto['type']> | null;
   starts_at: string;
   ends_at: string | null;
   customer: { id: string; name: string } | null;
+  status: AppointmentStatus;
+  schedule_period?: AppointmentPeriod | null;
+  reminder_minutes?: number | null;
 }
 export async function listAppointments(
   fromIso: string,
@@ -324,13 +330,9 @@ export async function listAppointments(
     return Array.isArray(res) ? res : res.data;
   }, 'Não foi possível carregar a agenda.');
 }
-export async function createAppointment(input: {
-  title: string;
-  type: string;
-  customer_id?: string;
-  starts_at: string;
-  ends_at: string;
-}): Promise<Result<EasyAppointment>> {
+export async function createAppointment(
+  input: AppointmentCreateDto,
+): Promise<Result<EasyAppointment>> {
   return run(
     () =>
       apiFetch<EasyAppointment>('/appointments', { method: 'POST', body: JSON.stringify(input) }),
@@ -384,6 +386,9 @@ export async function updateAppointment(
   input: {
     title?: string;
     type?: string;
+    status?: AppointmentStatus;
+    schedule_period?: AppointmentPeriod | null;
+    reminder_minutes?: 5 | 15 | 30 | 60 | 1440 | null;
     customer_id?: string | null;
     starts_at?: string;
     ends_at?: string | null;

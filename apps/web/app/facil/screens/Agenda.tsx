@@ -1,7 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Calendar, Check, Minus, MoreHorizontal, Phone, Plus, User, XCircle } from 'lucide-react';
+import {
+  Calendar,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  User,
+  XCircle,
+} from 'lucide-react';
+import type {
+  AppointmentCreateDto,
+  AppointmentPeriod,
+  AppointmentRecurrence,
+  AppointmentStatus,
+} from '@orcivo/shared-types';
 import {
   createAppointment,
   deleteAppointment,
@@ -19,6 +36,7 @@ import {
   C,
   EmptyBox,
   ErrorBox,
+  Field,
   H1,
   Loading,
   Options,
@@ -56,6 +74,13 @@ const addDays = (d: Date, n: number) => {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
+};
+const monthDays = (value: string) => {
+  const selected = fromYmd(value);
+  const first = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  first.setDate(first.getDate() - offset);
+  return Array.from({ length: 42 }, (_, index) => addDays(first, index));
 };
 const fromYmd = (s: string) => new Date(`${s}T00:00:00`);
 function dayTitle(s: string) {
@@ -143,11 +168,21 @@ export function AgendaScreen(): React.JSX.Element {
   // Opens on the day just booked (params.day) so the new appointment is in view.
   const [day, setDay] = useState(params.day ?? ymd(new Date()));
   const range = useMemo(() => {
-    const from = fromYmd(day);
-    return { from: from.toISOString(), to: addDays(from, 1).toISOString() };
+    const selected = fromYmd(day);
+    const from = new Date(selected.getFullYear(), selected.getMonth(), 1);
+    const to = new Date(selected.getFullYear(), selected.getMonth() + 1, 1);
+    return { from: from.toISOString(), to: to.toISOString() };
   }, [day]);
   const appts = useLoad(() => listAppointments(range.from, range.to), [range.from]);
-  const events = (appts.data ?? []).slice().sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const events = (appts.data ?? [])
+    .filter((appointment) => ymd(new Date(appointment.starts_at)) === day)
+    .slice()
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const selectedMonth = fromYmd(day);
+  const days = monthDays(day);
+  const appointmentDays = new Set((appts.data ?? []).map((item) => ymd(new Date(item.starts_at))));
+  const shiftMonth = (amount: number) =>
+    setDay(ymd(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + amount, 1)));
 
   const sheet = useSheet();
   const call = async (clientId: string) => {
@@ -321,6 +356,81 @@ export function AgendaScreen(): React.JSX.Element {
         <Btn icon={Plus} onClick={() => go('agNew', { day })}>
           Marcar
         </Btn>
+        <div style={{ ...card, padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button
+              type="button"
+              className="ov-btn ov-btn-outline"
+              aria-label="Mês anterior"
+              onClick={() => shiftMonth(-1)}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <strong style={{ textTransform: 'capitalize' }}>
+              {selectedMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </strong>
+            <button
+              type="button"
+              className="ov-btn ov-btn-outline"
+              aria-label="Próximo mês"
+              onClick={() => shiftMonth(1)}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: 4,
+              marginTop: 10,
+            }}
+          >
+            {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((label) => (
+              <span key={label} style={{ textAlign: 'center', fontSize: 12, color: C.fg3 }}>
+                {label}
+              </span>
+            ))}
+            {days.map((date) => {
+              const value = ymd(date);
+              const selected = value === day;
+              const muted = date.getMonth() !== selectedMonth.getMonth();
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-label={`Selecionar ${date.toLocaleDateString('pt-BR')}`}
+                  aria-pressed={selected}
+                  onClick={() => setDay(value)}
+                  style={{
+                    minHeight: 42,
+                    border: 0,
+                    borderRadius: 10,
+                    background: selected ? C.purple : 'transparent',
+                    color: selected ? '#FFFFFF' : muted ? C.fg3 : C.ink,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {date.getDate()}
+                  {appointmentDays.has(value) ? (
+                    <span
+                      aria-hidden
+                      style={{
+                        display: 'block',
+                        width: 5,
+                        height: 5,
+                        borderRadius: 5,
+                        margin: '3px auto 0',
+                        background: selected ? '#FFFFFF' : C.purple,
+                      }}
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <DayPicker value={day} onChange={setDay} />
         <span style={{ fontSize: 17, fontWeight: 700, color: C.fg2, margin: '4px 4px 0' }}>
           {dayTitle(day)}
@@ -371,6 +481,12 @@ export function AgendaNewScreen(): React.JSX.Element {
       : 60,
   );
   const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<AppointmentStatus>('SCHEDULED');
+  const [period, setPeriod] = useState<AppointmentPeriod | ''>('');
+  const [reminder, setReminder] = useState<5 | 15 | 30 | 60 | 1440 | ''>('');
+  const [recurrence, setRecurrence] = useState<AppointmentRecurrence | ''>('');
+  const [interval, setInterval] = useState('6');
+  const [amount, setAmount] = useState('');
 
   const all = clients.data ?? [];
   const qq = clientQ.trim().toLowerCase();
@@ -382,6 +498,10 @@ export function AgendaNewScreen(): React.JSX.Element {
 
   const submit = async () => {
     if (!type) return;
+    if (!editing && recurrence && !clientId)
+      return toast('Escolha um cliente para criar a manutenção recorrente.');
+    if (!editing && recurrence && !/^\d+(\.\d{1,2})?$/.test(amount.replace(',', '.')))
+      return toast('Informe o valor da cobrança recorrente.');
     setSaving(true);
     const start = fromYmd(day);
     start.setMinutes(time);
@@ -393,12 +513,19 @@ export function AgendaNewScreen(): React.JSX.Element {
         : name
           ? `${typeLabel(type)} · ${firstName(name)}`
           : typeLabel(type);
-    const body = {
+    const body: AppointmentCreateDto = {
       title,
-      type,
+      type: type as AppointmentCreateDto['type'],
       customer_id: clientId ?? undefined,
       starts_at: start.toISOString(),
       ends_at: end.toISOString(),
+      status,
+      schedule_period: period || undefined,
+      reminder_minutes: reminder || undefined,
+      recurrence_type: editing ? undefined : recurrence || undefined,
+      recurrence_interval:
+        !editing && recurrence === 'CUSTOM_MONTHS' ? Number(interval) : undefined,
+      recurrence_amount: !editing && recurrence ? amount.replace(',', '.') : undefined,
     };
     const r = editing
       ? await updateAppointment(editing, { ...body, customer_id: clientId })
@@ -519,6 +646,83 @@ export function AgendaNewScreen(): React.JSX.Element {
             onPick={setDur}
           />
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 19, fontWeight: 700 }}>Status</span>
+          <Options
+            cols={3}
+            options={[
+              { value: 'UNCONFIRMED' as const, label: 'Não confirmado' },
+              { value: 'SCHEDULED' as const, label: 'Agendado' },
+              { value: 'COMPLETED' as const, label: 'Concluído' },
+            ]}
+            value={status}
+            onPick={setStatus}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 19, fontWeight: 700 }}>Período</span>
+          <Options
+            cols={2}
+            options={[
+              { value: '' as const, label: 'Horário exato' },
+              { value: 'MORNING' as const, label: 'Manhã' },
+              { value: 'AFTERNOON' as const, label: 'Tarde' },
+              { value: 'EVENING' as const, label: 'Noite' },
+              { value: 'BUSINESS_HOURS' as const, label: 'Comercial' },
+            ]}
+            value={period}
+            onPick={setPeriod}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 19, fontWeight: 700 }}>Lembrete</span>
+          <Options
+            cols={3}
+            options={[
+              { value: '' as const, label: 'Sem lembrete' },
+              { value: 5 as const, label: '5 min' },
+              { value: 15 as const, label: '15 min' },
+              { value: 30 as const, label: '30 min' },
+              { value: 60 as const, label: '1 hora' },
+              { value: 1440 as const, label: '1 dia' },
+            ]}
+            value={reminder}
+            onPick={setReminder}
+          />
+        </div>
+        {!editing && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontSize: 19, fontWeight: 700 }}>Repetir (Orcivo Mais/Equipe)</span>
+            <Options
+              cols={2}
+              options={[
+                { value: '' as const, label: 'Não repetir' },
+                { value: 'WEEKLY' as const, label: 'Semanal' },
+                { value: 'MONTHLY' as const, label: 'Mensal' },
+                { value: 'CUSTOM_MONTHS' as const, label: 'A cada N meses' },
+              ]}
+              value={recurrence}
+              onPick={setRecurrence}
+            />
+            {recurrence === 'CUSTOM_MONTHS' && (
+              <Field
+                label="Intervalo em meses"
+                value={interval}
+                onChange={setInterval}
+                inputMode="numeric"
+              />
+            )}
+            {recurrence && (
+              <Field
+                label="Valor da cobrança"
+                value={amount}
+                onChange={setAmount}
+                inputMode="numeric"
+                placeholder="180,00"
+              />
+            )}
+          </div>
+        )}
       </div>
       <ActionBar>
         {!type && <Hint>Escolha o que é</Hint>}

@@ -39,6 +39,17 @@ function getWeekDays(base: Date): Date[] {
   });
 }
 
+function getMonthDays(base: Date): Date[] {
+  const first = new Date(base.getFullYear(), base.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  first.setDate(first.getDate() - offset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(first);
+    day.setDate(first.getDate() + index);
+    return day;
+  });
+}
+
 interface Appt {
   id: string;
   title: string;
@@ -48,6 +59,9 @@ interface Appt {
   notes: string | null;
   customer_id: string | null;
   customer: { id: string; name: string } | null;
+  status?: 'UNCONFIRMED' | 'SCHEDULED' | 'COMPLETED';
+  schedule_period?: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'BUSINESS_HOURS' | null;
+  reminder_minutes?: number | null;
 }
 interface CustomerOpt {
   id: string;
@@ -76,9 +90,8 @@ export default function AgendaPage(): React.JSX.Element {
   const gridColumns = isMobile ? '52px minmax(0, 1fr)' : '60px repeat(7, minmax(0, 1fr))';
 
   const load = useCallback(async () => {
-    const days = getWeekDays(base);
-    const from = days[0].toISOString();
-    const to = new Date(days[6].getTime() + 86_400_000).toISOString();
+    const from = new Date(base.getFullYear(), base.getMonth(), 1).toISOString();
+    const to = new Date(base.getFullYear(), base.getMonth() + 1, 1).toISOString();
     try {
       const res = await fetch(
         `/api/appointments?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
@@ -113,6 +126,7 @@ export default function AgendaPage(): React.JSX.Element {
     setBase(d);
   };
   const weekLabel = `${days[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} – ${days[6].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+  const monthDays = getMonthDays(base);
 
   function eventsFor(dayIdx: number, hour: number): Appt[] {
     const dayStart = days[dayIdx];
@@ -177,6 +191,60 @@ export default function AgendaPage(): React.JSX.Element {
           </button>
         </p>
       )}
+      <div className="ov-card" style={{ padding: 12, marginBottom: 12 }}>
+        <div
+          style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, textTransform: 'capitalize' }}
+        >
+          {base.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {DAY_SHORT.map((label) => (
+            <span key={label} style={{ textAlign: 'center', fontSize: 11, color: '#64748B' }}>
+              {label}
+            </span>
+          ))}
+          {monthDays.map((day) => {
+            const count = appts.filter(
+              (item) => new Date(item.starts_at).toDateString() === day.toDateString(),
+            ).length;
+            const selectedDay = day.toDateString() === base.toDateString();
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                aria-label={`${day.toLocaleDateString('pt-BR')}: ${count} compromisso(s)`}
+                onClick={() => setBase(day)}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 8,
+                  border: selectedDay ? '2px solid #6D28D9' : '1px solid #E2E8F0',
+                  background: day.getMonth() === base.getMonth() ? '#FFFFFF' : '#F8FAFC',
+                  color: day.getMonth() === base.getMonth() ? '#0A0A0F' : '#94A3B8',
+                  cursor: 'pointer',
+                  position: 'relative',
+                }}
+              >
+                {day.getDate()}
+                {count > 0 && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      bottom: 3,
+                      left: '50%',
+                      width: 5,
+                      height: 5,
+                      marginLeft: -2.5,
+                      borderRadius: 99,
+                      background: '#6D28D9',
+                    }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {isMobile && (
         <div
           role="tablist"
@@ -374,6 +442,12 @@ function AppointmentModal({
     endDate: localDate(end ?? start),
     end: end ? localTime(end) : '',
     notes: appointment?.notes ?? '',
+    status: appointment?.status ?? 'SCHEDULED',
+    schedule_period: appointment?.schedule_period ?? '',
+    reminder_minutes: appointment?.reminder_minutes ? String(appointment.reminder_minutes) : '',
+    recurrence_type: '',
+    recurrence_interval: '6',
+    recurrence_amount: '',
   });
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
@@ -392,6 +466,14 @@ function AppointmentModal({
     setError('');
     if (!f.title.trim()) {
       setError('Informe um título.');
+      return;
+    }
+    if (!appointment && f.recurrence_type && !f.customer_id) {
+      setError('Escolha um cliente para a manutenção recorrente.');
+      return;
+    }
+    if (!appointment && f.recurrence_type && !/^\d+(\.\d{1,2})?$/.test(f.recurrence_amount)) {
+      setError('Informe um valor válido para a cobrança recorrente.');
       return;
     }
     const startsAt = new Date(`${f.date}T${f.start}:00`);
@@ -413,6 +495,21 @@ function AppointmentModal({
         notes: f.notes || (appointment ? null : undefined),
         starts_at: startsAt.toISOString(),
         ends_at: endsAt?.toISOString() ?? (appointment ? null : undefined),
+        status: f.status,
+        schedule_period: f.schedule_period || (appointment ? null : undefined),
+        reminder_minutes: f.reminder_minutes
+          ? Number(f.reminder_minutes)
+          : appointment
+            ? null
+            : undefined,
+        ...(!appointment && f.recurrence_type
+          ? {
+              recurrence_type: f.recurrence_type,
+              recurrence_interval:
+                f.recurrence_type === 'CUSTOM_MONTHS' ? Number(f.recurrence_interval) : undefined,
+              recurrence_amount: f.recurrence_amount,
+            }
+          : {}),
       };
       if (appointment) {
         const result = await updateAppointment(appointment.id, body);
@@ -655,6 +752,130 @@ function AppointmentModal({
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <label htmlFor="appt-status" className="ov-label">
+                    Status
+                  </label>
+                  <select
+                    id="appt-status"
+                    className="ov-input"
+                    value={f.status}
+                    onChange={(e) =>
+                      setF((p) => ({ ...p, status: e.target.value as typeof p.status }))
+                    }
+                  >
+                    <option value="UNCONFIRMED">Não confirmado</option>
+                    <option value="SCHEDULED">Agendado</option>
+                    <option value="COMPLETED">Concluído</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="appt-period" className="ov-label">
+                    Período
+                  </label>
+                  <select
+                    id="appt-period"
+                    className="ov-input"
+                    value={f.schedule_period}
+                    onChange={(e) => setF((p) => ({ ...p, schedule_period: e.target.value }))}
+                  >
+                    <option value="">Horário exato</option>
+                    <option value="MORNING">Manhã</option>
+                    <option value="AFTERNOON">Tarde</option>
+                    <option value="EVENING">Noite</option>
+                    <option value="BUSINESS_HOURS">Horário comercial</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="appt-reminder" className="ov-label">
+                    Lembrete
+                  </label>
+                  <select
+                    id="appt-reminder"
+                    className="ov-input"
+                    value={f.reminder_minutes}
+                    onChange={(e) => setF((p) => ({ ...p, reminder_minutes: e.target.value }))}
+                  >
+                    <option value="">Sem lembrete</option>
+                    <option value="5">5 minutos antes</option>
+                    <option value="15">15 minutos antes</option>
+                    <option value="30">30 minutos antes</option>
+                    <option value="60">1 hora antes</option>
+                    <option value="1440">1 dia antes</option>
+                  </select>
+                </div>
+                {!appointment && (
+                  <div>
+                    <label htmlFor="appt-recurrence" className="ov-label">
+                      Repetir
+                    </label>
+                    <select
+                      id="appt-recurrence"
+                      className="ov-input"
+                      value={f.recurrence_type}
+                      onChange={(e) => setF((p) => ({ ...p, recurrence_type: e.target.value }))}
+                    >
+                      <option value="">Não repetir</option>
+                      <option value="WEEKLY">Toda semana</option>
+                      <option value="MONTHLY">Todo mês</option>
+                      <option value="CUSTOM_MONTHS">A cada N meses</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {!appointment && f.recurrence_type && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  {f.recurrence_type === 'CUSTOM_MONTHS' && (
+                    <div>
+                      <label htmlFor="appt-interval" className="ov-label">
+                        Intervalo em meses
+                      </label>
+                      <input
+                        id="appt-interval"
+                        className="ov-input"
+                        type="number"
+                        min={2}
+                        max={24}
+                        value={f.recurrence_interval}
+                        onChange={(e) =>
+                          setF((p) => ({ ...p, recurrence_interval: e.target.value }))
+                        }
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="appt-amount" className="ov-label">
+                      Valor da cobrança
+                    </label>
+                    <input
+                      id="appt-amount"
+                      className="ov-input"
+                      inputMode="decimal"
+                      placeholder="180,00"
+                      value={f.recurrence_amount}
+                      onChange={(e) =>
+                        setF((p) => ({ ...p, recurrence_amount: e.target.value.replace(',', '.') }))
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+              )}
               <label htmlFor="appt-notes" className="ov-label">
                 Observações
               </label>

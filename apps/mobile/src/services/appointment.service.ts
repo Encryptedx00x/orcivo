@@ -1,4 +1,11 @@
 import { api, WriteOptions } from './api';
+import type {
+  AppointmentCreateDto,
+  AppointmentPeriod,
+  AppointmentStatus,
+} from '@orcivo/shared-types';
+
+export type { AppointmentCreateDto } from '@orcivo/shared-types';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
 
@@ -25,20 +32,13 @@ export interface Appointment {
   customer_id?: string | null;
   work_order_id?: string | null;
   customer?: AppointmentCustomer | null;
+  status: AppointmentStatus;
+  schedule_period?: AppointmentPeriod | null;
+  reminder_minutes?: number | null;
 }
 
 export interface AppointmentListResponse {
   data: Appointment[];
-}
-
-export interface AppointmentCreateDto {
-  title: string;
-  type?: AppointmentType;
-  customer_id?: string;
-  work_order_id?: string;
-  notes?: string;
-  starts_at: string;
-  ends_at?: string;
 }
 
 export const appointmentService = {
