@@ -11,6 +11,7 @@
 | --- | --- |
 | `main` / `origin/main` | `HEAD` (produto em `6904bb1`, seguido apenas pelo fechamento documental; ver `git log`) |
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
+| Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
@@ -161,6 +162,7 @@ Depois: abrir https://app.orcivo.com.br e a tela mexida (conta do dono já logad
 
 | Data | Commit | Entrega | Produção |
 | --- | --- | --- | --- |
+| 2026-10-11 | — | Banco `orcivo_prod` reinicializado para UAT do primeiro Key User; PostgreSQL migrado/semeado e Redis transitório limpo | ✅ 0 usuários/empresas/dados operacionais; backend saudável 3× |
 | 2026-10-11 | `744fba8`…`6904bb1` | R5b…R9, auditoria/correção de seletores e listas, validação automática/visual e plano de confiabilidade do autopilot | ✅ deploy `20261011-123450`; `HEALTH` saudável 3× + `DEPLOY_DONE` |
 | 2026-10-10 | `af85782`…`1d3edeb` | R7, R8 e R9: clientes/estoque, relatórios/portabilidade e tema/componentes do app | ⏳ validação final local bloqueada por Redis/PostgreSQL de teste; não implantado |
 | 2026-10-07 | `2d7d2c0` | R5a: campos da OS por segmento (Configurações → Ordem de serviço; Nova OS e "Dados do equipamento" no web e app completo) | ✅ 22:15 UTC |
