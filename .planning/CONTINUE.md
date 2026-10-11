@@ -42,7 +42,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-01 — primeira correção:** aprovação concorrente idempotente (`a94d073`).
 - [x] **B4-43 — protocolo antecipado:** protocolo obrigatório instituído antes das demais tarefas de UI (`5e9a5bb`).
 - [x] **B4-02 — estado inicial da OS:** aprovação cria OS `PENDING`, sem início implícito (`ad02f42`).
-- [ ] **B4-03…B4-05 — críticos restantes:** consistência entre modos/fotos, A receber e excedente.
+- [x] **B4-03 — estado/fotos entre modos:** três etapas persistidas, seletor explícito nos modos fáceis e `Sem data`
+      no lugar do travessão solto (`2c7afb6`).
+- [ ] **B4-04…B4-05 — críticos restantes:** A receber e confirmação de excedente.
 - [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
       navegação pós-geração e crop/zoom da logo.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -56,8 +58,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-03-mode-state-photo-consistency`. Reproduzir a alternância fácil/completo na mesma OS,
-incluindo estado e fotos Antes/Durante/Depois, antes de atribuir o achado às superfícies.
+**Próxima tarefa pronta:** `B4-04-receivables-flow`. Reproduzir o caminho completo das condições do orçamento até
+`A receber`, baixa e recibo, isolando em qual etapa o fluxo deixa de refletir os dados persistidos.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
