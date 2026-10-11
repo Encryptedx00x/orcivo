@@ -171,7 +171,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-CRITICAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-03-mode-state-photo-consistency",
