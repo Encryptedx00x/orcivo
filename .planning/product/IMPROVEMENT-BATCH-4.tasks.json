@@ -302,7 +302,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-CRITICAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-05-overpayment-confirmation",
