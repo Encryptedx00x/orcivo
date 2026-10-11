@@ -117,15 +117,15 @@ Estas são hipóteses de planejamento, não conclusões finais. `B4-43` deve con
 
 1. `B4-01`: aprovação concorrente.
 2. `B4-43`: protocolo de QA obrigatório, imediatamente após B4-01.
-3. Blocos 1–2: `B4-02`…`B4-14`, com ramos independentes; `DEPLOY-B4-1` aguarda todos os terminais do bloco.
+3. Blocos 1–2: `B4-02`…`B4-14`; depois `B4-14A` executa e registra a passada exploratória curta obrigatória.
 4. Blocos 3–5: `B4-15`…`B4-27`, sem dependências artificiais entre app, fluxos e documentos.
 5. `B4-28`…`B4-32`: levantamentos/ADRs; B4-32 é o último item da fase serial não bloqueada.
-6. `B4-44`: passada exploratória pré-deploy, dependente somente de B4-32.
+6. `B4-44`: passada exploratória pré-deploy, dependente explicitamente de todas as tarefas A/B B4-02…B4-32.
 7. `B4-33`: gate das decisões do dono, depois da passada pré-deploy.
 8. `B4-34`…`B4-42`: ramos estratégicos aprovados.
 9. `B4-45`: passada exploratória pós-onda estratégica.
 
-O piloto continua com `maxParallel=1`, mas o grafo registra apenas dependências de produto/validação reais.
+A execução é manual pelo Codex nesta conversa; `pilot.ps1` e dispatcher não devem ser usados.
 
 ## Decisões que exigem o dono
 
@@ -143,11 +143,11 @@ Publicação do app, lojas, DNS, billing, LGPD, stack e design system continuam 
 
 Nenhum deploy é executado nesta etapa. Na execução futura, os únicos checkpoints planejados são:
 
-| Gate          | Depois de | Escopo                                                             | Evidência obrigatória anterior                                                        |
-| ------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `DEPLOY-B4-1` | `B4-14`   | Blocos 1–2: concorrência, dinheiro, estado, visual e UX            | passada exploratória agregada de B4-01…B4-14, protocolo B4-43 e nenhum defeito aberto |
-| `DEPLOY-B4-2` | `B4-44`   | Blocos 3–5: app, fluxos e documentos, com regressão dos blocos 1–2 | passada exploratória completa, testes verdes e nenhum defeito aberto                  |
-| `DEPLOY-B4-3` | `B4-45`   | Onda estratégica B4-34…B4-42 aprovada                              | passada exploratória pós-estratégia, testes verdes e nenhum defeito aberto            |
+| Gate          | Depois de | Escopo                                                             | Evidência obrigatória anterior                                                                    |
+| ------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `DEPLOY-B4-1` | `B4-14A`  | Blocos 1–2: concorrência, dinheiro, estado, visual e UX            | checklist `IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`, protocolo B4-43 e nenhum defeito aberto |
+| `DEPLOY-B4-2` | `B4-44`   | Blocos 3–5: app, fluxos e documentos, com regressão dos blocos 1–2 | passada exploratória completa, testes verdes e nenhum defeito aberto                              |
+| `DEPLOY-B4-3` | `B4-45`   | Onda estratégica B4-34…B4-42 aprovada                              | passada exploratória pós-estratégia, testes verdes e nenhum defeito aberto                        |
 
 Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 
@@ -335,6 +335,19 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes visuais:** logo horizontal, quadrada e retrato nos três viewports e app
 - **Autonomia:** Nível B
 
+### B4-14A-exploratory-block-1-2 — Passada exploratória curta dos blocos 1–2
+
+- **Categoria:** melhoria de UX
+- **Problema:** Depois de B4-02…B4-14, executar uma passada exploratória curta das correções de concorrência, dinheiro, estado, visual e UX antes do primeiro deploy.
+- **Comportamento esperado:** Checklist em docs/qa cobre 1440×900, 390×844 e 360×800 nos modos fácil e completo, além do app via Expo web quando o fluxo existir; defeitos encontrados são reabertos/corrigidos antes de liberar DEPLOY-B4-1.
+- **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
+- **Escopo provável:** `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`, `docs/qa`, `apps/web`, `apps/mobile`
+- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom
+- **Critérios de aceite:** Criar docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md com data, build/commit, superfície, modo, viewport, fluxo, resultado e evidência. Cobrir B4-01…B4-14 conforme aplicabilidade, duas sessões para aprovação, valores abaixo/igual/acima, download real e navegação; app somente onde reproduzido e acessível. DEPLOY-B4-1 permanece bloqueado até checklist completo, testes verdes e zero defeito aberto no escopo.
+- **Testes automáticos:** reexecutar testes adicionados em B4-01…B4-14; typecheck/lint dos apps tocados; specs de integração relevantes com --runInBand
+- **Testes visuais:** 1440×900 em fácil e completo; 390×844 em fácil e completo; 360×800 em fácil e completo; Expo web :8081 fácil/completo quando o fluxo existir
+- **Autonomia:** Nível A
+
 ### B4-15-mobile-api-environment-guard — Bloquear localhost em build distribuída
 
 - **Categoria:** bug confirmado
@@ -342,7 +355,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Comportamento esperado:** Build de desenvolvimento pode usar host local explícito; preview/distribuição exige URL válida; build de produção falha cedo se apontar para localhost; nenhuma chave é registrada.
 - **Superfícies:** app nativo - fácil; app nativo - completo
 - **Escopo provável:** `apps/mobile/app.config.*`, `apps/mobile/eas.json`, `apps/mobile/src/config`, `apps/mobile/src/services`, `apps/mobile/package.json`
-- **Dependências:** B4-43-qa-gap-regression-protocol
+- **Dependências:** B4-14A-exploratory-block-1-2
 - **Critérios de aceite:** Build de desenvolvimento pode usar host local explícito; preview/distribuição exige URL válida; build de produção falha cedo se apontar para localhost; nenhuma chave é registrada. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar "não reproduzido" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.
 - **Testes automáticos:** teste que falha para localhost/127.0.0.1/::1 em perfil de produção; teste de resolução por perfil; typecheck mobile
 - **Testes visuais:** abrir build local equivalente a produção e conferir endpoint sanitizado sem expor valor
@@ -719,7 +732,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Comportamento esperado:** Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado.
 - **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
 - **Escopo provável:** `docs/qa`, `apps/backend`, `apps/web`, `apps/mobile`, `packages/shared-types`
-- **Dependências:** B4-32-partial-work-order-adr
+- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom, B4-15-mobile-api-environment-guard, B4-16-mobile-real-authentication, B4-17-mobile-start-invite-build-audit, B4-18-mobile-size-budget, B4-19-service-owner-adr, B4-20-service-owner-assignment, B4-21-quote-completeness-review, B4-22-receipt-signature-flow, B4-23-receipt-fields-inventory, B4-24-document-model, B4-25-quote-pdf-structure, B4-26-receipt-pdf-structure, B4-27-document-settings-surfaces, B4-28-usage-plans-adr, B4-29-neutral-positioning-adr, B4-30-multicompany-adr, B4-31-web-mobile-mode-adr, B4-32-partial-work-order-adr
 - **Critérios de aceite:** Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado. O app usa build distribuída equivalente com API correta; esta tarefa não faz deploy, apenas produz a evidência obrigatória anterior ao deploy. Nenhuma dependência estratégica B4-33…B4-42 é necessária.
 - **Testes automáticos:** suite completa serial, integração --runInBand, typecheck/lint/build e secret scan; reexecução de todos os testes adicionados no Batch 4
 - **Testes visuais:** 1440x900, 390x844, 360x800 em fácil/completo; app nativo fácil/completo; duas sessões, download real e fluxo completo com evidência

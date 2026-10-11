@@ -2,7 +2,7 @@
   "schemaVersion": "orcivo.product-batch/1",
   "batch": "IMPROVEMENT-BATCH-4",
   "state": "OWNER_APPROVED",
-  "ownerDecision": "2026-10-11: o dono autorizou criar e executar o lote de correções, UX, funcionalidades e levantamentos descritos nos achados do primeiro Key User. Em 2026-10-11, determinou DAG por dependências reais, B4-43 imediatamente após B4-01, passadas exploratórias pré-deploy em B4-14/B4-44/B4-45 e três pontos de deploy. Esta aprovação não executa deploy agora nem autoriza mutação de dados de produção, publicação de app, lojas, DNS, billing, LGPD, mudança de stack/design system ou implementação estratégica antes de B4-33.",
+  "ownerDecision": "2026-10-11: o dono autorizou criar e executar o lote de correções, UX, funcionalidades e levantamentos descritos nos achados do primeiro Key User. Em 2026-10-11, determinou DAG por dependências reais, B4-43 imediatamente após B4-01, passadas exploratórias pré-deploy em B4-14/B4-44/B4-45 e B4-44 dependente de todas as tarefas A/B B4-02…B4-32, B4-14A como passada exploratória curta obrigatória e três pontos de deploy. Esta aprovação não executa deploy agora nem autoriza mutação de dados de produção, publicação de app, lojas, DNS, billing, LGPD, mudança de stack/design system ou implementação estratégica antes de B4-33.",
   "phaseOrder": [
     "B4-CRITICAL",
     "B4-VISUAL",
@@ -43,7 +43,7 @@
       "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md"
     }
   },
-  "reviewChecklist": "Sem deploy nem dados de produção. Reproduzir antes em web desktop e app; registrar não reproduzido com evidência. UI verificada em 1440x900, 390x844 e 360x800, fácil/completo e app quando existir. Regra de negócio no backend/shared-types; npm run build após shared-types; dinheiro Decimal/string decimal/formatMoney, nunca Number; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre/Solo/Mais/Equipe; Lucide e #6D28D9; não recriar design system; não tocar Olivers Burger; preservar não rastreados; sem reset/stash/clean/force-push/histórico reescrito; B4-43 roda após B4-01 e rege todas as tarefas de UI; deploys somente após DEPLOY-B4-1/2/3 e suas passadas exploratórias; tarefas estratégicas param no ADR e B4-33.",
+  "reviewChecklist": "Sem deploy nem dados de produção. Reproduzir antes em web desktop e app; registrar não reproduzido com evidência. UI verificada em 1440x900, 390x844 e 360x800, fácil/completo e app quando existir. Regra de negócio no backend/shared-types; npm run build após shared-types; dinheiro Decimal/string decimal/formatMoney, nunca Number; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre/Solo/Mais/Equipe; Lucide e #6D28D9; não recriar design system; não tocar Olivers Burger; preservar não rastreados; sem reset/stash/clean/force-push/histórico reescrito; B4-43 roda após B4-01 e rege todas as tarefas de UI; B4-44 depende de todas as tarefas A/B B4-02…B4-32; DEPLOY-B4-1 exige B4-14A documentada; deploys somente após DEPLOY-B4-1/2/3 e suas passadas exploratórias; tarefas estratégicas param no ADR e B4-33.",
   "tasks": [
     {
       "taskId": "B4-01-approval-concurrency",
@@ -918,6 +918,75 @@
       "status": "SCHEDULED"
     },
     {
+      "taskId": "B4-14A-exploratory-block-1-2",
+      "title": "Passada exploratória curta dos blocos 1–2",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Depois de B4-02…B4-14, executar uma passada exploratória curta das correções de concorrência, dinheiro, estado, visual e UX antes do primeiro deploy.",
+      "expectedBehavior": "Checklist em docs/qa cobre 1440×900, 390×844 e 360×800 nos modos fácil e completo, além do app via Expo web quando o fluxo existir; defeitos encontrados são reabertos/corrigidos antes de liberar DEPLOY-B4-1.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Criar docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md com data, build/commit, superfície, modo, viewport, fluxo, resultado e evidência. Cobrir B4-01…B4-14 conforme aplicabilidade, duas sessões para aprovação, valores abaixo/igual/acima, download real e navegação; app somente onde reproduzido e acessível. DEPLOY-B4-1 permanece bloqueado até checklist completo, testes verdes e zero defeito aberto no escopo.",
+      "automatedTests": [
+        "reexecutar testes adicionados em B4-01…B4-14",
+        "typecheck/lint dos apps tocados",
+        "specs de integração relevantes com --runInBand"
+      ],
+      "visualTests": [
+        "1440×900 em fácil e completo",
+        "390×844 em fácil e completo",
+        "360×800 em fácil e completo",
+        "Expo web :8081 fácil/completo quando o fluxo existir"
+      ],
+      "dependencies": [
+        "B4-02-approved-os-starts-pending",
+        "B4-03-mode-state-photo-consistency",
+        "B4-04-receivables-flow",
+        "B4-05-overpayment-confirmation",
+        "B4-06-work-order-mobile-overflow",
+        "B4-07-payment-date-modal-overflow",
+        "B4-08-pdf-open-vs-download",
+        "B4-09-signature-empty-copy",
+        "B4-10-toast-duration-dismiss",
+        "B4-11-quote-unsaved-item-guard",
+        "B4-12-post-generation-navigation-adr",
+        "B4-13-post-generation-navigation",
+        "B4-14-logo-crop-position-zoom"
+      ],
+      "scope": [
+        "docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md",
+        "docs/qa",
+        "apps/web",
+        "apps/mobile"
+      ],
+      "touchesPaths": [
+        "docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
       "taskId": "B4-15-mobile-api-environment-guard",
       "title": "Bloquear localhost em build distribuída",
       "type": "BUG",
@@ -939,7 +1008,7 @@
         "abrir build local equivalente a produção e conferir endpoint sanitizado sem expor valor"
       ],
       "dependencies": [
-        "B4-43-qa-gap-regression-protocol"
+        "B4-14A-exploratory-block-1-2"
       ],
       "scope": [
         "apps/mobile/app.config.*",
@@ -2744,6 +2813,36 @@
         "duas sessões, download real e fluxo completo com evidência"
       ],
       "dependencies": [
+        "B4-02-approved-os-starts-pending",
+        "B4-03-mode-state-photo-consistency",
+        "B4-04-receivables-flow",
+        "B4-05-overpayment-confirmation",
+        "B4-06-work-order-mobile-overflow",
+        "B4-07-payment-date-modal-overflow",
+        "B4-08-pdf-open-vs-download",
+        "B4-09-signature-empty-copy",
+        "B4-10-toast-duration-dismiss",
+        "B4-11-quote-unsaved-item-guard",
+        "B4-12-post-generation-navigation-adr",
+        "B4-13-post-generation-navigation",
+        "B4-14-logo-crop-position-zoom",
+        "B4-15-mobile-api-environment-guard",
+        "B4-16-mobile-real-authentication",
+        "B4-17-mobile-start-invite-build-audit",
+        "B4-18-mobile-size-budget",
+        "B4-19-service-owner-adr",
+        "B4-20-service-owner-assignment",
+        "B4-21-quote-completeness-review",
+        "B4-22-receipt-signature-flow",
+        "B4-23-receipt-fields-inventory",
+        "B4-24-document-model",
+        "B4-25-quote-pdf-structure",
+        "B4-26-receipt-pdf-structure",
+        "B4-27-document-settings-surfaces",
+        "B4-28-usage-plans-adr",
+        "B4-29-neutral-positioning-adr",
+        "B4-30-multicompany-adr",
+        "B4-31-web-mobile-mode-adr",
         "B4-32-partial-work-order-adr"
       ],
       "scope": [
@@ -2849,22 +2948,12 @@
     {
       "gateId": "DEPLOY-B4-1",
       "afterTasks": [
-        "B4-02-approved-os-starts-pending",
-        "B4-03-mode-state-photo-consistency",
-        "B4-05-overpayment-confirmation",
-        "B4-06-work-order-mobile-overflow",
-        "B4-07-payment-date-modal-overflow",
-        "B4-08-pdf-open-vs-download",
-        "B4-09-signature-empty-copy",
-        "B4-10-toast-duration-dismiss",
-        "B4-11-quote-unsaved-item-guard",
-        "B4-13-post-generation-navigation",
-        "B4-14-logo-crop-position-zoom"
+        "B4-14A-exploratory-block-1-2"
       ],
       "scope": "blocos 1–2: concorrência, dinheiro, estado, correções visuais e UX",
       "requires": [
-        "passada exploratória agregada dos blocos 1–2 registrada no checklist do lote",
-        "testes automáticos e visuais do protocolo B4-43",
+        "B4-14A concluída com checklist em docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md",
+        "testes automáticos e visuais do protocolo B4-43 verdes",
         "nenhum defeito aberto no escopo"
       ],
       "action": "deploy somente pelo comando da seção 6 de CONTINUE.md; não executar nesta etapa"

@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 planejado, não iniciado — 45 tarefas em DAG por dependências reais; B4-43 logo após B4-01; três passadas/checkpoints de deploy; cinco ADRs antes do gate do dono | — |
+| Improvement Batch 4 | 🟡 planejado, não iniciado — 46 tarefas; execução manual pelo Codex, sem autopilot; B4-43 após B4-01; B4-14A antes do primeiro deploy; B4-44 depende de todas as A/B B4-02…B4-32 | — |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -51,17 +51,17 @@ Pendências registradas para depois:
 | Ordem | Tarefas | Entrega verificável |
 | --- | --- | --- |
 | 1 | B4-01 → B4-43 → B4-02…B4-05 | Concorrência primeiro; protocolo de QA antecipado; estado, A receber e dinheiro com Decimal e testes integrados. |
-| 2 | B4-06…B4-14 | Quebras mobile e UX corrigidas; `DEPLOY-B4-1` aguarda todos os terminais dos blocos 1–2 e a passada agregada. |
+| 2 | B4-06…B4-14 → B4-14A → DEPLOY-B4-1 | Quebras mobile e UX; passada curta em 3 viewports × 2 modos + app aplicável registrada em docs/qa antes do deploy. |
 | 3 | B4-15…B4-18 | App sem localhost em build distribuída, login real validado, Home/convite auditados e tamanho medido. |
 | 4 | B4-19…B4-23 | Responsável neutro, completude de orçamento e assinatura/opções de recibo. |
 | 5 | B4-24…B4-27 | Modelo e PDFs de orçamento/recibo evoluídos no design Orcivo, com configuração e preview. |
 | 6 | B4-28…B4-32 | ADRs de Uso/planos, posicionamento, multiempresa, modos e realização parcial; sem implementar. |
-| 7 | B4-44 → DEPLOY-B4-2 | Passada exploratória completa da onda não bloqueada; segundo deploy somente após evidência. |
+| 7 | B4-44 → DEPLOY-B4-2 | B4-44 depende de todas as tarefas A/B B4-02…B4-32; segundo deploy somente após evidência completa. |
 | 8 | B4-33 | Decisões explícitas do dono registradas; gate obrigatório. |
 | 9 | B4-34…B4-42 → B4-45 → DEPLOY-B4-3 | Implementações estratégicas aprovadas, seguida da mesma passada exploratória e terceiro deploy. |
 
 Primeira tarefa: `B4-01-approval-concurrency`; a segunda é obrigatoriamente `B4-43-qa-gap-regression-protocol`.
-Depois, o piloto continua serial (`maxParallel=1`), mas escolhe entre tarefas prontas sem dependências artificiais.
+Depois, o Codex executa manualmente nesta conversa, sem `pilot.ps1`/dispatcher/autopilot, respeitando a ordem do plano.
 Dependências, checkpoints, escopo, critérios e autonomia estão no JSON e no documento UAT. As decisões estratégicas
 são Nível C no gate `B4-33`; levantamentos/ADRs anteriores são Nível B e não antecipam mudanças de produto.
 
