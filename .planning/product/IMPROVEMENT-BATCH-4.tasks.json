@@ -108,7 +108,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-CRITICAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-02-approved-os-starts-pending",

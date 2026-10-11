@@ -33,13 +33,13 @@ Outra IA pode ter commitado no meio (já aconteceu: o Codex commitou a R5a junto
 
 Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (commit).
 
-### Improvement Batch 4 — UAT do primeiro Key User (46 tarefas; não iniciado)
+### Improvement Batch 4 — UAT do primeiro Key User (46 tarefas; em andamento)
 
 Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`. O plano foi gerado por
 `scripts/orchestration/v2/batch-reconcile.ps1`; não alterar dependências à mão no `.plan.json`.
 
-- [ ] **B4-01 — primeira correção:** aprovação concorrente idempotente.
+- [x] **B4-01 — primeira correção:** aprovação concorrente idempotente (`a94d073`).
 - [ ] **B4-43 — protocolo antecipado:** executar logo após B4-01; passa a reger todas as tarefas de UI seguintes.
 - [ ] **B4-02…B4-05 — críticos restantes:** status inicial da OS, consistência entre modos/fotos, A receber e excedente.
 - [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
@@ -55,8 +55,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Primeira tarefa pronta:** `B4-01-approval-concurrency`. Começar com duas sessões reais no ambiente local,
-provar uma única aprovação/OS/cobranças e mapear a resposta amigável nas seis combinações de superfície/modo.
+**Próxima tarefa pronta:** `B4-43-qa-gap-regression-protocol`. Consolidar o protocolo obrigatório que passa a reger
+todas as tarefas de UI seguintes, incluindo os três viewports, os dois modos, concorrência e ações reais.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
