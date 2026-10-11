@@ -297,6 +297,25 @@
       "verificationProfile": "B",
       "phaseGate": "R9",
       "status": "SCHEDULED"
+    },
+    {
+      "taskId": "UX-bounded-searchable-selectors",
+      "title": "UX: limitar e tornar pesquisáveis seletores extensos",
+      "type": "FEATURE",
+      "source": "decisão do dono em 2026-10-10",
+      "description": "Auditar históricos e seletores que crescem com dados do cliente; manter paginação existente e aplicar busca remota, limite inicial e Ver mais nos fluxos viáveis de cliente, orçamento, OS, agenda, financeiro e vínculo de recibos, nas quatro superfícies aplicáveis.",
+      "acceptance": "Nenhum seletor de entidade crescente renderiza centenas de opções de uma vez; recibos permitem buscar e carregar mais clientes, OS e orçamentos; listas estáticas permanecem simples; consultas são tenant-scoped e limitadas; design aprovado, pt-BR e acessibilidade preservados. Verificar: specs backend de busca; typecheck/lint/build; testes web/app tocados; validação visual nos modos completo e fácil.",
+      "dependencies": ["R9-apply-screens"],
+      "scope": ["apps/backend/src/customer", "apps/backend/src/quote", "apps/backend/src/work-order", "apps/web/app", "apps/web/components", "apps/mobile/src", "docs/qa"],
+      "touchesPaths": ["apps/backend/src/customer", "apps/backend/src/quote", "apps/backend/src/work-order", "apps/web/app", "apps/web/components", "apps/mobile/src", "docs/qa"],
+      "risk": "B",
+      "productBatch": "IMPROVEMENT-BATCH-3",
+      "ownerGate": "none",
+      "blockedByGates": ["P02-T12", "P02-T13", "P03"],
+      "candidateConstraints": {},
+      "verificationProfile": "B",
+      "phaseGate": "R9",
+      "status": "DONE"
     }
   ]
 }

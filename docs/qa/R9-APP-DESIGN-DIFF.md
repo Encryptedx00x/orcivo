@@ -40,9 +40,19 @@ para a aplicação do design aprovado; não cria um design system novo.
 | Empresa                          | `/configuracoes`, `/equipe`, `/plano`       | `configuracoes/*`, `equipe/*`, `plano/*`, `conta/*` | Campos, opções, cards e hierarquia visual                |
 | Autenticação                     | handoff de Auth & Onboarding                | `screens/auth/*`                                    | Campos, botões, erros e espaçamento do kit               |
 
-## Evidência visual a completar após a implementação
+## Evidência visual da rodada final
 
-Os prints comparativos em 375×812 serão adicionados na rodada final com Expo
-web e as páginas web correspondentes. Critério de aceite: nenhuma divergência
-relevante de token, hierarquia, toque, componente, texto pt-BR ou ícone entre
-o app e a referência mobile aprovada.
+Validação executada em 2026-10-11 no Expo web em 375×812 e na web de produção
+local, usando o navegador integrado do Codex. Foram conferidos:
+
+- autenticação: login reconstruído com `AuthScaffold`, hierarquia, espaçamento,
+  campos e ação primária alinhados ao handoff;
+- modo fácil: Home, Clientes, Novo orçamento e Novo recibo;
+- modo completo: Home, Clientes, Agenda e Financeiro;
+- estados de busca, vazio, carregamento, seleção, lista limitada e “Ver mais”;
+- roxo `#6D28D9`, superfícies, tipografia, alvos de toque, Lucide e textos pt-BR.
+
+Resultado: nenhuma divergência relevante de token, hierarquia, toque,
+componente, texto ou ícone nas telas verificadas. O app nativo continua
+dependendo de novo build EAS para chegar aos aparelhos; publicação em loja não
+faz parte desta rodada.
