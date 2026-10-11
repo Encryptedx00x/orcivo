@@ -47,6 +47,7 @@ import {
   H1,
   Loading,
   More,
+  Options,
   Page,
   ReasonModal,
   Row,
@@ -65,6 +66,11 @@ const EXTRA_ICONS: Record<WorkOrderExtraAction, typeof Hourglass> = {
 };
 
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
+type PhotoStage = keyof typeof STAGE_LABEL;
+const PHOTO_STAGE_OPTIONS = (Object.keys(STAGE_LABEL) as PhotoStage[]).map((value) => ({
+  value,
+  label: STAGE_LABEL[value],
+}));
 
 const PAGE = 10;
 
@@ -301,9 +307,17 @@ export function ServicesScreen() {
         return (
           <Card key={o.id} style={{ padding: 16, gap: 12 }}>
             <View style={{ flexDirection: 'row', gap: 14 }}>
-              <Text style={{ fontSize: 22, fontWeight: '800', width: 64, color: C.ink }}>
+              <Text
+                style={{
+                  fontSize: o.scheduled_at ? 22 : 13,
+                  lineHeight: o.scheduled_at ? 28 : 18,
+                  fontWeight: o.scheduled_at ? '800' : '600',
+                  width: 68,
+                  color: o.scheduled_at ? C.ink : C.fg3,
+                }}
+              >
                 {!o.scheduled_at
-                  ? '—'
+                  ? 'Sem data'
                   : all && new Date(o.scheduled_at).toDateString() !== today
                     ? new Date(o.scheduled_at).toLocaleDateString('pt-BR', {
                         day: '2-digit',
@@ -368,6 +382,7 @@ export function RunScreen({
   const [done, setDone] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [action, setAction] = useState<'cancel' | 'reopen' | null>(null);
+  const [photoStage, setPhotoStage] = useState<PhotoStage>('BEFORE');
 
   if (order.error)
     return (
@@ -383,7 +398,6 @@ export function RunScreen({
     );
   const o = order.data;
   const photos = o.photos ?? [];
-  const stage: 'BEFORE' | 'DURING' = photos.length === 0 ? 'BEFORE' : 'DURING';
 
   const addPhoto = async (camera: boolean) => {
     const perm = camera
@@ -398,8 +412,8 @@ export function RunScreen({
     if (r.canceled || !r.assets[0]) return;
     setUploading(true);
     try {
-      await easy.uploadPhoto(o.id, r.assets[0].uri, stage);
-      Alert.alert('Pronto', `Foto guardada como "${STAGE_LABEL[stage]}".`);
+      await easy.uploadPhoto(o.id, r.assets[0].uri, photoStage);
+      Alert.alert('Pronto', `Foto guardada como "${STAGE_LABEL[photoStage]}".`);
       void order.refresh();
     } catch (err) {
       Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar a foto.'));
@@ -523,8 +537,15 @@ export function RunScreen({
         )}
         {open ? (
           <>
+            <Text style={[s.body, { fontWeight: '600' }]}>Etapa da foto</Text>
+            <Options
+              options={PHOTO_STAGE_OPTIONS}
+              value={photoStage}
+              onPick={setPhotoStage}
+              cols={3}
+            />
             <Btn tone="soft" icon={Camera} busy={uploading} onPress={() => void addPhoto(true)}>
-              Tirar foto
+              Tirar foto ({STAGE_LABEL[photoStage]})
             </Btn>
             <Btn
               tone="outline"

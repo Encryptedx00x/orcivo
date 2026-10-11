@@ -223,6 +223,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** spec de persistência/categoria de foto; testes de hidratação após troca de modo; testes de atualização/refetch
 - **Testes visuais:** alternar modo após upload em 390x844 e 360x800; reabrir no desktop 1440x900 e no app nativo
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-11):** a hipótese foi reproduzida parcialmente: backend, modo completo e app completo já preservavam `BEFORE`/`DURING`/`AFTER`, mas os modos fáceis web e nativo decidiam a categoria implicitamente pela quantidade de fotos e não permitiam escolher `AFTER`. Os dois modos fáceis agora usam o seletor existente de três opções antes do upload; a categoria é persistida pelo backend e ambos refazem a leitura após salvar. Em teste local real, a mesma OS foi iniciada no fácil, recebeu uma foto em cada categoria e foi alternada para o completo: ID, estado `IN_PROGRESS`/`Fazendo` e as três fotos permaneceram iguais. A matriz `1440×900`, `390×844` e `360×800` × fácil/completo passou sem overflow. O upload web também limpa o input depois de concluir, permitindo selecionar novamente o mesmo arquivo. O app completo e o fácil têm o contrato corrigido, mas a reprodução runtime autenticada segue **não reproduzida/adiada** até B4-15/B4-16. Durante a passada foi identificado o `—` isolado ao lado do título no cartão fácil: era o placeholder de uma OS sem agendamento; foi substituído por `Sem data` nas superfícies web e app.
 
 ### B4-04-receivables-flow — Corrigir fluxo A receber
 

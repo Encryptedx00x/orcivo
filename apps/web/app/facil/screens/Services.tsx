@@ -50,6 +50,7 @@ import {
   Field,
   H1,
   Loading,
+  Options,
   card,
   hhmm,
   longDate,
@@ -157,6 +158,11 @@ const STATUS: Record<WorkOrderStatus, { kind: ChipKind; label: string }> = {
   WARRANTY: { kind: 'doing', label: WORK_ORDER_STATUS_LABELS.WARRANTY },
 };
 const STAGE_LABEL = { BEFORE: 'Antes', DURING: 'Durante', AFTER: 'Depois' } as const;
+type PhotoStage = keyof typeof STAGE_LABEL;
+const PHOTO_STAGE_OPTIONS = (Object.keys(STAGE_LABEL) as PhotoStage[]).map((value) => ({
+  value,
+  label: STAGE_LABEL[value],
+}));
 
 /** Ações de status extra (R5b): ícone e confirmação pós-ação. */
 const EXTRA_ACTIONS: Record<
@@ -332,16 +338,17 @@ export function ServicesScreen(): React.JSX.Element {
                 <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                   <span
                     style={{
-                      fontSize: 22,
-                      fontWeight: 800,
+                      fontSize: o.scheduled_at ? 22 : 13,
+                      fontWeight: o.scheduled_at ? 800 : 600,
                       fontVariantNumeric: 'tabular-nums',
-                      width: 64,
+                      width: 68,
                       flexShrink: 0,
-                      lineHeight: '28px',
+                      lineHeight: o.scheduled_at ? '28px' : '18px',
+                      color: o.scheduled_at ? C.ink : C.fg3,
                     }}
                   >
                     {!o.scheduled_at
-                      ? '—'
+                      ? 'Sem data'
                       : all && new Date(o.scheduled_at).toDateString() !== today
                         ? new Date(o.scheduled_at).toLocaleDateString('pt-BR', {
                             day: '2-digit',
@@ -415,20 +422,20 @@ export function RunScreen(): React.JSX.Element {
   const more = useServiceMore(order.reload);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
+  const [photoStage, setPhotoStage] = useState<PhotoStage>('BEFORE');
 
   if (order.loading && !order.data) return <Loading />;
   if (order.error || !order.data)
     return <ErrorBox title="Não foi possível carregar este serviço." onRetry={order.reload} />;
   const o = order.data;
   const photos = o.photos ?? [];
-  const stage: 'BEFORE' | 'DURING' | 'AFTER' = photos.length === 0 ? 'BEFORE' : 'DURING';
 
   const upload = async (file?: File) => {
     if (!file) return;
     setUploading(true);
     try {
-      await uploadWorkOrderPhoto(o.id, file, stage);
-      toast(`Foto guardada como "${STAGE_LABEL[stage]}".`);
+      await uploadWorkOrderPhoto(o.id, file, photoStage);
+      toast(`Foto guardada como "${STAGE_LABEL[photoStage]}".`);
       order.reload();
     } catch {
       toast('Não foi possível guardar a foto.');
@@ -596,6 +603,16 @@ export function RunScreen(): React.JSX.Element {
           ))}
         </div>
       )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 16, fontWeight: 600, color: C.fg2 }}>Etapa da foto</span>
+        <Options
+          options={PHOTO_STAGE_OPTIONS}
+          value={photoStage}
+          onPick={setPhotoStage}
+          cols={3}
+          height={48}
+        />
+      </div>
       <label style={{ display: 'block' }}>
         <input
           type="file"
@@ -603,7 +620,12 @@ export function RunScreen(): React.JSX.Element {
           capture="environment"
           hidden
           disabled={uploading}
-          onChange={(e) => void upload(e.target.files?.[0])}
+          onChange={(e) => {
+            const input = e.currentTarget;
+            void upload(input.files?.[0]).finally(() => {
+              input.value = '';
+            });
+          }}
         />
         <span
           style={{
@@ -621,7 +643,8 @@ export function RunScreen(): React.JSX.Element {
             cursor: 'pointer',
           }}
         >
-          <Camera size={26} aria-hidden="true" /> {uploading ? 'Guardando…' : 'Tirar foto'}
+          <Camera size={26} aria-hidden="true" />{' '}
+          {uploading ? 'Guardando…' : `Tirar foto (${STAGE_LABEL[photoStage]})`}
         </span>
       </label>
       <label style={{ display: 'block' }}>
