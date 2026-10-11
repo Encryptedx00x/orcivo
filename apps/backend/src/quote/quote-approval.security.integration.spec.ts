@@ -177,6 +177,12 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     expect(new Set(results.map((result) => result.work_order_id))).toHaveProperty('size', 1);
     expect(await prisma.quoteApproval.count({ where: { quote_id: quoteId } })).toBe(1);
     expect(await prisma.workOrder.count({ where: { quote_id: quoteId } })).toBe(1);
+    expect(
+      await prisma.workOrder.findFirstOrThrow({
+        where: { quote_id: quoteId },
+        select: { status: true, started_at: true },
+      }),
+    ).toEqual({ status: 'PENDING', started_at: null });
     expect(await prisma.payment.count({ where: { quote_id: quoteId } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { company_id: companyId } })).toBe(2);
     expect((await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } })).pdf_url).toContain(

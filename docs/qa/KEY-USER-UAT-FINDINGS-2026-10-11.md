@@ -209,6 +209,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** quote/work-order state-machine specs; integração aprovação → OS OPEN --runInBand
 - **Testes visuais:** aprovar e abrir OS nas seis combinações de superfície/modo nos três viewports web
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-11):** o enum vigente do domínio chama o estado aberto de `PENDING`; a aprovação local criou a OS nesse estado, com `started_at = null`, e a transição para `IN_PROGRESS` permaneceu disponível somente nas ações explícitas auditadas (`Iniciar OS`/`Começar`). No modo completo, a OS exibiu `Pendente` e `Iniciar OS` em `1440×900`, `390×844` e `360×800`; no modo fácil, exibiu `Para fazer` e `Começar` nos mesmos viewports. As seis verificações web ficaram sem overflow horizontal. O app já mapeia `PENDING` separadamente de `IN_PROGRESS` no código, mas o fluxo autenticado não pôde ser reproduzido na build instalada por causa do bloqueio de API/login dos achados 16–17; portanto, **não reproduzido no app**, com revalidação runtime obrigatória após B4-15/B4-16. As specs unitárias/state-machine passaram com 141 testes e a integração serial passou 10/10, incluindo concorrência, unicidade e a asserção `PENDING`/`started_at null`.
 
 ### B4-03-mode-state-photo-consistency — Consistência de estado e fotos ao alternar modo
 

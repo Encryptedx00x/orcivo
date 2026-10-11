@@ -41,6 +41,9 @@ const mockPrisma = {
   quoteApproval: {
     create: jest.fn(),
   },
+  workOrder: {
+    findFirst: jest.fn(),
+  },
   auditLog: {
     create: jest.fn(),
   },
@@ -1164,7 +1167,12 @@ describe('QuoteService', () => {
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
       const result = await service.approve(quoteToken, dto, '127.0.0.1', 'Mozilla/5.0');
 
-      expect(result).toEqual({ status: 'APPROVED' });
+      expect(result).toEqual({
+        status: 'APPROVED',
+        already_approved: false,
+        work_order_id: 'wo-1',
+        message: 'Orçamento aprovado com sucesso.',
+      });
       expect(mockTx.quote.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -1240,18 +1248,26 @@ describe('QuoteService', () => {
         'comp-1',
         'user-1',
         'q1',
-        'IN_PROGRESS',
+        'PENDING',
         mockTx,
       );
     });
 
-    it('Test A2: approve() chamado 2x com mesmo token retorna ConflictException', async () => {
+    it('Test A2: approve() chamado 2x retorna o estado aprovado sem duplicar a OS', async () => {
       mockTx.quote.updateMany.mockResolvedValue({ count: 0 }); // ja aprovado
+      mockPrisma.quote.findFirst
+        .mockResolvedValueOnce(quoteMock)
+        .mockResolvedValueOnce({ id: quoteMock.id });
+      mockPrisma.workOrder.findFirst.mockResolvedValue({ id: 'wo-1' });
       const dto = { approval_method: 'APPROVE_BUTTON' as const };
 
-      await expect(service.approve(quoteToken, dto, '127.0.0.1', 'ua')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.approve(quoteToken, dto, '127.0.0.1', 'ua')).resolves.toEqual({
+        status: 'APPROVED',
+        already_approved: true,
+        work_order_id: 'wo-1',
+        message: 'Este orçamento já foi aprovado. A tela foi atualizada.',
+      });
+      expect(mockWorkOrderService.create).not.toHaveBeenCalled();
     });
 
     it('Test A3: approve() com APPROVE_BUTTON nao lanca excecao', async () => {
@@ -1554,6 +1570,7 @@ describe('QuoteExpiryProcessor', () => {
         updateMany: jest.fn(),
       },
       quoteApproval: { create: jest.fn() },
+      workOrder: { findFirst: jest.fn() },
       auditLog: { create: jest.fn() },
       company: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() },
       $transaction: jest.fn(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)),
