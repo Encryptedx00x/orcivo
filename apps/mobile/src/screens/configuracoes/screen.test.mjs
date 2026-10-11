@@ -51,7 +51,10 @@ function mount(api) {
     '@react-navigation/native': { useNavigation: () => ({ navigate() {} }) },
     '../../easy/screens/Settings': { ApprovalMethodsPicker: () => null, LogoPicker: () => null },
     '../../easy/EasyModeContext': { useEasyMode: () => ({ setEasy() {} }) },
-    '@orcivo/shared-types': { COMPANY_DOC_FIELDS: [] },
+    '@orcivo/shared-types': {
+      COMPANY_DOC_FIELDS: [],
+      DEFAULT_HOME_SHORTCUTS: ['CUSTOMER', 'QUOTE', 'WORK_ORDER'],
+    },
   };
   const exports = {};
   runInNewContext(compiled.outputText, { exports, require: (name) => {

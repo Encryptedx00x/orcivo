@@ -294,6 +294,7 @@ test('Mais menu opens the real documentos screen instead of EmBreve', () => {
     '../screens/financeiro/FinanceiroScreen': { FinanceiroScreen },
     '../screens/documentos/DocumentosScreen': { DocumentosScreen },
     '../screens/plano/PlanoScreen': { PlanoScreen },
+    '../screens/relatorios/RelatoriosScreen': { RelatoriosScreen: () => null },
   };
   for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };

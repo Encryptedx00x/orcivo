@@ -126,12 +126,15 @@ export function ConfiguracoesScreen() {
         setProfile(profileFromCompany(company));
         const key = company.pix_key ?? '';
         setPix({ pix_key_type: inferPixKeyType(key), pix_key: key });
-        setInventory({
-          stock_depletion_event: company.stock_depletion_event,
-          contact_save_preference: company.contact_save_preference,
-          catalog_name: company.catalog_name,
-          catalog_units: company.catalog_units,
-        });
+        setInventory((current) => ({
+          stock_depletion_event: company.stock_depletion_event ?? current.stock_depletion_event,
+          contact_save_preference:
+            company.contact_save_preference ?? current.contact_save_preference,
+          catalog_name: company.catalog_name ?? current.catalog_name,
+          catalog_units: company.catalog_units?.length
+            ? company.catalog_units
+            : current.catalog_units,
+        }));
         if (company.home_shortcuts?.length) setHomeShortcuts(company.home_shortcuts);
       })
       .catch(() => {

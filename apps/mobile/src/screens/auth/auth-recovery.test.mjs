@@ -45,8 +45,8 @@ test('AC6: token pode ser colado puro ou como link completo do e-mail', () => {
 
 test('AC5: AuthStack registra ForgotPassword e AcceptInvite; Login linka para ForgotPassword', () => {
   const stack = read('../../navigation/AuthStack.tsx');
-  assert.match(stack, /name="ForgotPassword" component=\{ForgotPasswordScreen\}/);
-  assert.match(stack, /name="AcceptInvite" component=\{AcceptInviteScreen\}/);
+  assert.match(stack, /name="ForgotPassword"\s+component=\{ForgotPasswordScreen\}/);
+  assert.match(stack, /name="AcceptInvite"\s+component=\{AcceptInviteScreen\}/);
   const login = read('./LoginScreen.tsx');
   assert.match(login, /navigation\.navigate\('ForgotPassword'\)[\s\S]{0,120}Esqueci minha senha/);
   assert.match(login, /navigation\.navigate\('AcceptInvite'\)/);

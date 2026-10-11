@@ -20,11 +20,31 @@ const Stack = createNativeStackNavigator<AuthStackParamList>();
 export function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerTintColor: '#6D28D9' }}>
-      <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Entrar' }} />
-      <Stack.Screen name="SignupStep1" component={SignupStep1Screen} options={{ title: 'Criar conta' }} />
-      <Stack.Screen name="SignupStep2" component={SignupStep2Screen} options={{ title: 'Criar empresa' }} />
-      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Recuperar senha' }} />
-      <Stack.Screen name="AcceptInvite" component={AcceptInviteScreen} options={{ title: 'Convite' }} />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ title: 'Entrar', headerShown: false }}
+      />
+      <Stack.Screen
+        name="SignupStep1"
+        component={SignupStep1Screen}
+        options={{ title: 'Criar conta' }}
+      />
+      <Stack.Screen
+        name="SignupStep2"
+        component={SignupStep2Screen}
+        options={{ title: 'Criar empresa' }}
+      />
+      <Stack.Screen
+        name="ForgotPassword"
+        component={ForgotPasswordScreen}
+        options={{ title: 'Recuperar senha' }}
+      />
+      <Stack.Screen
+        name="AcceptInvite"
+        component={AcceptInviteScreen}
+        options={{ title: 'Convite' }}
+      />
     </Stack.Navigator>
   );
 }
