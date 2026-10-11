@@ -13,6 +13,7 @@
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
 | Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
+| Próxima fila | **Improvement Batch 4 planejado, não iniciado e não implantado**: 45 tarefas em `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`, DAG por dependências reais, três checkpoints de deploy e fonte humana em `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md`. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
 Antes de qualquer coisa: `git status --short`, `git log --oneline -5`, `git fetch && git status -sb`.
@@ -22,14 +23,50 @@ Outra IA pode ter commitado no meio (já aconteceu: o Codex commitou a R5a junto
 ## 2. Leia antes (nessa ordem, ~10 min)
 
 1. `CLAUDE.md` (regras absolutas: design, nomes de plano, dinheiro em Decimal, `company_id`, commits sem atribuição de IA, pt-BR).
-2. `.planning/IMPROVEMENT-ROUNDS.md` — rodadas R0…R9, tabela "Andamento", decisões.
-3. `docs/qa/CATALOGO-DE-TESTES.md` — roteiro fixo de testes (O, S, F, N, P, W, §7 automático, §8 deploy).
-4. `.planning/research/AGENDA-BOA-BENCHMARK.md` — só o item AB-x da tarefa em curso.
-5. `docs/runbooks/local-dev.md` — subir local, specs de integração.
+2. `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` — classificação, deduplicação, critérios e catálogo completo do Batch 4.
+3. `.planning/product/IMPROVEMENT-BATCH-4.tasks.json` + `.plan.json` — fila e dependências executáveis.
+4. `.planning/IMPROVEMENT-ROUNDS.md` — histórico R0…R9 preservado e nova rodada B4.
+5. `docs/qa/CATALOGO-DE-TESTES.md` — roteiro fixo atual; a atualização definitiva dos gaps 1–18 é a tarefa `B4-43`.
+6. `docs/runbooks/local-dev.md` — subir local, specs de integração.
 
 ## 3. Fila de tarefas (em ordem — pegue a primeira não marcada)
 
 Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (commit).
+
+### Improvement Batch 4 — UAT do primeiro Key User (45 tarefas; não iniciado)
+
+Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
+`.planning/product/IMPROVEMENT-BATCH-4.tasks.json`. O plano foi gerado por
+`scripts/orchestration/v2/batch-reconcile.ps1`; não alterar dependências à mão no `.plan.json`.
+
+- [ ] **B4-01 — primeira correção:** aprovação concorrente idempotente.
+- [ ] **B4-43 — protocolo antecipado:** executar logo após B4-01; passa a reger todas as tarefas de UI seguintes.
+- [ ] **B4-02…B4-05 — críticos restantes:** status inicial da OS, consistência entre modos/fotos, A receber e excedente.
+- [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
+      navegação pós-geração e crop/zoom da logo.
+- [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
+- [ ] **B4-19…B4-23 — fluxos:** responsável pelo serviço, completude do orçamento e assinatura/opções de recibo.
+- [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
+- [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
+- [ ] **B4-44 — passada pré-deploy:** depende somente de B4-32, última tarefa da fase serial não bloqueada.
+- [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
+- [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
+- [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
+
+**Primeira tarefa pronta:** `B4-01-approval-concurrency`. Começar com duas sessões reais no ambiente local,
+provar uma única aprovação/OS/cobranças e mapear a resposta amigável nas seis combinações de superfície/modo.
+
+Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
+UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
+atribuir o defeito a desktop/app e registrar `não reproduzido` com evidência. Preservar os não rastreados existentes.
+
+Pontos de deploy futuros, sempre pela receita da §6 e somente após evidência exploratória:
+
+1. `DEPLOY-B4-1` depois de B4-14: blocos 1–2, após passada agregada B4-01…B4-14.
+2. `DEPLOY-B4-2` depois de B4-44: blocos 3–5 e regressão dos blocos 1–2.
+3. `DEPLOY-B4-3` depois de B4-45: onda estratégica B4-34…B4-42 aprovada pelo dono.
+
+O piloto permanece `maxParallel=1`, mas o JSON não encadeia tarefas independentes. Nenhum desses deploys foi executado.
 
 ### R5b — OS sob medida (resto) · AB-5…AB-9
 - [x] **Status extras da OS:** `AWAITING_PAYMENT` ("Aguardando pagamento") e `WARRANTY` ("Em garantia"),
@@ -77,8 +114,8 @@ o mesmo produto em qualquer superfície.
 
 - Supervisor: `scripts/orchestration/v2/pilot.ps1` (status / start / stop / approve-gate), runbook em
   `docs/runbooks/agent-orchestration.md`, estado em `.orchestration/v2/` (checkpoints, ledger, runs).
-  Lote atual configurado em `config.v2.json → pilot.taskSourceFile` = `.planning/product/MVP-LAUNCH-BATCH-2.tasks.json`
-  (já concluído) — a fila deste arquivo precisa virar um **lote novo** no mesmo formato (+ `batch-reconcile.ps1`).
+  A configuração ainda aponta para o lote anterior concluído; **não iniciar o piloto** até apontar explicitamente para
+  `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`. O Batch 4 e o plano reconciliado já existem, mas execução não começou.
 - Executor GLM: `scripts/orchestration/v2/glm.ps1` via OpenCode CLI (1.17.9), hoje **fixado** em
   `nvidia/z-ai/glm-5.3` (rota NVIDIA NIM). A rota direta `zai-coding-plan/glm-5.3` foi aposentada em 2026-09-17,
   mas a credencial **Z.AI Coding Plan** continua no OpenCode. Para a cadeia pedida pelo dono

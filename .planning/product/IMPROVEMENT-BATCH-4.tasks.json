@@ -1,0 +1,2900 @@
+{
+  "schemaVersion": "orcivo.product-batch/1",
+  "batch": "IMPROVEMENT-BATCH-4",
+  "state": "OWNER_APPROVED",
+  "ownerDecision": "2026-10-11: o dono autorizou criar e executar o lote de correções, UX, funcionalidades e levantamentos descritos nos achados do primeiro Key User. Em 2026-10-11, determinou DAG por dependências reais, B4-43 imediatamente após B4-01, passadas exploratórias pré-deploy em B4-14/B4-44/B4-45 e três pontos de deploy. Esta aprovação não executa deploy agora nem autoriza mutação de dados de produção, publicação de app, lojas, DNS, billing, LGPD, mudança de stack/design system ou implementação estratégica antes de B4-33.",
+  "phaseOrder": [
+    "B4-CRITICAL",
+    "B4-VISUAL",
+    "B4-MOBILE",
+    "B4-FLOWS",
+    "B4-DOCS",
+    "B4-STRATEGY",
+    "B4-QA-PREDEPLOY",
+    "B4-DECISION",
+    "B4-STRATEGY-IMPL",
+    "B4-QA-STRATEGIC"
+  ],
+  "gates": {
+    "P02-T12": {
+      "kind": "HUMAN_APPROVAL",
+      "state": "PASS",
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md"
+    },
+    "P02-T13": {
+      "kind": "MANUAL_UAT",
+      "state": "PASS",
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P02-T12-T13-RESULT.md"
+    },
+    "P02-PASS": {
+      "kind": "DERIVED",
+      "state": "PASS",
+      "requires": [
+        "P02-T12",
+        "P02-T13"
+      ]
+    },
+    "P03": {
+      "kind": "GSD_PHASE",
+      "state": "PASS",
+      "requires": [
+        "P02-PASS"
+      ],
+      "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md"
+    }
+  },
+  "reviewChecklist": "Sem deploy nem dados de produção. Reproduzir antes em web desktop e app; registrar não reproduzido com evidência. UI verificada em 1440x900, 390x844 e 360x800, fácil/completo e app quando existir. Regra de negócio no backend/shared-types; npm run build após shared-types; dinheiro Decimal/string decimal/formatMoney, nunca Number; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre/Solo/Mais/Equipe; Lucide e #6D28D9; não recriar design system; não tocar Olivers Burger; preservar não rastreados; sem reset/stash/clean/force-push/histórico reescrito; B4-43 roda após B4-01 e rege todas as tarefas de UI; deploys somente após DEPLOY-B4-1/2/3 e suas passadas exploratórias; tarefas estratégicas param no ADR e B4-33.",
+  "tasks": [
+    {
+      "taskId": "B4-01-approval-concurrency",
+      "title": "Aprovação concorrente idempotente",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Reproduzir aprovação do mesmo orçamento em duas sessões e eliminar o erro bruto APPROVED → APPROVED.",
+      "expectedBehavior": "A segunda aprovação retorna resultado idempotente/conflito de domínio amigável, recarrega o orçamento aprovado e referencia a OS já criada sem duplicá-la.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "A segunda aprovação retorna resultado idempotente/conflito de domínio amigável, recarrega o orçamento aprovado e referencia a OS já criada sem duplicá-la. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "spec de estado e integração com duas requisições concorrentes --runInBand",
+        "teste de unicidade: uma aprovação, uma OS e cobranças sem duplicação",
+        "testes web/app de mapeamento do conflito"
+      ],
+      "visualTests": [
+        "duas abas/sessões em 1440x900, 390x844 e 360x800",
+        "web fácil/completo e app fácil/completo após B4-15"
+      ],
+      "dependencies": [],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/quote",
+        "apps/web/app/approve",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/quote",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/quote",
+        "apps/web/app/approve",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-02-approved-os-starts-pending",
+      "title": "OS automática inicia pendente",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Validar e corrigir o status inicial da OS criada pela aprovação.",
+      "expectedBehavior": "A OS criada por aprovação inicia em OPEN/Aberta (rótulo pendente no fluxo), nunca IN_PROGRESS/Em execução, e só muda por ação explícita auditada.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "A OS criada por aprovação inicia em OPEN/Aberta (rótulo pendente no fluxo), nunca IN_PROGRESS/Em execução, e só muda por ação explícita auditada. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "quote/work-order state-machine specs",
+        "integração aprovação → OS OPEN --runInBand"
+      ],
+      "visualTests": [
+        "aprovar e abrir OS nas seis combinações de superfície/modo nos três viewports web"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/quote",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-03-mode-state-photo-consistency",
+      "title": "Consistência de estado e fotos ao alternar modo",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "hipótese que precisa ser reproduzida",
+      "description": "Reproduzir alternância fácil/completo no meio da OS, incluindo foto Antes, status e atualização concorrente.",
+      "expectedBehavior": "Fotos e estado persistem no backend e reaparecem em ambos os modos; categorias Antes/Durante/Depois têm a mesma semântica e não dependem de estado local de uma tela.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Fotos e estado persistem no backend e reaparecem em ambos os modos; categorias Antes/Durante/Depois têm a mesma semântica e não dependem de estado local de uma tela. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "spec de persistência/categoria de foto",
+        "testes de hidratação após troca de modo",
+        "testes de atualização/refetch"
+      ],
+      "visualTests": [
+        "alternar modo após upload em 390x844 e 360x800",
+        "reabrir no desktop 1440x900 e no app nativo"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/work-order",
+        "apps/web/app/facil",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/mobile/src/easy",
+        "apps/mobile/src/screens",
+        "apps/web/lib/work-order.service.ts",
+        "apps/mobile/src/services/work-order.service.ts"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/work-order",
+        "apps/web/app/facil",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/mobile/src/easy",
+        "apps/mobile/src/screens",
+        "apps/web/lib/work-order.service.ts",
+        "apps/mobile/src/services/work-order.service.ts"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-04-receivables-flow",
+      "title": "Corrigir fluxo A receber",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "hipótese que precisa ser reproduzida",
+      "description": "Mapear o passo exato que falhou em A receber desde aprovação/condições até listagem, baixa e recibo.",
+      "expectedBehavior": "Cobranças esperadas são criadas uma vez, listadas com valores/status corretos e baixadas sem divergência em todas as superfícies existentes.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Cobranças esperadas são criadas uma vez, listadas com valores/status corretos e baixadas sem divergência em todas as superfícies existentes. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "integração aprovação → parcelas → A receber → baixa --runInBand",
+        "spec de Decimal e status",
+        "testes de listas e refresh"
+      ],
+      "visualTests": [
+        "fluxo completo nos três viewports web e app após login",
+        "registrar não reproduzido por superfície quando aplicável"
+      ],
+      "dependencies": [
+        "B4-01-approval-concurrency",
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/payment",
+        "apps/backend/src/quote",
+        "packages/shared-types",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/app/facil/screens/Money.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Money.tsx"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/payment",
+        "apps/backend/src/quote",
+        "packages/shared-types",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/app/facil/screens/Money.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Money.tsx"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-05-overpayment-confirmation",
+      "title": "Confirmação de recebimento excedente",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Adicionar regra de domínio e confirmação quando o valor recebido supera o saldo esperado.",
+      "expectedBehavior": "Antes de confirmar, mostrar esperado, recebido e diferença; permitir motivo opcional; exigir confirmação consciente; persistir/auditar excedente e motivo sem Number.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Antes de confirmar, mostrar esperado, recebido e diferença; permitir motivo opcional; exigir confirmação consciente; persistir/auditar excedente e motivo sem Number. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "shared-types build",
+        "payment specs abaixo/igual/acima do esperado --runInBand",
+        "isolamento company_id e auditoria",
+        "testes de confirmação/cancelamento nas UIs"
+      ],
+      "visualTests": [
+        "valores abaixo, iguais e acima nos três viewports e dois modos",
+        "teclado mobile, foco e leitura do resumo"
+      ],
+      "dependencies": [
+        "B4-04-receivables-flow"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/payment",
+        "packages/shared-types",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/payment",
+        "packages/shared-types",
+        "apps/web/app/(app)/financeiro",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-06-work-order-mobile-overflow",
+      "title": "Conter status e ação da OS no mobile",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Corrigir vazamento de Em execução e Revisar no modo completo sem alterar tokens/componentes aprovados.",
+      "expectedBehavior": "Badge, título e ação quebram/empilham de modo acessível, sem overflow horizontal nem corte, inclusive iPhone 16.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Badge, título e ação quebram/empilham de modo acessível, sem overflow horizontal nem corte, inclusive iPhone 16. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "teste automatizado de ausência de overflow horizontal",
+        "testes de componente com texto/status longo"
+      ],
+      "visualTests": [
+        "1440x900, 390x844 e 360x800 em fácil/completo",
+        "app iOS/Android equivalente"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico/OSContent.tsx",
+        "apps/web/app/(app)/ordens-de-servico/[id]/WorkOrderDetail.tsx",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/WorkOrderListScreen.tsx",
+        "apps/mobile/src/screens/WorkOrderDetailScreen.tsx",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/ordens-de-servico/OSContent.tsx",
+        "apps/web/app/(app)/ordens-de-servico/[id]/WorkOrderDetail.tsx",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/WorkOrderListScreen.tsx",
+        "apps/mobile/src/screens/WorkOrderDetailScreen.tsx",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-07-payment-date-modal-overflow",
+      "title": "Conter data no modal de recebimento",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Corrigir o campo de data que ultrapassa o modal no web mobile e verificar equivalentes.",
+      "expectedBehavior": "O input respeita largura, safe area, teclado e rolagem; não há overflow horizontal ou CTA inacessível.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "O input respeita largura, safe area, teclado e rolagem; não há overflow horizontal ou CTA inacessível. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "teste de layout/overflow do modal",
+        "testes de validação de data"
+      ],
+      "visualTests": [
+        "1440x900, 390x844 e 360x800 com teclado aberto/fechado nos dois modos",
+        "app fácil/completo"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/app/(app)/financeiro/PaymentRegistrationModal.tsx",
+        "apps/web/app/(app)/financeiro/PaymentEditModal.tsx",
+        "apps/web/app/facil/screens/Money.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Money.tsx"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/financeiro/PaymentRegistrationModal.tsx",
+        "apps/web/app/(app)/financeiro/PaymentEditModal.tsx",
+        "apps/web/app/facil/screens/Money.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Money.tsx"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-08-pdf-open-vs-download",
+      "title": "Separar visualizar e baixar PDF",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "hipótese que precisa ser reproduzida",
+      "description": "Testar ação real, não simulada, e separar semântica de abertura, download e compartilhamento conforme navegador/PWA/app.",
+      "expectedBehavior": "Ver PDF abre preview; Baixar PDF entrega arquivo com nome/MIME corretos ou fallback explícito quando o ambiente não suporta download; nenhuma ação duplica silenciosamente a outra.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Ver PDF abre preview; Baixar PDF entrega arquivo com nome/MIME corretos ou fallback explícito quando o ambiente não suporta download; nenhuma ação duplica silenciosamente a outra. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "e2e de Content-Disposition inline/attachment e MIME",
+        "teste de download real no navegador",
+        "testes de fallback nativo/PWA"
+      ],
+      "visualTests": [
+        "download real e arquivo aberto nos três viewports",
+        "web normal/PWA e app nativo nos dois modos"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/quote",
+        "apps/backend/src/storage",
+        "apps/web/app/api/quotes/[id]/pdf",
+        "apps/web/app/(app)/orcamentos/[id]/OrcamentoDetail.tsx",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/QuoteDetailScreen.tsx",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/quote",
+        "apps/backend/src/storage",
+        "apps/web/app/api/quotes/[id]/pdf",
+        "apps/web/app/(app)/orcamentos/[id]/OrcamentoDetail.tsx",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/QuoteDetailScreen.tsx",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-09-signature-empty-copy",
+      "title": "Adicionar assinatura quando não existe",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Corrigir rótulo e estado vazio hoje exibido como Trocar assinatura.",
+      "expectedBehavior": "Sem assinatura salva, usar Adicionar assinatura; com assinatura, usar Trocar assinatura; ações levam ao fluxo correto e preservam acessibilidade.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Sem assinatura salva, usar Adicionar assinatura; com assinatura, usar Trocar assinatura; ações levam ao fluxo correto e preservam acessibilidade. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de estado vazio/preenchido",
+        "testes de navegação da ação"
+      ],
+      "visualTests": [
+        "seis combinações superfície/modo nos três viewports web"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/app/(app)/orcamentos/[id]",
+        "apps/web/components",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/orcamentos/[id]",
+        "apps/web/components",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-10-toast-duration-dismiss",
+      "title": "Toasts mais breves e dispensáveis",
+      "type": "UX",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Inventariar notificações transitórias e reduzir pela metade o tempo atual com ação OK, sem encurtar mensagens críticas que exigem leitura.",
+      "expectedBehavior": "Toasts comuns duram metade do tempo anterior e todos podem ser dispensados por OK; mensagens críticas mantêm duração/acessibilidade coerentes; leitores de tela são avisados.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Toasts comuns duram metade do tempo anterior e todos podem ser dispensados por OK; mensagens críticas mantêm duração/acessibilidade coerentes; leitores de tela são avisados. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes com fake timers",
+        "teste de botão OK e aria-live/acessibilidade"
+      ],
+      "visualTests": [
+        "toasts de sucesso/erro nas seis combinações e três viewports"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/components",
+        "apps/web/app/facil",
+        "apps/mobile/src/components",
+        "apps/mobile/src/easy",
+        "apps/mobile/src/screens"
+      ],
+      "touchesPaths": [
+        "apps/web/components",
+        "apps/web/app/facil",
+        "apps/mobile/src/components",
+        "apps/mobile/src/easy",
+        "apps/mobile/src/screens"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-11-quote-unsaved-item-guard",
+      "title": "Avisar item digitado não adicionado",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Detectar conteúdo preenchido no editor de item quando Continuar é acionado sem Adicionar.",
+      "expectedBehavior": "Oferecer Adicionar item e continuar ou Descartar e continuar; cancelar mantém edição; nunca perder conteúdo silenciosamente.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Oferecer Adicionar item e continuar ou Descartar e continuar; cancelar mantém edição; nunca perder conteúdo silenciosamente. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes das três escolhas e item vazio",
+        "testes de rascunho/navegação"
+      ],
+      "visualTests": [
+        "1440x900, 390x844, 360x800 nos dois modos e app"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/app/(app)/orcamentos/novo/NovoOrcamentoForm.tsx",
+        "apps/web/app/facil/screens/QuoteFlow.tsx",
+        "apps/mobile/src/screens/QuoteCreateScreen.tsx",
+        "apps/mobile/src/easy/screens/QuoteFlow.tsx",
+        "packages/shared-types/src/quote"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/orcamentos/novo/NovoOrcamentoForm.tsx",
+        "apps/web/app/facil/screens/QuoteFlow.tsx",
+        "apps/mobile/src/screens/QuoteCreateScreen.tsx",
+        "apps/mobile/src/easy/screens/QuoteFlow.tsx",
+        "packages/shared-types/src/quote"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-12-post-generation-navigation-adr",
+      "title": "Definir retorno após gerar orçamento",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Levantar rotas e riscos de duplicação e registrar decisão curta sobre detalhe somente leitura, lista, Home ou nova criação.",
+      "expectedBehavior": "ADR escolhe destino único e regras de histórico/back por superfície, priorizando detalhe somente leitura e prevenção de duplicidade, sem mudar código.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "ADR escolhe destino único e regras de histórico/back por superfície, priorizando detalhe somente leitura e prevenção de duplicidade, sem mudar código. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "revisão documental de rotas e estados"
+      ],
+      "visualTests": [
+        "checklist do fluxo atual nas seis combinações"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "docs/adr",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "docs/adr",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR de navegação pós-geração"
+    },
+    {
+      "taskId": "B4-13-post-generation-navigation",
+      "title": "Aplicar navegação pós-geração aprovada",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Implementar a decisão do ADR B4-12 nas superfícies equivalentes.",
+      "expectedBehavior": "Após gerar, voltar não abre editor ambíguo nem duplica documento; destino e CTA Novo orçamento são explícitos e consistentes.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Após gerar, voltar não abre editor ambíguo nem duplica documento; destino e CTA Novo orçamento são explícitos e consistentes. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de histórico/back e idempotência de geração",
+        "testes de rota nas UIs"
+      ],
+      "visualTests": [
+        "botão voltar do navegador, gesto nativo e CTA nos três viewports/dois modos"
+      ],
+      "dependencies": [
+        "B4-12-post-generation-navigation-adr"
+      ],
+      "scope": [
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-14-logo-crop-position-zoom",
+      "title": "Crop, posição e zoom da logo",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Adicionar edição não destrutiva de logo usando componente compatível com web e app, preservando upload seguro.",
+      "expectedBehavior": "Usuário recorta, reposiciona e amplia; preview corresponde ao arquivo final usado nos documentos; cancelar não altera logo; limites de MIME/tamanho continuam ativos.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Usuário recorta, reposiciona e amplia; preview corresponde ao arquivo final usado nos documentos; cancelar não altera logo; limites de MIME/tamanho continuam ativos. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system. Além da validação própria, integra o conjunto de tarefas cuja evidência agregada é exigida por DEPLOY-B4-1; não depende artificialmente das demais correções do bloco.",
+      "automatedTests": [
+        "spec de upload/transformação",
+        "testes de crop cancel/save e orientação EXIF",
+        "typecheck/lint"
+      ],
+      "visualTests": [
+        "logo horizontal, quadrada e retrato nos três viewports e app"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/company",
+        "apps/web/components/LogoField.tsx",
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/configuracoes",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/company",
+        "apps/web/components/LogoField.tsx",
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens/configuracoes",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-15-mobile-api-environment-guard",
+      "title": "Bloquear localhost em build distribuída",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Centralizar URL de API por ambiente e impedir que builds distribuídos/produção usem localhost ou loopback.",
+      "expectedBehavior": "Build de desenvolvimento pode usar host local explícito; preview/distribuição exige URL válida; build de produção falha cedo se apontar para localhost; nenhuma chave é registrada.",
+      "surfaces": [
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Build de desenvolvimento pode usar host local explícito; preview/distribuição exige URL válida; build de produção falha cedo se apontar para localhost; nenhuma chave é registrada. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "teste que falha para localhost/127.0.0.1/::1 em perfil de produção",
+        "teste de resolução por perfil",
+        "typecheck mobile"
+      ],
+      "visualTests": [
+        "abrir build local equivalente a produção e conferir endpoint sanitizado sem expor valor"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/mobile/app.config.*",
+        "apps/mobile/eas.json",
+        "apps/mobile/src/config",
+        "apps/mobile/src/services",
+        "apps/mobile/package.json"
+      ],
+      "touchesPaths": [
+        "apps/mobile/app.config.*",
+        "apps/mobile/eas.json",
+        "apps/mobile/src/config",
+        "apps/mobile/src/services",
+        "apps/mobile/package.json"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-MOBILE",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-16-mobile-real-authentication",
+      "title": "Validar autenticação real do app",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Depois do guard de ambiente, testar login real local contra backend acessível e documentar diferenças fácil/completo.",
+      "expectedBehavior": "Login, refresh, logout e erro de conexão funcionam; nunca exibir localhost ao usuário; evidência cobre app nativo real, não só Expo web.",
+      "surfaces": [
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Login, refresh, logout e erro de conexão funcionam; nunca exibir localhost ao usuário; evidência cobre app nativo real, não só Expo web. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "auth service/screen tests",
+        "teste de refresh e erro de rede"
+      ],
+      "visualTests": [
+        "dispositivo/emulador iOS e Android quando disponíveis; registrar limitação objetiva",
+        "modo fácil e completo após login"
+      ],
+      "dependencies": [
+        "B4-15-mobile-api-environment-guard"
+      ],
+      "scope": [
+        "apps/mobile/src/screens/auth",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "apps/mobile/src/services/auth.service.ts",
+        "docs/qa"
+      ],
+      "touchesPaths": [
+        "apps/mobile/src/screens/auth",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "apps/mobile/src/services/auth.service.ts",
+        "docs/qa"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-MOBILE",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-17-mobile-start-invite-build-audit",
+      "title": "Auditar Home, convite e versão instalada",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "hipótese que precisa ser reproduzida",
+      "description": "Comparar a build instalada com HEAD/design handoff e confirmar que o fluxo Tenho um convite existe no backend antes de mudar a tela.",
+      "expectedBehavior": "Relatório distingue build desatualizada de divergência real; convite é mantido e alinhado se funcional, ou removido somente com evidência; não generaliza telas internas não testadas.",
+      "surfaces": [
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Relatório distingue build desatualizada de divergência real; convite é mantido e alinhado se funcional, ou removido somente com evidência; não generaliza telas internas não testadas. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes do fluxo de convite e versão/configuração",
+        "inventário de rotas"
+      ],
+      "visualTests": [
+        "comparação build instalada/Expo web/HEAD e handoff",
+        "prints apenas de telas realmente acessadas"
+      ],
+      "dependencies": [
+        "B4-16-mobile-real-authentication"
+      ],
+      "scope": [
+        "apps/mobile/src/screens/auth",
+        "apps/mobile/src/navigation",
+        "apps/mobile/src/screens/HomeScreen.tsx",
+        "apps/mobile/src/easy/screens/Home.tsx",
+        "apps/backend/src/invite",
+        "packages/shared-types/src/invite",
+        "docs/qa/R9-APP-DESIGN-DIFF.md"
+      ],
+      "touchesPaths": [
+        "apps/mobile/src/screens/auth",
+        "apps/mobile/src/navigation",
+        "apps/mobile/src/screens/HomeScreen.tsx",
+        "apps/mobile/src/easy/screens/Home.tsx",
+        "apps/backend/src/invite",
+        "packages/shared-types/src/invite",
+        "docs/qa/R9-APP-DESIGN-DIFF.md"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-MOBILE",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-18-mobile-size-budget",
+      "title": "Medir e otimizar tamanho do app com orçamento",
+      "type": "PERF",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Medir APK/AAB/IPA e composição do bundle, definir orçamento inicial e otimizar somente pesos sem valor funcional.",
+      "expectedBehavior": "Relatório reproduzível identifica assets/dependências; orçamento tem baseline e tolerância; otimizações mantêm recursos; etapa de download/instalação comunica tamanho quando houver superfície controlável.",
+      "surfaces": [
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Relatório reproduzível identifica assets/dependências; orçamento tem baseline e tolerância; otimizações mantêm recursos; etapa de download/instalação comunica tamanho quando houver superfície controlável. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "comando reprodutível de bundle/análise",
+        "checagem de regressão de tamanho no CI quando viável",
+        "testes mobile existentes"
+      ],
+      "visualTests": [
+        "instalação/abertura antes e depois; sem publicação em loja"
+      ],
+      "dependencies": [
+        "B4-15-mobile-api-environment-guard"
+      ],
+      "scope": [
+        "apps/mobile",
+        "pnpm-lock.yaml",
+        "docs/qa"
+      ],
+      "touchesPaths": [
+        "apps/mobile",
+        "pnpm-lock.yaml",
+        "docs/qa"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-MOBILE",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-19-service-owner-adr",
+      "title": "ADR de responsável pelo serviço e nomenclatura",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Deduplicar achados 7 e 21: mapear domínio atual, melhor momento da pergunta, termo neutro padrão e possibilidade futura de termo configurável.",
+      "expectedBehavior": "ADR define responsável opcional, padrão Responsável pelo serviço/Responsável, compatibilidade com membros/permissões e comportamento em criação/edição/PDF; não implementa.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "ADR define responsável opcional, padrão Responsável pelo serviço/Responsável, compatibilidade com membros/permissões e comportamento em criação/edição/PDF; não implementa. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "revisão de esquema/API e ocorrências de technician/técnico"
+      ],
+      "visualTests": [
+        "wireflow/checklist nas seis combinações"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "docs/adr",
+        "prisma/schema.prisma",
+        "apps/backend/src/work-order",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "docs/adr",
+        "prisma/schema.prisma",
+        "apps/backend/src/work-order",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-FLOWS",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR de atribuição e nomenclatura neutra"
+    },
+    {
+      "taskId": "B4-20-service-owner-assignment",
+      "title": "Atribuição opcional do responsável pelo serviço",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Implementar o ADR B4-19 de ponta a ponta sem conceito fixo de técnico.",
+      "expectedBehavior": "Criação e edição permitem atribuir/remover responsável opcional; backend valida membro da mesma empresa; termo neutro aparece nos modos fácil/completo e documentos aplicáveis.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Criação e edição permitem atribuir/remover responsável opcional; backend valida membro da mesma empresa; termo neutro aparece nos modos fácil/completo e documentos aplicáveis. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "shared-types build",
+        "specs de tenant/membro e CRUD --runInBand",
+        "testes das UIs"
+      ],
+      "visualTests": [
+        "criar/editar com, sem e removendo responsável nas seis combinações"
+      ],
+      "dependencies": [
+        "B4-19-service-owner-adr"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/work-order",
+        "packages/shared-types/src/work-order",
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-FLOWS",
+      "status": "SCHEDULED",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-21-quote-completeness-review",
+      "title": "Revisão de completude antes de gerar/enviar",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Adicionar etapa que mostra opcionais vazios e permite preenchê-los sem abandonar o fluxo.",
+      "expectedBehavior": "Antes de gerar/enviar, listar somente campos opcionais relevantes ausentes, explicar que não aparecerão, permitir editar/salvar inline e continuar sem bloqueio consciente.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Antes de gerar/enviar, listar somente campos opcionais relevantes ausentes, explicar que não aparecerão, permitir editar/salvar inline e continuar sem bloqueio consciente. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "schema/contrato da completude",
+        "testes de campos presentes/ausentes e continuar",
+        "testes de navegação sem perda"
+      ],
+      "visualTests": [
+        "completo/incompleto nos três viewports e dois modos/app"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "packages/shared-types/src/quote",
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "packages/shared-types/src/quote",
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-FLOWS",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-22-receipt-signature-flow",
+      "title": "Selecionar ou adicionar assinatura no recibo",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Unificar os achados 10 e 22 em fluxo de assinatura salva ou exclusiva do documento.",
+      "expectedBehavior": "Ao emitir recibo, selecionar assinatura salva, adicionar quando ausente e opcionalmente usar uma assinatura só neste documento sem sobrescrever a padrão sem confirmação.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Ao emitir recibo, selecionar assinatura salva, adicionar quando ausente e opcionalmente usar uma assinatura só neste documento sem sobrescrever a padrão sem confirmação. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "specs assinatura salva/avulsa/ausente",
+        "testes de não sobrescrita",
+        "shared-types build"
+      ],
+      "visualTests": [
+        "emitir recibo nos três estados em todas as superfícies existentes"
+      ],
+      "dependencies": [
+        "B4-09-signature-empty-copy"
+      ],
+      "scope": [
+        "apps/backend/src/payment",
+        "apps/backend/src/company",
+        "packages/shared-types",
+        "apps/web/app/(app)/documentos",
+        "apps/web/app/facil/screens/Receipts.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Receipts.tsx"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/payment",
+        "apps/backend/src/company",
+        "packages/shared-types",
+        "apps/web/app/(app)/documentos",
+        "apps/web/app/facil/screens/Receipts.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy/screens/Receipts.tsx"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-FLOWS",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-23-receipt-fields-inventory",
+      "title": "Inventariar opções de informação do recibo",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Levantar campos já configuráveis e lacunas do achado 11, sem duplicar opções existentes.",
+      "expectedBehavior": "Matriz campo → origem → padrão → configurável → superfície → PDF cobre cabeçalho, declaração, pagamento, adicionais, assinatura e rodapé; recomenda modelo compatível.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Matriz campo → origem → padrão → configurável → superfície → PDF cobre cabeçalho, declaração, pagamento, adicionais, assinatura e rodapé; recomenda modelo compatível. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "revisão de contratos e snapshots atuais"
+      ],
+      "visualTests": [
+        "comparação visual do recibo Orcivo atual com a referência estrutural, sem copiar identidade"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "packages/shared-types/src/quote/quote-doc-options.ts",
+        "packages/shared-types/src/company",
+        "apps/backend/src/payment/receipt-pdf.service.tsx",
+        "apps/web/components/ReceiptPaper.tsx",
+        "apps/web/app/(app)/documentos",
+        "apps/mobile/src/easy/screens/Receipts.tsx",
+        "docs/qa"
+      ],
+      "touchesPaths": [
+        "packages/shared-types/src/quote/quote-doc-options.ts",
+        "packages/shared-types/src/company",
+        "apps/backend/src/payment/receipt-pdf.service.tsx",
+        "apps/web/components/ReceiptPaper.tsx",
+        "apps/web/app/(app)/documentos",
+        "apps/mobile/src/easy/screens/Receipts.tsx",
+        "docs/qa"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-FLOWS",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "matriz de opções do recibo"
+    },
+    {
+      "taskId": "B4-24-document-model",
+      "title": "Modelo compartilhado para orçamento e recibo evoluídos",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Modelar serviços/produtos, unidades, subtotais, pagamento, garantia, adicionais, assinatura e campos configuráveis, reutilizando doc_options quando couber.",
+      "expectedBehavior": "Contratos Zod e backend mantêm compatibilidade; cálculos usam Decimal; dados novos têm company_id e migrations idempotentes; opções têm defaults claros.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Contratos Zod e backend mantêm compatibilidade; cálculos usam Decimal; dados novos têm company_id e migrations idempotentes; opções têm defaults claros. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "shared-types build",
+        "specs de migração/default/compatibilidade",
+        "cálculos de subtotais serviços/produtos em Decimal",
+        "isolamento por empresa"
+      ],
+      "visualTests": [
+        "revisão de fixtures e conteúdo nos modos, sem mudança visual antecipada"
+      ],
+      "dependencies": [
+        "B4-23-receipt-fields-inventory"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "packages/shared-types/src/quote",
+        "packages/shared-types/src/company",
+        "apps/backend/src/quote",
+        "apps/backend/src/payment"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "packages/shared-types/src/quote",
+        "packages/shared-types/src/company",
+        "apps/backend/src/quote",
+        "apps/backend/src/payment"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-DOCS",
+      "status": "SCHEDULED",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-25-quote-pdf-structure",
+      "title": "Evoluir conteúdo do PDF de orçamento",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Aplicar ao PDF Orcivo a estrutura útil da referência sem copiar cores/aparência.",
+      "expectedBehavior": "PDF traz cabeçalho Orcivo, cliente, título/número, validade, serviços e produtos separados, descrição, unidade, quantidade, unitário, subtotais, total, pagamento, garantia, adicionais, assinatura e rodapé configurável.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "PDF traz cabeçalho Orcivo, cliente, título/número, validade, serviços e produtos separados, descrição, unidade, quantidade, unitário, subtotais, total, pagamento, garantia, adicionais, assinatura e rodapé configurável. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "snapshots/extração de conteúdo PDF",
+        "specs de paginação e Decimal",
+        "download real"
+      ],
+      "visualTests": [
+        "render A4 com 1 e múltiplas páginas, textos longos e logo; inspeção sem corte/sobreposição",
+        "ações nos três viewports e app"
+      ],
+      "dependencies": [
+        "B4-24-document-model"
+      ],
+      "scope": [
+        "apps/backend/src/quote/quote-pdf.service.tsx",
+        "apps/backend/src/quote/quote-pdf.service.spec.ts",
+        "packages/shared-types/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/quote/quote-pdf.service.tsx",
+        "apps/backend/src/quote/quote-pdf.service.spec.ts",
+        "packages/shared-types/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-DOCS",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-26-receipt-pdf-structure",
+      "title": "Evoluir conteúdo configurável do recibo",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Aplicar a estrutura declarativa da referência ao recibo Orcivo, preservando identidade.",
+      "expectedBehavior": "Recibo contém cabeçalho, data, declaração com cliente/valor/referência/data, pagamento, adicionais, assinatura e rodapé; campos configuráveis obedecem defaults e ausência consciente.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Recibo contém cabeçalho, data, declaração com cliente/valor/referência/data, pagamento, adicionais, assinatura e rodapé; campos configuráveis obedecem defaults e ausência consciente. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "specs de conteúdo/opções/Decimal",
+        "render e extração de PDF",
+        "testes de assinatura"
+      ],
+      "visualTests": [
+        "render A4 com opções ligadas/desligadas, textos longos e sem assinatura",
+        "visual nos três viewports/app"
+      ],
+      "dependencies": [
+        "B4-22-receipt-signature-flow",
+        "B4-24-document-model"
+      ],
+      "scope": [
+        "apps/backend/src/payment/receipt-pdf.service.tsx",
+        "apps/backend/src/payment/payment.service.ts",
+        "packages/shared-types",
+        "apps/web/components/ReceiptPaper.tsx",
+        "apps/web/app/(app)/documentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/payment/receipt-pdf.service.tsx",
+        "apps/backend/src/payment/payment.service.ts",
+        "packages/shared-types",
+        "apps/web/components/ReceiptPaper.tsx",
+        "apps/web/app/(app)/documentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-DOCS",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-27-document-settings-surfaces",
+      "title": "Configurações e preview dos documentos",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "nova funcionalidade",
+      "description": "Expor as opções modeladas em B4-24 nas superfícies aplicáveis, sem recriar o design system.",
+      "expectedBehavior": "Empresa define defaults e cada documento pode sobrescrever quando permitido; preview deixa claro o que aparecerá; fácil/completo permanecem consistentes.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Empresa define defaults e cada documento pode sobrescrever quando permitido; preview deixa claro o que aparecerá; fácil/completo permanecem consistentes. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de defaults/override/serialização",
+        "typecheck/lint web/mobile"
+      ],
+      "visualTests": [
+        "preview/configuração nos três viewports, dois modos e app"
+      ],
+      "dependencies": [
+        "B4-24-document-model"
+      ],
+      "scope": [
+        "apps/web/components/QuoteDocOptionsForm.tsx",
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/facil/DocOptions.tsx",
+        "apps/mobile/src/easy/DocOptions.tsx",
+        "apps/mobile/src/screens/configuracoes",
+        "apps/backend/src/company",
+        "packages/shared-types/src/company"
+      ],
+      "touchesPaths": [
+        "apps/web/components/QuoteDocOptionsForm.tsx",
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/facil/DocOptions.tsx",
+        "apps/mobile/src/easy/DocOptions.tsx",
+        "apps/mobile/src/screens/configuracoes",
+        "apps/backend/src/company",
+        "packages/shared-types/src/company"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-DOCS",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-28-usage-plans-adr",
+      "title": "ADR de Uso, limites e diferenciação de planos",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Inventariar limites e regras reais no backend, propor tela Uso e indicadores, e avaliar diferenciação por valor sem alterar billing.",
+      "expectedBehavior": "ADR lista fonte de cada número, limites úteis/removíveis, estados 80/100/excedido, funcionalidades e CTAs; mantém nomes oficiais e marca escolhas comerciais para aprovação do dono; não implementa bloqueios.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "ADR lista fonte de cada número, limites úteis/removíveis, estados 80/100/excedido, funcionalidades e CTAs; mantém nomes oficiais e marca escolhas comerciais para aprovação do dono; não implementa bloqueios. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "inventário de PlanLimit/endpoints/feature gates e testes existentes"
+      ],
+      "visualTests": [
+        "wireframes descritivos para desktop/mobile/app sem mudar design system"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/backend/src/plan-limits",
+        "prisma/schema.prisma",
+        "packages/shared-types",
+        "apps/web/app/(app)/plano",
+        "apps/mobile/src",
+        "apps/site",
+        "docs/adr"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/plan-limits",
+        "prisma/schema.prisma",
+        "packages/shared-types",
+        "apps/web/app/(app)/plano",
+        "apps/mobile/src",
+        "apps/site",
+        "docs/adr"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR/proposta da tela Uso e limites"
+    },
+    {
+      "taskId": "B4-29-neutral-positioning-adr",
+      "title": "ADR de posicionamento e linguagem neutra",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Mapear todas as ocorrências de técnico/instalador e decidir o que é comunicação, domínio, cadastro, documentos ou permissão; incorporar preferências do achado 25.",
+      "expectedBehavior": "ADR propõe padrão neutro, campos profissão/nicho/objetivos/tratamento/termos configuráveis e matriz de impacto; não altera landing, domínio ou textos ainda.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo",
+        "site/landing",
+        "e-mails",
+        "PDFs"
+      ],
+      "acceptance": "ADR propõe padrão neutro, campos profissão/nicho/objetivos/tratamento/termos configuráveis e matriz de impacto; não altera landing, domínio ou textos ainda. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "varredura automatizada de termos com exclusões justificadas",
+        "inventário de contratos/copy"
+      ],
+      "visualTests": [
+        "amostras de copy e documentos no design Orcivo, sem implementação"
+      ],
+      "dependencies": [
+        "B4-19-service-owner-adr"
+      ],
+      "scope": [
+        "apps/site",
+        "apps/web",
+        "apps/mobile",
+        "apps/backend/src",
+        "packages/shared-types",
+        "docs",
+        "docs/adr"
+      ],
+      "touchesPaths": [
+        "apps/site",
+        "apps/web",
+        "apps/mobile",
+        "apps/backend/src",
+        "packages/shared-types",
+        "docs",
+        "docs/adr"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR de posicionamento, nomenclatura e onboarding"
+    },
+    {
+      "taskId": "B4-30-multicompany-adr",
+      "title": "ADR de multiempresa e isolamento",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Comparar o cenário Gastrobodes + empresas privadas com o modelo existente de memberships, convites e empresa ativa.",
+      "expectedBehavior": "ADR cobre company_id, papéis por empresa, troca de empresa, convite/onboarding, sessão, auditoria, isolamento, migração e ameaças de vazamento; não altera modelo.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "ADR cobre company_id, papéis por empresa, troca de empresa, convite/onboarding, sessão, auditoria, isolamento, migração e ameaças de vazamento; não altera modelo. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "inventário de schema/endpoints/guards",
+        "matriz de isolamento e testes faltantes"
+      ],
+      "visualTests": [
+        "wireflow Arlindo/Leo/Marcus com troca de empresa"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "apps/backend/src/auth",
+        "apps/backend/src/invite",
+        "apps/backend/src/company",
+        "apps/web/components/AuthProvider.tsx",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "packages/shared-types",
+        "docs/adr"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "apps/backend/src/auth",
+        "apps/backend/src/invite",
+        "apps/backend/src/company",
+        "apps/web/components/AuthProvider.tsx",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "packages/shared-types",
+        "docs/adr"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR multiempresa"
+    },
+    {
+      "taskId": "B4-31-web-mobile-mode-adr",
+      "title": "ADR do modo completo no web mobile",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Avaliar manter, esconder ou adaptar o modo completo no web mobile, separado do app nativo.",
+      "expectedBehavior": "ADR compara uso, acessibilidade, custo, paridade e risco; mantém modo fácil padrão; não muda visibilidade nem UI.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo"
+      ],
+      "acceptance": "ADR compara uso, acessibilidade, custo, paridade e risco; mantém modo fácil padrão; não muda visibilidade nem UI. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "inventário de rotas/telemetria disponível e gaps"
+      ],
+      "visualTests": [
+        "auditoria 390x844/360x800 em ambos os modos"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "apps/web/app/facil",
+        "apps/web/app/(app)",
+        "apps/web/components/EasyMode.tsx",
+        "docs/adr",
+        "docs/qa"
+      ],
+      "touchesPaths": [
+        "apps/web/app/facil",
+        "apps/web/app/(app)",
+        "apps/web/components/EasyMode.tsx",
+        "docs/adr",
+        "docs/qa"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR de estratégia de modos no web mobile"
+    },
+    {
+      "taskId": "B4-32-partial-work-order-adr",
+      "title": "ADR de realização parcial da OS",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Definir estado por item e efeitos em cobrança, recibo, estoque, garantia e auditoria antes de implementar.",
+      "expectedBehavior": "ADR explicita estados/transições, invariantes Decimal, reversões, documentos, estoque e UX; inclui casos três contratados/dois realizados; não muda esquema.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "ADR explicita estados/transições, invariantes Decimal, reversões, documentos, estoque e UX; inclui casos três contratados/dois realizados; não muda esquema. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "modelagem de transições e matriz de casos"
+      ],
+      "visualTests": [
+        "protótipos de estado parcial nas seis combinações"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "apps/backend/src/work-order",
+        "apps/backend/src/payment",
+        "apps/backend/src/stock",
+        "apps/backend/src/quote",
+        "packages/shared-types",
+        "apps/web",
+        "apps/mobile",
+        "docs/adr"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "apps/backend/src/work-order",
+        "apps/backend/src/payment",
+        "apps/backend/src/stock",
+        "apps/backend/src/quote",
+        "packages/shared-types",
+        "apps/web",
+        "apps/mobile",
+        "docs/adr"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY",
+      "status": "SCHEDULED",
+      "decisionDeliverable": "ADR de OS parcial"
+    },
+    {
+      "taskId": "B4-33-owner-strategy-decisions",
+      "title": "Registrar decisões estratégicas do dono",
+      "type": "DOCS",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Apresentar ADRs B4-28 a B4-32 e registrar decisões explícitas antes de qualquer implementação estratégica.",
+      "expectedBehavior": "Cada ADR recebe aprovado, ajustar ou adiar; escopo comercial, posicionamento, multiempresa, modos e OS parcial fica inequívoco; nenhuma implementação ocorre nesta tarefa.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Cada ADR recebe aprovado, ajustar ou adiar; escopo comercial, posicionamento, multiempresa, modos e OS parcial fica inequívoco; nenhuma implementação ocorre nesta tarefa. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "validação documental e rastreabilidade das decisões"
+      ],
+      "visualTests": [
+        "n/a"
+      ],
+      "dependencies": [
+        "B4-44-key-user-exploratory-final"
+      ],
+      "scope": [
+        "docs/adr",
+        ".planning/CONTINUE.md",
+        ".planning/IMPROVEMENT-ROUNDS.md"
+      ],
+      "touchesPaths": [
+        "docs/adr",
+        ".planning/CONTINUE.md",
+        ".planning/IMPROVEMENT-ROUNDS.md"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-DECISION",
+      "status": "OWNER_GATE",
+      "decisionDeliverable": "registro de aprovação do dono"
+    },
+    {
+      "taskId": "B4-34-usage-backend-contract",
+      "title": "Contrato backend da tela Uso",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Após aprovação B4-33, expor snapshot autoritativo de plano, período, consumo, limites, restante, estado e features.",
+      "expectedBehavior": "Backend calcula tudo; shared-types publica códigos/contrato; frontend não reconstrói regras; sem novo billing ou bloqueio não aprovado.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Backend calcula tudo; shared-types publica códigos/contrato; frontend não reconstrói regras; sem novo billing ou bloqueio não aprovado. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "shared-types build",
+        "specs 0/79/80/99/100/excedido",
+        "tenant isolation e datas de reset"
+      ],
+      "visualTests": [
+        "fixtures legíveis para UIs"
+      ],
+      "dependencies": [
+        "B4-33-owner-strategy-decisions"
+      ],
+      "scope": [
+        "apps/backend/src/plan-limits",
+        "apps/backend/src/billing",
+        "packages/shared-types/src",
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ],
+      "touchesPaths": [
+        "apps/backend/src/plan-limits",
+        "apps/backend/src/billing",
+        "packages/shared-types/src",
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-35-usage-screen",
+      "title": "Tela Uso nas superfícies",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Consumir B4-34 em Configurações/menu da conta com progresso e CTA contextual.",
+      "expectedBehavior": "Mostra plano, assinatura, período/reset, usado/limite/restante de recursos aprovados, membros, armazenamento quando real, features disponíveis/bloqueadas e estados 80/100/excedido.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Mostra plano, assinatura, período/reset, usado/limite/restante de recursos aprovados, membros, armazenamento quando real, features disponíveis/bloqueadas e estados 80/100/excedido. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de render por estado e contrato",
+        "typecheck/lint"
+      ],
+      "visualTests": [
+        "1440x900, 390x844, 360x800 nos dois modos e app"
+      ],
+      "dependencies": [
+        "B4-34-usage-backend-contract"
+      ],
+      "scope": [
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/(app)/plano",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/configuracoes",
+        "apps/web/app/(app)/plano",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE"
+    },
+    {
+      "taskId": "B4-36-usage-early-warnings",
+      "title": "Alertas antecipados de uso",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Exibir indicadores pequenos nas telas relacionadas e alertas antes do bloqueio, somente para limites aprovados.",
+      "expectedBehavior": "Estados 80%, 100% e excedido vêm do backend, são acessíveis e não criam bloqueios artificiais; CTA compara planos sem nomenclatura antiga.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Estados 80%, 100% e excedido vêm do backend, são acessíveis e não criam bloqueios artificiais; CTA compara planos sem nomenclatura antiga. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de limiares/CTA e ausência de regra duplicada"
+      ],
+      "visualTests": [
+        "telas de clientes/orçamentos/OS e Uso nos três viewports/app"
+      ],
+      "dependencies": [
+        "B4-34-usage-backend-contract"
+      ],
+      "scope": [
+        "apps/web/app",
+        "apps/web/components",
+        "apps/mobile/src",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "apps/web/app",
+        "apps/web/components",
+        "apps/mobile/src",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE"
+    },
+    {
+      "taskId": "B4-37-neutral-copy-and-onboarding",
+      "title": "Aplicar posicionamento e onboarding aprovados",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Aplicar ADR B4-29 em landing, onboarding, mensagens, e-mails e documentos, com perfil/nicho/objetivos/tratamento/termos aprovados.",
+      "expectedBehavior": "Sem técnico/instalador fixo onde o ADR exigir neutralidade; defaults funcionam; dados novos são tenant-scoped/company_id; documentos respeitam termo profissional configurado.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo",
+        "site/landing",
+        "e-mails",
+        "PDFs"
+      ],
+      "acceptance": "Sem técnico/instalador fixo onde o ADR exigir neutralidade; defaults funcionam; dados novos são tenant-scoped/company_id; documentos respeitam termo profissional configurado. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "varredura de termos",
+        "shared-types build",
+        "specs de defaults/isolamento",
+        "testes de onboarding"
+      ],
+      "visualTests": [
+        "landing desktop/mobile, onboarding e documentos nas superfícies"
+      ],
+      "dependencies": [
+        "B4-33-owner-strategy-decisions"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/site",
+        "apps/web",
+        "apps/mobile",
+        "apps/backend/src",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/site",
+        "apps/web",
+        "apps/mobile",
+        "apps/backend/src",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-38-multicompany-domain-isolation",
+      "title": "Domínio e isolamento multiempresa",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Implementar somente o modelo aprovado no ADR B4-30, preservando empresas existentes.",
+      "expectedBehavior": "Um usuário pertence a várias empresas; papéis são por empresa; empresa ativa é validada no backend; nenhum endpoint cruza company_id; convites não recadastram usuário.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Um usuário pertence a várias empresas; papéis são por empresa; empresa ativa é validada no backend; nenhum endpoint cruza company_id; convites não recadastram usuário. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "matriz e2e A/B de isolamento --runInBand",
+        "convite de usuário existente/novo",
+        "troca de empresa e token/sessão",
+        "migration idempotente"
+      ],
+      "visualTests": [
+        "evidência funcional preparada para B4-39"
+      ],
+      "dependencies": [
+        "B4-33-owner-strategy-decisions"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/auth",
+        "apps/backend/src/company",
+        "apps/backend/src/invite",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/auth",
+        "apps/backend/src/company",
+        "apps/backend/src/invite",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-39-multicompany-switching-ux",
+      "title": "Troca de empresa, convite e onboarding multiempresa",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Expor B4-38 com empresa ativa clara e fluxos de ingresso/criação nas seis combinações.",
+      "expectedBehavior": "Arlindo, Leo e Marcus alternam Gastrobodes e empresas privadas sem vazamento ou recadastro; empresa atual aparece com clareza e ações sensíveis confirmam contexto.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Arlindo, Leo e Marcus alternam Gastrobodes e empresas privadas sem vazamento ou recadastro; empresa atual aparece com clareza e ações sensíveis confirmam contexto. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de troca/refresh/deep link",
+        "testes de permissão por empresa"
+      ],
+      "visualTests": [
+        "cenário completo em 1440x900, 390x844, 360x800 e app"
+      ],
+      "dependencies": [
+        "B4-38-multicompany-domain-isolation"
+      ],
+      "scope": [
+        "apps/web/components/AuthProvider.tsx",
+        "apps/web/app",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "apps/web/components/AuthProvider.tsx",
+        "apps/web/app",
+        "apps/mobile/src/contexts/AuthContext.tsx",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE"
+    },
+    {
+      "taskId": "B4-40-web-mobile-mode-decision-implementation",
+      "title": "Aplicar decisão de modos no web mobile",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Executar somente a opção aprovada no ADR B4-31: manter, esconder ou adaptar.",
+      "expectedBehavior": "Modo fácil continua padrão; alternância/visibilidade e acessibilidade seguem a decisão; nenhuma mudança afeta o app nativo por associação indevida.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo"
+      ],
+      "acceptance": "Modo fácil continua padrão; alternância/visibilidade e acessibilidade seguem a decisão; nenhuma mudança afeta o app nativo por associação indevida. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de modo/rota/preferência",
+        "testes de acessibilidade/overflow"
+      ],
+      "visualTests": [
+        "1440x900, 390x844, 360x800 em fácil/completo conforme decisão"
+      ],
+      "dependencies": [
+        "B4-33-owner-strategy-decisions"
+      ],
+      "scope": [
+        "apps/web/app/facil",
+        "apps/web/app/(app)",
+        "apps/web/components/EasyMode.tsx",
+        "docs/qa"
+      ],
+      "touchesPaths": [
+        "apps/web/app/facil",
+        "apps/web/app/(app)",
+        "apps/web/components/EasyMode.tsx",
+        "docs/qa"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE"
+    },
+    {
+      "taskId": "B4-41-partial-work-order-domain",
+      "title": "Domínio da realização parcial",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Implementar estados por item e efeitos aprovados no ADR B4-32.",
+      "expectedBehavior": "Transições são auditadas/idempotentes; cobrança, recibo, estoque e garantia derivam da realização aprovada; Decimal/company_id/migrations idempotentes preservados.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Transições são auditadas/idempotentes; cobrança, recibo, estoque e garantia derivam da realização aprovada; Decimal/company_id/migrations idempotentes preservados. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "state-machine specs",
+        "integração três itens/dois realizados, reversão e cancelamento --runInBand",
+        "isolamento tenant"
+      ],
+      "visualTests": [
+        "fixtures para B4-42"
+      ],
+      "dependencies": [
+        "B4-33-owner-strategy-decisions"
+      ],
+      "scope": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/work-order",
+        "apps/backend/src/payment",
+        "apps/backend/src/stock",
+        "apps/backend/src/quote",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "prisma/schema.prisma",
+        "prisma/migrations",
+        "apps/backend/src/work-order",
+        "apps/backend/src/payment",
+        "apps/backend/src/stock",
+        "apps/backend/src/quote",
+        "packages/shared-types"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE",
+      "protectedPathGrants": [
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "taskId": "B4-42-partial-work-order-surfaces-docs",
+      "title": "UI e documentos da realização parcial",
+      "type": "FEATURE",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "decisão estratégica do dono",
+      "description": "Expor B4-41 em OS, cobrança, recibo e PDF nas superfícies onde o fluxo existe.",
+      "expectedBehavior": "Usuário marca itens realizados/não realizados com motivo quando exigido; totais e documentos explicam a parcialidade; alternar modo não perde estado.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Usuário marca itens realizados/não realizados com motivo quando exigido; totais e documentos explicam a parcialidade; alternar modo não perde estado. Nenhuma validação em produção; usar somente ambiente local. Para toda superfície onde o fluxo não existir ou o defeito não reproduzir, registrar \"não reproduzido\" com print/checklist e provar o comportamento correto equivalente. Critérios globais: regra de negócio no backend/shared-types; dinheiro somente Decimal/string decimal/formatMoney; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre, Solo, Mais e Equipe; Lucide e #6D28D9; sem recriar o design system.",
+      "automatedTests": [
+        "testes de UI e PDF parcial",
+        "testes de troca de modo"
+      ],
+      "visualTests": [
+        "três itens/dois realizados nos três viewports, dois modos e app"
+      ],
+      "dependencies": [
+        "B4-41-partial-work-order-domain"
+      ],
+      "scope": [
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "apps/backend/src/quote/quote-pdf.service.tsx",
+        "apps/backend/src/payment/receipt-pdf.service.tsx"
+      ],
+      "touchesPaths": [
+        "apps/web/app/(app)/ordens-de-servico",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "apps/backend/src/quote/quote-pdf.service.tsx",
+        "apps/backend/src/payment/receipt-pdf.service.tsx"
+      ],
+      "risk": "C",
+      "autonomyLevel": "C",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "batch4-strategy-owner-approval",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-STRATEGY-IMPL",
+      "status": "OWNER_GATE"
+    },
+    {
+      "taskId": "B4-43-qa-gap-regression-protocol",
+      "title": "Explicar gaps e institucionalizar regressões",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Logo depois da primeira correção de concorrência, registrar para os achados 1-18 por que a QA anterior não os detectou e atualizar o catálogo com o protocolo obrigatório antes das demais tarefas de UI.",
+      "expectedBehavior": "O protocolo novo entra em vigor antes de B4-02: 1440×900, 390×844 e 360×800, fácil/completo, troca de modo no meio do fluxo, duas sessões, download real, valores acima/abaixo, continuar sem salvar, voltar após gerar e build distribuída do app sem localhost.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "O protocolo novo entra em vigor antes de B4-02: 1440×900, 390×844 e 360×800, fácil/completo, troca de modo no meio do fluxo, duas sessões, download real, valores acima/abaixo, continuar sem salvar, voltar após gerar e build distribuída do app sem localhost. docs/qa/CATALOGO-DE-TESTES.md e o documento UAT registram protocolo e causa inicial dos achados 1–18; as automações viáveis são especificadas/adicionadas quando a tarefa correspondente for executada. Nenhuma tarefa de UI B4-02…B4-42 fecha sem aplicar o protocolo. Sem deploy nem dados de produção.",
+      "automatedTests": [
+        "overflow nos três viewports",
+        "aprovação concorrente",
+        "guard de localhost em produção",
+        "regressões automatizáveis de 1-18"
+      ],
+      "visualTests": [
+        "matriz obrigatória por tarefa UI e evidências referenciadas"
+      ],
+      "dependencies": [
+        "B4-01-approval-concurrency"
+      ],
+      "scope": [
+        "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+        "docs/qa/CATALOGO-DE-TESTES.md",
+        "apps/backend/src",
+        "apps/web",
+        "apps/mobile"
+      ],
+      "touchesPaths": [
+        "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+        "docs/qa/CATALOGO-DE-TESTES.md",
+        "apps/backend/src",
+        "apps/web",
+        "apps/mobile"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-CRITICAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-44-key-user-exploratory-final",
+      "title": "Passada exploratória pré-deploy das correções",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Após a última tarefa não bloqueada B4-32, executar cadastro → orçamento → aprovação → OS → recebimento → recibo nas três superfícies e dois modos antes do segundo deploy.",
+      "expectedBehavior": "Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado. O app usa build distribuída equivalente com API correta; esta tarefa não faz deploy, apenas produz a evidência obrigatória anterior ao deploy. Nenhuma dependência estratégica B4-33…B4-42 é necessária.",
+      "automatedTests": [
+        "suite completa serial, integração --runInBand, typecheck/lint/build e secret scan",
+        "reexecução de todos os testes adicionados no Batch 4"
+      ],
+      "visualTests": [
+        "1440x900, 390x844, 360x800 em fácil/completo",
+        "app nativo fácil/completo",
+        "duas sessões, download real e fluxo completo com evidência"
+      ],
+      "dependencies": [
+        "B4-32-partial-work-order-adr"
+      ],
+      "scope": [
+        "docs/qa",
+        "apps/backend",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "docs/qa",
+        "apps/backend",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-QA-PREDEPLOY",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-45-key-user-exploratory-post-strategy",
+      "title": "Passada exploratória pós-onda estratégica",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Depois de B4-34…B4-42 aprovadas e concluídas, repetir a passada exploratória completa nas três superfícies e dois modos antes do deploy estratégico.",
+      "expectedBehavior": "Checklist/prints cobrem cadastro → orçamento → aprovação → OS → recebimento → recibo, além de Uso, posicionamento/onboarding, multiempresa, estratégia de modos e OS parcial conforme decisões aprovadas.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Checklist/prints cobrem cadastro → orçamento → aprovação → OS → recebimento → recibo, além de Uso, posicionamento/onboarding, multiempresa, estratégia de modos e OS parcial conforme decisões aprovadas. Todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-3 pode ser liberado. O app usa build distribuída equivalente com API correta; esta tarefa não faz deploy.",
+      "automatedTests": [
+        "suite completa serial, integração --runInBand, typecheck/lint/build e secret scan",
+        "reexecução de todos os testes adicionados no Batch 4"
+      ],
+      "visualTests": [
+        "1440x900, 390x844, 360x800 em fácil/completo",
+        "app nativo fácil/completo",
+        "duas sessões, download real e fluxo completo com evidência"
+      ],
+      "dependencies": [
+        "B4-35-usage-screen",
+        "B4-36-usage-early-warnings",
+        "B4-37-neutral-copy-and-onboarding",
+        "B4-39-multicompany-switching-ux",
+        "B4-40-web-mobile-mode-decision-implementation",
+        "B4-42-partial-work-order-surfaces-docs"
+      ],
+      "scope": [
+        "docs/qa",
+        "apps/backend",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "touchesPaths": [
+        "docs/qa",
+        "apps/backend",
+        "apps/web",
+        "apps/mobile",
+        "packages/shared-types"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-QA-STRATEGIC",
+      "status": "SCHEDULED"
+    }
+  ],
+  "deploymentGates": [
+    {
+      "gateId": "DEPLOY-B4-1",
+      "afterTasks": [
+        "B4-02-approved-os-starts-pending",
+        "B4-03-mode-state-photo-consistency",
+        "B4-05-overpayment-confirmation",
+        "B4-06-work-order-mobile-overflow",
+        "B4-07-payment-date-modal-overflow",
+        "B4-08-pdf-open-vs-download",
+        "B4-09-signature-empty-copy",
+        "B4-10-toast-duration-dismiss",
+        "B4-11-quote-unsaved-item-guard",
+        "B4-13-post-generation-navigation",
+        "B4-14-logo-crop-position-zoom"
+      ],
+      "scope": "blocos 1–2: concorrência, dinheiro, estado, correções visuais e UX",
+      "requires": [
+        "passada exploratória agregada dos blocos 1–2 registrada no checklist do lote",
+        "testes automáticos e visuais do protocolo B4-43",
+        "nenhum defeito aberto no escopo"
+      ],
+      "action": "deploy somente pelo comando da seção 6 de CONTINUE.md; não executar nesta etapa"
+    },
+    {
+      "gateId": "DEPLOY-B4-2",
+      "afterTasks": [
+        "B4-44-key-user-exploratory-final"
+      ],
+      "scope": "blocos 3–5: app, fluxos e documentos, com regressão dos blocos 1–2",
+      "requires": [
+        "B4-44 concluída com checklist/prints",
+        "testes automáticos e visuais verdes",
+        "nenhum defeito aberto no escopo"
+      ],
+      "action": "deploy somente pelo comando da seção 6 de CONTINUE.md; não executar nesta etapa"
+    },
+    {
+      "gateId": "DEPLOY-B4-3",
+      "afterTasks": [
+        "B4-45-key-user-exploratory-post-strategy"
+      ],
+      "scope": "onda estratégica B4-34…B4-42 aprovada pelo dono",
+      "requires": [
+        "B4-45 concluída com checklist/prints",
+        "testes automáticos e visuais verdes",
+        "nenhum defeito aberto no escopo"
+      ],
+      "action": "deploy somente pelo comando da seção 6 de CONTINUE.md; não executar nesta etapa"
+    }
+  ]
+}
+
