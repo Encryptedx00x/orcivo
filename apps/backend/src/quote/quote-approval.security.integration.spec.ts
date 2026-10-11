@@ -115,6 +115,7 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     if (token) await redis.del(`quote:approval:${token}`);
     if (companyId) {
       await prisma.quoteApproval.deleteMany({ where: { company_id: companyId } });
+      await prisma.payment.deleteMany({ where: { company_id: companyId } });
       await prisma.workOrder.deleteMany({ where: { company_id: companyId } });
       await prisma.quote.deleteMany({ where: { company_id: companyId } });
       await prisma.auditLog.deleteMany({ where: { company_id: companyId } });
@@ -161,10 +162,22 @@ describe('Security approval/session transactions (real disposable DB)', () => {
   });
 
   it('concurrent approvals create exactly one approval, work order and pair of audits', async () => {
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { total: '250.00', payment_terms: { kind: 'A_VISTA' } },
+    });
     const outcomes = await Promise.allSettled([approve(), approve()]);
-    expect(outcomes.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    const results = outcomes.map((outcome) => {
+      if (outcome.status === 'rejected') throw outcome.reason;
+      return outcome.value;
+    });
+    expect(results.map((result) => result.status)).toEqual(['APPROVED', 'APPROVED']);
+    expect(results.map((result) => result.already_approved).sort()).toEqual([false, true]);
+    expect(new Set(results.map((result) => result.work_order_id))).toHaveProperty('size', 1);
     expect(await prisma.quoteApproval.count({ where: { quote_id: quoteId } })).toBe(1);
     expect(await prisma.workOrder.count({ where: { quote_id: quoteId } })).toBe(1);
+    expect(await prisma.payment.count({ where: { quote_id: quoteId } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { company_id: companyId } })).toBe(2);
     expect((await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } })).pdf_url).toContain(
       '/approval-',

@@ -165,6 +165,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** spec de estado e integração com duas requisições concorrentes --runInBand; teste de unicidade: uma aprovação, uma OS e cobranças sem duplicação; testes web/app de mapeamento do conflito
 - **Testes visuais:** duas abas/sessões em 1440x900, 390x844 e 360x800; web fácil/completo e app fácil/completo após B4-15
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-11):** duas sessões locais reproduziram o segundo envio sobre orçamento já aprovado; a API respondeu de forma idempotente, a página recarregou o estado persistido e exibiu “Este orçamento já foi aprovado. A tela foi atualizada.”. A rota pública é única e independente dos modos fácil/completo; foi verificada sem overflow em `1440×900` (`scrollWidth 1425/innerWidth 1440`), `390×844` (`375/390`) e `360×800` (`345/360` antes e `360/360` após a resposta). O app não possui ação nativa de aprovação encontrada no escopo — **não reproduzido/não aplicável**; deep link externo fica para revalidação após B4-15. A spec serial comprovou 2 respostas bem-sucedidas e somente 1 aprovação, 1 OS, 1 cobrança e 2 auditorias.
 
 ### B4-02-approved-os-starts-pending — OS automática inicia pendente
 

@@ -47,6 +47,7 @@ export default function ApprovePage(): React.JSX.Element {
   const [signature, setSignature] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [approvalNotice, setApprovalNotice] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [offline, setOffline] = useState(false);
 
@@ -105,7 +106,7 @@ export default function ApprovePage(): React.JSX.Element {
         setSubmitting(false);
         return;
       }
-      await approvalService.approveQuote(token, {
+      const result = await approvalService.approveQuote(token, {
         approval_method: activeTab,
         typed_name: activeTab === 'TYPED_NAME' ? typedName.trim() : undefined,
         signature:
@@ -113,6 +114,10 @@ export default function ApprovePage(): React.JSX.Element {
             ? signature
             : undefined,
       });
+      if (result.already_approved) {
+        setQuote(await approvalService.fetchPublicQuote(token));
+      }
+      setApprovalNotice(result.message);
       setPageState('approved');
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Erro ao processar aprovação');
@@ -199,8 +204,8 @@ export default function ApprovePage(): React.JSX.Element {
             Orçamento aprovado!
           </h1>
           <p style={{ fontSize: 15, color: '#64748B', maxWidth: 400, margin: '0 auto 8px' }}>
-            Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em
-            contato.
+            {approvalNotice ||
+              'Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em contato.'}
           </p>
           <p style={{ fontSize: 13, color: '#94A3B8', maxWidth: 400, margin: '0 auto' }}>
             Uma ordem de serviço foi gerada automaticamente.

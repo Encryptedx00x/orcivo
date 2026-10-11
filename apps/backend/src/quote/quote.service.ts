@@ -12,6 +12,7 @@ import { buildPaymentSchedule, type QuotePaymentTerms } from '@orcivo/shared-typ
 import * as crypto from 'crypto';
 import {
   ApproveQuoteDto,
+  type ApproveQuoteResult,
   QuoteAction,
   QuoteActionSpec,
   QuoteCreateDto,
@@ -67,6 +68,31 @@ export class QuoteService {
     discountValue: string,
   ) {
     return calculateQuoteTotals(items, discountType, discountValue);
+  }
+
+  private async approvedResult(
+    quoteId: string,
+    companyId: string,
+    token: string,
+    alreadyApproved: boolean,
+  ): Promise<ApproveQuoteResult | null> {
+    const approved = await this.prisma.quote.findFirst({
+      where: { id: quoteId, company_id: companyId, approval_token: token, status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (!approved) return null;
+    const workOrder = await this.prisma.workOrder.findFirst({
+      where: { company_id: companyId, quote_id: quoteId },
+      select: { id: true },
+    });
+    return {
+      status: 'APPROVED',
+      already_approved: alreadyApproved,
+      work_order_id: workOrder?.id ?? null,
+      message: alreadyApproved
+        ? 'Este orçamento já foi aprovado. A tela foi atualizada.'
+        : 'Orçamento aprovado com sucesso.',
+    };
   }
 
   private async nextQuoteNumber(companyId: string): Promise<number> {
@@ -577,8 +603,17 @@ export class QuoteService {
     };
   }
 
-  async approve(token: string, dto: ApproveQuoteDto, ipAddress: string, userAgent: string) {
+  async approve(
+    token: string,
+    dto: ApproveQuoteDto,
+    ipAddress: string,
+    userAgent: string,
+  ): Promise<ApproveQuoteResult> {
     const quote = await this.getByApprovalToken(token);
+    if (quote.status === 'APPROVED') {
+      const result = await this.approvedResult(quote.id, quote.company_id, token, true);
+      if (result) return result;
+    }
     const approveSpec = this.assertApprovalAction(quote.status as QuoteStatus);
     if (quote.valid_until && quote.valid_until.getTime() < Date.now()) {
       throw new BadRequestException('O prazo de aprovação deste orçamento expirou.');
@@ -658,7 +693,7 @@ export class QuoteService {
       );
 
       transactionAttempted = true;
-      await this.prisma.$transaction(async (tx) => {
+      const workOrder = await this.prisma.$transaction(async (tx) => {
         const updated = await tx.quote.updateMany({
           where: {
             id: quote.id,
@@ -730,9 +765,24 @@ export class QuoteService {
           to: 'APPROVED',
           humanText: `Orçamento #${quote.number} (${quote.customer.name}) aprovado pelo cliente (${APPROVAL_METHOD_TEXT[dto.approval_method]})`,
         });
+        return workOrder;
       });
-      return { status: 'APPROVED' };
+      return {
+        status: 'APPROVED',
+        already_approved: false,
+        work_order_id: workOrder.id,
+        message: 'Orçamento aprovado com sucesso.',
+      };
     } catch (error) {
+      if (error instanceof ConflictException) {
+        const result = await this.approvedResult(quote.id, quote.company_id, token, true);
+        if (result) {
+          await Promise.allSettled(
+            prepared.map(({ bucket, key }) => this.storage.deleteObject(bucket, key)),
+          );
+          return result;
+        }
+      }
       // Domain rejections roll back the DB transaction. An unknown commit
       // failure can be ambiguous, so retain those objects for reconciliation.
       if (!transactionAttempted || (error instanceof HttpException && error.getStatus() < 500)) {

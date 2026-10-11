@@ -1,4 +1,4 @@
-import type { QuoteDocTitle, QuotePaymentTerms } from '@orcivo/shared-types';
+import type { ApproveQuoteResult, QuoteDocTitle, QuotePaymentTerms } from '@orcivo/shared-types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export interface PublicQuoteItem {
@@ -69,7 +69,7 @@ export const approvalService = {
     return res.json() as Promise<{ status: string }>;
   },
 
-  async approveQuote(token: string, dto: ApproveDto): Promise<{ status: string }> {
+  async approveQuote(token: string, dto: ApproveDto): Promise<ApproveQuoteResult> {
     const res = await fetch(`${API_URL}/quotes/public/${token}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,6 +79,6 @@ export const approvalService = {
       const body = (await res.json().catch(() => ({}))) as { message?: string };
       throw new Error(body.message ?? 'Erro ao processar aprovação');
     }
-    return res.json() as Promise<{ status: string }>;
+    return res.json() as Promise<ApproveQuoteResult>;
   },
 };

@@ -21,6 +21,15 @@ export const ApproveQuoteSchema = z
 
 export type ApproveQuoteDto = z.infer<typeof ApproveQuoteSchema>;
 
+export const ApproveQuoteResultSchema = z.object({
+  status: z.literal('APPROVED'),
+  already_approved: z.boolean(),
+  work_order_id: z.string().uuid().nullable(),
+  message: z.string(),
+});
+
+export type ApproveQuoteResult = z.infer<typeof ApproveQuoteResultSchema>;
+
 /** Recusa pelo cliente no link público: o motivo é opcional (só vai para o histórico). */
 export const RejectQuotePublicSchema = z.object({
   reason: z.string().trim().max(500).optional(),
