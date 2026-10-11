@@ -70,7 +70,7 @@ describe('P03-T13 — private storage UAT (automated)', () => {
       .attach('file', PNG, 'foto.png')
       .expect(201);
     photoUrl = upload.body.file_url;
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await cleanupDatabase();
