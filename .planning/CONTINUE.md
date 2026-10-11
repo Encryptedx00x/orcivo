@@ -40,7 +40,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 `scripts/orchestration/v2/batch-reconcile.ps1`; não alterar dependências à mão no `.plan.json`.
 
 - [x] **B4-01 — primeira correção:** aprovação concorrente idempotente (`a94d073`).
-- [ ] **B4-43 — protocolo antecipado:** executar logo após B4-01; passa a reger todas as tarefas de UI seguintes.
+- [x] **B4-43 — protocolo antecipado:** protocolo obrigatório instituído antes das demais tarefas de UI (`5e9a5bb`).
 - [ ] **B4-02…B4-05 — críticos restantes:** status inicial da OS, consistência entre modos/fotos, A receber e excedente.
 - [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
       navegação pós-geração e crop/zoom da logo.
@@ -55,8 +55,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-43-qa-gap-regression-protocol`. Consolidar o protocolo obrigatório que passa a reger
-todas as tarefas de UI seguintes, incluindo os três viewports, os dois modos, concorrência e ações reais.
+**Próxima tarefa pronta:** `B4-02-approved-os-starts-pending`. Corrigir no backend o estado inicial da OS automática
+e verificar imediatamente a OS criada nas superfícies aplicáveis conforme o protocolo B4-43.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

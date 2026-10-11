@@ -2784,7 +2784,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-CRITICAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-44-key-user-exploratory-final",
