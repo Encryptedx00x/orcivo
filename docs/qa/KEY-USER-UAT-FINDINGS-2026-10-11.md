@@ -2,7 +2,7 @@
 
 ## Objetivo e limite desta etapa
 
-Este documento transforma os achados do primeiro Key User no **Improvement Batch 4**. Nesta etapa foram feitos somente análise, deduplicação, planejamento e reconciliação da fila. Não houve implementação de produto, deploy, publicação de app, alteração de produção ou mudança do design system.
+Este documento transforma os achados do primeiro Key User no **Improvement Batch 4** e acumula a evidência de execução. A análise, deduplicação, planejamento e reconciliação foram concluídos; a implementação manual começou pela B4-01. Não houve deploy, publicação de app, alteração de produção ou mudança do design system.
 
 Base operacional preservada:
 
@@ -79,6 +79,36 @@ Deduplicações principais:
 - 24 + 25: um ADR de posicionamento/nomenclatura/onboarding antes de alterar copy ou domínio.
 - 17 não presume que as telas internas do app estejam erradas; primeiro diferencia build antiga, Home real e convite já implementado.
 - 19, 26, 27 e 28 permanecem atrás de decisão explícita do dono.
+
+## Por que a QA anterior não detectou os achados 1–18
+
+Este é o diagnóstico inicial do gap, não uma justificativa para encerrar os achados. Cada tarefa deve confirmar ou
+corrigir a causa ao executar a reprodução. O protocolo correspondente está em `CATALOGO-DE-TESTES.md` §§0.1–0.4.
+
+| Achado | Gap da QA anterior                                                                                                                      | Protocolo que passa a cobrir                                                                                  |
+| -----: | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+|      1 | A matriz usava larguras aproximadas e não exigia o modo completo com textos/estados longos no iPhone 16 e Android de 360 px.            | Três viewports exatos × dois modos, screenshot e asserção de `scrollWidth <= innerWidth`.                     |
+|      2 | A inspeção validava que os links abriam, mas não esperava um evento de download nem conferia headers, nome e arquivo salvo.             | Download real no navegador, incluindo diferenças de navegador/PWA, separado de “Ver PDF”.                     |
+|      3 | O happy path tinha um único aprovador; não havia duas sessões carregadas antes da primeira aprovação.                                   | Duas abas/sessões e spec concorrente serial com unicidade de aprovação, OS, cobranças e auditoria.            |
+|      4 | A QA conferia que uma OS existia após aprovar, mas não afirmava seu estado inicial antes de qualquer ação do usuário.                   | Integração aprovação → OS pendente e inspeção imediata nas superfícies.                                       |
+|      5 | Fácil e completo eram exercitados isoladamente; não se alternava modo no meio da mesma OS nem se reabria a foto por categoria.          | Troca de modo durante o fluxo, reabertura e comparação de IDs, status e fotos Antes/Durante/Depois.           |
+|      6 | Partes de financeiro eram testadas separadamente, sem rastrear condições do orçamento até criação, listagem, baixa e recibo.            | Fluxo ponta a ponta condições → A receber → baixa → recibo, com atualização de listas em cada superfície.     |
+|      7 | O roteiro só aceitava a criação automática da OS e não avaliava se a atribuição opcional era oferecida nem se o termo era neutro.       | Caso com/sem responsável após ADR, em fácil/completo, verificando contrato e nomenclatura.                    |
+|      8 | O modal não era obrigatório em 390×844 e 360×800; o controle nativo de data e o teclado não foram exercitados.                          | Modal aberto e preenchido nos três viewports, com overflow e foco/teclado verificados.                        |
+|      9 | Só foram usados valores iguais ao esperado no happy path; os limites abaixo/acima e a confirmação de excedente não existiam no roteiro. | Matriz abaixo/igual/acima com Decimal, diferença, confirmação, motivo e persistência.                         |
+|     10 | A conta usada tinha assinatura salva ou o estado vazio não foi capturado; testou-se a ação, não o verbo exibido.                        | Estados vazio/preenchido obrigatórios e asserção “Adicionar” versus “Trocar”.                                 |
+|     11 | As opções do orçamento foram assumidas como equivalentes às do recibo, sem inventário do contrato e do PDF de recibo.                   | Inventário backend/shared/UI/PDF, estados configurados e ausentes, antes de ampliar o modelo.                 |
+|     12 | O teste encerrava ao enviar e exibir a logo; não havia requisito de recorte, zoom, reposição, cancelar e fidelidade do preview.         | Casos de imagem horizontal/quadrada/retrato, EXIF, cancelar/salvar e comparação preview/documento.            |
+|     13 | A QA só observava presença e texto do toast; não media duração nem procurava uma ação de dispensa.                                      | Relógio controlado no teste e verificação visual do tempo reduzido e do botão OK.                             |
+|     14 | O item sempre era adicionado antes de Continuar; o estado “digitado, mas ainda não incluído” nunca foi exercitado.                      | Continuar com conteúdo pendente, cobrindo adicionar e continuar e descarte consciente.                        |
+|     15 | O fluxo parava na tela de sucesso; voltar pelo produto/navegador e uma segunda geração não eram testados.                               | Teste de histórico/destino após gerar e prova de ausência de edição ou duplicação acidental.                  |
+|     16 | O app era aberto em desenvolvimento/Expo web, onde localhost é válido; não havia checagem de configuração de build distribuída.         | Guard automático contra loopback em produção/preview e autenticação somente após validar a build.             |
+|     17 | A QA do repositório não comparou a build realmente instalada, seus metadados e o fluxo de convite existente; o login impediu ir além.   | Auditoria de versão/build, design handoff, Home e convite sem inferir sobre telas internas não acessadas.     |
+|     18 | Não houve medição reproduzível do artefato instalado nem orçamento de tamanho; a percepção de 73 MB ficou fora dos testes funcionais.   | Análise de composição do bundle/artefato, baseline, orçamento e verificação de regressão sem cortar recursos. |
+
+Regra vigente: nenhuma tarefa de UI B4-02…B4-42 fecha sem a matriz de evidência aplicável. “Não reproduzido” e
+“não aplicável” não são sinônimos: ambos precisam de superfície/build, passos e evidência; o segundo exige provar que
+o fluxo não existe naquela superfície. Ações como download, voltar, concorrência e build distribuída devem ser reais.
 
 ## Referências documentais em PDF
 
