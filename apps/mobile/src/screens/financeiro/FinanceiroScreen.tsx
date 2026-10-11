@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react-native';
 import {
+  comparePaymentAmounts,
   formatMoney,
   parseMoneyInput,
   sumDecimal,
@@ -197,7 +198,15 @@ export function FinanceiroScreen() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [createOverpaymentConfirmed, setCreateOverpaymentConfirmed] = useState(false);
+  const [createOverpaymentReason, setCreateOverpaymentReason] = useState('');
   const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [settlingPayment, setSettlingPayment] = useState<Payment | null>(null);
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleMethod, setSettleMethod] = useState<PaymentMethod>('PIX');
+  const [overpaymentConfirmed, setOverpaymentConfirmed] = useState(false);
+  const [overpaymentReason, setOverpaymentReason] = useState('');
+  const [settleError, setSettleError] = useState('');
 
   const submitLock = useRef(false);
   const request = useRef<{ body: string; key: string } | null>(null);
@@ -285,6 +294,8 @@ export function FinanceiroScreen() {
     setMethod(EMPTY_FORM.method);
     setStatus(EMPTY_FORM.status);
     setDate(EMPTY_FORM.date);
+    setCreateOverpaymentConfirmed(false);
+    setCreateOverpaymentReason('');
     setFormError('');
     setShowForm(false);
   }
@@ -306,6 +317,14 @@ export function FinanceiroScreen() {
       setFormError('Informe um valor positivo com até duas casas decimais.');
       return;
     }
+    const createComparison =
+      status === 'PAID' && selectedWorkOrder.quote?.total
+        ? comparePaymentAmounts(selectedWorkOrder.quote.total, decimalAmount)
+        : null;
+    if (createComparison?.relation === 'ABOVE' && !createOverpaymentConfirmed) {
+      setFormError('Confirme conscientemente o valor acima do esperado.');
+      return;
+    }
     submitLock.current = true;
     setBusy(true);
     setFormError('');
@@ -317,6 +336,8 @@ export function FinanceiroScreen() {
         work_order_id: selectedWorkOrder.id,
         description: `OS #${selectedWorkOrder.number} — ${selectedWorkOrder.title}`,
         amount: decimalAmount,
+        overpayment_confirmed: createOverpaymentConfirmed,
+        overpayment_reason: createOverpaymentReason.trim() || undefined,
         method,
         status,
         ...(status === 'PAID' ? { paid_at: isoDate } : { due_date: isoDate }),
@@ -328,6 +349,8 @@ export function FinanceiroScreen() {
       setPayments((prev) => [created, ...prev]);
       resetForm();
       setSuccessMsg(`Recebimento de ${formatMoney(created.amount)} registrado.`);
+      setCreateOverpaymentConfirmed(false);
+      setCreateOverpaymentReason('');
     } catch (error: unknown) {
       setFormError(financeiroError(error, 'save'));
     } finally {
@@ -336,14 +359,45 @@ export function FinanceiroScreen() {
     }
   }
 
-  async function settle(payment: Payment) {
+  function openSettlement(payment: Payment) {
+    setSettlingPayment(payment);
+    setSettleAmount((payment.expected_amount ?? payment.amount).replace('.', ','));
+    setSettleMethod(payment.method ?? 'PIX');
+    setOverpaymentConfirmed(false);
+    setOverpaymentReason('');
+    setSettleError('');
+  }
+
+  async function settle() {
+    const payment = settlingPayment;
+    const receivedAmount = parseMoneyInput(settleAmount);
+    if (!payment || !receivedAmount) {
+      setSettleError('Informe um valor recebido válido.');
+      return;
+    }
+    const comparison = comparePaymentAmounts(
+      payment.expected_amount ?? payment.amount,
+      receivedAmount,
+    );
+    if (comparison.relation === 'ABOVE' && !overpaymentConfirmed) {
+      setSettleError('Confirme conscientemente o valor acima do esperado.');
+      return;
+    }
     if (settlingId) return;
     setSettlingId(payment.id);
     try {
-      const updated = await paymentService.settle(payment.id, {
-        idempotencyKey: newIdempotencyKey(),
-      });
+      const updated = await paymentService.settle(
+        payment.id,
+        {
+          received_amount: receivedAmount,
+          method: settleMethod,
+          overpayment_confirmed: overpaymentConfirmed,
+          overpayment_reason: overpaymentReason.trim() || undefined,
+        },
+        { idempotencyKey: newIdempotencyKey() },
+      );
       setPayments((prev) => prev.map((item) => (item.id === payment.id ? updated : item)));
+      setSettlingPayment(null);
     } catch (error: unknown) {
       Alert.alert('Erro', financeiroError(error, 'settle'));
     } finally {
@@ -359,6 +413,14 @@ export function FinanceiroScreen() {
       payments.filter((p) => p.status === 'PENDING' || p.status === 'PARTIAL').map((p) => p.amount),
     ),
   );
+  const parsedSettleAmount = parseMoneyInput(settleAmount);
+  const settleComparison =
+    settlingPayment && parsedSettleAmount
+      ? comparePaymentAmounts(
+          settlingPayment.expected_amount ?? settlingPayment.amount,
+          parsedSettleAmount,
+        )
+      : null;
 
   if (loading)
     return (
@@ -474,12 +536,69 @@ export function FinanceiroScreen() {
                 onChangeText={(value) => {
                   setAmount(value);
                   setFormError('');
+                  setCreateOverpaymentConfirmed(false);
                 }}
                 editable={!busy}
                 placeholder="890,00"
                 placeholderTextColor="#64748B"
                 keyboardType="decimal-pad"
               />
+
+              {status === 'PAID' && selectedWorkOrder?.quote?.total && parseMoneyInput(amount)
+                ? (() => {
+                    const comparison = comparePaymentAmounts(
+                      selectedWorkOrder.quote!.total!,
+                      parseMoneyInput(amount)!,
+                    );
+                    if (comparison.relation === 'EQUAL') return null;
+                    return (
+                      <View
+                        style={[
+                          styles.amountReview,
+                          comparison.relation === 'ABOVE' && styles.amountReviewWarning,
+                        ]}
+                      >
+                        <Text style={styles.label}>
+                          Esperado: {formatMoney(comparison.expected_amount)}
+                        </Text>
+                        <Text style={styles.label}>
+                          Recebido: {formatMoney(comparison.received_amount)}
+                        </Text>
+                        <Text style={styles.label}>
+                          Diferença: {formatMoney(comparison.difference)}
+                          {comparison.relation === 'ABOVE' ? ' a mais' : ' a menos'}
+                        </Text>
+                        {comparison.relation === 'ABOVE' ? (
+                          <>
+                            <Text style={styles.label}>Motivo do excedente (opcional)</Text>
+                            <TextInput
+                              accessibilityLabel="Motivo do excedente"
+                              style={[styles.input, { minHeight: 80 }]}
+                              value={createOverpaymentReason}
+                              onChangeText={setCreateOverpaymentReason}
+                              multiline
+                              maxLength={500}
+                            />
+                            <TouchableOpacity
+                              accessibilityRole="checkbox"
+                              accessibilityState={{ checked: createOverpaymentConfirmed }}
+                              onPress={() => setCreateOverpaymentConfirmed((value) => !value)}
+                              style={styles.confirmRow}
+                            >
+                              <View
+                                style={[
+                                  styles.checkbox,
+                                  createOverpaymentConfirmed && styles.checkboxChecked,
+                                ]}
+                              />
+                              <Text style={[styles.label, { flex: 1 }]}>Confirmo o excedente.</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : null}
+                      </View>
+                    );
+                  })()
+                : null}
 
               <Text style={styles.label}>Método</Text>
               <View style={styles.chips}>
@@ -597,7 +716,7 @@ export function FinanceiroScreen() {
                       accessibilityRole="button"
                       accessibilityState={{ disabled: settlingId === payment.id }}
                       disabled={settlingId === payment.id}
-                      onPress={() => void settle(payment)}
+                      onPress={() => openSettlement(payment)}
                       style={[styles.settleBtn, settlingId === payment.id && styles.disabled]}
                     >
                       <Check size={14} color="#6D28D9" />
@@ -627,6 +746,121 @@ export function FinanceiroScreen() {
           />
         </View>
       </ScrollView>
+
+      <Modal
+        visible={Boolean(settlingPayment)}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSettlingPayment(null)}
+      >
+        <ScrollView
+          contentContainerStyle={styles.modalContainer}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.modalHeader}>
+            <Text accessibilityRole="header" style={styles.subtitle}>
+              Registrar recebimento
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Fechar"
+              onPress={() => setSettlingPayment(null)}
+            >
+              <X size={22} color="#0A0A0F" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.label}>Valor esperado</Text>
+          <Text style={styles.summaryValue}>
+            {formatMoney(settlingPayment?.expected_amount ?? settlingPayment?.amount)}
+          </Text>
+          <Text style={styles.label}>Valor recebido</Text>
+          <TextInput
+            accessibilityLabel="Valor recebido"
+            style={styles.input}
+            value={settleAmount}
+            onChangeText={(value) => {
+              setSettleAmount(value);
+              setOverpaymentConfirmed(false);
+              setSettleError('');
+            }}
+            keyboardType="decimal-pad"
+          />
+          <Text style={styles.label}>Método</Text>
+          <View style={styles.chips}>
+            {METHOD_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: settleMethod === option.value }}
+                onPress={() => setSettleMethod(option.value)}
+                style={[styles.chip, settleMethod === option.value && styles.selectedChip]}
+              >
+                <Text
+                  style={settleMethod === option.value ? styles.selectedChipLabel : styles.label}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {settleComparison ? (
+            <View
+              style={[
+                styles.amountReview,
+                settleComparison.relation === 'ABOVE' && styles.amountReviewWarning,
+              ]}
+            >
+              <Text style={styles.label}>
+                Esperado: {formatMoney(settleComparison.expected_amount)}
+              </Text>
+              <Text style={styles.label}>
+                Recebido: {formatMoney(settleComparison.received_amount)}
+              </Text>
+              <Text style={styles.label}>
+                Diferença: {formatMoney(settleComparison.difference)}
+                {settleComparison.relation === 'ABOVE'
+                  ? ' a mais'
+                  : settleComparison.relation === 'BELOW'
+                    ? ' a menos'
+                    : ''}
+              </Text>
+            </View>
+          ) : null}
+          {settleComparison?.relation === 'ABOVE' ? (
+            <>
+              <Text style={styles.label}>Motivo do excedente (opcional)</Text>
+              <TextInput
+                accessibilityLabel="Motivo do excedente"
+                style={[styles.input, { minHeight: 80 }]}
+                value={overpaymentReason}
+                onChangeText={setOverpaymentReason}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: overpaymentConfirmed }}
+                onPress={() => setOverpaymentConfirmed((value) => !value)}
+                style={styles.confirmRow}
+              >
+                <View style={[styles.checkbox, overpaymentConfirmed && styles.checkboxChecked]} />
+                <Text style={[styles.label, { flex: 1 }]}>Confirmo o valor acima do esperado.</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+          {settleError ? (
+            <Text accessibilityRole="alert" style={styles.error}>
+              {settleError}
+            </Text>
+          ) : null}
+          <Button
+            label={settlingId ? 'Registrando…' : 'Confirmar recebimento'}
+            busy={Boolean(settlingId)}
+            onPress={() => void settle()}
+          />
+          <Button label="Cancelar" secondary onPress={() => setSettlingPayment(null)} />
+        </ScrollView>
+      </Modal>
 
       <Modal
         visible={showPicker}
@@ -794,6 +1028,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginTop: 4,
   },
+  amountReview: {
+    gap: 4,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  amountReviewWarning: { borderColor: '#FDBA74', backgroundColor: '#FFF7ED' },
+  confirmRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
+  checkbox: { width: 20, height: 20, borderWidth: 2, borderColor: '#64748B', borderRadius: 4 },
+  checkboxChecked: { borderColor: '#6D28D9', backgroundColor: '#6D28D9' },
   settleBtnText: { color: '#6D28D9', fontSize: 13, fontWeight: '600' },
   empty: { paddingVertical: 24 },
   error: { color: '#DC2626', fontSize: 14, lineHeight: 20 },

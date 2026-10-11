@@ -17,7 +17,12 @@ import {
   Trash2,
   Minus,
 } from 'lucide-react';
-import { formatMoney, sumDecimal } from '@orcivo/shared-types';
+import {
+  comparePaymentAmounts,
+  formatMoney,
+  parseMoneyInput,
+  sumDecimal,
+} from '@orcivo/shared-types';
 import {
   deletePayment,
   getFinanceSummary,
@@ -135,6 +140,10 @@ export function MoneyScreen(): React.JSX.Element {
     );
   });
   const [open, setOpen] = useState<string | null>(null);
+  const [receivedAmount, setReceivedAmount] = useState('');
+  const [overpaymentReason, setOverpaymentReason] = useState('');
+  const [confirmingOverpayment, setConfirmingOverpayment] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState('PIX');
   const [limit, setLimit] = useState(PAGE);
   const [paidLimit, setPaidLimit] = useState(PAGE);
   const [period, setPeriod] = useState<Period>('month');
@@ -151,12 +160,30 @@ export function MoneyScreen(): React.JSX.Element {
   const sum = (list: EasyPayment[]) =>
     list.length ? sumDecimal(list.map((p) => p.amount)) : '0.00';
 
-  const settle = async (p: EasyPayment, method: string) => {
-    const r = await settlePayment(p.id, method);
+  const settle = async (p: EasyPayment, method: string, confirmed = false) => {
+    const parsed = parseMoneyInput(receivedAmount);
+    if (!parsed) return toast('Informe um valor recebido válido.');
+    const comparison = comparePaymentAmounts(p.expected_amount ?? p.amount, parsed);
+    if (comparison.relation === 'ABOVE' && !confirmed) {
+      setSelectedMethod(method);
+      setConfirmingOverpayment(true);
+      return;
+    }
+    const r = await settlePayment(p.id, method, parsed, confirmed, overpaymentReason);
     if (!r.ok) return toast(r.message);
     setOpen(null);
-    toast(`Pronto! ${formatMoney(p.amount)} recebido. O recibo já está em Recibos.`);
+    setConfirmingOverpayment(false);
+    setOverpaymentReason('');
+    toast(`Pronto! ${formatMoney(parsed)} recebido. O recibo já está em Recibos.`);
     payments.reload();
+    month.reload();
+  };
+
+  const openSettlement = (p: EasyPayment) => {
+    setOpen(p.id);
+    setReceivedAmount((p.expected_amount ?? p.amount).replace('.', ','));
+    setOverpaymentReason('');
+    setConfirmingOverpayment(false);
   };
 
   const charge = async (p: EasyPayment) => {
@@ -409,7 +436,7 @@ export function MoneyScreen(): React.JSX.Element {
                       <Chip kind={chip.kind} label={chip.label} />
                     </div>
                     {open !== p.id ? (
-                      <Btn tone="soft" icon={Check} height={56} onClick={() => setOpen(p.id)}>
+                      <Btn tone="soft" icon={Check} height={56} onClick={() => openSettlement(p)}>
                         Marcar como pago
                       </Btn>
                     ) : (
@@ -422,19 +449,82 @@ export function MoneyScreen(): React.JSX.Element {
                           paddingTop: 12,
                         }}
                       >
-                        <span style={{ fontSize: 17, fontWeight: 700 }}>Como recebeu?</span>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          {METHODS.map((m) => (
-                            <Btn
-                              key={m.value}
-                              height={56}
-                              onClick={() => void settle(p, m.value)}
-                              style={{ fontSize: 17 }}
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <span style={{ fontSize: 15, fontWeight: 700 }}>Valor recebido</span>
+                          <input
+                            className="ov-input"
+                            inputMode="decimal"
+                            value={receivedAmount}
+                            onChange={(event) => {
+                              setReceivedAmount(event.target.value);
+                              setConfirmingOverpayment(false);
+                            }}
+                            aria-label="Valor recebido"
+                          />
+                        </label>
+                        {(() => {
+                          const parsed = parseMoneyInput(receivedAmount);
+                          if (!parsed) return null;
+                          const comparison = comparePaymentAmounts(
+                            p.expected_amount ?? p.amount,
+                            parsed,
+                          );
+                          return (
+                            <div
+                              role={comparison.relation === 'ABOVE' ? 'alert' : undefined}
+                              style={{
+                                ...card,
+                                padding: 12,
+                                background: comparison.relation === 'ABOVE' ? '#FFF7ED' : '#F8FAFC',
+                                borderColor: comparison.relation === 'ABOVE' ? '#FDBA74' : C.line,
+                              }}
                             >
-                              {m.label}
+                              <div>Esperado: {formatMoney(comparison.expected_amount)}</div>
+                              <div>Recebido: {formatMoney(comparison.received_amount)}</div>
+                              <div>
+                                Diferença: {formatMoney(comparison.difference)}
+                                {comparison.relation === 'ABOVE' ? ' a mais' : ''}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {confirmingOverpayment ? (
+                          <>
+                            <span style={{ fontSize: 17, fontWeight: 700 }}>
+                              Confirmar valor acima do esperado?
+                            </span>
+                            <textarea
+                              className="ov-input"
+                              value={overpaymentReason}
+                              onChange={(event) => setOverpaymentReason(event.target.value)}
+                              maxLength={500}
+                              rows={3}
+                              placeholder="Motivo do excedente (opcional)"
+                              aria-label="Motivo do excedente"
+                            />
+                            <Btn height={56} onClick={() => void settle(p, selectedMethod, true)}>
+                              Confirmar excedente
                             </Btn>
-                          ))}
-                        </div>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: 17, fontWeight: 700 }}>Como recebeu?</span>
+                            <div
+                              style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}
+                            >
+                              {METHODS.map((m) => (
+                                <Btn
+                                  key={m.value}
+                                  height={56}
+                                  onClick={() => void settle(p, m.value)}
+                                  style={{ fontSize: 17 }}
+                                >
+                                  {m.label}
+                                </Btn>
+                              ))}
+                            </div>
+                          </>
+                        )}
                         <Btn tone="link" onClick={() => setOpen(null)} style={{ color: C.fg2 }}>
                           Fechar
                         </Btn>

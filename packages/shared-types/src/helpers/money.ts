@@ -68,3 +68,28 @@ export function decimalPercentage(value: string, total: string): string {
   if (divisor.lte(0)) return '0';
   return new Decimal(value).div(divisor).mul(100).toFixed(2);
 }
+
+export type PaymentAmountRelation = 'BELOW' | 'EQUAL' | 'ABOVE';
+
+export interface PaymentAmountComparison {
+  expected_amount: string;
+  received_amount: string;
+  difference: string;
+  relation: PaymentAmountRelation;
+}
+
+/** Compares expected and received money without converting either value to Number. */
+export function comparePaymentAmounts(
+  expectedAmount: string,
+  receivedAmount: string,
+): PaymentAmountComparison {
+  const expected = new Decimal(expectedAmount).toDecimalPlaces(2);
+  const received = new Decimal(receivedAmount).toDecimalPlaces(2);
+  const signedDifference = received.minus(expected);
+  return {
+    expected_amount: expected.toFixed(2),
+    received_amount: received.toFixed(2),
+    difference: signedDifference.abs().toFixed(2),
+    relation: signedDifference.gt(0) ? 'ABOVE' : signedDifference.lt(0) ? 'BELOW' : 'EQUAL',
+  };
+}

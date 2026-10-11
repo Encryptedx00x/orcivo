@@ -15,23 +15,33 @@ export const PaymentMethodEnum = z.enum([
 
 export const PaymentStatusEnum = z.enum(['PENDING', 'PAID', 'OVERDUE', 'PARTIAL', 'CANCELLED']);
 
-export const PaymentCreateSchema = z.object({
-  customer_id: z.string().uuid(),
-  work_order_id: z.string().uuid().optional(),
-  quote_id: z.string().uuid().optional(),
-  description: z.string().max(200).optional(),
-  amount: MONEY,
-  method: PaymentMethodEnum.optional(),
-  status: PaymentStatusEnum.optional(),
-  due_date: z.string().datetime().optional(),
-  paid_at: z.string().datetime().optional(),
+const OverpaymentConfirmationSchema = z.object({
+  overpayment_confirmed: z.boolean().optional(),
+  overpayment_reason: z.string().trim().max(500).optional(),
 });
+
+export const PaymentCreateSchema = z
+  .object({
+    customer_id: z.string().uuid(),
+    work_order_id: z.string().uuid().optional(),
+    quote_id: z.string().uuid().optional(),
+    description: z.string().max(200).optional(),
+    amount: MONEY,
+    method: PaymentMethodEnum.optional(),
+    status: PaymentStatusEnum.optional(),
+    due_date: z.string().datetime().optional(),
+    paid_at: z.string().datetime().optional(),
+  })
+  .merge(OverpaymentConfirmationSchema);
 export type PaymentCreateDto = z.infer<typeof PaymentCreateSchema>;
 
-export const PaymentSettleSchema = z.object({
-  method: PaymentMethodEnum.optional(),
-  paid_at: z.string().datetime().optional(),
-});
+export const PaymentSettleSchema = z
+  .object({
+    method: PaymentMethodEnum.optional(),
+    paid_at: z.string().datetime().optional(),
+    received_amount: MONEY.optional(),
+  })
+  .merge(OverpaymentConfirmationSchema);
 export type PaymentSettleDto = z.infer<typeof PaymentSettleSchema>;
 
 const JUSTIFICATION = z.string().trim().min(3).max(500);
@@ -45,6 +55,7 @@ export const PaymentUpdateSchema = z
     paid_at: z.string().datetime().nullable().optional(),
     justification: JUSTIFICATION,
   })
+  .merge(OverpaymentConfirmationSchema)
   .refine(
     (value) =>
       value.amount !== undefined ||

@@ -24,6 +24,7 @@ export interface PaymentRow {
   description: string;
   amount: string;
   amountDecimal: string;
+  expectedAmount: string;
   method: string;
   rawMethod: EditablePayment['method'];
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
@@ -110,6 +111,7 @@ export function FinanceiroContent({ entries, kpis, bars, monthLabel }: Props): R
       id: row.id,
       customer: row.customer,
       amount: row.amountDecimal,
+      expectedAmount: row.expectedAmount,
       method: row.rawMethod,
       status: row.status,
       dueDate: row.dueDate,

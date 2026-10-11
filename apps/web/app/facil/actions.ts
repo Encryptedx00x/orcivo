@@ -365,6 +365,9 @@ export async function deleteAppointment(id: string): Promise<Result<true>> {
 export interface EasyPayment {
   id: string;
   amount: string;
+  expected_amount?: string | null;
+  overpayment_amount?: string | null;
+  overpayment_reason?: string | null;
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
   method: string | null;
   description?: string | null;
@@ -380,12 +383,24 @@ export async function listPayments(): Promise<Result<EasyPayment[]>> {
     return Array.isArray(res) ? res : res.data;
   }, 'Não foi possível carregar o financeiro.');
 }
-export async function settlePayment(id: string, method: string): Promise<Result<EasyPayment>> {
+export async function settlePayment(
+  id: string,
+  method: string,
+  receivedAmount: string,
+  overpaymentConfirmed = false,
+  overpaymentReason?: string,
+): Promise<Result<EasyPayment>> {
   return run(
     () =>
       apiFetch<EasyPayment>(`/payments/${encodeURIComponent(id)}/settle`, {
         method: 'PATCH',
-        body: JSON.stringify({ method, paid_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          method,
+          paid_at: new Date().toISOString(),
+          received_amount: receivedAmount,
+          overpayment_confirmed: overpaymentConfirmed,
+          overpayment_reason: overpaymentReason?.trim() || undefined,
+        }),
       }),
     'Não foi possível registrar o pagamento.',
   );

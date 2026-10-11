@@ -16,7 +16,9 @@ import {
 } from 'lucide-react-native';
 import {
   EXPENSE_CATEGORIES,
+  comparePaymentAmounts,
   formatMoney,
+  parseMoneyInput,
   sumDecimal,
   type ExpenseCategory,
 } from '@orcivo/shared-types';
@@ -103,6 +105,10 @@ export function MoneyScreen() {
     );
   }, 'Não foi possível carregar o resumo.');
   const [open, setOpen] = useState<string | null>(null);
+  const [receivedAmount, setReceivedAmount] = useState('');
+  const [overpaymentReason, setOverpaymentReason] = useState('');
+  const [confirmingOverpayment, setConfirmingOverpayment] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState('PIX');
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState(PAGE);
   const [paidLimit, setPaidLimit] = useState(PAGE);
@@ -120,19 +126,37 @@ export function MoneyScreen() {
   const sum = (list: EasyPayment[]) =>
     list.length ? sumDecimal(list.map((p) => p.amount)) : '0.00';
 
-  const settle = async (p: EasyPayment, method: string) => {
+  const settle = async (p: EasyPayment, method: string, confirmed = false) => {
     if (busy) return;
+    const parsed = parseMoneyInput(receivedAmount);
+    if (!parsed) return Alert.alert('Atenção', 'Informe um valor recebido válido.');
+    const comparison = comparePaymentAmounts(p.expected_amount ?? p.amount, parsed);
+    if (comparison.relation === 'ABOVE' && !confirmed) {
+      setSelectedMethod(method);
+      setConfirmingOverpayment(true);
+      return;
+    }
     setBusy(true);
     try {
-      await easy.settlePayment(p.id, method);
+      await easy.settlePayment(p.id, method, parsed, confirmed, overpaymentReason);
       setOpen(null);
-      Alert.alert('Pronto!', `${formatMoney(p.amount)} recebido. O recibo já está em Recibos.`);
+      setConfirmingOverpayment(false);
+      setOverpaymentReason('');
+      Alert.alert('Pronto!', `${formatMoney(parsed)} recebido. O recibo já está em Recibos.`);
       void payments.refresh();
+      void month.refresh();
     } catch (err) {
       Alert.alert('Não deu certo', errorText(err, 'Não foi possível registrar o pagamento.'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const openSettlement = (p: EasyPayment) => {
+    setOpen(p.id);
+    setReceivedAmount((p.expected_amount ?? p.amount).replace('.', ','));
+    setConfirmingOverpayment(false);
+    setOverpaymentReason('');
   };
 
   const charge = async (p: EasyPayment) => {
@@ -302,19 +326,76 @@ export function MoneyScreen() {
                 <Chip kind={chip.kind} label={chip.label} />
                 {open === p.id ? (
                   <View style={{ gap: 10 }}>
-                    <Text style={[s.body, { fontWeight: '700' }]}>Como recebeu?</Text>
-                    <Options
-                      cols={2}
-                      options={RECEIPT_METHODS}
-                      value={null}
-                      onPick={(m) => void settle(p, m)}
+                    <Field
+                      label="Valor recebido"
+                      value={receivedAmount}
+                      onChange={(value) => {
+                        setReceivedAmount(value);
+                        setConfirmingOverpayment(false);
+                      }}
+                      keyboard="number-pad"
                     />
+                    {(() => {
+                      const parsed = parseMoneyInput(receivedAmount);
+                      if (!parsed) return null;
+                      const comparison = comparePaymentAmounts(
+                        p.expected_amount ?? p.amount,
+                        parsed,
+                      );
+                      return (
+                        <Card
+                          style={{
+                            padding: 12,
+                            gap: 4,
+                            backgroundColor:
+                              comparison.relation === 'ABOVE' ? '#FFF7ED' : '#F8FAFC',
+                            borderColor: comparison.relation === 'ABOVE' ? '#FDBA74' : '#E2E8F0',
+                          }}
+                        >
+                          <Text style={s.body}>
+                            Esperado: {formatMoney(comparison.expected_amount)}
+                          </Text>
+                          <Text style={s.body}>
+                            Recebido: {formatMoney(comparison.received_amount)}
+                          </Text>
+                          <Text style={s.body}>
+                            Diferença: {formatMoney(comparison.difference)}
+                            {comparison.relation === 'ABOVE' ? ' a mais' : ''}
+                          </Text>
+                        </Card>
+                      );
+                    })()}
+                    {confirmingOverpayment ? (
+                      <>
+                        <Text style={[s.body, { fontWeight: '700' }]}>Confirmar excedente?</Text>
+                        <Field
+                          label="Motivo do excedente (opcional)"
+                          value={overpaymentReason}
+                          onChange={setOverpaymentReason}
+                          multiline
+                          maxLength={500}
+                        />
+                        <Btn onPress={() => void settle(p, selectedMethod, true)}>
+                          Confirmar excedente
+                        </Btn>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={[s.body, { fontWeight: '700' }]}>Como recebeu?</Text>
+                        <Options
+                          cols={2}
+                          options={RECEIPT_METHODS}
+                          value={null}
+                          onPick={(m) => void settle(p, m)}
+                        />
+                      </>
+                    )}
                     <Btn tone="link" onPress={() => setOpen(null)}>
                       Fechar
                     </Btn>
                   </View>
                 ) : (
-                  <Btn tone="soft" icon={CheckCircle} height={56} onPress={() => setOpen(p.id)}>
+                  <Btn tone="soft" icon={CheckCircle} height={56} onPress={() => openSettlement(p)}>
                     Marcar como pago
                   </Btn>
                 )}

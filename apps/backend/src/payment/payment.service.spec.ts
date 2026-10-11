@@ -18,6 +18,8 @@ describe('PaymentService', () => {
   const prisma = {
     $transaction: jest.fn(),
     payment: { findMany: jest.fn(), findFirst: jest.fn() },
+    workOrder: { findFirst: jest.fn() },
+    quote: { findFirst: jest.fn() },
   };
   const ownership = {
     assertCustomer: jest.fn(),
@@ -41,6 +43,9 @@ describe('PaymentService', () => {
     prisma.$transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    prisma.workOrder.findFirst.mockResolvedValue(null);
+    prisma.quote.findFirst.mockResolvedValue(null);
+    prisma.payment.findMany.mockResolvedValue([]);
   });
 
   it('persists the supplied decimal string and records creation audit atomically', async () => {
@@ -107,14 +112,14 @@ describe('PaymentService', () => {
     tx.payment.update.mockResolvedValue({
       id: 'payment-1',
       status: 'PAID',
-      amount: { toString: () => '1300.00' },
+      amount: { toString: () => '1200.00' },
       customer: { id: 'customer-1', name: 'Ana' },
     });
 
     await service.update(
       'payment-1',
       'company-1',
-      { amount: '1300.00', status: 'PAID', justification: 'Valor confirmado com o cliente' },
+      { amount: '1200.00', status: 'PAID', justification: 'Valor confirmado com o cliente' },
       'user-1',
     );
 
@@ -122,7 +127,7 @@ describe('PaymentService', () => {
       expect.objectContaining({
         where: { id: 'payment-1' },
         data: expect.objectContaining({
-          amount: '1300.00',
+          amount: '1200.00',
           status: 'PAID',
           paid_at: expect.any(Date),
         }),
@@ -255,6 +260,130 @@ describe('PaymentService', () => {
           orderBy: { receipt_number: 'desc' },
         }),
       );
+    });
+  });
+
+  describe('overpayment confirmation', () => {
+    const pending = {
+      id: 'payment-over',
+      method: null,
+      status: 'PENDING',
+      amount: { toString: () => '250.00' },
+      expected_amount: null,
+      customer: { id: 'customer-1', name: 'Ana' },
+    };
+
+    beforeEach(() => {
+      prisma.payment.findFirst.mockResolvedValue(pending);
+      tx.payment.update.mockResolvedValue({
+        ...pending,
+        status: 'PAID',
+        amount: { toString: () => '250.00' },
+      });
+      tx.payment.findUnique.mockResolvedValue({ status: 'PAID', receipt_number: 1 });
+    });
+
+    it.each([
+      ['200.00', null],
+      ['250.00', null],
+    ])('settles %s against 250.00 without overpayment confirmation', async (received, excess) => {
+      await service.settle(
+        pending.id,
+        'company-1',
+        { received_amount: received, method: 'PIX' },
+        'user-1',
+      );
+
+      expect(tx.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            expected_amount: '250.00',
+            amount: received,
+            overpayment_amount: excess,
+          }),
+        }),
+      );
+    });
+
+    it('rejects an amount above expected until it is explicitly confirmed', async () => {
+      await expect(
+        service.settle(
+          pending.id,
+          'company-1',
+          { received_amount: '275.00', method: 'PIX' },
+          'user-1',
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          code: 'PAYMENT_OVERPAYMENT_CONFIRMATION_REQUIRED',
+          expected_amount: '250.00',
+          received_amount: '275.00',
+          difference: '25.00',
+        }),
+      });
+      expect(tx.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('persists and audits the confirmed decimal excess and optional reason', async () => {
+      await service.settle(
+        pending.id,
+        'company-1',
+        {
+          received_amount: '275.00',
+          method: 'PIX',
+          overpayment_confirmed: true,
+          overpayment_reason: 'Cliente incluiu uma gorjeta',
+        },
+        'user-1',
+      );
+
+      expect(tx.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            expected_amount: '250.00',
+            amount: '275.00',
+            overpayment_amount: '25.00',
+            overpayment_reason: 'Cliente incluiu uma gorjeta',
+            overpayment_confirmed_at: expect.any(Date),
+          }),
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          companyId: 'company-1',
+          reason: 'Cliente incluiu uma gorjeta',
+          humanText: expect.stringContaining('R$ 25,00'),
+        }),
+      );
+    });
+
+    it('uses the linked OS quote balance as the expected amount for a new paid receipt', async () => {
+      prisma.workOrder.findFirst.mockResolvedValue({
+        quote_id: 'quote-1',
+        quote: { total: { toString: () => '250.00' } },
+      });
+
+      await expect(
+        service.create(
+          {
+            customer_id: 'customer-1',
+            work_order_id: 'work-order-1',
+            amount: '275.00',
+            status: 'PAID',
+          },
+          'company-1',
+          'user-1',
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          expected_amount: '250.00',
+          received_amount: '275.00',
+          difference: '25.00',
+        }),
+      });
     });
   });
 });

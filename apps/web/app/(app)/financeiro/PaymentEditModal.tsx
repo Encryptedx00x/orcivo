@@ -3,12 +3,13 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, X } from 'lucide-react';
-import { formatMoney, parseMoneyInput } from '@orcivo/shared-types';
+import { comparePaymentAmounts, formatMoney, parseMoneyInput } from '@orcivo/shared-types';
 
 export type EditablePayment = {
   id: string;
   customer: string;
   amount: string;
+  expectedAmount?: string;
   method: 'PIX' | 'BOLETO' | 'CARTAO' | 'DINHEIRO' | 'TRANSFERENCIA' | 'OUTRO' | null;
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
   dueDate: string | null;
@@ -118,6 +119,8 @@ export function PaymentEditModal({
   const [justification, setJustification] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [overpaymentConfirmed, setOverpaymentConfirmed] = useState(false);
+  const [overpaymentReason, setOverpaymentReason] = useState('');
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -128,6 +131,14 @@ export function PaymentEditModal({
     }
     if (justification.trim().length < 3) {
       setError('Informe uma justificativa com pelo menos 3 caracteres.');
+      return;
+    }
+    const comparison = comparePaymentAmounts(
+      payment.expectedAmount ?? payment.amount,
+      decimalAmount,
+    );
+    if (status === 'PAID' && comparison.relation === 'ABOVE' && !overpaymentConfirmed) {
+      setError('Revise o excedente abaixo e confirme conscientemente antes de salvar.');
       return;
     }
     setSaving(true);
@@ -142,6 +153,8 @@ export function PaymentEditModal({
           method,
           status,
           justification: justification.trim(),
+          overpayment_confirmed: overpaymentConfirmed,
+          overpayment_reason: overpaymentReason.trim() || undefined,
           // Only the date being edited changes: a paid charge keeps its due date.
           ...(status === 'PAID' ? { paid_at: dateValue } : { due_date: dateValue, paid_at: null }),
         }),
@@ -175,7 +188,10 @@ export function PaymentEditModal({
               id="payment-edit-amount"
               className="ov-input"
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setOverpaymentConfirmed(false);
+              }}
               inputMode="decimal"
               required
             />
@@ -240,6 +256,54 @@ export function PaymentEditModal({
             style={{ resize: 'vertical' }}
           />
         </div>
+        {status === 'PAID' && parseMoneyInput(amount)
+          ? (() => {
+              const comparison = comparePaymentAmounts(
+                payment.expectedAmount ?? payment.amount,
+                parseMoneyInput(amount)!,
+              );
+              return comparison.relation === 'EQUAL' ? null : (
+                <div
+                  role={comparison.relation === 'ABOVE' ? 'alert' : undefined}
+                  style={{
+                    ...summaryStyle,
+                    borderColor: comparison.relation === 'ABOVE' ? '#FDBA74' : '#CBD5E1',
+                    background: comparison.relation === 'ABOVE' ? '#FFF7ED' : '#F8FAFC',
+                  }}
+                >
+                  <strong>Esperado: {formatMoney(comparison.expected_amount)}</strong>
+                  <span>Recebido: {formatMoney(comparison.received_amount)}</span>
+                  <span>
+                    Diferença: {formatMoney(comparison.difference)}
+                    {comparison.relation === 'ABOVE' ? ' a mais' : ' a menos'}
+                  </span>
+                  {comparison.relation === 'ABOVE' ? (
+                    <>
+                      <label className="ov-label" htmlFor="payment-overpayment-reason">
+                        Motivo do excedente (opcional)
+                      </label>
+                      <textarea
+                        id="payment-overpayment-reason"
+                        className="ov-input"
+                        value={overpaymentReason}
+                        onChange={(event) => setOverpaymentReason(event.target.value)}
+                        maxLength={500}
+                        rows={2}
+                      />
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={overpaymentConfirmed}
+                          onChange={(event) => setOverpaymentConfirmed(event.target.checked)}
+                        />
+                        Confirmo o recebimento acima do valor esperado.
+                      </label>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })()
+          : null}
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button
             type="button"
@@ -387,5 +451,16 @@ const alertStyle = {
   border: '1px solid #FECACA',
   background: '#FEE2E2',
   color: T.danger,
+  fontSize: 13,
+};
+const summaryStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  marginTop: 12,
+  padding: 12,
+  border: '1px solid',
+  borderRadius: 8,
+  color: T.ink,
   fontSize: 13,
 };

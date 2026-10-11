@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
-import { parseMoneyInput } from '@orcivo/shared-types';
+import { formatMoney, parseMoneyInput } from '@orcivo/shared-types';
 
 export interface PaymentCustomerOption {
   id: string;
@@ -28,6 +28,12 @@ type PaymentStatus = 'PAID' | 'PENDING';
 
 const T = { ink: '#0A0A0F', fg3: '#64748B', danger: '#DC2626' };
 
+interface OverpaymentDetails {
+  expected_amount: string;
+  received_amount: string;
+  difference: string;
+}
+
 function toIsoDate(date: string): string | undefined {
   return date ? new Date(`${date}T12:00:00`).toISOString() : undefined;
 }
@@ -48,6 +54,8 @@ export function PaymentRegistrationModal({
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [overpayment, setOverpayment] = useState<OverpaymentDetails | null>(null);
+  const [overpaymentReason, setOverpaymentReason] = useState('');
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -75,11 +83,29 @@ export function PaymentRegistrationModal({
           amount: decimalAmount,
           method,
           status,
+          overpayment_confirmed: Boolean(overpayment),
+          overpayment_reason: overpaymentReason.trim() || undefined,
           ...(status === 'PAID' ? { paid_at: isoDate } : { due_date: isoDate }),
         }),
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
+        const data = (await response.json().catch(() => ({}))) as Partial<OverpaymentDetails> & {
+          code?: string;
+          message?: string;
+        };
+        if (
+          data.code === 'PAYMENT_OVERPAYMENT_CONFIRMATION_REQUIRED' &&
+          data.expected_amount &&
+          data.received_amount &&
+          data.difference
+        ) {
+          setOverpayment({
+            expected_amount: data.expected_amount,
+            received_amount: data.received_amount,
+            difference: data.difference,
+          });
+          return;
+        }
         throw new Error(data.message ?? 'Não foi possível registrar o recebimento.');
       }
       onClose();
@@ -204,7 +230,10 @@ export function PaymentRegistrationModal({
                 id="payment-amount"
                 className="ov-input"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => {
+                  setAmount(event.target.value);
+                  setOverpayment(null);
+                }}
                 placeholder="890,00"
                 inputMode="decimal"
                 required
@@ -229,6 +258,40 @@ export function PaymentRegistrationModal({
               </select>
             </div>
           </div>
+          {overpayment ? (
+            <div
+              role="alert"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: 12,
+                marginBottom: 16,
+                border: '1px solid #FDBA74',
+                borderRadius: 8,
+                background: '#FFF7ED',
+                color: T.ink,
+                fontSize: 13,
+              }}
+            >
+              <strong>Valor acima do esperado</strong>
+              <span>Esperado: {formatMoney(overpayment.expected_amount)}</span>
+              <span>Recebido: {formatMoney(overpayment.received_amount)}</span>
+              <span>Diferença: {formatMoney(overpayment.difference)} a mais</span>
+              <label className="ov-label" htmlFor="payment-create-overpayment-reason">
+                Motivo do excedente (opcional)
+              </label>
+              <textarea
+                id="payment-create-overpayment-reason"
+                className="ov-input"
+                value={overpaymentReason}
+                onChange={(event) => setOverpaymentReason(event.target.value)}
+                maxLength={500}
+                rows={2}
+              />
+              <span>Ao continuar, você confirma conscientemente este excedente.</span>
+            </div>
+          ) : null}
           <div
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}
           >
@@ -274,7 +337,7 @@ export function PaymentRegistrationModal({
               className="ov-btn ov-btn-primary"
               style={{ flex: 1 }}
             >
-              {saving ? 'Salvando…' : 'Registrar'}
+              {saving ? 'Salvando…' : overpayment ? 'Confirmar excedente' : 'Registrar'}
             </button>
           </div>
         </form>

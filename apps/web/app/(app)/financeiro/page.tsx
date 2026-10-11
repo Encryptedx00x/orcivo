@@ -21,6 +21,7 @@ const DAYS = 30;
 interface ApiPayment {
   id: string;
   amount: string;
+  expected_amount: string | null;
   method: string | null;
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
   description: string | null;
@@ -61,6 +62,7 @@ export default async function FinanceiroPage(): Promise<React.JSX.Element> {
     description: p.description ?? '',
     amount: formatMoney(p.amount),
     amountDecimal: p.amount,
+    expectedAmount: p.expected_amount ?? p.amount,
     method: p.method ? methodLabel(p.method) : '—',
     rawMethod: p.method as PaymentRow['rawMethod'],
     status: p.status,

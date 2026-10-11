@@ -11,7 +11,12 @@ const ts = require(process.env.TYPESCRIPT_PATH || 'typescript');
 function compile(relativePath, modules) {
   const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, {
-    compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    compilerOptions: {
+      jsx: ts.JsxEmit.React,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
     reportDiagnostics: true,
   });
   assert.equal(compiled.diagnostics.length, 0);
@@ -32,10 +37,14 @@ function compile(relativePath, modules) {
 }
 
 // Exercise the real money helpers rather than duplicating Decimal.js rules.
-const shared = compile('../../../../../packages/shared-types/src/helpers/money.ts', { 'decimal.js': require('decimal.js') });
+const shared = compile('../../../../../packages/shared-types/src/helpers/money.ts', {
+  'decimal.js': require('decimal.js'),
+});
 
 function createElement(type, props, ...children) {
-  return typeof type === 'function' ? type({ ...props, children }) : { type, props: props ?? {}, children: children.flat(Infinity) };
+  return typeof type === 'function'
+    ? type({ ...props, children })
+    : { type, props: props ?? {}, children: children.flat(Infinity) };
 }
 function nodes(node) {
   return node && typeof node === 'object' ? [node, ...node.children.flatMap(nodes)] : [];
@@ -44,7 +53,18 @@ function textContent(node) {
   if (node == null || typeof node === 'boolean') return '';
   return typeof node === 'object' ? node.children.map(textContent).join('') : String(node);
 }
-const native = Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Modal', 'ScrollView', 'Text', 'TextInput', 'TouchableOpacity', 'View'].map((name) => [name, name]));
+const native = Object.fromEntries(
+  [
+    'ActivityIndicator',
+    'KeyboardAvoidingView',
+    'Modal',
+    'ScrollView',
+    'Text',
+    'TextInput',
+    'TouchableOpacity',
+    'View',
+  ].map((name) => [name, name]),
+);
 native.StyleSheet = { create: (styles) => styles };
 native.Platform = { OS: 'ios' };
 
@@ -61,7 +81,12 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
     useState(initial) {
       const slot = index++;
       if (!(slot in slots)) slots[slot] = initial;
-      return [slots[slot], (value) => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value; }];
+      return [
+        slots[slot],
+        (value) => {
+          slots[slot] = typeof value === 'function' ? value(slots[slot]) : value;
+        },
+      ];
     },
     useRef(initial) {
       const slot = index++;
@@ -69,7 +94,8 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
     },
     useCallback(callback, deps) {
       const slot = index++;
-      if (!slots[slot] || deps.some((value, i) => slots[slot].deps[i] !== value)) slots[slot] = { callback, deps };
+      if (!slots[slot] || deps.some((value, i) => slots[slot].deps[i] !== value))
+        slots[slot] = { callback, deps };
       return slots[slot].callback;
     },
     useEffect(effect, deps) {
@@ -84,32 +110,60 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
   let focus;
   const nativeWithAlert = { ...native, Alert: { alert: (...args) => alerts.push(args) } };
   const { FinanceiroScreen } = compile('./FinanceiroScreen.tsx', {
-    react, 'react-native': nativeWithAlert,
-    '@react-navigation/native': { useNavigation: () => ({ navigate() {} }), useFocusEffect(callback) {
-      const slot = index++;
-      focus = () => { cleanups.get(slot)?.(); cleanups.set(slot, callback()); };
-      if (slots[slot] !== callback) {
-        slots[slot] = callback;
-        effects.push(focus);
-      }
-    } },
+    react,
+    'react-native': nativeWithAlert,
+    '@react-navigation/native': {
+      useNavigation: () => ({ navigate() {} }),
+      useFocusEffect(callback) {
+        const slot = index++;
+        focus = () => {
+          cleanups.get(slot)?.();
+          cleanups.set(slot, callback());
+        };
+        if (slots[slot] !== callback) {
+          slots[slot] = callback;
+          effects.push(focus);
+        }
+      },
+    },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
     'lucide-react-native': {
-      Check: 'Check', CircleDollarSign: 'CircleDollarSign', MoreHorizontal: 'MoreHorizontal', Pencil: 'Pencil',
-      Receipt: 'Receipt', ReceiptText: 'ReceiptText', Trash2: 'Trash2', X: 'X',
+      Check: 'Check',
+      CircleDollarSign: 'CircleDollarSign',
+      MoreHorizontal: 'MoreHorizontal',
+      Pencil: 'Pencil',
+      Receipt: 'Receipt',
+      ReceiptText: 'ReceiptText',
+      Trash2: 'Trash2',
+      X: 'X',
     },
-    '../../easy/data': { easy: { deletePayment: async () => undefined, financeSummary: async () => null }, errorText: (_e, f) => f },
+    '../../easy/data': {
+      easy: { deletePayment: async () => undefined, financeSummary: async () => null },
+      errorText: (_e, f) => f,
+    },
     '../../easy/sheet': { useSheet: () => () => {}, reasonSheet: () => {} },
     '@orcivo/shared-types': shared,
     '../../services/api': { newIdempotencyKey: () => `request-${++key}` },
-    '../../services/payment.service': { paymentService: {
-      fetchAll: getPayments ?? (async () => []),
-      create: createPayment ?? (async () => { throw new Error('create not mocked'); }),
-      settle: settlePayment ?? (async () => { throw new Error('settle not mocked'); }),
-    } },
-    '../../services/work-order.service': { workOrderService: {
-      fetchAll: getWorkOrders ?? (async () => ({ data: [] })),
-    } },
+    '../../services/payment.service': {
+      paymentService: {
+        fetchAll: getPayments ?? (async () => []),
+        create:
+          createPayment ??
+          (async () => {
+            throw new Error('create not mocked');
+          }),
+        settle:
+          settlePayment ??
+          (async () => {
+            throw new Error('settle not mocked');
+          }),
+      },
+    },
+    '../../services/work-order.service': {
+      workOrderService: {
+        fetchAll: getWorkOrders ?? (async () => ({ data: [] })),
+      },
+    },
     './financeiro-errors': { financeiroError },
   });
   let tree;
@@ -122,26 +176,79 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
   return {
     render,
     alerts,
-    async settle() { await new Promise((resolve) => setImmediate(resolve)); render(); },
-    focus() { focus(); render(); },
-    blur() { for (const cleanup of cleanups.values()) cleanup?.(); },
-    field(label) { return nodes(tree).find((node) => node.type === 'TextInput' && node.props.accessibilityLabel === label); },
-    button(label) { return nodes(tree).find((node) => node.type === 'TouchableOpacity' && node.props.accessibilityRole === 'button' && textContent(node) === label); },
-    radio(label) { return nodes(tree).find((node) => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label); },
-    text(value) { return nodes(tree).some((node) => node.type === 'Text' && textContent(node) === value); },
-    type(type) { return nodes(tree).find((node) => node.type === type); },
-    osOption(prefix) { return nodes(tree).find((node) => node.type === 'TouchableOpacity' && textContent(node).startsWith(prefix)); },
+    async settle() {
+      await new Promise((resolve) => setImmediate(resolve));
+      render();
+    },
+    focus() {
+      focus();
+      render();
+    },
+    blur() {
+      for (const cleanup of cleanups.values()) cleanup?.();
+    },
+    field(label) {
+      return nodes(tree).find(
+        (node) => node.type === 'TextInput' && node.props.accessibilityLabel === label,
+      );
+    },
+    button(label) {
+      return nodes(tree).find(
+        (node) =>
+          node.type === 'TouchableOpacity' &&
+          node.props.accessibilityRole === 'button' &&
+          textContent(node) === label,
+      );
+    },
+    radio(label) {
+      return nodes(tree).find(
+        (node) =>
+          node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label,
+      );
+    },
+    checkbox(label) {
+      return nodes(tree).find(
+        (node) => node.props.accessibilityRole === 'checkbox' && textContent(node) === label,
+      );
+    },
+    text(value) {
+      return nodes(tree).some((node) => node.type === 'Text' && textContent(node) === value);
+    },
+    type(type) {
+      return nodes(tree).find((node) => node.type === type);
+    },
+    visibleModal() {
+      return nodes(tree).find((node) => node.type === 'Modal' && node.props.visible);
+    },
+    osOption(prefix) {
+      return nodes(tree).find(
+        (node) => node.type === 'TouchableOpacity' && textContent(node).startsWith(prefix),
+      );
+    },
   };
 }
 
 const workOrders = [
-  { id: 'wo-1', number: 101, title: 'Instalação câmeras', status: 'DONE', customer: { id: 'cust-1', name: 'Ana Cliente' }, photos: [] },
+  {
+    id: 'wo-1',
+    number: 101,
+    title: 'Instalação câmeras',
+    status: 'DONE',
+    customer: { id: 'cust-1', name: 'Ana Cliente' },
+    photos: [],
+  },
 ];
 
 const payments = [
   {
-    id: 'pay-1', amount: '150.00', method: 'PIX', status: 'PENDING', description: 'OS #100 — Antiga',
-    due_date: '2026-10-05T12:00:00.000Z', paid_at: null, created_at: '2026-09-01T00:00:00.000Z',
+    id: 'pay-1',
+    amount: '150.00',
+    method: 'PIX',
+    status: 'PENDING',
+    description: 'OS #100 — Antiga',
+    due_date: '2026-10-05T12:00:00.000Z',
+    paid_at: null,
+    created_at: '2026-09-01T00:00:00.000Z',
     customer: { id: 'cust-2', name: 'Bruno Cliente' },
   },
 ];
@@ -150,8 +257,14 @@ test('loads payments and work orders in parallel, shows totals and rows', async 
   let paymentCalls = 0;
   let workOrderCalls = 0;
   const screen = mount({
-    getPayments: async () => { paymentCalls++; return payments; },
-    getWorkOrders: async () => { workOrderCalls++; return { data: workOrders }; },
+    getPayments: async () => {
+      paymentCalls++;
+      return payments;
+    },
+    getWorkOrders: async () => {
+      workOrderCalls++;
+      return { data: workOrders };
+    },
   });
   assert.ok(screen.text('Carregando recebimentos…'));
   await screen.settle();
@@ -164,7 +277,10 @@ test('loads payments and work orders in parallel, shows totals and rows', async 
 });
 
 test('empty state keeps the register action available', async () => {
-  const screen = mount({ getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }) });
+  const screen = mount({
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
+  });
   await screen.settle();
   assert.ok(screen.text('Nenhum recebimento ainda.'));
   assert.ok(screen.button('Registrar recebimento'));
@@ -173,11 +289,18 @@ test('empty state keeps the register action available', async () => {
 test('failed load exposes retry and reloads both endpoints', async () => {
   let calls = 0;
   const screen = mount({
-    getPayments: async () => { if (++calls === 1) throw new Error('offline'); return payments; },
+    getPayments: async () => {
+      if (++calls === 1) throw new Error('offline');
+      return payments;
+    },
     getWorkOrders: async () => ({ data: workOrders }),
   });
   await screen.settle();
-  assert.ok(screen.text('Não foi possível carregar os recebimentos. Verifique sua conexão e tente novamente.'));
+  assert.ok(
+    screen.text(
+      'Não foi possível carregar os recebimentos. Verifique sua conexão e tente novamente.',
+    ),
+  );
   screen.button('Tentar novamente').props.onPress();
   screen.render();
   await screen.settle();
@@ -187,8 +310,12 @@ test('failed load exposes retry and reloads both endpoints', async () => {
 test('registering without a selected work order shows a validation error and never submits', async () => {
   let creates = 0;
   const screen = mount({
-    getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }),
-    createPayment: async () => { creates++; return {}; },
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
+    createPayment: async () => {
+      creates++;
+      return {};
+    },
   });
   await screen.settle();
   screen.button('Registrar recebimento').props.onPress();
@@ -204,8 +331,12 @@ test('registering without a selected work order shows a validation error and nev
 test('invalid amount is rejected before submitting', async () => {
   let creates = 0;
   const screen = mount({
-    getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }),
-    createPayment: async () => { creates++; return {}; },
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
+    createPayment: async () => {
+      creates++;
+      return {};
+    },
   });
   await screen.settle();
   screen.button('Registrar recebimento').props.onPress();
@@ -226,10 +357,13 @@ test('registers a receipt linked to the selected OS with decimal-string amount, 
   const creates = [];
   let finish;
   const screen = mount({
-    getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }),
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
     createPayment(dto, opts) {
       creates.push([dto, opts]);
-      return new Promise((resolve) => { finish = resolve; });
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
     },
   });
   await screen.settle();
@@ -237,10 +371,10 @@ test('registers a receipt linked to the selected OS with decimal-string amount, 
   screen.render();
   screen.button('Selecionar OS').props.onPress();
   screen.render();
-  assert.equal(screen.type('Modal').props.visible, true);
+  assert.ok(screen.visibleModal());
   screen.osOption('OS #101').props.onPress();
   screen.render();
-  assert.equal(screen.type('Modal').props.visible, false);
+  assert.equal(screen.visibleModal(), undefined);
   assert.ok(screen.text('OS #101 — Instalação câmeras'));
   screen.field('Valor do recebimento').props.onChangeText('150,50');
   screen.render();
@@ -257,13 +391,20 @@ test('registers a receipt linked to the selected OS with decimal-string amount, 
     amount: '150.50',
     method: 'PIX',
     status: 'PAID',
+    overpayment_confirmed: false,
   });
   assert.equal(typeof dto.amount, 'string');
   assert.ok(opts.idempotencyKey);
   assert.equal(screen.button('Salvando…').props.disabled, true);
   finish({
-    id: 'pay-new', amount: '150.50', method: 'PIX', status: 'PAID', description: dto.description,
-    due_date: null, paid_at: '2026-09-29T12:00:00.000Z', created_at: '2026-09-29T12:00:00.000Z',
+    id: 'pay-new',
+    amount: '150.50',
+    method: 'PIX',
+    status: 'PAID',
+    description: dto.description,
+    due_date: null,
+    paid_at: '2026-09-29T12:00:00.000Z',
+    created_at: '2026-09-29T12:00:00.000Z',
     customer: { id: 'cust-1', name: 'Ana Cliente' },
   });
   await screen.settle();
@@ -276,8 +417,12 @@ test('registers a receipt linked to the selected OS with decimal-string amount, 
 test('switching to "A receber" sends due_date instead of paid_at', async () => {
   const creates = [];
   const screen = mount({
-    getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }),
-    createPayment: async (dto, opts) => { creates.push([dto, opts]); return { id: 'pay-2', ...dto, customer: { id: 'cust-1', name: 'Ana Cliente' } }; },
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
+    createPayment: async (dto, opts) => {
+      creates.push([dto, opts]);
+      return { id: 'pay-2', ...dto, customer: { id: 'cust-1', name: 'Ana Cliente' } };
+    },
   });
   await screen.settle();
   screen.button('Registrar recebimento').props.onPress();
@@ -306,8 +451,12 @@ test('switching to "A receber" sends due_date instead of paid_at', async () => {
 test('failed submit preserves the form and reuses the idempotency key on an unchanged retry', async () => {
   const creates = [];
   const screen = mount({
-    getPayments: async () => [], getWorkOrders: async () => ({ data: workOrders }),
-    createPayment: async (dto, opts) => { creates.push([dto, opts]); throw { status: 400, data: { message: 'Cliente inválido.' } }; },
+    getPayments: async () => [],
+    getWorkOrders: async () => ({ data: workOrders }),
+    createPayment: async (dto, opts) => {
+      creates.push([dto, opts]);
+      throw { status: 400, data: { message: 'Cliente inválido.' } };
+    },
   });
   await screen.settle();
   screen.button('Registrar recebimento').props.onPress();
@@ -333,8 +482,8 @@ test('marking a pending payment as received calls settle and updates the row', a
   const screen = mount({
     getPayments: async () => payments,
     getWorkOrders: async () => ({ data: workOrders }),
-    settlePayment: async (id, opts) => {
-      settleCalls.push([id, opts]);
+    settlePayment: async (id, input, opts) => {
+      settleCalls.push([id, input, opts]);
       return { ...payments[0], status: 'PAID', paid_at: '2026-09-29T12:00:00.000Z' };
     },
   });
@@ -342,10 +491,19 @@ test('marking a pending payment as received calls settle and updates the row', a
   assert.ok(screen.button('Marcar como recebido'));
   screen.button('Marcar como recebido').props.onPress();
   screen.render();
+  screen.button('Confirmar recebimento').props.onPress();
   await screen.settle();
   assert.equal(settleCalls.length, 1);
   assert.equal(settleCalls[0][0], 'pay-1');
-  assert.ok(settleCalls[0][1].idempotencyKey);
+  assert.equal(
+    JSON.stringify(settleCalls[0][1]),
+    JSON.stringify({
+      received_amount: '150.00',
+      method: 'PIX',
+      overpayment_confirmed: false,
+    }),
+  );
+  assert.ok(settleCalls[0][2].idempotencyKey);
   assert.equal(screen.button('Marcar como recebido'), undefined);
   assert.ok(screen.text('Recebido'));
 });
@@ -354,29 +512,79 @@ test('failed settle surfaces an alert and keeps the payment pending', async () =
   const screen = mount({
     getPayments: async () => payments,
     getWorkOrders: async () => ({ data: workOrders }),
-    settlePayment: async () => { throw { status: 403 }; },
+    settlePayment: async () => {
+      throw { status: 403 };
+    },
   });
   await screen.settle();
   screen.button('Marcar como recebido').props.onPress();
   screen.render();
+  screen.button('Confirmar recebimento').props.onPress();
   await screen.settle();
   assert.equal(screen.alerts.length, 1);
   assert.equal(screen.alerts[0][1], 'Somente administradores podem gerenciar o financeiro.');
   assert.ok(screen.button('Marcar como recebido'));
 });
 
+test('amount above expected shows the comparison and requires explicit confirmation', async () => {
+  const settleCalls = [];
+  const screen = mount({
+    getPayments: async () => payments,
+    getWorkOrders: async () => ({ data: workOrders }),
+    settlePayment: async (id, input) => {
+      settleCalls.push([id, input]);
+      return { ...payments[0], ...input, amount: input.received_amount, status: 'PAID' };
+    },
+  });
+  await screen.settle();
+  screen.button('Marcar como recebido').props.onPress();
+  screen.render();
+  screen.field('Valor recebido').props.onChangeText('175,00');
+  screen.render();
+  assert.ok(screen.text('Diferença: R$ 25,00 a mais'));
+  screen.button('Confirmar recebimento').props.onPress();
+  screen.render();
+  assert.equal(settleCalls.length, 0);
+  assert.ok(screen.text('Confirme conscientemente o valor acima do esperado.'));
+  screen.checkbox('Confirmo o valor acima do esperado.').props.onPress();
+  screen.render();
+  screen.button('Confirmar recebimento').props.onPress();
+  await screen.settle();
+  assert.equal(
+    JSON.stringify(settleCalls[0]),
+    JSON.stringify([
+      'pay-1',
+      {
+        received_amount: '175.00',
+        method: 'PIX',
+        overpayment_confirmed: true,
+      },
+    ]),
+  );
+});
+
 test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)', () => {
   const FinanceiroScreen = () => null;
   const PlanoScreen = () => null;
   const modules = {
-    react: { createElement }, 'react-native': native,
-    '@react-navigation/native-stack': { createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }) },
+    react: { createElement },
+    'react-native': native,
+    '@react-navigation/native-stack': {
+      createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen' }),
+    },
     '../screens/financeiro/FinanceiroScreen': { FinanceiroScreen },
     '../screens/documentos/DocumentosScreen': { DocumentosScreen: () => null },
     '../screens/plano/PlanoScreen': { PlanoScreen },
     '../screens/relatorios/RelatoriosScreen': { RelatoriosScreen: () => null },
   };
-  for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
+  for (const name of [
+    'CatalogScreen',
+    'CatalogItemFormScreen',
+    'WorkOrderListScreen',
+    'WorkOrderDetailScreen',
+    'WorkOrderPhotoScreen',
+    'WorkOrderCreateScreen',
+  ]) {
     modules[`../screens/${name}`] = { [name]: () => null };
   }
   modules['../screens/placeholders/EmBreveScreen'] = { EmBreveScreen: () => null };
@@ -384,7 +592,11 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
   modules['../screens/conta/ContaScreen'] = { ContaScreen: () => null };
   modules['../screens/equipe/EquipeScreen'] = { EquipeScreen: () => null };
   modules['../easy/EasyModeContext'] = { useEasyMode: () => ({ setEasy: () => {} }) };
-  modules['../easy/screens/Receipts'] = { ReceiptsScreen: () => null, ReceiptScreen: () => null, ReceiptNewScreen: () => null };
+  modules['../easy/screens/Receipts'] = {
+    ReceiptsScreen: () => null,
+    ReceiptScreen: () => null,
+    ReceiptNewScreen: () => null,
+  };
   modules['../easy/screens/Notices'] = { NoticesScreen: () => null };
   modules['../easy/screens/Settings'] = { ApprovalsScreen: () => null, EditScreen: () => null };
   modules['../easy/screens/QuoteFlow'] = { QuoteSignScreen: () => null };
@@ -392,6 +604,9 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
   modules['../easy/screens/Money'] = { CostNewScreen: () => null };
   const stack = compile('../../navigation/MaisStack.tsx', modules).MaisStack();
   const registered = nodes(stack).filter((node) => node.type === 'Screen');
-  assert.equal(registered.find((node) => node.props.name === 'Financeiro').props.component, FinanceiroScreen);
+  assert.equal(
+    registered.find((node) => node.props.name === 'Financeiro').props.component,
+    FinanceiroScreen,
+  );
   assert.equal(registered.find((node) => node.props.name === 'Plano').props.component, PlanoScreen);
 });

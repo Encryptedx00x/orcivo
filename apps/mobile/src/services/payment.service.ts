@@ -13,6 +13,9 @@ export interface PaymentCustomer {
 export interface Payment {
   id: string;
   amount: string; // string decimal — nunca number
+  expected_amount?: string | null;
+  overpayment_amount?: string | null;
+  overpayment_reason?: string | null;
   method: PaymentMethod | null;
   status: PaymentStatus;
   description: string | null;
@@ -31,6 +34,8 @@ export interface PaymentCreateInput {
   status: 'PENDING' | 'PAID';
   due_date?: string;
   paid_at?: string;
+  overpayment_confirmed?: boolean;
+  overpayment_reason?: string;
 }
 
 export const paymentService = {
@@ -43,7 +48,16 @@ export const paymentService = {
     return api.post<Payment>('/payments', dto, opts);
   },
 
-  async settle(id: string, opts?: WriteOptions): Promise<Payment> {
-    return api.patch<Payment>(`/payments/${id}/settle`, {}, opts);
+  async settle(
+    id: string,
+    input: {
+      received_amount: string;
+      method?: PaymentMethod;
+      overpayment_confirmed?: boolean;
+      overpayment_reason?: string;
+    },
+    opts?: WriteOptions,
+  ): Promise<Payment> {
+    return api.patch<Payment>(`/payments/${id}/settle`, input, opts);
   },
 };

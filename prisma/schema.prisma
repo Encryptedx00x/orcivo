@@ -696,7 +696,13 @@ model Payment {
   work_order_id         String?
   quote_id              String?
   description           String?
+  /// Amount expected before settlement; preserved when the actual amount differs.
+  expected_amount Decimal? @db.Decimal(12, 2)
   amount                Decimal        @db.Decimal(12, 2)
+  /// Positive difference explicitly confirmed when amount exceeds expected_amount.
+  overpayment_amount Decimal? @db.Decimal(12, 2)
+  overpayment_reason String?
+  overpayment_confirmed_at DateTime?
   method                PaymentMethod?
   status                PaymentStatus  @default(PENDING)
   due_date              DateTime?

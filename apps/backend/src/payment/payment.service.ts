@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PHOTO_BUCKET, StorageService } from '../storage/storage.service';
@@ -6,7 +6,12 @@ import { UsersService } from '../users/users.service';
 import { ReceiptPdfService } from './receipt-pdf.service';
 import { TenantOwnershipService } from '../common/tenant/tenant-ownership.service';
 import { AuditService } from '../audit/audit.service';
-import { formatMoney } from '@orcivo/shared-types';
+import {
+  comparePaymentAmounts,
+  formatMoney,
+  subtractDecimal,
+  sumDecimal,
+} from '@orcivo/shared-types';
 import type {
   PaymentCreateDto,
   PaymentDeleteDto,
@@ -47,6 +52,70 @@ export class PaymentService {
     private readonly users: UsersService,
     private readonly receiptPdf: ReceiptPdfService,
   ) {}
+
+  private confirmedAmounts(
+    expectedAmount: string,
+    receivedAmount: string,
+    confirmed?: boolean,
+    reason?: string,
+  ) {
+    const comparison = comparePaymentAmounts(expectedAmount, receivedAmount);
+    if (comparison.relation === 'ABOVE' && !confirmed) {
+      throw new ConflictException({
+        code: 'PAYMENT_OVERPAYMENT_CONFIRMATION_REQUIRED',
+        message:
+          'O valor recebido é maior que o esperado. Revise os valores e confirme o excedente.',
+        ...comparison,
+      });
+    }
+    return {
+      expected_amount: comparison.expected_amount,
+      amount: comparison.received_amount,
+      overpayment_amount: comparison.relation === 'ABOVE' ? comparison.difference : null,
+      overpayment_reason: comparison.relation === 'ABOVE' && reason?.trim() ? reason.trim() : null,
+      overpayment_confirmed_at: comparison.relation === 'ABOVE' ? new Date() : null,
+      comparison,
+    };
+  }
+
+  private async expectedForNewPaidPayment(
+    companyId: string,
+    input: { quote_id?: string; work_order_id?: string; amount: string },
+  ): Promise<string> {
+    let quoteId = input.quote_id;
+    let quoteTotal: string | null = null;
+    if (input.work_order_id) {
+      const workOrder = await this.prisma.workOrder.findFirst({
+        where: { id: input.work_order_id, company_id: companyId },
+        select: { quote_id: true, quote: { select: { total: true } } },
+      });
+      quoteId ??= workOrder?.quote_id ?? undefined;
+      quoteTotal = workOrder?.quote?.total.toString() ?? null;
+    }
+    if (!quoteTotal && quoteId) {
+      const quote = await this.prisma.quote.findFirst({
+        where: { id: quoteId, company_id: companyId },
+        select: { total: true },
+      });
+      quoteTotal = quote?.total.toString() ?? null;
+    }
+    if (!quoteTotal) return input.amount;
+
+    const paid = await this.prisma.payment.findMany({
+      where: {
+        company_id: companyId,
+        deleted_at: null,
+        status: 'PAID',
+        OR: [
+          ...(quoteId ? [{ quote_id: quoteId }] : []),
+          ...(input.work_order_id ? [{ work_order_id: input.work_order_id }] : []),
+        ],
+      },
+      select: { amount: true },
+    });
+    const remaining = subtractDecimal(quoteTotal, sumDecimal(paid.map((p) => p.amount.toString())));
+    return remaining.startsWith('-') ? '0.00' : remaining;
+  }
 
   /**
    * Recibo nº: next sequential number for the company, assigned once when the
@@ -105,6 +174,14 @@ export class PaymentService {
     await this.ownership.assertQuote(dto.quote_id, companyId);
 
     const status = dto.status ?? (dto.paid_at ? 'PAID' : 'PENDING');
+    const expectedAmount =
+      status === 'PAID' ? await this.expectedForNewPaidPayment(companyId, dto) : dto.amount;
+    const confirmed = this.confirmedAmounts(
+      expectedAmount,
+      dto.amount,
+      dto.overpayment_confirmed,
+      dto.overpayment_reason,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
@@ -114,7 +191,11 @@ export class PaymentService {
           work_order_id: dto.work_order_id,
           quote_id: dto.quote_id,
           description: dto.description,
-          amount: dto.amount, // Prisma.Decimal aceita string decimal — nunca float
+          expected_amount: confirmed.expected_amount,
+          amount: confirmed.amount, // Prisma.Decimal aceita string decimal — nunca float
+          overpayment_amount: confirmed.overpayment_amount,
+          overpayment_reason: confirmed.overpayment_reason,
+          overpayment_confirmed_at: confirmed.overpayment_confirmed_at,
           method: dto.method,
           status,
           due_date: dto.due_date ? new Date(dto.due_date) : undefined,
@@ -134,7 +215,11 @@ export class PaymentService {
         to: status,
         humanText:
           `Recebimento de ${formatMoney(payment.amount.toString())} (${payment.customer.name}) ` +
-          `registrado como ${status}`,
+          `registrado como ${status}` +
+          (confirmed.comparison.relation === 'ABOVE'
+            ? `; excedente confirmado de ${formatMoney(confirmed.comparison.difference)}`
+            : ''),
+        reason: confirmed.overpayment_reason ?? undefined,
       });
       return tx.payment.findUniqueOrThrow({
         where: { id: payment.id },
@@ -286,15 +371,33 @@ export class PaymentService {
   async settle(id: string, companyId: string, dto: PaymentSettleDto, userId: string) {
     const payment = await this.prisma.payment.findFirst({
       where: { id, company_id: companyId, deleted_at: null },
-      select: { id: true, method: true, status: true, amount: true, customer: customerSelect },
+      select: {
+        id: true,
+        method: true,
+        status: true,
+        amount: true,
+        expected_amount: true,
+        customer: customerSelect,
+      },
     });
     if (!payment) throw new NotFoundException('Recebimento não encontrado');
+    const confirmed = this.confirmedAmounts(
+      (payment.expected_amount ?? payment.amount).toString(),
+      dto.received_amount ?? payment.amount.toString(),
+      dto.overpayment_confirmed,
+      dto.overpayment_reason,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.payment.update({
         where: { id },
         data: {
           status: 'PAID',
+          expected_amount: confirmed.expected_amount,
+          amount: confirmed.amount,
+          overpayment_amount: confirmed.overpayment_amount,
+          overpayment_reason: confirmed.overpayment_reason,
+          overpayment_confirmed_at: confirmed.overpayment_confirmed_at,
           paid_at: dto.paid_at ? new Date(dto.paid_at) : new Date(),
           method: dto.method ?? payment.method ?? undefined,
         },
@@ -311,8 +414,12 @@ export class PaymentService {
         from: payment.status,
         to: 'PAID',
         humanText:
-          `Recebimento de ${formatMoney(payment.amount.toString())} (${payment.customer.name}) ` +
-          `baixado como pago`,
+          `Recebimento de ${formatMoney(confirmed.amount)} (${payment.customer.name}) ` +
+          `baixado como pago` +
+          (confirmed.comparison.relation === 'ABOVE'
+            ? `; excedente confirmado de ${formatMoney(confirmed.comparison.difference)}`
+            : ''),
+        reason: confirmed.overpayment_reason ?? undefined,
       });
       return updated;
     });
@@ -326,12 +433,22 @@ export class PaymentService {
         work_order_id: true,
         status: true,
         amount: true,
+        expected_amount: true,
         customer: customerSelect,
       },
     });
     if (!payment) throw new NotFoundException('Recebimento nao encontrado');
 
     const nextStatus = dto.status ?? payment.status;
+    const settling = nextStatus === 'PAID';
+    const confirmed = settling
+      ? this.confirmedAmounts(
+          (payment.expected_amount ?? payment.amount).toString(),
+          dto.amount ?? payment.amount.toString(),
+          dto.overpayment_confirmed,
+          dto.overpayment_reason,
+        )
+      : null;
     const paidAt =
       dto.paid_at === null
         ? null
@@ -350,6 +467,22 @@ export class PaymentService {
         where: { id },
         data: {
           ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+          ...(confirmed
+            ? {
+                expected_amount: confirmed.expected_amount,
+                amount: confirmed.amount,
+                overpayment_amount: confirmed.overpayment_amount,
+                overpayment_reason: confirmed.overpayment_reason,
+                overpayment_confirmed_at: confirmed.overpayment_confirmed_at,
+              }
+            : dto.amount !== undefined
+              ? {
+                  expected_amount: dto.amount,
+                  overpayment_amount: null,
+                  overpayment_reason: null,
+                  overpayment_confirmed_at: null,
+                }
+              : {}),
           ...(dto.method !== undefined ? { method: dto.method } : {}),
           ...(dto.status !== undefined ? { status: dto.status } : {}),
           ...(dueDate !== undefined ? { due_date: dueDate } : {}),
@@ -371,7 +504,7 @@ export class PaymentService {
         entityId: id,
         from: payment.status,
         to: updated.status,
-        reason: dto.justification,
+        reason: confirmed?.overpayment_reason ?? dto.justification,
         humanText,
       });
       if (payment.work_order_id) {

@@ -113,6 +113,9 @@ export interface EasyAppointment {
 export interface EasyPayment {
   id: string;
   amount: string;
+  expected_amount?: string | null;
+  overpayment_amount?: string | null;
+  overpayment_reason?: string | null;
   status: 'PENDING' | 'PAID' | 'OVERDUE' | 'PARTIAL' | 'CANCELLED';
   method: string | null;
   description?: string | null;
@@ -288,10 +291,19 @@ export const easy = {
   deleteAppointment: (id: string) => api.delete(`/appointments/${enc(id)}`),
 
   payments: async () => list(await api.get<{ data: EasyPayment[] } | EasyPayment[]>('/payments')),
-  settlePayment: (id: string, method: string) =>
+  settlePayment: (
+    id: string,
+    method: string,
+    receivedAmount: string,
+    overpaymentConfirmed = false,
+    overpaymentReason?: string,
+  ) =>
     api.patch<EasyPayment>(`/payments/${enc(id)}/settle`, {
       method,
       paid_at: new Date().toISOString(),
+      received_amount: receivedAmount,
+      overpayment_confirmed: overpaymentConfirmed,
+      overpayment_reason: overpaymentReason?.trim() || undefined,
     }),
   /** Value / due date change; the backend requires a justification (audit). */
   updatePayment: (
