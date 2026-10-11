@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `6904bb1` (lote R5b…R9, auditoria de seletores e validação final; ver `git log`) |
+| `main` / `origin/main` | `HEAD` (produto em `6904bb1`, seguido apenas pelo fechamento documental; ver `git log`) |
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
