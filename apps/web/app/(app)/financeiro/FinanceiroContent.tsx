@@ -45,11 +45,6 @@ export interface ChartBar {
   amount: string;
   date: string;
 }
-export interface CustomerOption {
-  id: string;
-  name: string;
-}
-
 const BADGE: Record<string, { bg: string; color: string; label: string }> = {
   PAID: { bg: '#DCFCE7', color: '#166534', label: 'Recebido' },
   PENDING: { bg: '#FEF3C7', color: '#92400E', label: 'Pendente' },
@@ -93,16 +88,9 @@ interface Props {
   kpis: FinanceKpi[];
   bars: ChartBar[];
   monthLabel: string;
-  customers: CustomerOption[];
 }
 
-export function FinanceiroContent({
-  entries,
-  kpis,
-  bars,
-  monthLabel,
-  customers,
-}: Props): React.JSX.Element {
+export function FinanceiroContent({ entries, kpis, bars, monthLabel }: Props): React.JSX.Element {
   const [statusFilter, setStatusFilter] = useState('todos');
   // ?registrar=1 opens the form directly (link from Modo fácil > Financeiro > Registrar).
   const [showModal, setShowModal] = useState(useSearchParams().get('registrar') === '1');
@@ -508,7 +496,7 @@ export function FinanceiroContent({
         )}
       </div>
       {showModal ? (
-        <PaymentRegistrationModal customers={customers} onClose={() => setShowModal(false)} />
+        <PaymentRegistrationModal customers={[]} onClose={() => setShowModal(false)} />
       ) : null}
       {editingPayment ? (
         <PaymentEditModal

@@ -37,9 +37,9 @@ import {
   getApprovalMethods,
   getCompany,
   listCatalog,
-  listClients,
   type EasyCatalogItem,
 } from '../actions';
+import { useCustomerSearch } from '../useCustomerSearch';
 import { approvalsSummary } from './Settings';
 import { DocOptionsFields, docOptionsSummary } from '../DocOptions';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
@@ -106,21 +106,14 @@ export function QuoteFlow({
 function Q1() {
   const { draft, setDraft, go } = useNav();
   const toast = useToast();
-  const clients = useLoad(listClients);
   const [q, setQ] = useState('');
+  const clients = useCustomerSearch(q, 10);
   const [ncOpen, setNcOpen] = useState(false);
   const [ncName, setNcName] = useState('');
   const [ncPhone, setNcPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const qq = q.trim().toLowerCase();
-  const qDigits = qq.replace(/\D/g, '');
-  const list = (clients.data ?? [])
-    .filter(
-      (c) =>
-        !qq || c.name.toLowerCase().includes(qq) || (qDigits && (c.phone ?? '').includes(qDigits)),
-    )
-    .slice(0, qq ? 8 : 5);
+  const qq = q.trim();
   const ncValid = ncName.trim().length > 1 && ncPhone.replace(/\D/g, '').length >= 10;
 
   const saveNew = async () => {
@@ -136,18 +129,18 @@ function Q1() {
   return (
     <>
       <H1 size={32}>Para quem?</H1>
-      {clients.loading && !clients.data ? (
+      {clients.loading && clients.items.length === 0 ? (
         <Loading />
       ) : clients.error ? (
-        <ErrorBox title="Não foi possível carregar seus clientes." onRetry={clients.reload} />
+        <ErrorBox title={clients.error} onRetry={clients.refresh} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Search value={q} onChange={setQ} placeholder="Buscar nome ou telefone" />
-          {list.length > 0 ? (
+          {clients.items.length > 0 ? (
             <>
               <SectionLabel>{qq ? 'Encontrados' : 'Recentes'}</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {list.map((c) => {
+                {clients.items.map((c) => {
                   const sel = draft.client?.id === c.id;
                   return (
                     <button
@@ -214,11 +207,16 @@ function Q1() {
             </>
           ) : (
             <div style={{ ...card, padding: 18, fontSize: 17, color: C.fg2 }}>
-              {(clients.data ?? []).length === 0
-                ? 'Você ainda não tem clientes. Toque em Cliente novo: só precisa do nome e do telefone.'
-                : 'Ninguém com esse nome ou telefone. Toque em Cliente novo.'}
+              {qq
+                ? 'Ninguém com esse nome ou telefone. Toque em Cliente novo.'
+                : 'Você ainda não tem clientes. Toque em Cliente novo: só precisa do nome e do telefone.'}
             </div>
           )}
+          {clients.hasMore ? (
+            <Btn tone="soft" disabled={clients.loading} onClick={() => void clients.loadMore()}>
+              {clients.loading ? 'Carregando…' : 'Ver mais clientes'}
+            </Btn>
+          ) : null}
           {!ncOpen ? (
             <Btn tone="dashed" icon={UserPlus} height={72} onClick={() => setNcOpen(true)}>
               Cliente novo

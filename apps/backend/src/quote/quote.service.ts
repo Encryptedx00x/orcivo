@@ -183,8 +183,27 @@ export class QuoteService {
     );
   }
 
-  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole, customerId?: string) {
-    const where = { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) };
+  async findAll(
+    companyId: string,
+    page = 1,
+    limit = 20,
+    role?: MemberRole,
+    customerId?: string,
+    search?: string,
+  ) {
+    const number = search && /^\d+$/.test(search) ? Number(search) : undefined;
+    const where = {
+      company_id: companyId,
+      ...(customerId ? { customer_id: customerId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' as const } },
+              ...(number === undefined ? [] : [{ number }]),
+            ],
+          }
+        : {}),
+    };
     const data = await this.prisma.quote.findMany({
       where,
       orderBy: { created_at: 'desc' },

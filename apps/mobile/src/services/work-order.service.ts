@@ -41,8 +41,10 @@ export interface WorkOrderListResponse {
 }
 
 export const workOrderService = {
-  async fetchAll(page = 1): Promise<WorkOrderListResponse> {
-    return api.get<WorkOrderListResponse>(`/work-orders?page=${page}`);
+  async fetchAll(page = 1, search = '', limit = 20): Promise<WorkOrderListResponse> {
+    const term = search.trim();
+    const query = `page=${page}&limit=${limit}${term ? `&search=${encodeURIComponent(term)}` : ''}`;
+    return api.get<WorkOrderListResponse>(`/work-orders?${query}`);
   },
 
   async fetchOne(id: string): Promise<WorkOrder> {

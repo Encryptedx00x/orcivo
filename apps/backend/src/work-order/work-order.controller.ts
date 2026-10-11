@@ -54,6 +54,7 @@ export class WorkOrderController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('customer_id') customerId?: string,
+    @Query('search') search?: string,
   ) {
     return this.workOrderService.findAll(
       req.companyId,
@@ -65,6 +66,7 @@ export class WorkOrderController {
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId)
         ? customerId
         : undefined,
+      search?.trim() || undefined,
     );
   }
 

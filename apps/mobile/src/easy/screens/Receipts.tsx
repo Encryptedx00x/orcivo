@@ -1,6 +1,6 @@
 // Recibos (app): list, receipt and "Novo recibo". Registered in the easy stack and
 // in the full app's Mais stack, so both modes have the same receipts.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, Text, View } from 'react-native';
 import { useNavigation, type RouteProp, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,7 +14,7 @@ import {
   Share2,
   UserPlus,
 } from 'lucide-react-native';
-import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
+import { formatMoney, isPositiveDecimal, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
 import {
   RECEIPT_METHODS,
   easy,
@@ -389,27 +389,18 @@ const WHENS = [
 export function ReceiptNewScreen() {
   const nav = useNavigation<Nav>();
   const params = useRoute<RouteProp<Params, 'ReceiptNew'>>().params;
-  const clients = useLoad(easy.clients, 'Não foi possível carregar seus clientes.');
-  const links = useLoad(
-    useCallback(async () => {
-      const [wos, quotes] = await Promise.all([easy.workOrders100(), easy.quotes()]);
-      return [
-        ...wos.map((w) => ({
-          key: `work_order:${w.id}`,
-          customer: w.customer.id,
-          label: `Serviço #${w.number} · ${w.title}`,
-        })),
-        ...quotes
-          .filter((q) => q.status === 'APPROVED' || q.status === 'SENT')
-          .map((q) => ({
-            key: `quote:${q.id}`,
-            customer: q.customer.id,
-            label: `Orçamento #${q.number}`,
-          })),
-      ];
-    }, []),
-    'Não foi possível carregar serviços e orçamentos.',
-  );
+  const [customers, setCustomers] = useState<Awaited<ReturnType<typeof easy.customerOptions>>>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState('');
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customersHaveMore, setCustomersHaveMore] = useState(true);
+  const [customerVisible, setCustomerVisible] = useState(5);
+  const [customerRevision, setCustomerRevision] = useState(0);
+  const customerRequestRef = useRef(0);
+  const linkRequestRef = useRef(0);
+  const [links, setLinks] = useState<Array<{ key: string; customer: string; label: string }>>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksHaveMore, setLinksHaveMore] = useState(false);
   const [clientId, setClientId] = useState<string | null>(params?.clientId ?? null);
   const [q, setQ] = useState('');
   const [digits, setDigits] = useState('');
@@ -421,18 +412,106 @@ export function ReceiptNewScreen() {
   const due = !!params?.due;
   const [dueIn, setDueIn] = useState(7);
   const [link, setLink] = useState('');
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkLimit, setLinkLimit] = useState(8);
   const [busy, setBusy] = useState(false);
 
-  const all = clients.data ?? [];
-  const qq = norm(q.trim());
-  const shown = (qq ? all.filter((c) => norm(c.name).includes(qq)) : all.slice(0, 3)).slice(0, 5);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const requestId = ++customerRequestRef.current;
+      setCustomersLoading(true);
+      setCustomersError('');
+      void easy
+        .customerOptions(q, 1)
+        .then((result) => {
+          if (requestId !== customerRequestRef.current) return;
+          setCustomers(result);
+          setCustomerPage(1);
+          setCustomersHaveMore(result.length === 10);
+          setCustomerVisible(5);
+        })
+        .catch((error) => {
+          if (requestId === customerRequestRef.current) {
+            setCustomersError(errorText(error, 'Não foi possível carregar seus clientes.'));
+          }
+        })
+        .finally(() => {
+          if (requestId === customerRequestRef.current) setCustomersLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      customerRequestRef.current += 1;
+    };
+  }, [customerRevision, q]);
+
+  useEffect(() => {
+    if (!clientId) {
+      setLinks([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const requestId = ++linkRequestRef.current;
+      setLinksLoading(true);
+      void easy
+        .receiptLinks(clientId, linkQuery, linkLimit)
+        .then((result) => {
+          if (requestId !== linkRequestRef.current) return;
+          setLinks(result.data);
+          setLinksHaveMore(result.hasMore);
+        })
+        .catch((error) => {
+          if (requestId === linkRequestRef.current) {
+            Alert.alert('Não foi possível carregar', errorText(error, 'Tente novamente.'));
+          }
+        })
+        .finally(() => {
+          if (requestId === linkRequestRef.current) setLinksLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      linkRequestRef.current += 1;
+    };
+  }, [clientId, linkLimit, linkQuery]);
+
+  const loadMoreCustomers = async () => {
+    if (customerVisible < customers.length) {
+      setCustomerVisible((current) => current + 5);
+      return;
+    }
+    const nextPage = customerPage + 1;
+    const requestId = ++customerRequestRef.current;
+    setCustomersLoading(true);
+    try {
+      const next = await easy.customerOptions(q, nextPage);
+      if (requestId !== customerRequestRef.current) return;
+      setCustomers((current) => {
+        const merged = new Map(current.map((customer) => [customer.id, customer]));
+        next.forEach((customer) => merged.set(customer.id, customer));
+        return [...merged.values()];
+      });
+      setCustomerPage(nextPage);
+      setCustomersHaveMore(next.length === 10);
+      setCustomerVisible((current) => current + 5);
+    } catch (error) {
+      if (requestId === customerRequestRef.current) {
+        setCustomersError(errorText(error, 'Não foi possível carregar mais clientes.'));
+      }
+    } finally {
+      if (requestId === customerRequestRef.current) setCustomersLoading(false);
+    }
+  };
+
+  const all = customers;
+  const shown = all.slice(0, customerVisible);
   const picked = all.find((c) => c.id === clientId);
   if (picked && !shown.some((c) => c.id === picked.id)) shown.unshift(picked);
-  const clientLinks = (links.data ?? []).filter((l) => l.customer === clientId);
+  const clientLinks = links;
   const n = digits.replace(/^0+/, '') || '0';
   const padded = n.padStart(3, '0');
   const amount = `${padded.slice(0, -2)}.${padded.slice(-2)}`;
-  const ok = !!clientId && Number(amount) > 0;
+  const ok = !!clientId && isPositiveDecimal(amount);
   const chosen = clientLinks.find((l) => l.key === link);
 
   const paidAt = () => {
@@ -507,8 +586,13 @@ export function ReceiptNewScreen() {
             : 'Para um pagamento que você já recebeu.'}
         </Sub>
       </View>
-      {clients.error ? <ErrorBox message={clients.error} onRetry={clients.refresh} /> : null}
-      {!clients.data && !clients.error ? <Loading /> : null}
+      {customersError ? (
+        <ErrorBox
+          message={customersError}
+          onRetry={() => setCustomerRevision((current) => current + 1)}
+        />
+      ) : null}
+      {customersLoading && customers.length === 0 ? <Loading /> : null}
 
       <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>
         {due ? 'Quem vai pagar?' : 'De quem recebeu?'}
@@ -539,6 +623,11 @@ export function ReceiptNewScreen() {
           </Pressable>
         );
       })}
+      {(customerVisible < all.length || customersHaveMore) && !customersLoading ? (
+        <Btn tone="soft" onPress={() => void loadMoreCustomers()}>
+          Ver mais clientes
+        </Btn>
+      ) : null}
       <Btn
         tone="dashed"
         icon={UserPlus}
@@ -634,18 +723,38 @@ export function ReceiptNewScreen() {
           <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
             {!clientId ? (
               <Text style={s.muted}>Escolha o cliente primeiro.</Text>
-            ) : clientLinks.length === 0 ? (
-              <Text style={s.muted}>Este cliente não tem serviço nem orçamento aberto.</Text>
             ) : (
-              <Options
-                cols={1}
-                value={link}
-                onPick={setLink}
-                options={[
-                  { value: '', label: 'Nenhum' },
-                  ...clientLinks.map((l) => ({ value: l.key, label: l.label })),
-                ]}
-              />
+              <>
+                <Search
+                  value={linkQuery}
+                  onChange={(value) => {
+                    setLinkQuery(value);
+                    setLinkLimit(8);
+                  }}
+                  placeholder="Buscar serviço ou orçamento"
+                />
+                {!linksLoading && clientLinks.length === 0 ? (
+                  <Text style={s.muted}>Nenhum serviço ou orçamento correspondente.</Text>
+                ) : null}
+                <Options
+                  cols={1}
+                  value={link}
+                  onPick={setLink}
+                  options={[
+                    { value: '', label: 'Nenhum' },
+                    ...clientLinks.map((l) => ({ value: l.key, label: l.label })),
+                  ]}
+                />
+                {linksLoading ? <Text style={s.muted}>Carregando…</Text> : null}
+                {linksHaveMore && !linksLoading ? (
+                  <Btn
+                    tone="soft"
+                    onPress={() => setLinkLimit((current) => Math.min(current + 8, 100))}
+                  >
+                    Ver mais
+                  </Btn>
+                ) : null}
+              </>
             )}
           </View>
         ) : null}

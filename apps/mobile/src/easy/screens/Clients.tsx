@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -36,31 +36,18 @@ import {
   useLoad,
 } from '../ui';
 import { quoteChip } from './Quotes';
+import { useCustomerSearch } from '../useCustomerSearch';
 
 const PAGE = 20;
-const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const call = (phone: string) => void Linking.openURL(`tel:${phone.replace(/\D/g, '')}`);
 const whats = (phone: string) =>
   void Linking.openURL(`https://wa.me/55${phone.replace(/\D/g, '')}`);
 
 export function ClientsScreen() {
   const nav = useEasyNav();
-  const clients = useLoad(easy.clients, 'Não foi possível carregar seus clientes.');
   const [q, setQ] = useState('');
-  const [limit, setLimit] = useState(PAGE);
-
-  const list = useMemo(() => {
-    const qq = norm(q.trim());
-    const digits = qq.replace(/\D/g, '');
-    const all = clients.data ?? [];
-    if (!qq) return all;
-    return all.filter(
-      (c) =>
-        norm(c.name).includes(qq) ||
-        (!!digits && (c.phone ?? '').replace(/\D/g, '').includes(digits)),
-    );
-  }, [clients.data, q]);
-  const shown = list.slice(0, limit);
+  const clients = useCustomerSearch(q, PAGE);
+  const shown = clients.items;
 
   return (
     <Page top>
@@ -69,7 +56,6 @@ export function ClientsScreen() {
         value={q}
         onChange={(v) => {
           setQ(v);
-          setLimit(PAGE);
         }}
         placeholder="Buscar por nome ou telefone"
       />
@@ -77,8 +63,8 @@ export function ClientsScreen() {
         Cliente novo
       </Btn>
       {clients.error ? <ErrorBox message={clients.error} onRetry={clients.refresh} /> : null}
-      {!clients.data && !clients.error ? <Loading /> : null}
-      {clients.data && !list.length ? (
+      {clients.loading && clients.items.length === 0 && !clients.error ? <Loading /> : null}
+      {!clients.loading && clients.items.length === 0 ? (
         <EmptyBox>
           {q.trim() ? 'Nenhum cliente com esse nome ou telefone.' : 'Você ainda não tem clientes.'}
         </EmptyBox>
@@ -120,9 +106,9 @@ export function ClientsScreen() {
           ) : null}
         </Card>
       ))}
-      {list.length > shown.length ? (
-        <Btn tone="link" onPress={() => setLimit((l) => l + PAGE)}>
-          Ver mais {Math.min(PAGE, list.length - shown.length)} de {list.length - shown.length}
+      {clients.hasMore ? (
+        <Btn tone="link" onPress={() => void clients.loadMore()}>
+          {clients.loading ? 'Carregando…' : 'Ver mais clientes'}
         </Btn>
       ) : null}
     </Page>

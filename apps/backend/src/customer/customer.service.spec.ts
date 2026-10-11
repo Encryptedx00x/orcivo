@@ -61,6 +61,24 @@ describe('CustomerService', () => {
         expect.objectContaining({ where: expect.objectContaining({ company_id: 'tenant-1' }) }),
       );
     });
+
+    it('busca por nome ou telefone sem sair do tenant', async () => {
+      mockPrisma.customer.findMany.mockResolvedValue([]);
+      await service.findAll('tenant-1', { page: 1, limit: 10, search: '(11) 99999-0000' });
+      expect(mockPrisma.customer.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            company_id: 'tenant-1',
+            OR: [
+              { name: { contains: '(11) 99999-0000', mode: 'insensitive' } },
+              { phone: { contains: '11999990000' } },
+            ],
+          }),
+          skip: 0,
+          take: 10,
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {

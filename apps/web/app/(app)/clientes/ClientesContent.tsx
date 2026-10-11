@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Users, Search, ChevronRight } from 'lucide-react';
 import { maskPhone } from '@orcivo/shared-types';
 
@@ -15,9 +15,74 @@ interface Customer {
 
 export function ClientesContent({ customers }: { customers: Customer[] }): React.JSX.Element {
   const [q, setQ] = useState('');
-  const filtered = customers.filter(
-    (c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.phone ?? '').includes(q),
-  );
+  const [items, setItems] = useState(customers);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(customers.length === 20);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const requestId = ++requestRef.current;
+      setLoading(true);
+      setLoadError('');
+      const params = new URLSearchParams({ page: '1', limit: '20' });
+      if (q.trim()) params.set('search', q.trim());
+      void fetch(`/api/customers?${params.toString()}`)
+        .then(async (response) => {
+          if (!response.ok) throw new Error();
+          return response.json() as Promise<{ data?: Customer[] }>;
+        })
+        .then((body) => {
+          if (requestId !== requestRef.current) return;
+          const next = body.data ?? [];
+          setItems(next);
+          setPage(1);
+          setHasMore(next.length === 20);
+        })
+        .catch(() => {
+          if (requestId === requestRef.current) {
+            setLoadError('Não foi possível carregar os clientes.');
+          }
+        })
+        .finally(() => {
+          if (requestId === requestRef.current) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      requestRef.current += 1;
+    };
+  }, [q]);
+
+  const loadMore = async () => {
+    const requestId = ++requestRef.current;
+    const nextPage = page + 1;
+    const params = new URLSearchParams({ page: String(nextPage), limit: '20' });
+    if (q.trim()) params.set('search', q.trim());
+    setLoading(true);
+    setLoadError('');
+    try {
+      const response = await fetch(`/api/customers?${params.toString()}`);
+      if (!response.ok) throw new Error();
+      const body = (await response.json()) as { data?: Customer[] };
+      if (requestId !== requestRef.current) return;
+      const next = body.data ?? [];
+      setItems((current) => [
+        ...current,
+        ...next.filter((item) => !current.some((known) => known.id === item.id)),
+      ]);
+      setPage(nextPage);
+      setHasMore(next.length === 20);
+    } catch {
+      if (requestId === requestRef.current) {
+        setLoadError('Não foi possível carregar mais clientes.');
+      }
+    } finally {
+      if (requestId === requestRef.current) setLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -35,8 +100,7 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
             Clientes
           </h1>
           <div style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>
-            {customers.length}{' '}
-            {customers.length === 1 ? 'cliente cadastrado' : 'clientes cadastrados'}
+            {items.length} {items.length === 1 ? 'cliente exibido' : 'clientes exibidos'}
           </div>
         </div>
         <div className="row-flex">
@@ -60,7 +124,7 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
       </div>
 
       {/* Empty state */}
-      {filtered.length === 0 && (
+      {items.length === 0 && !loading && (
         <div className="ov-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
           <Users size={40} style={{ margin: '0 auto 12px', color: '#94A3B8', display: 'block' }} />
           <p style={{ fontWeight: 600, fontSize: 15, color: '#0A0A0F', margin: '0 0 6px' }}>
@@ -85,7 +149,7 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
       )}
 
       {/* Table */}
-      {filtered.length > 0 && (
+      {items.length > 0 && (
         <div className="ov-card" style={{ overflow: 'hidden' }}>
           <table className="ov-table">
             <thead>
@@ -98,7 +162,7 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
+              {items.map((c) => (
                 <tr key={c.id}>
                   <td data-label="Nome">
                     <span style={{ fontWeight: 600 }}>{c.name}</span>
@@ -124,8 +188,25 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
               ))}
             </tbody>
           </table>
+          {hasMore ? (
+            <div style={{ padding: 14, borderTop: '1px solid #F1F5F9', textAlign: 'center' }}>
+              <button
+                type="button"
+                className="ov-btn ov-btn-outline"
+                onClick={() => void loadMore()}
+                disabled={loading}
+              >
+                {loading ? 'Carregando…' : 'Ver mais clientes'}
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
+      {loadError ? (
+        <p role="alert" style={{ color: '#B91C1C', fontSize: 14 }}>
+          {loadError}
+        </p>
+      ) : null}
     </div>
   );
 }

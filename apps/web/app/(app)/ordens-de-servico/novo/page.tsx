@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
 import { OsDetailsFields, cleanDetails } from '../../../../components/OsDetailsFields';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -25,6 +25,9 @@ function NovaOSContent(): React.JSX.Element {
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [customerQuery, setCustomerQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [customerPage, setCustomerPage] = useState(1);
+  const [hasMoreCustomers, setHasMoreCustomers] = useState(true);
+  const customerRequestRef = useRef(0);
 
   const [form, setForm] = useState({
     customer_id: preselectedClientId,
@@ -47,26 +50,78 @@ function NovaOSContent(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    fetch('/api/customers')
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        const list = Array.isArray(data)
-          ? data
-          : ((data as { data?: CustomerOption[] }).data ?? []);
-        setCustomers(list as CustomerOption[]);
+    if (!preselectedClientId) return;
+    void fetch(`/api/customers/${encodeURIComponent(preselectedClientId)}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((customer: CustomerOption | null) => {
+        if (customer) setCustomers([customer]);
       })
-      .catch(() => setCustomers([]))
-      .finally(() => setLoadingCustomers(false));
-  }, []);
+      .catch(() => undefined);
+  }, [preselectedClientId]);
+
+  useEffect(() => {
+    if (!dropdownOpen) {
+      setLoadingCustomers(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const requestId = ++customerRequestRef.current;
+      setLoadingCustomers(true);
+      const params = new URLSearchParams({ page: '1', limit: '10' });
+      if (customerQuery.trim()) params.set('search', customerQuery.trim());
+      void fetch(`/api/customers?${params.toString()}`)
+        .then((response) => response.json())
+        .then((data: { data?: CustomerOption[] }) => {
+          if (requestId !== customerRequestRef.current) return;
+          const next = data.data ?? [];
+          setCustomers((current) => {
+            const selected = current.find((customer) => customer.id === form.customer_id);
+            return selected && !next.some((customer) => customer.id === selected.id)
+              ? [selected, ...next]
+              : next;
+          });
+          setCustomerPage(1);
+          setHasMoreCustomers(next.length === 10);
+        })
+        .catch(() => {
+          if (requestId === customerRequestRef.current) setCustomers([]);
+        })
+        .finally(() => {
+          if (requestId === customerRequestRef.current) setLoadingCustomers(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      customerRequestRef.current += 1;
+    };
+  }, [customerQuery, dropdownOpen, form.customer_id]);
 
   const selectedCustomer = customers.find((c) => c.id === form.customer_id);
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      !customerQuery ||
-      c.name.toLowerCase().includes(customerQuery.toLowerCase()) ||
-      (c.phone ?? '').includes(customerQuery),
-  );
+  const filteredCustomers = customers;
+
+  async function loadMoreCustomers(): Promise<void> {
+    const requestId = ++customerRequestRef.current;
+    const nextPage = customerPage + 1;
+    const params = new URLSearchParams({ page: String(nextPage), limit: '10' });
+    if (customerQuery.trim()) params.set('search', customerQuery.trim());
+    setLoadingCustomers(true);
+    try {
+      const response = await fetch(`/api/customers?${params.toString()}`);
+      const data = (await response.json()) as { data?: CustomerOption[] };
+      if (requestId !== customerRequestRef.current) return;
+      const next = data.data ?? [];
+      setCustomers((current) => {
+        const merged = new Map(current.map((customer) => [customer.id, customer]));
+        next.forEach((customer) => merged.set(customer.id, customer));
+        return [...merged.values()];
+      });
+      setCustomerPage(nextPage);
+      setHasMoreCustomers(next.length === 10);
+    } finally {
+      if (requestId === customerRequestRef.current) setLoadingCustomers(false);
+    }
+  }
 
   function selectCustomer(c: CustomerOption): void {
     setForm((p) => ({ ...p, customer_id: c.id }));
@@ -369,6 +424,21 @@ function NovaOSContent(): React.JSX.Element {
                           </div>
                         ))
                       )}
+                      {hasMoreCustomers && filteredCustomers.length > 0 ? (
+                        <button
+                          type="button"
+                          className="ov-btn ov-btn-outline"
+                          onClick={() => void loadMoreCustomers()}
+                          disabled={loadingCustomers}
+                          style={{
+                            width: 'calc(100% - 20px)',
+                            margin: 10,
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {loadingCustomers ? 'Carregando…' : 'Ver mais'}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 )}

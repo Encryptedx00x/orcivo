@@ -21,14 +21,21 @@ export async function POST(req: Request): Promise<NextResponse> {
 }
 
 /** Proxy para listagem de clientes — injeta token JWT do cookie httpOnly. */
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: Request): Promise<NextResponse> {
   const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;
   if (!token) {
     return NextResponse.json({ message: 'Não autenticado' }, { status: 401 });
   }
 
-  const res = await fetch(`${API_URL}/customers`, {
+  const source = new URL(req.url);
+  const query = new URLSearchParams();
+  for (const key of ['page', 'limit', 'search']) {
+    const value = source.searchParams.get(key);
+    if (value) query.set(key, value);
+  }
+  const suffix = query.size ? `?${query.toString()}` : '';
+  const res = await fetch(`${API_URL}/customers${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });

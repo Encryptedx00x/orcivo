@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -10,13 +10,15 @@ import {
   ReceiptText,
   UserPlus,
 } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, isPositiveDecimal } from '@orcivo/shared-types';
 import {
   createReceipt,
   getReceipt,
   listReceipts,
-  receiptFormData,
+  receiptCustomerOptions,
+  receiptLinkOptions,
   setReceiptSignature,
+  type LinkOption,
 } from '../../(app)/documentos/receipt-actions';
 import {
   RECEIPT_METHODS,
@@ -251,7 +253,15 @@ type When = (typeof WHENS)[number]['value'];
 export function ReceiptNewScreen(): React.JSX.Element {
   const { params, replace, back } = useNav();
   const toast = useToast();
-  const form = useLoad(receiptFormData);
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [customersError, setCustomersError] = useState('');
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customersHaveMore, setCustomersHaveMore] = useState(true);
+  const [customerVisible, setCustomerVisible] = useState(5);
+  const [customerRevision, setCustomerRevision] = useState(0);
+  const customerRequestRef = useRef(0);
+  const linkRequestRef = useRef(0);
   const [clientId, setClientId] = useState<string | null>(params.client ?? null);
   const [extraClients, setExtraClients] = useState<Array<{ id: string; name: string }>>([]);
   const [q, setQ] = useState('');
@@ -268,19 +278,84 @@ export function ReceiptNewScreen(): React.JSX.Element {
   const due = params.due === '1';
   const [dueDay, setDueDay] = useState(ymd(new Date(Date.now() + 7 * 86_400_000)));
   const [link, setLink] = useState('');
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkLimit, setLinkLimit] = useState(8);
+  const [links, setLinks] = useState<LinkOption[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksHaveMore, setLinksHaveMore] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const clients = [...extraClients, ...(form.data?.customers ?? [])];
-  const qq = norm(q.trim());
-  const shown = (qq ? clients.filter((c) => norm(c.name).includes(qq)) : clients.slice(0, 3)).slice(
-    0,
-    5,
-  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const requestId = ++customerRequestRef.current;
+      setCustomersLoading(true);
+      setCustomersError('');
+      void receiptCustomerOptions(q, 1).then((result) => {
+        if (requestId !== customerRequestRef.current) return;
+        setCustomersLoading(false);
+        if (!result.ok) return setCustomersError(result.message);
+        setCustomers(result.data.customers);
+        setCustomerPage(1);
+        setCustomersHaveMore(result.data.hasMore);
+        setCustomerVisible(5);
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      customerRequestRef.current += 1;
+    };
+  }, [customerRevision, q]);
+
+  useEffect(() => {
+    if (!clientId) {
+      setLinks([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const requestId = ++linkRequestRef.current;
+      setLinksLoading(true);
+      void receiptLinkOptions(clientId, linkQuery, linkLimit).then((result) => {
+        if (requestId !== linkRequestRef.current) return;
+        setLinksLoading(false);
+        if (!result.ok) return toast(result.message);
+        setLinks(result.data.links);
+        setLinksHaveMore(result.data.hasMore);
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      linkRequestRef.current += 1;
+    };
+  }, [clientId, linkLimit, linkQuery, toast]);
+
+  const loadMoreCustomers = async () => {
+    if (customerVisible < customers.length) {
+      setCustomerVisible((current) => current + 5);
+      return;
+    }
+    const nextPage = customerPage + 1;
+    const requestId = ++customerRequestRef.current;
+    setCustomersLoading(true);
+    const result = await receiptCustomerOptions(q, nextPage);
+    if (requestId !== customerRequestRef.current) return;
+    setCustomersLoading(false);
+    if (!result.ok) return setCustomersError(result.message);
+    setCustomers((current) => {
+      const merged = new Map(current.map((customer) => [customer.id, customer]));
+      result.data.customers.forEach((customer) => merged.set(customer.id, customer));
+      return [...merged.values()];
+    });
+    setCustomerPage(nextPage);
+    setCustomersHaveMore(result.data.hasMore);
+    setCustomerVisible((current) => current + 5);
+  };
+
+  const clients = [...extraClients, ...customers];
+  const shown = clients.slice(0, customerVisible);
   const picked = clients.find((c) => c.id === clientId);
   if (picked && !shown.some((c) => c.id === picked.id)) shown.unshift(picked);
-  const links = (form.data?.links ?? []).filter((l) => l.customer_id === clientId);
   const amount = centsToDecimal(digits);
-  const ok = !!clientId && Number(amount) > 0;
+  const ok = !!clientId && isPositiveDecimal(amount);
 
   const saveClient = async () => {
     const r = await createClient({ name: ncName, phone: ncPhone });
@@ -345,10 +420,13 @@ export function ReceiptNewScreen(): React.JSX.Element {
             : 'Para um pagamento que você já recebeu.'}
         </span>
       </div>
-      {form.loading && !form.data ? (
+      {customersLoading && customers.length === 0 ? (
         <Loading />
-      ) : form.error ? (
-        <ErrorBox title="Não foi possível carregar seus clientes." onRetry={form.reload} />
+      ) : customersError ? (
+        <ErrorBox
+          title="Não foi possível carregar seus clientes."
+          onRetry={() => setCustomerRevision((current) => current + 1)}
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -385,6 +463,11 @@ export function ReceiptNewScreen(): React.JSX.Element {
                 </button>
               );
             })}
+            {(customerVisible < clients.length || customersHaveMore) && !customersLoading ? (
+              <Btn tone="soft" onClick={() => void loadMoreCustomers()}>
+                Ver mais clientes
+              </Btn>
+            ) : null}
             {ncOpen ? (
               <>
                 <NewClientForm
@@ -496,40 +579,62 @@ export function ReceiptNewScreen(): React.JSX.Element {
               >
                 {!clientId ? (
                   <span style={{ fontSize: 16, color: C.fg3 }}>Escolha o cliente primeiro.</span>
-                ) : links.length === 0 ? (
-                  <span style={{ fontSize: 16, color: C.fg3 }}>
-                    Este cliente não tem serviço nem orçamento aberto.
-                  </span>
                 ) : (
-                  [
-                    { key: '', label: 'Nenhum' },
-                    ...links.map((l) => ({ key: `${l.kind}:${l.id}`, label: l.label })),
-                  ].map((o) => {
-                    const on = o.key === link;
-                    return (
-                      <button
-                        key={o.key || 'none'}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setLink(o.key)}
-                        style={{
-                          minHeight: 56,
-                          borderRadius: 14,
-                          border: `1.5px solid ${on ? C.purple : C.borderStrong}`,
-                          background: on ? C.purple : '#FFFFFF',
-                          color: on ? '#FFFFFF' : C.ink,
-                          fontSize: 17,
-                          fontWeight: 600,
-                          textAlign: 'left',
-                          padding: '0 14px',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                        }}
+                  <>
+                    <Search
+                      value={linkQuery}
+                      onChange={(value) => {
+                        setLinkQuery(value);
+                        setLinkLimit(8);
+                      }}
+                      placeholder="Buscar serviço ou orçamento"
+                    />
+                    {!linksLoading && links.length === 0 ? (
+                      <span style={{ fontSize: 16, color: C.fg3 }}>
+                        Nenhum serviço ou orçamento correspondente.
+                      </span>
+                    ) : null}
+                    {[
+                      { key: '', label: 'Nenhum' },
+                      ...links.map((l) => ({ key: `${l.kind}:${l.id}`, label: l.label })),
+                    ].map((o) => {
+                      const on = o.key === link;
+                      return (
+                        <button
+                          key={o.key || 'none'}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setLink(o.key)}
+                          style={{
+                            minHeight: 56,
+                            borderRadius: 14,
+                            border: `1.5px solid ${on ? C.purple : C.borderStrong}`,
+                            background: on ? C.purple : '#FFFFFF',
+                            color: on ? '#FFFFFF' : C.ink,
+                            fontSize: 17,
+                            fontWeight: 600,
+                            textAlign: 'left',
+                            padding: '0 14px',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                    {linksLoading ? (
+                      <span style={{ fontSize: 15, color: C.fg3 }}>Carregando…</span>
+                    ) : null}
+                    {linksHaveMore && !linksLoading ? (
+                      <Btn
+                        tone="soft"
+                        onClick={() => setLinkLimit((current) => Math.min(current + 8, 100))}
                       >
-                        {o.label}
-                      </button>
-                    );
-                  })
+                        Ver mais
+                      </Btn>
+                    ) : null}
+                  </>
                 )}
               </div>
             )}

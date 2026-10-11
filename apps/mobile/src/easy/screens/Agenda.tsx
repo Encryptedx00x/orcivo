@@ -23,6 +23,7 @@ import type {
 import { useSheet } from '../sheet';
 import { easy, errorText, type EasyAppointment } from '../data';
 import { useEasyNav } from '../draft';
+import { useCustomerSearch } from '../useCustomerSearch';
 import type { EasyStackParamList, EasyTabsParamList } from '../EasyNavigator';
 import {
   Btn,
@@ -382,12 +383,12 @@ export function AgendaNewScreen({
   const p = route.params ?? {};
   const editing = p.edit;
   const start0 = editing ? new Date(editing.starts_at) : null;
-  const clients = useLoad(easy.clients, 'Não foi possível carregar seus clientes.');
   const [type, setType] = useState<string | null>(editing?.type ?? p.type ?? null);
   const [client, setClient] = useState<{ id: string; name: string } | null>(
     editing?.customer ?? p.client ?? null,
   );
   const [clientQ, setClientQ] = useState('');
+  const clients = useCustomerSearch(clientQ, 10);
   const [day, setDay] = useState(p.day ?? (start0 ? ymd(start0) : ymd(new Date())));
   const [time, setTime] = useState(
     p.time
@@ -414,14 +415,10 @@ export function AgendaNewScreen({
   const [amount, setAmount] = useState('');
 
   const options = useMemo(() => {
-    const all = clients.data ?? [];
-    const qq = clientQ.trim().toLowerCase();
-    const list = (
-      qq ? all.filter((c) => c.name.toLowerCase().includes(qq)) : all.slice(0, 3)
-    ).slice(0, 5);
+    const list = clients.items;
     if (client && !list.some((c) => c.id === client.id)) return [client, ...list];
     return list;
-  }, [clients.data, clientQ, client]);
+  }, [clients.items, client]);
 
   const submit = async () => {
     if (!type || saving) return;
@@ -485,6 +482,8 @@ export function AgendaNewScreen({
 
       <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Com quem? (opcional)</Text>
       <Search value={clientQ} onChange={setClientQ} placeholder="Buscar cliente" />
+      {clients.error ? <ErrorBox message={clients.error} onRetry={clients.refresh} /> : null}
+      {clients.loading && options.length === 0 ? <Loading /> : null}
       {options.map((c) => {
         const on = client?.id === c.id;
         return (
@@ -501,6 +500,11 @@ export function AgendaNewScreen({
           </Card>
         );
       })}
+      {clients.hasMore ? (
+        <Btn tone="soft" busy={clients.loading} onPress={() => void clients.loadMore()}>
+          Ver mais clientes
+        </Btn>
+      ) : null}
 
       <Text style={[s.body, { fontWeight: '700', fontSize: 19 }]}>Que dia?</Text>
       <DayPicker value={day} onChange={setDay} />

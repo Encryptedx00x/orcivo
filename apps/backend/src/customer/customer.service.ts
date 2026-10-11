@@ -42,10 +42,18 @@ export class CustomerService {
 
   async findAll(companyId: string, query: CustomerListQueryDto) {
     const { page, limit, search } = query;
+    const phoneSearch = search?.replace(/\D/g, '');
     const where = {
       company_id: companyId,
       deleted_at: null,
-      ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' as const } },
+              ...(phoneSearch ? [{ phone: { contains: phoneSearch } }] : []),
+            ],
+          }
+        : {}),
     };
     const data = await this.prisma.customer.findMany({
       where,

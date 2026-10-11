@@ -279,6 +279,23 @@ describe('QuoteService', () => {
         expect.objectContaining({ where: { company_id: 'comp-1', customer_id: 'cust-1' } }),
       );
     });
+
+    it('busca por título ou número sem sair do tenant e do cliente', async () => {
+      mockPrisma.quote.findMany.mockResolvedValue([]);
+
+      await service.findAll('comp-1', 1, 10, undefined, 'cust-1', 'instalação');
+
+      expect(mockPrisma.quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            company_id: 'comp-1',
+            customer_id: 'cust-1',
+            OR: [{ title: { contains: 'instalação', mode: 'insensitive' } }],
+          },
+          take: 10,
+        }),
+      );
+    });
   });
 
   describe('update()', () => {

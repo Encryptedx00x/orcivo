@@ -24,13 +24,13 @@ import {
   deleteAppointment,
   getClient,
   listAppointments,
-  listClients,
   updateAppointment,
   type EasyAppointment,
 } from '../actions';
 import { ActionBar, Hint, useLoad, useNav } from '../EasyApp';
 import { MoreButton, useSheet } from '../sheet';
 import { openPicker } from '../rows';
+import { useCustomerSearch } from '../useCustomerSearch';
 import {
   Btn,
   C,
@@ -456,12 +456,12 @@ export function AgendaScreen(): React.JSX.Element {
 export function AgendaNewScreen(): React.JSX.Element {
   const { params, tab } = useNav();
   const toast = useToast();
-  const clients = useLoad(listClients);
   const editing = params.edit;
   const startParam = params.start ? new Date(params.start) : null;
   const [type, setType] = useState<string | null>(params.type ?? null);
   const [clientId, setClientId] = useState<string | null>(params.client ?? null);
   const [clientQ, setClientQ] = useState('');
+  const clients = useCustomerSearch(clientQ, 10);
   const [day, setDay] = useState(params.day ?? (startParam ? ymd(startParam) : ymd(new Date())));
   const [time, setTime] = useState(
     params.time
@@ -488,13 +488,15 @@ export function AgendaNewScreen(): React.JSX.Element {
   const [interval, setInterval] = useState('6');
   const [amount, setAmount] = useState('');
 
-  const all = clients.data ?? [];
-  const qq = clientQ.trim().toLowerCase();
-  const picked = all.find((c) => c.id === clientId);
-  const options = (
-    qq ? all.filter((c) => c.name.toLowerCase().includes(qq)) : all.slice(0, 3)
-  ).slice(0, 5);
-  if (picked && !options.some((c) => c.id === picked.id)) options.unshift(picked);
+  const picked =
+    clients.items.find((c) => c.id === clientId) ??
+    (clientId && params.clientName
+      ? { id: clientId, name: params.clientName, phone: null }
+      : undefined);
+  const options =
+    picked && !clients.items.some((c) => c.id === picked.id)
+      ? [picked, ...clients.items]
+      : clients.items;
 
   const submit = async () => {
     if (!type) return;
@@ -570,9 +572,9 @@ export function AgendaNewScreen(): React.JSX.Element {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 19, fontWeight: 700 }}>Com quem?</span>
-          {all.length > 3 && (
-            <Search value={clientQ} onChange={setClientQ} placeholder="Buscar cliente" />
-          )}
+          <Search value={clientQ} onChange={setClientQ} placeholder="Buscar cliente" />
+          {clients.error ? <ErrorBox title={clients.error} onRetry={clients.refresh} /> : null}
+          {clients.loading && options.length === 0 ? <Loading /> : null}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {options.map((c) => (
               <button
@@ -593,6 +595,11 @@ export function AgendaNewScreen(): React.JSX.Element {
             >
               Sem cliente
             </button>
+            {clients.hasMore ? (
+              <Btn tone="soft" disabled={clients.loading} onClick={() => void clients.loadMore()}>
+                {clients.loading ? 'Carregando…' : 'Ver mais clientes'}
+              </Btn>
+            ) : null}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

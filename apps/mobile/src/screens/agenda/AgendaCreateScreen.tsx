@@ -68,6 +68,8 @@ function buildIsoDate(dateStr: string, timeStr: string): string | null {
 
 export function AgendaCreateScreen({ navigation }: Props) {
   const submitKey = useRef(newIdempotencyKey());
+  const customerRequestRef = useRef(0);
+  const workOrderRequestRef = useRef(0);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<AppointmentType>('VISITA');
   const [notes, setNotes] = useState('');
@@ -79,6 +81,10 @@ export function AgendaCreateScreen({ navigation }: Props) {
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [workOrderId, setWorkOrderId] = useState('');
+  const [workOrderSearch, setWorkOrderSearch] = useState('');
+  const [workOrderPage, setWorkOrderPage] = useState(1);
+  const [workOrdersHaveMore, setWorkOrdersHaveMore] = useState(true);
+  const [workOrdersLoading, setWorkOrdersLoading] = useState(false);
 
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -94,30 +100,75 @@ export function AgendaCreateScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (!customerSearch.trim()) {
+      customerRequestRef.current += 1;
       setCustomers([]);
       setShowSuggestions(false);
       return;
     }
     const timeout = setTimeout(async () => {
+      const requestId = ++customerRequestRef.current;
       try {
         const res = await api.get<{ data: Customer[] }>(
           `/customers?search=${encodeURIComponent(customerSearch)}&limit=10`,
         );
-        setCustomers(res.data ?? []);
-        setShowSuggestions(true);
+        if (requestId === customerRequestRef.current) {
+          setCustomers(res.data ?? []);
+          setShowSuggestions(true);
+        }
       } catch {
-        setCustomers([]);
+        if (requestId === customerRequestRef.current) setCustomers([]);
       }
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      customerRequestRef.current += 1;
+    };
   }, [customerSearch]);
 
   useEffect(() => {
-    workOrderService
-      .fetchAll()
-      .then((r) => setWorkOrders(r.data))
-      .catch(() => setWorkOrders([]));
-  }, []);
+    const timeout = setTimeout(() => {
+      const requestId = ++workOrderRequestRef.current;
+      setWorkOrdersLoading(true);
+      void workOrderService
+        .fetchAll(1, workOrderSearch, 10)
+        .then((r) => {
+          if (requestId !== workOrderRequestRef.current) return;
+          setWorkOrders(r.data ?? []);
+          setWorkOrderPage(1);
+          setWorkOrdersHaveMore((r.data ?? []).length === 10);
+        })
+        .catch(() => {
+          if (requestId === workOrderRequestRef.current) setWorkOrders([]);
+        })
+        .finally(() => {
+          if (requestId === workOrderRequestRef.current) setWorkOrdersLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timeout);
+      workOrderRequestRef.current += 1;
+    };
+  }, [workOrderSearch]);
+
+  const loadMoreWorkOrders = async () => {
+    if (workOrdersLoading || !workOrdersHaveMore) return;
+    const requestId = ++workOrderRequestRef.current;
+    const nextPage = workOrderPage + 1;
+    setWorkOrdersLoading(true);
+    try {
+      const result = await workOrderService.fetchAll(nextPage, workOrderSearch, 10);
+      if (requestId !== workOrderRequestRef.current) return;
+      setWorkOrders((current) => {
+        const merged = new Map(current.map((item) => [item.id, item]));
+        (result.data ?? []).forEach((item) => merged.set(item.id, item));
+        return [...merged.values()];
+      });
+      setWorkOrderPage(nextPage);
+      setWorkOrdersHaveMore((result.data ?? []).length === 10);
+    } finally {
+      if (requestId === workOrderRequestRef.current) setWorkOrdersLoading(false);
+    }
+  };
 
   const selectCustomer = (c: Customer) => {
     setCustomerId(c.id);
@@ -237,9 +288,19 @@ export function AgendaCreateScreen({ navigation }: Props) {
           )}
           {customerId ? <Text style={styles.selectedBadge}>✓ Cliente selecionado</Text> : null}
 
-          {workOrders.length > 0 && (
+          <Text style={styles.sectionLabel}>Ordem de serviço (opcional)</Text>
+          <TextInput
+            style={styles.input}
+            value={workOrderSearch}
+            onChangeText={setWorkOrderSearch}
+            placeholder="Buscar por número ou título"
+            placeholderTextColor="#9CA3AF"
+          />
+          {workOrdersLoading && workOrders.length === 0 ? (
+            <ActivityIndicator color="#6D28D9" />
+          ) : null}
+          {workOrders.length > 0 ? (
             <>
-              <Text style={styles.sectionLabel}>Ordem de serviço (opcional)</Text>
               <View style={styles.typeRow}>
                 <TouchableOpacity
                   style={[styles.typeChip, workOrderId === '' && styles.typeChipActive]}
@@ -268,8 +329,21 @@ export function AgendaCreateScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 ))}
               </View>
+              {workOrdersHaveMore ? (
+                <TouchableOpacity
+                  disabled={workOrdersLoading}
+                  style={styles.loadMore}
+                  onPress={() => void loadMoreWorkOrders()}
+                >
+                  <Text style={styles.loadMoreText}>
+                    {workOrdersLoading ? 'Carregando…' : 'Ver mais ordens de serviço'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </>
-          )}
+          ) : !workOrdersLoading ? (
+            <Text style={styles.emptyHint}>Nenhuma ordem de serviço encontrada.</Text>
+          ) : null}
 
           <Text style={styles.sectionLabel}>Data e horário de início *</Text>
           <View style={styles.itemRow}>
@@ -484,6 +558,9 @@ const styles = StyleSheet.create({
   suggestionName: { fontSize: 15, color: '#0A0A0F', fontWeight: '500' },
   suggestionPhone: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   selectedBadge: { fontSize: 13, color: '#059669', marginTop: 6, fontWeight: '500' },
+  emptyHint: { fontSize: 14, color: '#64748B', marginTop: 8 },
+  loadMore: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  loadMoreText: { color: '#6D28D9', fontSize: 15, fontWeight: '600' },
   submitBtn: {
     backgroundColor: '#6D28D9',
     paddingVertical: 14,

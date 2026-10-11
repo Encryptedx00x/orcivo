@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
+import {
+  CustomerSearchPicker,
+  type CustomerSearchOption,
+} from '../../../../components/CustomerSearchPicker';
 import { Plus, BookOpen, X, Check, FileText, Share2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -170,7 +174,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [showCatalogDialog, setShowCatalogDialog] = useState(false);
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
@@ -196,10 +200,6 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/customers')
-      .then((r) => r.json())
-      .then((d) => setCustomers(d.data ?? []))
-      .catch(() => {});
     fetch('/api/catalog')
       .then((r) => r.json())
       .then((d) => setCatalog(Array.isArray(d) ? d : []))
@@ -278,7 +278,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
         throw new Error((err as { message?: string }).message ?? 'Erro ao cadastrar cliente.');
       }
       const created = (await res.json()) as Customer;
-      setCustomers((prev) => [...prev, created]);
+      setSelectedCustomer(created);
       setCustomerId(created.id);
       setShowNewCustomerDialog(false);
       setNewCustomerName('');
@@ -392,8 +392,6 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
     if (id) router.push(`/orcamentos/${id}?compartilhar=1`);
   }
 
-  const selectedCustomer = customers.find((c) => c.id === customerId);
-
   // ── Step content ─────────────────────────────────────────────────
   function renderStep() {
     // Step 0: Cliente
@@ -407,20 +405,15 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
             <div style={{ gridColumn: '1 / -1' }}>
               <label className="ov-label">Cliente *</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <select
-                  className="ov-input"
+                <CustomerSearchPicker
                   value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
+                  initialCustomer={selectedCustomer}
+                  onChange={(id, customer) => {
+                    setCustomerId(id);
+                    setSelectedCustomer((customer as CustomerSearchOption | undefined) ?? null);
+                  }}
                   required
-                  style={{ flex: '1 1 200px', minWidth: 0 }}
-                >
-                  <option value="">Selecione um cliente</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                />
                 <button
                   type="button"
                   className="ov-btn ov-btn-outline"

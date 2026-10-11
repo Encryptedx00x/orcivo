@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import { usePagedList } from '../../hooks/usePagedList';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../../services/api';
 import type { ClientesStackParamList } from '../../navigation/AppTabs';
-import { AppButton, AppCard, ListRow, ScreenHeader } from '../../components/AppUI';
+import { AppButton, AppCard, AppInput, ListRow, ScreenHeader } from '../../components/AppUI';
 import { User } from 'lucide-react-native';
 
 interface Customer {
@@ -26,12 +26,25 @@ type Props = NativeStackScreenProps<ClientesStackParamList, 'ClientesList'>;
 
 export function ClientesScreen({ navigation }: Props) {
   const { company } = useAuth();
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
   const fetchPage = useCallback(
     async (page: number) =>
-      (await api.get<{ data: Customer[] }>(`/customers?page=${page}&limit=50`)).data,
-    [company?.id],
+      (
+        await api.get<{ data: Customer[] }>(
+          `/customers?page=${page}&limit=20${query ? `&search=${encodeURIComponent(query)}` : ''}`,
+        )
+      ).data,
+    [company?.id, query],
   );
-  const { items, loading, failed, refresh, loadMore, loadingMore } = usePagedList(fetchPage, 50);
+  const { items, loading, failed, refresh, loadMore, loadingMore, hasMore } = usePagedList(
+    fetchPage,
+    20,
+  );
   useFocusEffect(
     useCallback(() => {
       void refresh();
@@ -41,6 +54,12 @@ export function ClientesScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Clientes" subtitle="Pessoas e empresas atendidas" />
+      <AppInput
+        label="Buscar cliente"
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Nome ou telefone"
+      />
       {loading ? (
         <ActivityIndicator color="#6D28D9" />
       ) : failed ? (
@@ -55,10 +74,12 @@ export function ClientesScreen({ navigation }: Props) {
           data={items}
           refreshing={loading}
           onRefresh={refresh}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
           ListFooterComponent={
-            loadingMore ? <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} /> : null
+            loadingMore ? (
+              <ActivityIndicator color="#6D28D9" style={{ margin: 16 }} />
+            ) : hasMore ? (
+              <AppButton label="Ver mais clientes" variant="secondary" onPress={loadMore} />
+            ) : null
           }
           contentContainerStyle={{ paddingBottom: 100 }}
           keyExtractor={(c) => c.id}
@@ -72,7 +93,13 @@ export function ClientesScreen({ navigation }: Props) {
               />
             </AppCard>
           )}
-          ListEmptyComponent={<Text style={styles.empty}>Nenhum cliente cadastrado ainda.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {search.trim()
+                ? 'Nenhum cliente com esse nome ou telefone.'
+                : 'Nenhum cliente cadastrado ainda.'}
+            </Text>
+          }
         />
       )}
       <View style={styles.fab}>

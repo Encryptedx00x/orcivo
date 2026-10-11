@@ -477,10 +477,29 @@ export class WorkOrderService {
     return transaction ? persist(transaction) : this.prisma.$transaction(persist);
   }
 
-  async findAll(companyId: string, page = 1, limit = 20, role?: MemberRole, customerId?: string) {
+  async findAll(
+    companyId: string,
+    page = 1,
+    limit = 20,
+    role?: MemberRole,
+    customerId?: string,
+    search?: string,
+  ) {
+    const number = search && /^\d+$/.test(search) ? Number(search) : undefined;
     const [data, enabledExtras] = await Promise.all([
       this.prisma.workOrder.findMany({
-        where: { company_id: companyId, ...(customerId ? { customer_id: customerId } : {}) },
+        where: {
+          company_id: companyId,
+          ...(customerId ? { customer_id: customerId } : {}),
+          ...(search
+            ? {
+                OR: [
+                  { title: { contains: search, mode: 'insensitive' as const } },
+                  ...(number === undefined ? [] : [{ number }]),
+                ],
+              }
+            : {}),
+        },
         orderBy: { created_at: 'desc' },
         skip: (page - 1) * limit,
         take: limit,

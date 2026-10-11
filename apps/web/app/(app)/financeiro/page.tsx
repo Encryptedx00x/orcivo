@@ -14,7 +14,6 @@ import {
   type PaymentRow,
   type FinanceKpi,
   type ChartBar,
-  type CustomerOption,
 } from './FinanceiroContent';
 
 const DAYS = 30;
@@ -42,16 +41,14 @@ export default async function FinanceiroPage(): Promise<React.JSX.Element> {
   const now0 = new Date();
   const monthFrom = new Date(now0.getFullYear(), now0.getMonth(), 1).toISOString();
   const monthTo = new Date(now0.getFullYear(), now0.getMonth() + 1, 0, 23, 59, 59).toISOString();
-  const [paymentsRes, customersRes, costsRes, summary] = await Promise.all([
+  const [paymentsRes, costsRes, summary] = await Promise.all([
     apiFetch<{ data: ApiPayment[] }>('/payments'),
-    apiFetch<{ data: Array<{ id: string; name: string }> }>('/customers?limit=200'),
     apiFetch<{ data: CostRow[] }>(`/expenses?from=${monthFrom}&to=${monthTo}`).catch(() => ({
       data: [] as CostRow[],
     })),
     apiFetch<FinanceSummary>(`/finance/summary?from=${monthFrom}&to=${monthTo}`).catch(() => null),
   ]);
   const payments: ApiPayment[] = paymentsRes.data;
-  const customers: CustomerOption[] = customersRes.data.map((c) => ({ id: c.id, name: c.name }));
 
   const now = new Date();
   const monthLabel = now
@@ -133,13 +130,7 @@ export default async function FinanceiroPage(): Promise<React.JSX.Element> {
 
   return (
     <>
-      <FinanceiroContent
-        entries={entries}
-        kpis={kpis}
-        bars={bars}
-        monthLabel={monthLabel}
-        customers={customers}
-      />
+      <FinanceiroContent entries={entries} kpis={kpis} bars={bars} monthLabel={monthLabel} />
       <CostsSection costs={costsRes.data} summary={summary} monthLabel={monthLabel} />
     </>
   );

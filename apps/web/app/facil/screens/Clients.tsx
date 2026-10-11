@@ -16,14 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { formatMoney, maskPhone, onlyDigits } from '@orcivo/shared-types';
-import {
-  createClient,
-  deleteClient,
-  getClient,
-  listClients,
-  listQuotes,
-  type EasyQuote,
-} from '../actions';
+import { createClient, deleteClient, getClient, listQuotes, type EasyQuote } from '../actions';
 import { ActionBar, Hint, emptyDraft, useLoad, useNav } from '../EasyApp';
 import {
   Avatar,
@@ -41,24 +34,15 @@ import {
 } from '../ui';
 import { NewClientForm } from './QuoteFlow';
 import { quoteChip } from './Quotes';
+import { useCustomerSearch } from '../useCustomerSearch';
 
-const PAGE = 20;
 const tel = (phone: string | null) => (phone ? `tel:${onlyDigits(phone)}` : undefined);
 const wa = (phone: string | null) => (phone ? `https://wa.me/55${onlyDigits(phone)}` : undefined);
 
 export function ClientsScreen(): React.JSX.Element {
   const { go } = useNav();
-  const clients = useLoad(listClients);
   const [q, setQ] = useState('');
-  const [limit, setLimit] = useState(PAGE);
-  const qq = q.trim().toLowerCase();
-  const qDigits = qq.replace(/\D/g, '');
-  const all = clients.data ?? [];
-  const list = all.filter(
-    (c) =>
-      !qq || c.name.toLowerCase().includes(qq) || (qDigits && (c.phone ?? '').includes(qDigits)),
-  );
-  const shown = list.slice(0, limit);
+  const clients = useCustomerSearch(q, 20);
 
   return (
     <>
@@ -71,17 +55,18 @@ export function ClientsScreen(): React.JSX.Element {
         }}
       >
         <H1>Clientes</H1>
-        {clients.data && (
+        {clients.items.length > 0 && (
           <span style={{ fontSize: 16, color: C.fg3 }}>
-            {list.length} {list.length === 1 ? 'cliente' : 'clientes'}
+            {clients.items.length}{' '}
+            {clients.items.length === 1 ? 'cliente exibido' : 'clientes exibidos'}
           </span>
         )}
       </div>
-      {clients.loading && !clients.data ? (
+      {clients.loading && clients.items.length === 0 ? (
         <Loading />
       ) : clients.error ? (
-        <ErrorBox title="Não foi possível carregar seus clientes." onRetry={clients.reload} />
-      ) : all.length === 0 ? (
+        <ErrorBox title={clients.error} onRetry={clients.refresh} />
+      ) : clients.items.length === 0 && !q.trim() ? (
         <EmptyBox
           icon={Users}
           title="Você ainda não cadastrou clientes."
@@ -94,15 +79,8 @@ export function ClientsScreen(): React.JSX.Element {
           <Btn icon={UserPlus} onClick={() => go('clientNew')}>
             Novo cliente
           </Btn>
-          <Search
-            value={q}
-            onChange={(v) => {
-              setQ(v);
-              setLimit(PAGE);
-            }}
-            placeholder="Buscar nome ou telefone"
-          />
-          {shown.map((c) => (
+          <Search value={q} onChange={setQ} placeholder="Buscar nome ou telefone" />
+          {clients.items.map((c) => (
             <div
               key={c.id}
               style={{
@@ -154,16 +132,16 @@ export function ClientsScreen(): React.JSX.Element {
               )}
             </div>
           ))}
-          {qq && list.length === 0 && (
+          {q.trim() && clients.items.length === 0 && (
             <div style={{ ...card, padding: 18, fontSize: 17, color: C.fg2 }}>
               Nenhum cliente com esse nome ou telefone.
             </div>
           )}
-          {list.length > shown.length && (
-            <Btn tone="link" onClick={() => setLimit((l) => l + PAGE)}>
-              Ver mais {Math.min(PAGE, list.length - shown.length)} de {list.length - shown.length}
+          {clients.hasMore ? (
+            <Btn tone="link" disabled={clients.loading} onClick={() => void clients.loadMore()}>
+              {clients.loading ? 'Carregando…' : 'Ver mais clientes'}
             </Btn>
-          )}
+          ) : null}
         </div>
       )}
     </>

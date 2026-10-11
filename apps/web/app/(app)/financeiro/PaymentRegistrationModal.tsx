@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
+import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
 import { parseMoneyInput } from '@orcivo/shared-types';
 
 export interface PaymentCustomerOption {
@@ -170,24 +171,14 @@ export function PaymentRegistrationModal({
         )}
         <form onSubmit={submit}>
           <div style={{ marginBottom: 12 }}>
-            <label className="ov-label" htmlFor="payment-customer">
-              Cliente *
-            </label>
-            <select
-              id="payment-customer"
-              className="ov-input"
+            <label className="ov-label">Cliente *</label>
+            <CustomerSearchPicker
               value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
+              initialCustomer={customers[0]}
+              onChange={setCustomerId}
               required
               disabled={Boolean(workOrder)}
-            >
-              {!workOrder && <option value="">Selecione</option>}
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div style={{ marginBottom: 12 }}>
             <label className="ov-label" htmlFor="payment-description">

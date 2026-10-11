@@ -11,6 +11,6 @@ interface Customer {
 }
 
 export default async function ClientesPage(): Promise<React.JSX.Element> {
-  const data = await apiFetch<{ data: Customer[] }>('/customers?limit=100');
+  const data = await apiFetch<{ data: Customer[] }>('/customers?page=1&limit=20');
   return <ClientesContent customers={data.data} />;
 }

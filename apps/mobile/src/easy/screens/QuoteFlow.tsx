@@ -68,6 +68,7 @@ import type { EasyStackParamList } from '../EasyNavigator';
 import { approvalsSummary } from './Settings';
 import { shareQuotePdf } from '../share';
 import { DocOptionsFields } from '../DocOptions';
+import { useCustomerSearch } from '../useCustomerSearch';
 
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const key = () => Math.random().toString(36).slice(2);
@@ -76,22 +77,9 @@ const key = () => Math.random().toString(36).slice(2);
 export function QuoteClientScreen() {
   const nav = useEasyNav();
   const { draft, setDraft } = useDraft();
-  const clients = useLoad(easy.clients, 'Não foi possível carregar seus clientes.');
   const [q, setQ] = useState('');
-
-  const list = useMemo(() => {
-    const qq = norm(q.trim());
-    const digits = qq.replace(/\D/g, '');
-    const all = clients.data ?? [];
-    if (!qq) return all.slice(0, 6);
-    return all
-      .filter(
-        (c) =>
-          norm(c.name).includes(qq) ||
-          (!!digits && (c.phone ?? '').replace(/\D/g, '').includes(digits)),
-      )
-      .slice(0, 20);
-  }, [clients.data, q]);
+  const clients = useCustomerSearch(q, 10);
+  const list = clients.items;
 
   const pick = (c: EasyClient) => {
     setDraft((d) => ({ ...d, client: c }));
@@ -112,8 +100,8 @@ export function QuoteClientScreen() {
       </Btn>
       <SectionLabel>{q.trim() ? 'Encontrados' : 'Recentes'}</SectionLabel>
       {clients.error ? <ErrorBox message={clients.error} onRetry={clients.refresh} /> : null}
-      {!clients.data && !clients.error ? <Loading /> : null}
-      {clients.data && list.length === 0 ? (
+      {clients.loading && clients.items.length === 0 && !clients.error ? <Loading /> : null}
+      {!clients.loading && list.length === 0 ? (
         <EmptyBox>
           {q.trim() ? 'Nenhum cliente com esse nome.' : 'Você ainda não tem clientes.'}
         </EmptyBox>
@@ -139,6 +127,11 @@ export function QuoteClientScreen() {
           </Card>
         );
       })}
+      {clients.hasMore ? (
+        <Btn tone="link" onPress={() => void clients.loadMore()}>
+          {clients.loading ? 'Carregando…' : 'Ver mais clientes'}
+        </Btn>
+      ) : null}
     </Page>
   );
 }

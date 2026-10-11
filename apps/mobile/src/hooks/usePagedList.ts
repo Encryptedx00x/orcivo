@@ -55,5 +55,5 @@ export function usePagedList<T extends { id: string }>(
     }
   }, [fetchPage, pageSize]);
 
-  return { items, loading, failed, loadingMore, refresh, loadMore };
+  return { items, loading, failed, loadingMore, hasMore: !st.current.done, refresh, loadMore };
 }

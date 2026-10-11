@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -186,6 +186,10 @@ export function FinanceiroScreen() {
   const [showForm, setShowForm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
+  const [workOrderSearch, setWorkOrderSearch] = useState('');
+  const [workOrderPage, setWorkOrderPage] = useState(1);
+  const [workOrdersHaveMore, setWorkOrdersHaveMore] = useState(true);
+  const [workOrdersLoading, setWorkOrdersLoading] = useState(false);
   const [amount, setAmount] = useState(EMPTY_FORM.amount);
   const [method, setMethod] = useState<PaymentMethod>(EMPTY_FORM.method);
   const [status, setStatus] = useState<FormStatus>(EMPTY_FORM.status);
@@ -197,6 +201,7 @@ export function FinanceiroScreen() {
 
   const submitLock = useRef(false);
   const request = useRef<{ body: string; key: string } | null>(null);
+  const workOrderRequestRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -211,11 +216,11 @@ export function FinanceiroScreen() {
         )
         .then((summary) => active && setMonth(summary))
         .catch(() => active && setMonth(null));
-      Promise.all([paymentService.fetchAll(), workOrderService.fetchAll(1)])
-        .then(([paymentsData, workOrdersRes]) => {
+      paymentService
+        .fetchAll()
+        .then((paymentsData) => {
           if (!active) return;
           setPayments(paymentsData);
-          setWorkOrders(workOrdersRes.data ?? []);
         })
         .catch((error: unknown) => {
           if (active) setLoadError(financeiroError(error, 'load'));
@@ -228,6 +233,51 @@ export function FinanceiroScreen() {
       };
     }, [attempt]),
   );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const requestId = ++workOrderRequestRef.current;
+      setWorkOrdersLoading(true);
+      void workOrderService
+        .fetchAll(1, workOrderSearch, 10)
+        .then((result) => {
+          if (requestId !== workOrderRequestRef.current) return;
+          setWorkOrders(result.data ?? []);
+          setWorkOrderPage(1);
+          setWorkOrdersHaveMore((result.data ?? []).length === 10);
+        })
+        .catch(() => {
+          if (requestId === workOrderRequestRef.current) setWorkOrders([]);
+        })
+        .finally(() => {
+          if (requestId === workOrderRequestRef.current) setWorkOrdersLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timeout);
+      workOrderRequestRef.current += 1;
+    };
+  }, [attempt, workOrderSearch]);
+
+  async function loadMoreWorkOrders() {
+    if (workOrdersLoading || !workOrdersHaveMore) return;
+    const requestId = ++workOrderRequestRef.current;
+    const nextPage = workOrderPage + 1;
+    setWorkOrdersLoading(true);
+    try {
+      const result = await workOrderService.fetchAll(nextPage, workOrderSearch, 10);
+      if (requestId !== workOrderRequestRef.current) return;
+      setWorkOrders((current) => {
+        const merged = new Map(current.map((item) => [item.id, item]));
+        (result.data ?? []).forEach((item) => merged.set(item.id, item));
+        return [...merged.values()];
+      });
+      setWorkOrderPage(nextPage);
+      setWorkOrdersHaveMore((result.data ?? []).length === 10);
+    } finally {
+      if (requestId === workOrderRequestRef.current) setWorkOrdersLoading(false);
+    }
+  }
 
   function resetForm() {
     setSelectedWorkOrder(null);
@@ -597,9 +647,20 @@ export function FinanceiroScreen() {
               <X size={22} color="#0A0A0F" />
             </TouchableOpacity>
           </View>
-          {workOrders.length === 0 ? (
+          <TextInput
+            style={[styles.input, styles.pickerSearch]}
+            value={workOrderSearch}
+            onChangeText={setWorkOrderSearch}
+            placeholder="Buscar por número ou título"
+            placeholderTextColor="#94A3B8"
+          />
+          {workOrdersLoading && workOrders.length === 0 ? (
             <View style={styles.center}>
-              <Text style={styles.description}>Nenhuma ordem de serviço disponível.</Text>
+              <ActivityIndicator color="#6D28D9" />
+            </View>
+          ) : workOrders.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={styles.description}>Nenhuma ordem de serviço encontrada.</Text>
             </View>
           ) : (
             <ScrollView>
@@ -614,6 +675,14 @@ export function FinanceiroScreen() {
                   <Text style={styles.description}>{order.customer.name}</Text>
                 </TouchableOpacity>
               ))}
+              {workOrdersHaveMore ? (
+                <Button
+                  label={workOrdersLoading ? 'Carregando…' : 'Ver mais ordens de serviço'}
+                  secondary
+                  busy={workOrdersLoading}
+                  onPress={() => void loadMoreWorkOrders()}
+                />
+              ) : null}
             </ScrollView>
           )}
         </View>
@@ -730,6 +799,7 @@ const styles = StyleSheet.create({
   error: { color: '#DC2626', fontSize: 14, lineHeight: 20 },
   success: { color: '#15803D', fontSize: 14, lineHeight: 20, marginBottom: 12 },
   modalContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  pickerSearch: { marginHorizontal: 16, marginBottom: 8 },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

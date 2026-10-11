@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
 
 import { updateAppointment, deleteAppointment } from './actions';
 
@@ -63,15 +64,9 @@ interface Appt {
   schedule_period?: 'MORNING' | 'AFTERNOON' | 'EVENING' | 'BUSINESS_HOURS' | null;
   reminder_minutes?: number | null;
 }
-interface CustomerOpt {
-  id: string;
-  name: string;
-}
-
 export default function AgendaPage(): React.JSX.Element {
   const [base, setBase] = useState(new Date());
   const [appts, setAppts] = useState<Appt[]>([]);
-  const [customers, setCustomers] = useState<CustomerOpt[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected] = useState<Appt | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -108,12 +103,6 @@ export default function AgendaPage(): React.JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    fetch('/api/customers?limit=200')
-      .then((r) => r.json())
-      .then((d) => setCustomers(d.data ?? []))
-      .catch(() => {});
-  }, []);
 
   const prevWeek = () => {
     const d = new Date(base);
@@ -401,7 +390,6 @@ export default function AgendaPage(): React.JSX.Element {
       {showModal && (
         <AppointmentModal
           appointment={selected}
-          customers={customers}
           onClose={() => setShowModal(false)}
           onCreated={() => {
             setShowModal(false);
@@ -422,12 +410,10 @@ function localTime(value: Date): string {
 
 function AppointmentModal({
   appointment,
-  customers,
   onClose,
   onCreated,
 }: {
   appointment: Appt | null;
-  customers: CustomerOpt[];
   onClose: () => void;
   onCreated: () => void;
 }): React.JSX.Element {
@@ -670,24 +656,13 @@ function AppointmentModal({
                 <label htmlFor="appt-customer" className="ov-label">
                   Cliente
                 </label>
-                <select
-                  id="appt-customer"
-                  className="ov-input"
+                <CustomerSearchPicker
                   value={f.customer_id}
-                  onChange={(e) => setF((p) => ({ ...p, customer_id: e.target.value }))}
-                >
-                  <option value="">Sem cliente</option>
-                  {f.customer_id && !customers.some((c) => c.id === f.customer_id) && (
-                    <option value={f.customer_id}>
-                      {appointment?.customer?.name ?? 'Cliente atual'}
-                    </option>
-                  )}
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  initialCustomer={appointment?.customer}
+                  allowEmpty
+                  emptyLabel="Sem cliente"
+                  onChange={(id) => setF((p) => ({ ...p, customer_id: id }))}
+                />
               </div>
             </div>
             <div

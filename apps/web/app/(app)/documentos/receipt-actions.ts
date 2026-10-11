@@ -81,21 +81,41 @@ export interface LinkOption {
   label: string;
 }
 
-/** Customers plus their work orders / quotes, for the "Novo recibo" form. */
-export async function receiptFormData(): Promise<
+export async function receiptCustomerOptions(
+  search = '',
+  page = 1,
+): Promise<
   Result<{
     customers: Array<{ id: string; name: string; phone?: string | null }>;
-    links: LinkOption[];
+    hasMore: boolean;
   }>
 > {
   return run(async () => {
-    const [customers, wos, quotes] = await Promise.all([
-      apiFetch<{ data: Array<{ id: string; name: string; phone?: string | null }> }>(
-        '/customers?limit=500',
-      ),
+    const params = new URLSearchParams({ page: String(page), limit: '10' });
+    if (search.trim()) params.set('search', search.trim());
+    const customers = await apiFetch<{
+      data: Array<{ id: string; name: string; phone?: string | null }>;
+    }>(`/customers?${params.toString()}`);
+    return { customers: customers.data, hasMore: customers.data.length === 10 };
+  }, 'Não foi possível carregar os clientes.');
+}
+
+export async function receiptLinkOptions(
+  customerId: string,
+  search = '',
+  limit = 8,
+): Promise<Result<{ links: LinkOption[]; hasMore: boolean }>> {
+  return run(async () => {
+    const params = new URLSearchParams({
+      page: '1',
+      limit: String(Math.min(Math.max(limit, 1), 100)),
+      customer_id: customerId,
+    });
+    if (search.trim()) params.set('search', search.trim());
+    const [wos, quotes] = await Promise.all([
       apiFetch<{
         data: Array<{ id: string; number: number; title: string; customer: { id: string } }>;
-      }>('/work-orders?page=1&limit=100'),
+      }>(`/work-orders?${params.toString()}`),
       apiFetch<{
         data: Array<{
           id: string;
@@ -104,7 +124,7 @@ export async function receiptFormData(): Promise<
           status: string;
           customer: { id: string };
         }>;
-      }>('/quotes?page=1&limit=100'),
+      }>(`/quotes?${params.toString()}`),
     ]);
     const links: LinkOption[] = [
       ...wos.data.map((w) => ({
@@ -122,8 +142,11 @@ export async function receiptFormData(): Promise<
           label: `Orçamento #${q.number}${q.title ? ` · ${q.title}` : ''}`,
         })),
     ];
-    return { customers: customers.data, links };
-  }, 'Não foi possível carregar clientes e serviços.');
+    return {
+      links,
+      hasMore: wos.data.length === limit || quotes.data.length === limit,
+    };
+  }, 'Não foi possível carregar serviços e orçamentos.');
 }
 
 export interface ReceiptCompany {

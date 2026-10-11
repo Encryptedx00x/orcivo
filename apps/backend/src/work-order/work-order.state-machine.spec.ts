@@ -846,6 +846,23 @@ describe('WorkOrderService — state machine (P-01)', () => {
       expect(result.data[0].allowed_actions).toEqual(['iniciar', 'cancelar']);
       expect(result.data[1].allowed_actions).toEqual([]);
     });
+
+    it('limita a busca ao tenant, cliente e título ou número informado', async () => {
+      mockPrisma.workOrder.findMany.mockResolvedValue([]);
+
+      await service.findAll('comp-1', 1, 10, 'OWNER', 'cust-1', '42');
+
+      expect(mockPrisma.workOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            company_id: 'comp-1',
+            customer_id: 'cust-1',
+            OR: [{ title: { contains: '42', mode: 'insensitive' } }, { number: 42 }],
+          },
+          take: 10,
+        }),
+      );
+    });
   });
 
   it('detail returns signed photo URLs instead of the stored object keys', async () => {

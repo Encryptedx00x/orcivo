@@ -157,8 +157,12 @@ export function errorText(err: unknown, fallback: string): string {
 export const easy = {
   summary: () => api.get<EasySummary>('/dashboard/summary'),
 
-  clients: async () =>
-    list(await api.get<{ data: EasyClient[] } | EasyClient[]>('/customers?limit=500')),
+  customerOptions: async (search = '', page = 1, limit = 10) => {
+    const term = search.trim();
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const query = `page=${page}&limit=${safeLimit}${term ? `&search=${encodeURIComponent(term)}` : ''}`;
+    return list(await api.get<{ data: EasyClient[] }>(`/customers?${query}`));
+  },
   client: (id: string) => api.get<EasyClient>(`/customers/${enc(id)}`),
   createClient: (name: string, phone: string) =>
     api.post<EasyClient>('/customers', {
@@ -354,6 +358,34 @@ export const easy = {
   deleteCatalogItem: (id: string) => api.delete(`/catalog/${enc(id)}`),
   workOrders100: async () =>
     list(await api.get<{ data: EasyWorkOrder[] }>('/work-orders?page=1&limit=100')),
+  receiptLinks: async (customerId: string, search = '', limit = 8) => {
+    const term = search.trim();
+    const query =
+      `page=1&limit=${Math.min(Math.max(limit, 1), 100)}` +
+      `&customer_id=${encodeURIComponent(customerId)}` +
+      (term ? `&search=${encodeURIComponent(term)}` : '');
+    const [workOrders, quotes] = await Promise.all([
+      list(await api.get<{ data: EasyWorkOrder[] }>(`/work-orders?${query}`)),
+      list(await api.get<{ data: EasyQuote[] }>(`/quotes?${query}`)),
+    ]);
+    return {
+      data: [
+        ...workOrders.map((workOrder) => ({
+          key: `work_order:${workOrder.id}`,
+          customer: workOrder.customer.id,
+          label: `Serviço #${workOrder.number} · ${workOrder.title}`,
+        })),
+        ...quotes
+          .filter((quote) => quote.status === 'APPROVED' || quote.status === 'SENT')
+          .map((quote) => ({
+            key: `quote:${quote.id}`,
+            customer: quote.customer.id,
+            label: `Orçamento #${quote.number}`,
+          })),
+      ],
+      hasMore: workOrders.length === limit || quotes.length === limit,
+    };
+  },
 };
 
 export interface EasyReceipt {

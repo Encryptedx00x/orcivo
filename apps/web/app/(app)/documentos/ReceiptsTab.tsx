@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Download, Eye, MessageCircle, Plus, Search, X } from 'lucide-react';
-import { formatMoney, sumDecimal } from '@orcivo/shared-types';
+import { formatMoney, isPositiveDecimal, sumDecimal } from '@orcivo/shared-types';
 import {
   RECEIPT_METHODS,
   methodLabel,
@@ -15,12 +15,13 @@ import {
   type Receipt,
 } from '../../../lib/receipts';
 import { ReceiptPaper } from '../../../components/ReceiptPaper';
+import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
 import {
   createReceipt,
   getReceipt,
   listReceipts,
   receiptCompany,
-  receiptFormData,
+  receiptLinkOptions,
   setReceiptSignature,
   type LinkOption,
   type ReceiptCompany,
@@ -465,26 +466,45 @@ function NewReceiptModal({
   onClose: () => void;
   onCreated: (r: Receipt) => void;
 }): React.JSX.Element {
-  const [data, setData] = useState<{
-    customers: Array<{ id: string; name: string }>;
-    links: LinkOption[];
-  } | null>(null);
   const [customer, setCustomer] = useState('');
   const [digits, setDigits] = useState('');
   const [method, setMethod] = useState('PIX');
   const [paidOn, setPaidOn] = useState(todayIso());
   const [description, setDescription] = useState('');
   const [link, setLink] = useState('');
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkLimit, setLinkLimit] = useState(8);
+  const [links, setLinks] = useState<LinkOption[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksHaveMore, setLinksHaveMore] = useState(false);
+  const linkRequestRef = useRef(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    void receiptFormData().then((r) => (r.ok ? setData(r.data) : setErr(r.message)));
-  }, []);
+    if (!customer) {
+      setLinks([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const requestId = ++linkRequestRef.current;
+      setLinksLoading(true);
+      void receiptLinkOptions(customer, linkQuery, linkLimit).then((result) => {
+        if (requestId !== linkRequestRef.current) return;
+        setLinksLoading(false);
+        if (!result.ok) return setErr(result.message);
+        setLinks(result.data.links);
+        setLinksHaveMore(result.data.hasMore);
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      linkRequestRef.current += 1;
+    };
+  }, [customer, linkLimit, linkQuery]);
 
   const amount = centsToDecimal(digits);
-  const links = (data?.links ?? []).filter((l) => l.customer_id === customer);
-  const ok = !!customer && Number(amount) > 0 && !!paidOn;
+  const ok = !!customer && isPositiveDecimal(amount) && !!paidOn;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -521,22 +541,16 @@ function NewReceiptModal({
       >
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span className="ov-label">Cliente *</span>
-          <select
-            className="ov-input"
+          <CustomerSearchPicker
             value={customer}
-            onChange={(e) => {
-              setCustomer(e.target.value);
+            onChange={(id) => {
+              setCustomer(id);
               setLink('');
+              setLinkQuery('');
+              setLinkLimit(8);
             }}
             required
-          >
-            <option value="">{data ? 'Escolha o cliente' : 'Carregando…'}</option>
-            {(data?.customers ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span className="ov-label">Valor *</span>
@@ -570,7 +584,7 @@ function NewReceiptModal({
             required
           />
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
           <span className="ov-label">Descrição</span>
           <input
             className="ov-input"
@@ -579,29 +593,67 @@ function NewReceiptModal({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Ex.: Troca de 2 tomadas"
           />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
           <span className="ov-label">Vincular a OS ou orçamento</span>
-          <select
+          <input
             className="ov-input"
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
+            value={linkQuery}
+            onChange={(event) => {
+              setLinkQuery(event.target.value);
+              setLinkLimit(8);
+            }}
             disabled={!customer}
-          >
-            <option value="">
-              {customer
-                ? links.length
-                  ? 'Nenhum (opcional)'
-                  : 'Este cliente não tem OS ou orçamento'
-                : 'Escolha o cliente primeiro'}
-            </option>
-            {links.map((l) => (
-              <option key={`${l.kind}:${l.id}`} value={`${l.kind}:${l.id}`}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            placeholder={
+              customer ? 'Buscar por número ou descrição…' : 'Escolha o cliente primeiro'
+            }
+            aria-label="Buscar serviço ou orçamento"
+          />
+          {customer ? (
+            <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
+              <button
+                type="button"
+                className={`ov-btn ${link ? 'ov-btn-outline' : 'ov-btn-primary'}`}
+                onClick={() => setLink('')}
+                style={{ justifyContent: 'flex-start' }}
+              >
+                Nenhum (opcional)
+              </button>
+              {links.map((item) => {
+                const value = `${item.kind}:${item.id}`;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`ov-btn ${link === value ? 'ov-btn-primary' : 'ov-btn-outline'}`}
+                    onClick={() => setLink(value)}
+                    style={{ justifyContent: 'flex-start' }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+              {!linksLoading && links.length === 0 ? (
+                <span style={{ fontSize: 13, color: '#64748B' }}>
+                  Este cliente não tem serviço nem orçamento correspondente.
+                </span>
+              ) : null}
+              {linksLoading ? (
+                <span style={{ fontSize: 13, color: '#64748B' }}>Carregando…</span>
+              ) : null}
+              {linksHaveMore && !linksLoading ? (
+                <button
+                  type="button"
+                  className="ov-btn ov-btn-outline"
+                  onClick={() => setLinkLimit((current) => Math.min(current + 8, 100))}
+                  style={{ justifyContent: 'center' }}
+                >
+                  Ver mais
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: 13, color: '#64748B' }}>
           O valor também entra no Financeiro como recebido.
         </p>

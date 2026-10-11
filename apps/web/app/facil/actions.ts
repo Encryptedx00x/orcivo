@@ -70,10 +70,19 @@ export interface EasyClient {
   neighborhood?: string | null;
   created_at?: string;
 }
-export async function listClients(): Promise<Result<EasyClient[]>> {
+export async function searchClients(
+  search = '',
+  page = 1,
+  limit = 10,
+): Promise<Result<{ items: EasyClient[]; hasMore: boolean }>> {
   return run(async () => {
-    const res = await apiFetch<{ data: EasyClient[] } | EasyClient[]>('/customers?limit=500');
-    return Array.isArray(res) ? res : res.data;
+    const safePage = Math.max(1, Math.trunc(page));
+    const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+    const term = search.trim();
+    const query = new URLSearchParams({ page: String(safePage), limit: String(safeLimit) });
+    if (term) query.set('search', term);
+    const res = await apiFetch<{ data: EasyClient[] }>(`/customers?${query.toString()}`);
+    return { items: res.data, hasMore: res.data.length === safeLimit };
   }, 'Não foi possível carregar seus clientes.');
 }
 export async function getClient(id: string): Promise<Result<EasyClient>> {

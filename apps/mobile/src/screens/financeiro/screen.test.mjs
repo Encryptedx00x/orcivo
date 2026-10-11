@@ -16,10 +16,18 @@ function compile(relativePath, modules) {
   });
   assert.equal(compiled.diagnostics.length, 0);
   const exports = {};
-  runInNewContext(compiled.outputText, { exports, require: (name) => {
-    assert.ok(name in modules, `Unexpected dependency: ${name}`);
-    return modules[name];
-  } });
+  runInNewContext(compiled.outputText, {
+    exports,
+    setTimeout: (callback) => {
+      callback();
+      return 1;
+    },
+    clearTimeout() {},
+    require: (name) => {
+      assert.ok(name in modules, `Unexpected dependency: ${name}`);
+      return modules[name];
+    },
+  });
   return exports;
 }
 
@@ -63,6 +71,13 @@ function mount({ getPayments, getWorkOrders, createPayment, settlePayment } = {}
       const slot = index++;
       if (!slots[slot] || deps.some((value, i) => slots[slot].deps[i] !== value)) slots[slot] = { callback, deps };
       return slots[slot].callback;
+    },
+    useEffect(effect, deps) {
+      const slot = index++;
+      if (!slots[slot] || deps.some((value, i) => slots[slot][i] !== value)) {
+        slots[slot] = deps;
+        effects.push(effect);
+      }
     },
   };
   let key = 0;
@@ -359,6 +374,7 @@ test('Mais menu route wires FinanceiroScreen and PlanoScreen (no longer EmBreve)
     '../screens/financeiro/FinanceiroScreen': { FinanceiroScreen },
     '../screens/documentos/DocumentosScreen': { DocumentosScreen: () => null },
     '../screens/plano/PlanoScreen': { PlanoScreen },
+    '../screens/relatorios/RelatoriosScreen': { RelatoriosScreen: () => null },
   };
   for (const name of ['CatalogScreen', 'CatalogItemFormScreen', 'WorkOrderListScreen', 'WorkOrderDetailScreen', 'WorkOrderPhotoScreen', 'WorkOrderCreateScreen']) {
     modules[`../screens/${name}`] = { [name]: () => null };
