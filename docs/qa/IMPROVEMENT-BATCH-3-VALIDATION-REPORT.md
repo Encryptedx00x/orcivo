@@ -68,8 +68,16 @@ registrou apenas avisos de depreciação conhecidos da camada React Native Web.
 
 ## Produção
 
-Pendente do commit, push e execução da receita de deploy. Esta seção será
-atualizada com commit, migrations, três health checks e `DEPLOY_DONE`.
+- Código consolidado e enviado para `main` até `6904bb1`.
+- Pacote gerado com o nome obrigatório `orcivo-src.tar.gz`.
+- Deploy `20261011-123450` concluído com backup
+  `pre-20261011-123450.sql.gz` e tag de retorno `prev-20261011-123450`.
+- Backend, migrations, web e site foram construídos antes da troca.
+- Receita final: `HEALTH: healthy healthy healthy` e `DEPLOY_DONE`.
+- O executor informou que todas as migrations foram aplicadas com sucesso.
+- A migration `20261010160000_company_home_shortcuts` foi executada novamente
+  em produção como prova de idempotência; PostgreSQL informou que a coluna já
+  existia e concluiu com `ALTER TABLE`.
 
 ## Próximo trabalho
 

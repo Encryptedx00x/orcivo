@@ -4,7 +4,7 @@ Fonte dos itens: benchmark `.planning/research/AGENDA-BOA-BENCHMARK.md` (AB-1…
 `docs/qa/2026-10-06-bateria-de-testes.md` (V1…V16) e backlog 999.x do `ROADMAP.md`.
 Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P/W).
 
-## Andamento (atualizado 2026-10-10)
+## Andamento (atualizado 2026-10-11)
 
 | Rodada | Status | Commits principais |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R1 | ✅ — app completo: criar OS, detalhe com valor/data/obs/WhatsApp, endereço da empresa, desconto + condições + opções no orçamento, validade corrigida (dava 400), desconto % exibido certo | `8d3ef40` |
 | R2 | ✅ produção — 6 tipos de documento, cor, contato do cliente, Instagram/site, registro profissional, frase de rodapé (PDF orçamento + recibo) | `f7df634`, `6b8a8ae` |
 | R3 | ✅ produção — duplicar orçamento (4 telas), condição de pagamento estruturada → **cobranças criadas na aprovação**, garantia; mensagens de limite com "Ver planos" | `7338121`, `1479e25` |
-| R5b…R9 | ⏳ código publicado em `main`; R7 clientes/estoque, R8 relatórios/portabilidade e R9 tema/app. Validação integrada local bloqueada por Redis `6380` e credencial PostgreSQL de teste. | `744fba8`…`1d3edeb` |
+| R5b…R9 | ✅ produção — OS sob medida, agenda/recorrência, clientes/estoque, relatórios/portabilidade, tema/app e seletores/listas limitados. Validação integrada e visual concluída nas quatro superfícies aplicáveis. | `744fba8`…`6904bb1` |
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
@@ -23,8 +23,7 @@ Decisões:
 - Erro React #418: não reproduz mais em aba limpa em nenhuma página (era anterior ao `TZ` no container web).
 
 Pendências registradas para depois:
-- R9 (pedido do dono): app mobile com o mesmo design do web, nos dois modos — ver `.planning/CONTINUE.md` §3.
-- R5b: status extras (`AWAITING_PAYMENT`, `WARRANTY`), visão por status (colunas) no web, OS em abas, taxa de deslocamento, campos da OS no modo fácil e em documento da OS.
+- A fila R5b…R9 foi concluída e implantada; o plano separado de confiabilidade do autopilot está em `docs/runbooks/AUTOPILOT-RELIABILITY-IMPROVEMENT-PLAN.md`.
 - App mobile: as mudanças só chegam aos aparelhos com um novo build (EAS) — publicação nas lojas é Nível C.
 
 ## Regras de cada rodada

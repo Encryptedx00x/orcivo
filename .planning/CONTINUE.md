@@ -5,13 +5,13 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-10)
+## 1. Estado agora (atualizado 2026-10-11)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `17c0202` (lote R5b…R9 entregue; ver `git log`) |
-| Produção (app/site/api.orcivo.com.br) | `ffe0291` = código de `2d7d2c0` (R5a) — deploy 2026-10-07 22:15 UTC, saudável, migration `20261009100000_work_order_segment_fields` aplicada |
-| Última rodada concluída | R5b…R9 implementadas e publicadas em `main`; deploy ainda não autorizado. A rodada final está bloqueada pela infraestrutura local de integração: Redis `6380` recusado e credencial local de PostgreSQL inválida. |
+| `main` / `origin/main` | `6904bb1` (lote R5b…R9, auditoria de seletores e validação final; ver `git log`) |
+| Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
+| Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
 Antes de qualquer coisa: `git status --short`, `git log --oneline -5`, `git fetch && git status -sb`.
@@ -31,19 +31,19 @@ Outra IA pode ter commitado no meio (já aconteceu: o Codex commitou a R5a junto
 Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (commit).
 
 ### R5b — OS sob medida (resto) · AB-5…AB-9
-- [ ] **Status extras da OS:** `AWAITING_PAYMENT` ("Aguardando pagamento") e `WARRANTY` ("Em garantia"),
+- [x] **Status extras da OS:** `AWAITING_PAYMENT` ("Aguardando pagamento") e `WARRANTY` ("Em garantia"),
       cada um liga/desliga em Configurações → Ordem de serviço (`companies.work_order_statuses`?
       decidir: lista de extras ativos). Backend: enum Prisma + `STATUS_ACTION_SPECS` em
       `apps/backend/src/work-order/work-order.service.ts` (transições + auditoria; spec em
       `work-order.state-machine.spec.ts`). Labels em web (`OSContent.tsx`, `WorkOrderDetail.tsx`) e app
       (`WorkOrderListScreen`, `WorkOrderDetailScreen`).
-- [ ] **Visão por status (colunas)** em `/ordens-de-servico` no web completo (alternar lista ↔ colunas; sem drag-and-drop na 1ª versão — botões de ação já existem).
-- [ ] **OS em abas** no web: Serviço (dados + equipamento + fotos) / Agenda / Financeiro (card atual de recebimentos + `OsCosts`).
-- [ ] **Taxa de deslocamento:** item opcional; decidir se é item do orçamento (preferível: catálogo "Deslocamento") — registrar decisão.
-- [ ] Campos da OS (`work_orders.details`) também no **modo fácil** (web `app/facil`, app `src/easy`) se houver tela de OS lá; e impressos num futuro PDF de OS.
+- [x] **Visão por status (colunas)** em `/ordens-de-servico` no web completo (alternar lista ↔ colunas; sem drag-and-drop na 1ª versão — botões de ação já existem).
+- [x] **OS em abas** no web: Serviço (dados + equipamento + fotos) / Agenda / Financeiro (card atual de recebimentos + `OsCosts`).
+- [x] **Taxa de deslocamento:** item opcional; decidir se é item do orçamento (preferível: catálogo "Deslocamento") — registrar decisão.
+- [x] Campos da OS (`work_orders.details`) também no **modo fácil** (web `app/facil`, app `src/easy`) se houver tela de OS lá; e impressos num futuro PDF de OS.
 
 ### R6 — Agenda e manutenção recorrente · AB-14, AB-11
-- [ ] Período (manhã/tarde/noite/comercial) ou horário exato · lembrete (5 min…1 dia) · status (não confirmado/agendado/concluído) · calendário mensal · recorrência (semanal/mensal/N meses → gera OS + cobrança; Orcivo Mais/Equipe). Detalhes em IMPROVEMENT-ROUNDS §R6.
+- [x] Período (manhã/tarde/noite/comercial) ou horário exato · lembrete (5 min…1 dia) · status (não confirmado/agendado/concluído) · calendário mensal · recorrência (semanal/mensal/N meses → gera OS + cobrança; Orcivo Mais/Equipe). Detalhes em IMPROVEMENT-ROUNDS §R6.
 
 ### R7 — Cliente e catálogo · AB-15, AB-16, 999.13
 - [x] Cliente: origem, aniversário, 2º telefone, observações internas · estoque com baixa automática (aprovação ou conclusão; devolve ao cancelar; auditado) · custo + margem/markup → preço · unidades editáveis. Entrega: `af85782`.
@@ -66,7 +66,7 @@ o mesmo produto em qualquer superfície.
 - [x] **Componentes base** (botão primário/secundário, card, input, chip, cabeçalho, linha de lista,
       badge de status) iguais aos do web; aplicar tela a tela, modo fácil primeiro (é o que o técnico usa).
 - [x] Ícones só Lucide (`lucide-react-native`), sem emoji; textos pt-BR; nomes de plano oficiais.
-- [~] Aceite: prints lado a lado web × app de cada tela no `R9-APP-DESIGN-DIFF.md` sem divergência
+- [x] Aceite: prints lado a lado web × app de cada tela no `R9-APP-DESIGN-DIFF.md` sem divergência
       relevante; testes do app (§7) verdes. **Mudar o design system em si é Nível C** — aqui é só aplicar o aprovado.
 
 ### Sempre
@@ -161,6 +161,7 @@ Depois: abrir https://app.orcivo.com.br e a tela mexida (conta do dono já logad
 
 | Data | Commit | Entrega | Produção |
 | --- | --- | --- | --- |
+| 2026-10-11 | `744fba8`…`6904bb1` | R5b…R9, auditoria/correção de seletores e listas, validação automática/visual e plano de confiabilidade do autopilot | ✅ deploy `20261011-123450`; `HEALTH` saudável 3× + `DEPLOY_DONE` |
 | 2026-10-10 | `af85782`…`1d3edeb` | R7, R8 e R9: clientes/estoque, relatórios/portabilidade e tema/componentes do app | ⏳ validação final local bloqueada por Redis/PostgreSQL de teste; não implantado |
 | 2026-10-07 | `2d7d2c0` | R5a: campos da OS por segmento (Configurações → Ordem de serviço; Nova OS e "Dados do equipamento" no web e app completo) | ✅ 22:15 UTC |
 | 2026-10-07 | `be77dda`…`d2f0cf9` | Codex: segurança (capacidades públicas expiram, throttling), deploy falha se não saudável, dependências | ✅ |
