@@ -237,6 +237,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** integração aprovação → parcelas → A receber → baixa --runInBand; spec de Decimal e status; testes de listas e refresh
 - **Testes visuais:** fluxo completo nos três viewports web e app após login; registrar não reproduzido por superfície quando aplicável
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-11):** a falha genérica de “A receber” não foi reproduzida no ambiente local. A integração real agora prova que um orçamento de `100.00` com três parcelas gera uma única vez `33.33 + 33.33 + 33.34`, sempre com `company_id`, vínculo ao orçamento/OS e estado `PENDING`; a primeira parcela pode ser baixada, recebe número de recibo e reaparece como `PAID` após nova leitura. No web, a fixture equivalente foi exibida no fácil e no completo em `1440×900`, `390×844` e `360×800`, sem overflow horizontal: antes da baixa, `A receber = R$ 100,00`; depois da baixa via Pix, `A receber = R$ 66,66`, `Recebido = R$ 33,34` e a ação `Recibo` apareceu nos dois modos. Foram adicionadas checagens de contrato/refetch para os modos fáceis web e nativo, e o teste comportamental existente do app completo cobre atualização imediata após `settle`. A execução autenticada no app permanece **não reproduzida/adiada** até B4-15/B4-16, sem atribuir o defeito ao app.
 
 ### B4-05-overpayment-confirmation — Confirmação de recebimento excedente
 

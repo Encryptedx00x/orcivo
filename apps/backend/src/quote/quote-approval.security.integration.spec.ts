@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AuthService } from '../auth/auth.service';
 import { StockService } from '../stock/stock.service';
+import { PaymentService } from '../payment/payment.service';
 
 assertEphemeralDatabase();
 
@@ -60,6 +61,14 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     audit,
     {} as never,
     stock,
+  );
+  const payments = new PaymentService(
+    db,
+    ownership,
+    audit,
+    storage as never,
+    {} as never,
+    {} as never,
   );
   const auth = new AuthService(db, new JwtService(), config, redis, {} as never, audit);
   let companyId: string;
@@ -188,6 +197,53 @@ describe('Security approval/session transactions (real disposable DB)', () => {
     expect((await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } })).pdf_url).toContain(
       '/approval-',
     );
+  });
+
+  it('turns payment terms into receivables that can be listed, settled and reloaded as a receipt', async () => {
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: {
+        total: '100.00',
+        payment_terms: { kind: 'PARCELADO', installments: 3, methods: ['PIX'] },
+      },
+    });
+
+    const approval = await approve();
+    const listed = await payments.findAll(companyId, {});
+
+    expect(approval).toMatchObject({ status: 'APPROVED', already_approved: false });
+    expect(listed.data).toHaveLength(3);
+    expect(listed.data.map((payment) => payment.amount.toString()).sort()).toEqual([
+      '33.33',
+      '33.33',
+      '33.34',
+    ]);
+    expect(listed.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          company_id: companyId,
+          quote_id: quoteId,
+          work_order_id: approval.work_order_id,
+          status: 'PENDING',
+          quote: expect.objectContaining({ id: quoteId, number: 1 }),
+          work_order: expect.objectContaining({ id: approval.work_order_id }),
+        }),
+      ]),
+    );
+
+    const first = listed.data.find((payment) => payment.description?.includes('parcela 1/3'))!;
+    await payments.settle(first.id, companyId, { method: 'PIX' }, userId);
+    const reloaded = await payments.findAll(companyId, {});
+    const settled = reloaded.data.find((payment) => payment.id === first.id);
+
+    expect(settled).toMatchObject({ status: 'PAID', method: 'PIX', receipt_number: 1 });
+    expect(settled?.paid_at).toBeInstanceOf(Date);
+    expect(await prisma.payment.count({ where: { quote_id: quoteId } })).toBe(3);
+    expect(
+      await prisma.auditLog.count({
+        where: { company_id: companyId, action: 'payment.settled', entity_id: first.id },
+      }),
+    ).toBe(1);
   });
 
   it('rejects a token rotated during external artifact generation', async () => {
