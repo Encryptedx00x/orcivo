@@ -48,6 +48,7 @@ import {
 } from '../ui';
 import { DateField, centsToDecimal, ymd } from '../rows';
 import { NewClientForm } from './QuoteFlow';
+import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 
 const PAGE = 10;
 const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -173,6 +174,10 @@ export function ReceiptScreen(): React.JSX.Element {
   const id = params.id ?? '';
   const receipt = useLoad(() => getReceipt(id), [id]);
   const company = useLoad(getCompany);
+  const signature = useLoad(async () => ({
+    ok: true as const,
+    data: await getTechnicianSignature(),
+  }));
   const [busy, setBusy] = useState(false);
 
   if (receipt.loading && !receipt.data) return <Loading />;
@@ -180,6 +185,7 @@ export function ReceiptScreen(): React.JSX.Element {
     return <ErrorBox title="Não foi possível carregar este recibo." onRetry={receipt.reload} />;
   const r = receipt.data;
   const signed = !!r.receipt_signature_key;
+  const hasSavedSignature = !!signature.data?.signature_url;
 
   const toggle = async () => {
     if (busy) return;
@@ -204,9 +210,18 @@ export function ReceiptScreen(): React.JSX.Element {
           gap: 6,
         }}
       >
-        <Toggle on={signed} onClick={() => void toggle()} label="Pôr minha assinatura no recibo" />
+        {hasSavedSignature && (
+          <Toggle
+            on={signed}
+            onClick={() => void toggle()}
+            label="Pôr minha assinatura no recibo"
+          />
+        )}
+        {!signature.loading && !hasSavedSignature && (
+          <Hint>Adicione uma assinatura para poder incluí-la neste recibo.</Hint>
+        )}
         <Btn tone="link" onClick={() => go('sign', { standalone: '1' })}>
-          Trocar assinatura
+          {hasSavedSignature ? 'Trocar assinatura' : 'Adicionar assinatura'}
         </Btn>
       </div>
       <ActionBar>

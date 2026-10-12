@@ -632,7 +632,7 @@ export function QuoteReviewScreen() {
           />
         ) : null}
         <Btn tone="soft" icon={PenLine} height={56} onPress={() => nav.navigate('QuoteSign')}>
-          {saved || draft.signature.mode !== 'none' ? 'Trocar assinatura' : 'Assinar'}
+          {saved || draft.signature.mode !== 'none' ? 'Trocar assinatura' : 'Adicionar assinatura'}
         </Btn>
       </Card>
 

@@ -1159,7 +1159,9 @@ function Q3() {
             />
           )}
           <Btn tone="soft" icon={PenLine} height={56} onClick={() => go('sign')}>
-            {saved || draft.signature.mode !== 'none' ? 'Trocar assinatura' : 'Assinar'}
+            {saved || draft.signature.mode !== 'none'
+              ? 'Trocar assinatura'
+              : 'Adicionar assinatura'}
           </Btn>
         </div>
 

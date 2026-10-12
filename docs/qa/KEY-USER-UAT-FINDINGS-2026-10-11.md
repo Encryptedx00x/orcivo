@@ -325,6 +325,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes de estado vazio/preenchido; testes de navegação da ação
 - **Testes visuais:** seis combinações superfície/modo nos três viewports web
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-12):** no modo fácil, a revisão do orçamento sem assinatura passou a exibir `Adicionar assinatura`; depois do cadastro local, a mesma ação mudou para `Trocar assinatura`. No recibo, a validação visual revelou e corrigiu também um carregamento incompatível com o contrato de `useLoad`, que ocultava uma assinatura existente; com o retorno adaptado, o recibo mostrou o toggle de inclusão e `Trocar assinatura`. Orçamento fácil, recibo fácil e detalhe completo foram verificados em `1440×900`, `390×844` e `360×800`, sem overflow horizontal; no modo completo, o texto incorreto não foi reproduzido e a seção de assinatura existente permaneceu acessível. Os modos fácil e completo do app usam os contratos corrigidos e têm testes de fonte para os estados vazio/preenchido, mas a execução autenticada permanece **não reproduzida/adiada** até B4-15/B4-16. Typecheck e lint web/mobile passaram (somente avisos preexistentes de `<img>` no web), junto de quatro testes de regressão.
 
 ### B4-10-toast-duration-dismiss — Toasts mais breves e dispensáveis
 

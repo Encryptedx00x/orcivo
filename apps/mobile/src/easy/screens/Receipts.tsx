@@ -319,6 +319,7 @@ export function ReceiptScreen() {
   const load = useCallback(() => easy.receipt(id), [id]);
   const receipt = useLoad(load, 'Não foi possível carregar este recibo.');
   const company = useLoad(easy.company, 'Não foi possível carregar a empresa.');
+  const signature = useLoad(easy.signature, 'Não foi possível carregar sua assinatura.');
   const [busy, setBusy] = useState(false);
 
   if (receipt.error)
@@ -335,6 +336,7 @@ export function ReceiptScreen() {
     );
   const r = receipt.data;
   const signed = !!r.receipt_signature_key;
+  const hasSavedSignature = !!signature.data?.signature_url;
 
   const toggle = async (on: boolean) => {
     if (busy) return;
@@ -343,7 +345,7 @@ export function ReceiptScreen() {
       receipt.setData(await easy.setReceiptSignature(r.id, on));
     } catch (err) {
       const msg = /404$/.test(String(err))
-        ? 'Você ainda não tem assinatura salva. Salve uma em Trocar assinatura.'
+        ? 'Você ainda não tem assinatura salva. Toque em Adicionar assinatura.'
         : errorText(err, 'Não foi possível mudar a assinatura do recibo.');
       Alert.alert('Não deu certo', msg);
     } finally {
@@ -367,13 +369,17 @@ export function ReceiptScreen() {
       <H1 size={28}>Recibo nº {receiptNo(r.receipt_number)}</H1>
       <ReceiptPaperView r={r} company={company.data} />
       <Card style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
-        <Toggle
-          on={signed}
-          onChange={(on) => void toggle(on)}
-          label="Pôr minha assinatura no recibo"
-        />
+        {hasSavedSignature ? (
+          <Toggle
+            on={signed}
+            onChange={(on) => void toggle(on)}
+            label="Pôr minha assinatura no recibo"
+          />
+        ) : (
+          <Text style={s.muted}>Adicione uma assinatura para poder incluí-la neste recibo.</Text>
+        )}
         <Btn tone="link" onPress={() => nav.navigate('QuoteSign', { standalone: true })}>
-          Trocar assinatura
+          {hasSavedSignature ? 'Trocar assinatura' : 'Adicionar assinatura'}
         </Btn>
       </Card>
     </Page>
