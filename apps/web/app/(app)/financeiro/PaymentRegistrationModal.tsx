@@ -140,6 +140,10 @@ export function PaymentRegistrationModal({
           padding: 28,
           width: '100%',
           maxWidth: 440,
+          maxHeight: 'calc(100dvh - 32px)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
           boxShadow: '0 8px 32px rgba(0,0,0,.18)',
         }}
       >
@@ -219,10 +223,8 @@ export function PaymentRegistrationModal({
               maxLength={200}
             />
           </div>
-          <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}
-          >
-            <div>
+          <div style={{ ...twoColumns, marginBottom: 12 }}>
+            <div style={fieldContainerStyle}>
               <label className="ov-label" htmlFor="payment-amount">
                 Valor (R$) *
               </label>
@@ -239,7 +241,7 @@ export function PaymentRegistrationModal({
                 required
               />
             </div>
-            <div>
+            <div style={fieldContainerStyle}>
               <label className="ov-label" htmlFor="payment-method">
                 Método
               </label>
@@ -292,10 +294,8 @@ export function PaymentRegistrationModal({
               <span>Ao continuar, você confirma conscientemente este excedente.</span>
             </div>
           ) : null}
-          <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}
-          >
-            <div>
+          <div style={{ ...twoColumns, marginBottom: 20 }}>
+            <div style={fieldContainerStyle}>
               <label className="ov-label" htmlFor="payment-status">
                 Situação
               </label>
@@ -309,7 +309,7 @@ export function PaymentRegistrationModal({
                 <option value="PENDING">A receber</option>
               </select>
             </div>
-            <div>
+            <div style={fieldContainerStyle}>
               <label className="ov-label" htmlFor="payment-date">
                 {status === 'PAID' ? 'Data do recebimento' : 'Vencimento'}
               </label>
@@ -319,6 +319,7 @@ export function PaymentRegistrationModal({
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
+                style={dateInputStyle}
               />
             </div>
           </div>
@@ -345,3 +346,15 @@ export function PaymentRegistrationModal({
     </div>
   );
 }
+
+const twoColumns: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 12,
+};
+const fieldContainerStyle: React.CSSProperties = { minWidth: 0 };
+const dateInputStyle: React.CSSProperties = {
+  width: '100%',
+  minWidth: 0,
+  maxWidth: '100%',
+};

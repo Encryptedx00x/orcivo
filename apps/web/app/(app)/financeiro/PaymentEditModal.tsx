@@ -58,6 +58,10 @@ function ModalFrame({
         style={{
           width: '100%',
           maxWidth: 440,
+          maxHeight: 'calc(100dvh - 32px)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          boxSizing: 'border-box',
           padding: 28,
           borderRadius: 16,
           background: '#fff',
@@ -237,6 +241,7 @@ export function PaymentEditModal({
               type="date"
               value={date}
               onChange={(event) => setDate(event.target.value)}
+              style={dateInputStyle}
             />
           </Field>
         </div>
@@ -434,7 +439,7 @@ function Field({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
       <label className="ov-label" htmlFor={htmlFor}>
         {label}
       </label>
@@ -443,7 +448,16 @@ function Field({
   );
 }
 
-const twoColumns = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
+const twoColumns = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 12,
+};
+const dateInputStyle: React.CSSProperties = {
+  width: '100%',
+  minWidth: 0,
+  maxWidth: '100%',
+};
 const alertStyle = {
   marginBottom: 14,
   padding: '10px 14px',
