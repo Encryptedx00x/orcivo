@@ -28,6 +28,7 @@ import {
   QUOTE_DOC_TITLES,
   resolveQuoteDocOptions,
   isFeminineDocTitle,
+  quotePendingItemState,
 } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../PaymentTerms';
 import { newIdempotencyKey } from '../../services/api';
@@ -180,9 +181,15 @@ export function QuoteItemsScreen() {
     }));
 
   const price = centsToDecimal(nDigits);
-  const newOk = nName.trim().length > 1 && isPositiveDecimal(price);
-  const addNew = async () => {
-    if (!newOk || saving) return;
+  const pendingItemState = quotePendingItemState(nName, nDigits ? price : '');
+  const newOk = pendingItemState === 'READY';
+  const clearNewItem = () => {
+    setNName('');
+    setNDigits('');
+    setNewOpen(false);
+  };
+  const addNew = async (): Promise<boolean> => {
+    if (!newOk || saving) return false;
     let catalogId: string | undefined;
     if (keep) {
       setSaving(true);
@@ -192,7 +199,8 @@ export function QuoteItemsScreen() {
         void catalog.refresh();
       } catch (err) {
         setSaving(false);
-        return Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o item.'));
+        Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o item.'));
+        return false;
       }
       setSaving(false);
     }
@@ -203,9 +211,34 @@ export function QuoteItemsScreen() {
         { key: key(), catalog_item_id: catalogId, name: nName.trim(), price, qty: 1 },
       ],
     }));
-    setNName('');
-    setNDigits('');
-    setNewOpen(false);
+    clearNewItem();
+    return true;
+  };
+  const continueToReview = () => {
+    if (pendingItemState === 'EMPTY') return nav.navigate('QuoteReview');
+    Alert.alert(
+      'Item ainda não adicionado',
+      'Você pode incluir o item, descartá-lo conscientemente ou cancelar para continuar editando.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Descartar e continuar',
+          style: 'destructive',
+          onPress: () => {
+            clearNewItem();
+            nav.navigate('QuoteReview');
+          },
+        },
+        pendingItemState === 'READY'
+          ? {
+              text: 'Adicionar item e continuar',
+              onPress: () => {
+                void addNew().then((added) => added && nav.navigate('QuoteReview'));
+              },
+            }
+          : { text: 'Completar item', onPress: () => setNewOpen(true) },
+      ],
+    );
   };
 
   return (
@@ -224,7 +257,7 @@ export function QuoteItemsScreen() {
               Toque em um serviço para pôr no orçamento
             </Text>
           )}
-          <Btn disabled={!draft.items.length} onPress={() => nav.navigate('QuoteReview')}>
+          <Btn disabled={!draft.items.length} onPress={continueToReview}>
             Continuar
           </Btn>
         </>

@@ -29,6 +29,7 @@ import {
   describePaymentTerms,
   resolveQuoteDocOptions,
   isFeminineDocTitle,
+  quotePendingItemState,
 } from '@orcivo/shared-types';
 import {
   createCatalogItem,
@@ -69,6 +70,7 @@ import {
   firstName,
   useToast,
 } from '../ui';
+import { useSheet, type SheetAction } from '../sheet';
 
 const DEFAULT_TERMS =
   'Pagamento: 50% no início, 50% na entrega. Garantia de 90 dias sobre a mão de obra.';
@@ -303,6 +305,7 @@ export function NewClientForm({
 function Q2() {
   const { draft, setDraft, go } = useNav();
   const toast = useToast();
+  const sheet = useSheet();
   const catalog = useLoad(listCatalog);
   const { subtotal } = useTotals();
   const [showAll, setShowAll] = useState(false);
@@ -352,15 +355,24 @@ function Q2() {
       items: d.items.map((x) => (x.key === it.key ? { ...x, qty: x.qty + delta } : x)),
     }));
   };
-  const niValid = niName.trim().length > 1 && isPositiveDecimal(centsToDecimal(niDigits));
-  const addNew = async () => {
-    if (!niValid) return;
+  const pendingItemState = quotePendingItemState(niName, niDigits ? centsToDecimal(niDigits) : '');
+  const niValid = pendingItemState === 'READY';
+  const clearNewItem = () => {
+    setNiName('');
+    setNiDigits('');
+    setNiOpen(false);
+  };
+  const addNew = async (): Promise<boolean> => {
+    if (!niValid) return false;
     const price = centsToDecimal(niDigits);
     let key = `x${Date.now()}`;
     let catalogId: string | undefined;
     if (niSave) {
       const r = await createCatalogItem({ name: niName, price });
-      if (!r.ok) return toast(r.message);
+      if (!r.ok) {
+        toast(r.message);
+        return false;
+      }
       key = r.data.id;
       catalogId = r.data.id;
       catalog.setData([...items, r.data]);
@@ -374,9 +386,44 @@ function Q2() {
         ? `${niName.trim()} posto e guardado em Meus serviços e preços.`
         : `${niName.trim()} posto no orçamento.`,
     );
-    setNiOpen(false);
-    setNiName('');
-    setNiDigits('');
+    clearNewItem();
+    return true;
+  };
+  const continueToReview = () => {
+    if (pendingItemState === 'EMPTY') return go('q3');
+    const actions: SheetAction[] = [];
+    if (pendingItemState === 'READY') {
+      actions.push({
+        label: 'Adicionar item e continuar',
+        sub: 'Inclui o item preenchido neste orçamento.',
+        icon: Plus,
+        run: () => {
+          void addNew().then((added) => added && go('q3'));
+        },
+      });
+    } else {
+      actions.push({
+        label: 'Voltar e completar o item',
+        sub: 'Preencha nome e preço antes de adicionar.',
+        icon: PenLine,
+        run: () => setNiOpen(true),
+      });
+    }
+    actions.push({
+      label: 'Descartar e continuar',
+      sub: 'Ignora somente o item que ainda não foi adicionado.',
+      icon: XCircle,
+      danger: true,
+      run: () => {
+        clearNewItem();
+        go('q3');
+      },
+    });
+    sheet({
+      title: 'Item ainda não adicionado',
+      sub: 'Fechar mantém o conteúdo para você continuar editando.',
+      actions,
+    });
   };
 
   return (
@@ -661,7 +708,7 @@ function Q2() {
                 onClick={() => setNiSave((v) => !v)}
                 label="Guardar em Meus serviços e preços"
               />
-              <Btn disabled={!niValid} height={56} onClick={addNew}>
+              <Btn disabled={!niValid} height={56} onClick={() => void addNew()}>
                 Pôr no orçamento
               </Btn>
             </div>
@@ -738,7 +785,7 @@ function Q2() {
       )}
       <ActionBar total={formatMoney(subtotal)}>
         {!draft.items.length && <Hint>Toque em um serviço para pôr no orçamento</Hint>}
-        <Btn disabled={!draft.items.length} onClick={() => go('q3')}>
+        <Btn disabled={!draft.items.length} onClick={continueToReview}>
           Continuar
         </Btn>
       </ActionBar>

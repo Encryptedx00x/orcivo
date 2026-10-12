@@ -353,6 +353,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes das três escolhas e item vazio; testes de rascunho/navegação
 - **Testes visuais:** 1440x900, 390x844, 360x800 nos dois modos e app
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-12):** no modo fácil web, `Continuar` agora distingue item vazio, incompleto e pronto usando a mesma regra de `shared-types`: vazio avança diretamente; pronto oferece `Adicionar item e continuar`, `Descartar e continuar` e fechar/cancelar; incompleto substitui a adição por `Voltar e completar o item`. O fechamento preservou nome e preço, a adição só avançou depois de persistir e o descarte removeu exclusivamente o item pendente. O sheet foi verificado em `1440×900`, `390×844` e `360×800`, sem overflow. No modo completo web o defeito foi **não reproduzido/não aplicável**, pois cada campo já pertence à linha do orçamento; uma linha preenchida avançou diretamente, sem diálogo nem perda, nos três viewports e sem overflow horizontal. O app fácil recebeu o mesmo contrato via `Alert.alert`; o app completo também edita linhas já incluídas. Os contratos mobile foram cobertos por teste de fonte, mas a reprodução autenticada no app permanece adiada até B4-15/B4-16 por causa do bloqueio conhecido de ambiente/API.
 
 ### B4-12-post-generation-navigation-adr — Definir retorno após gerar orçamento
 
