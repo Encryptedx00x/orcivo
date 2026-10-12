@@ -367,6 +367,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** revisão documental de rotas e estados
 - **Testes visuais:** checklist do fluxo atual nas seis combinações
 - **Autonomia:** Nível B
+- **Evidência de execução (2026-10-12):** o levantamento foi registrado na ADR-018. No web completo, um orçamento local foi salvo e abriu `/orcamentos/:id`; Voltar reabriu `/orcamentos/novo` com o editor disponível em `1440×900`, `390×844` e `360×800`. No web fácil, concluir abriu `Pronto`, mas Voltar retornou a `Revisar e enviar` com `Concluir orçamento` novamente disponível; o mesmo componente e a mesma pilha atendem desktop e mobile. No app completo, `navigation.replace('QuoteDetail')` já remove a criação do histórico; no app fácil, `reset(EasyTabs → QuoteDone)` também impede retorno às etapas. Assim, o defeito ficou **não reproduzido no código nativo**, com execução autenticada adiada até B4-15/B4-16. A decisão aceita usa o detalhe somente leitura como destino canônico, substitui/reseta o editor, faz Voltar abrir a lista e exige CTAs explícitos para editar ou criar outro orçamento, sem mudar o produto nesta tarefa.
 
 ### B4-13-post-generation-navigation — Aplicar navegação pós-geração aprovada
 
