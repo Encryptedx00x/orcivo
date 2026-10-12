@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `HEAD` (produto em `6904bb1`, seguido apenas pelo fechamento documental; ver `git log`) |
+| `main` / `origin/main` | `778c7a0` — B4-09 concluída e publicada; produção permanece em `6904bb1` |
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
 | Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -53,8 +53,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-07 — data no modal:** grade contida e cartão rolável com teclado/viewport reduzida (`8680b68`).
 - [x] **B4-08 — PDF visualizar/baixar:** preview inline separado de download real com attachment; matriz web
       fácil/completo e fallback nativo cobertos (`8f1f9f3`).
-- [ ] **B4-09…B4-14 — visual/UX:** assinatura vazia, toasts, item não adicionado, navegação pós-geração e
-      crop/zoom da logo.
+- [x] **B4-09 — assinatura vazia:** `Adicionar assinatura` sem assinatura salva, `Trocar assinatura` quando existe e
+      carregamento correto no recibo (`778c7a0`).
+- [ ] **B4-10…B4-14 — visual/UX:** toasts, item não adicionado, navegação pós-geração e crop/zoom da logo.
 - [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
       responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -68,8 +69,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-09-signature-empty-copy`. Corrigir o estado vazio para oferecer **Adicionar
-assinatura** em vez de **Trocar assinatura**, reproduzindo e verificando cada superfície aplicável.
+**Próxima tarefa pronta:** `B4-10-toast-duration-dismiss`. Reduzir pela metade os toasts comuns, adicionar ação
+**OK** para dispensa imediata e preservar mensagens críticas/acessibilidade em todas as superfícies aplicáveis.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

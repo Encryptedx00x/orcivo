@@ -619,7 +619,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-10-toast-duration-dismiss",
