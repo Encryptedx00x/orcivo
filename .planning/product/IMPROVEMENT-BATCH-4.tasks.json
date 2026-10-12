@@ -795,7 +795,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "decisionDeliverable": "ADR de navegação pós-geração"
     },
     {
