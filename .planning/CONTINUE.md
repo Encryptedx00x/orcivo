@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `04d6adc` — B4-12 concluída e publicada; produção permanece em `6904bb1` |
+| `main` / `origin/main` | `685970f` — B4-13 concluída e publicada; produção permanece em `6904bb1` |
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
 | Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -61,7 +61,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       modo fácil e equivalência confirmada no editor direto do modo completo (`d703f78`).
 - [x] **B4-12 — ADR de navegação pós-geração:** detalhe somente leitura como destino canônico; editor removido do
       histórico e edição/novo orçamento somente por ações explícitas (`04d6adc`, ADR-018).
-- [ ] **B4-13…B4-14 — visual/UX:** aplicar a navegação pós-geração e adicionar crop/zoom da logo.
+- [x] **B4-13 — navegação pós-geração:** criação substitui o editor pelo detalhe, Voltar abre a lista, CTAs explícitos
+      e guardas contra duplo toque nas superfícies equivalentes (`685970f`).
+- [ ] **B4-14 — visual/UX:** adicionar crop, reposicionamento e zoom da logo.
 - [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
       responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -75,8 +77,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-13-post-generation-navigation`. Aplicar a ADR-018 nas superfícies equivalentes, com
-detalhe somente leitura, histórico sem editor e CTAs explícitos para editar ou iniciar outro orçamento.
+**Próxima tarefa pronta:** `B4-14-logo-crop-position-zoom`. Adicionar edição não destrutiva de logo, preservando
+validações de upload e verificando formatos horizontal, quadrado e retrato em todas as superfícies aplicáveis.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
