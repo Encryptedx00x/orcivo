@@ -265,6 +265,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** teste automatizado de ausência de overflow horizontal; testes de componente com texto/status longo
 - **Testes visuais:** 1440x900, 390x844 e 360x800 em fácil/completo; app iOS/Android equivalente
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-12):** o defeito foi reproduzido na lista completa em `360×800`: embora a página não criasse overflow horizontal global, a célula absoluta de ações intersectava as áreas de Serviço e Status; a medição antes da correção confirmou sobreposição com ambas. A causa era o botão dentro de um wrapper, que não satisfazia a regra responsiva genérica para células com múltiplas ações. A linha de OS agora recebe classes específicas e, abaixo de 640 px, reserva uma linha inteira para ações, permite quebra do badge e mantém o link de abertura nomeado. Depois da correção, lista completa, detalhe completo e cartão fácil passaram em `1440×900`, `390×844` e `360×800`, sem overflow nem interseção entre título/status/ação. Na versão atual, o botão da lista é `Concluir` e o detalhe usa `Finalizar OS`; o rótulo `Revisar` relatado pelo Key User **não foi reproduzido** nesta build. O app tem layout nativo próprio, sem a célula absoluta que causou o defeito, mas a reprodução autenticada permanece **não reproduzida/adiada** até B4-15/B4-16.
 
 ### B4-07-payment-date-modal-overflow — Conter data no modal de recebimento
 

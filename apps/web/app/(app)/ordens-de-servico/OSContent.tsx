@@ -2,11 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ClipboardList, Columns3, List, Search, ChevronRight, Plus } from 'lucide-react';
-import {
-  WORK_ORDER_STATUS_LABELS,
-  formatMoney,
-  type WorkOrderStatus,
-} from '@orcivo/shared-types';
+import { WORK_ORDER_STATUS_LABELS, formatMoney, type WorkOrderStatus } from '@orcivo/shared-types';
 import type { WorkOrder } from '../../../lib/work-order.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { useAuth } from '../../../components/AuthProvider';
@@ -51,6 +47,10 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
         fontWeight: 600,
         padding: '5px 9px',
         borderRadius: 9999,
+        maxWidth: '100%',
+        lineHeight: 1.2,
+        overflowWrap: 'anywhere',
+        whiteSpace: 'normal',
         ...c,
       }}
     >
@@ -180,6 +180,26 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
 
   return (
     <div>
+      <style>{`
+        @media (max-width: 640px) {
+          .ov-work-order-row {
+            padding-right: 14px !important;
+          }
+
+          .ov-work-order-actions {
+            position: static !important;
+            transform: none !important;
+            grid-column: 1 / -1;
+            display: flex !important;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-top: 8px !important;
+            border-top: 1px solid var(--border-2) !important;
+          }
+        }
+      `}</style>
       <div className="ov-page-header">
         <div>
           <h1
@@ -202,7 +222,12 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
           <div
             role="group"
             aria-label="Visualização das ordens de serviço"
-            style={{ display: 'inline-flex', padding: 3, border: '1px solid #E2E8F0', borderRadius: 10 }}
+            style={{
+              display: 'inline-flex',
+              padding: 3,
+              border: '1px solid #E2E8F0',
+              borderRadius: 10,
+            }}
           >
             <button
               type="button"
@@ -346,7 +371,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
             </thead>
             <tbody>
               {filtered.map((order) => (
-                <tr key={order.id}>
+                <tr key={order.id} className="ov-work-order-row">
                   <td data-label="Número">
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
@@ -399,10 +424,15 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                   >
                     {fmtMoney(order.total ?? order.quote?.total)}
                   </td>
-                  <td data-label="" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td
+                    data-label=""
+                    className="ov-work-order-actions"
+                    style={{ textAlign: 'right', whiteSpace: 'nowrap' }}
+                  >
                     {quickActions(order)}
                     <Link
                       href={`/ordens-de-servico/${order.id}`}
+                      aria-label={`Abrir OS #${order.number}`}
                       style={{ color: '#94A3B8', display: 'inline-flex' }}
                     >
                       <ChevronRight size={16} />
@@ -434,44 +464,97 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                 aria-labelledby={`status-column-${status}`}
                 style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
                   <h2
                     id={`status-column-${status}`}
                     style={{ color: '#334155', fontSize: 13, fontWeight: 700, margin: 0 }}
                   >
                     {WORK_ORDER_STATUS_LABELS[status]}
                   </h2>
-                  <span aria-label={`${statusOrders.length} ordens`} style={{ color: '#64748B', fontSize: 12 }}>
+                  <span
+                    aria-label={`${statusOrders.length} ordens`}
+                    style={{ color: '#64748B', fontSize: 12 }}
+                  >
                     {statusOrders.length}
                   </span>
                 </div>
                 {statusOrders.map((order) => (
                   <article key={order.id} className="ov-card" style={{ padding: 14 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'start',
+                        gap: 8,
+                      }}
+                    >
                       <div style={{ minWidth: 0 }}>
                         <Link
                           href={`/ordens-de-servico/${order.id}`}
-                          style={{ color: '#6D28D9', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+                          style={{
+                            color: '#6D28D9',
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
                         >
                           #{order.number}
                         </Link>
                         <Link
                           href={`/ordens-de-servico/${order.id}`}
-                          style={{ color: '#0A0A0F', display: 'block', fontSize: 14, fontWeight: 650, marginTop: 5, overflow: 'hidden', textDecoration: 'none', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          style={{
+                            color: '#0A0A0F',
+                            display: 'block',
+                            fontSize: 14,
+                            fontWeight: 650,
+                            marginTop: 5,
+                            overflow: 'hidden',
+                            textDecoration: 'none',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
                         >
                           {order.title ?? 'Serviço sem título'}
                         </Link>
                       </div>
-                      <Pill k={SM[order.status] ?? 'slate'}>{WORK_ORDER_STATUS_LABELS[order.status]}</Pill>
+                      <Pill k={SM[order.status] ?? 'slate'}>
+                        {WORK_ORDER_STATUS_LABELS[order.status]}
+                      </Pill>
                     </div>
                     <p style={{ color: '#475569', fontSize: 13, margin: '10px 0 4px' }}>
                       {order.customer?.name ?? 'Cliente não informado'}
                     </p>
                     <p style={{ color: '#64748B', fontSize: 12, margin: 0 }}>
-                      {order.technician?.name ?? 'Sem técnico'} · Agendada: {fmtDate(order.scheduled_at)}
+                      {order.technician?.name ?? 'Sem técnico'} · Agendada:{' '}
+                      {fmtDate(order.scheduled_at)}
                     </p>
-                    <div style={{ alignItems: 'center', borderTop: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12, paddingTop: 10 }}>
-                      <span style={{ color: '#0A0A0F', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        alignItems: 'center',
+                        borderTop: '1px solid #F1F5F9',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        marginTop: 12,
+                        paddingTop: 10,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: '#0A0A0F',
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
                         {fmtMoney(order.total ?? order.quote?.total)}
                       </span>
                       {quickActions(order)}
@@ -479,7 +562,9 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                   </article>
                 ))}
                 {statusOrders.length === 0 && (
-                  <p style={{ color: '#94A3B8', fontSize: 12, margin: 0, padding: '12px 0' }}>Nenhuma OS</p>
+                  <p style={{ color: '#94A3B8', fontSize: 12, margin: 0, padding: '12px 0' }}>
+                    Nenhuma OS
+                  </p>
                 )}
               </section>
             );
