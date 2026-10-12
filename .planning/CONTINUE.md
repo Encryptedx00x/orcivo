@@ -46,7 +46,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       no lugar do travessão solto (`2c7afb6`).
 - [x] **B4-04 — A receber:** fluxo não reproduziu falha; integração aprovação → parcelas → baixa → recibo e matriz web
       fácil/completo registradas (`a194c90`).
-- [ ] **B4-05 — crítico restante:** confirmação de recebimento excedente.
+- [x] **B4-05 — recebimento excedente:** comparação Decimal, confirmação consciente, motivo e auditoria
+      (`9264655`).
 - [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
       navegação pós-geração e crop/zoom da logo.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -60,8 +61,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-05-overpayment-confirmation`. Implementar a regra Decimal de excedente, confirmação
-consciente e auditoria no backend/shared-types antes das superfícies web e app.
+**Próxima tarefa pronta:** `B4-06-work-order-mobile-overflow`. Reproduzir e conter badge, título e ação da OS no
+modo completo mobile, verificando o comportamento equivalente no fácil e no app quando o fluxo existir.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

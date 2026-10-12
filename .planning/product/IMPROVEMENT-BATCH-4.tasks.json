@@ -370,7 +370,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-CRITICAL",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "protectedPathGrants": [
         "prisma/schema.prisma"
       ]
