@@ -12,7 +12,6 @@ import {
   Plus,
   ReceiptText,
   Trash2,
-  Minus,
 } from 'lucide-react-native';
 import {
   EXPENSE_CATEGORIES,
@@ -295,7 +294,7 @@ export function MoneyScreen() {
                   ? `Faltou ${formatMoney(month.data.result.slice(1))}`
                   : `Sobrou ${formatMoney(month.data.result)}`}
               </Text>
-              <Btn tone="outline" icon={Minus} height={48} onPress={() => nav.navigate('CostNew')}>
+              <Btn tone="outline" height={48} onPress={() => nav.navigate('CostNew')}>
                 Lançar gasto
               </Btn>
             </Card>

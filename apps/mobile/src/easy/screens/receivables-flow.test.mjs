@@ -24,4 +24,5 @@ test('modo fácil nativo lista, baixa e atualiza recebimentos com string decimal
   assert.match(screen, /comparePaymentAmounts/);
   assert.match(screen, /Confirmar excedente/);
   assert.match(screen, /Motivo do excedente \(opcional\)/);
+  assert.doesNotMatch(screen, /icon=\{Minus\}/);
 });

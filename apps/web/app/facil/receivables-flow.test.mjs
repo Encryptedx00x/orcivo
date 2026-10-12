@@ -21,4 +21,5 @@ test('modo fácil web lista o envelope de recebimentos e atualiza após a baixa'
   assert.match(screen, /comparePaymentAmounts/);
   assert.match(screen, /Confirmar excedente/);
   assert.match(screen, /Motivo do excedente \(opcional\)/);
+  assert.doesNotMatch(screen, /icon=\{Minus\}/);
 });

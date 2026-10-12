@@ -15,7 +15,6 @@ import {
   Plus,
   ReceiptText,
   Trash2,
-  Minus,
 } from 'lucide-react';
 import {
   comparePaymentAmounts,
@@ -378,12 +377,7 @@ export function MoneyScreen(): React.JSX.Element {
                     : `Sobrou ${formatMoney(month.data.result)}`}
                 </span>
               </div>
-              <Btn
-                tone="outline"
-                icon={Minus}
-                height={48}
-                onClick={() => go('edit', { kind: 'cost' })}
-              >
+              <Btn tone="outline" height={48} onClick={() => go('edit', { kind: 'cost' })}>
                 Lançar gasto
               </Btn>
             </div>
