@@ -335,7 +335,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const pdf: SheetAction = {
     label: 'Baixar PDF',
     icon: Download,
-    run: () => window.open(`/api/quotes/${q.id}/pdf`, '_blank', 'noopener'),
+    run: () => downloadQuotePdf(q.id, q.number),
   };
   const link: SheetAction = {
     label: 'Copiar link de aprovação',
@@ -457,7 +457,8 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
           border: `1.5px solid ${C.borderStrong}`,
         }}
       >
-        <FileText size={22} aria-hidden="true" /> Abrir
+        <FileText size={22} aria-hidden="true" />
+        {q.status === 'DRAFT' ? 'Continuar editando' : 'Ver PDF'}
       </button>
       <MoreButton
         icon={MoreHorizontal}
@@ -471,4 +472,14 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
       />
     </div>
   );
+}
+
+function downloadQuotePdf(id: string, number: number): void {
+  const anchor = document.createElement('a');
+  anchor.href = `/api/quotes/${id}/pdf?download=1`;
+  anchor.download = `orcamento-${number}.pdf`;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }

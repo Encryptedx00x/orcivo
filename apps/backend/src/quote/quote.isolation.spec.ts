@@ -108,7 +108,7 @@ describe('Quote — Multi-tenant isolation', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .expect(200);
     approvalToken = sendRes.body.approval_token;
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await cleanupDatabase();
@@ -136,6 +136,28 @@ describe('Quote — Multi-tenant isolation', () => {
       .post(`/quotes/${quoteBId}/send`)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(404);
+  });
+
+  it('abre o PDF autenticado inline para visualização', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/quotes/${quoteBId}/pdf`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toMatch(/^application\/pdf/);
+    expect(res.headers['content-disposition']).toBe(`inline; filename="orcamento-${quoteBId}.pdf"`);
+  });
+
+  it('entrega o PDF autenticado como anexo quando download=1', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/quotes/${quoteBId}/pdf?download=1`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toMatch(/^application\/pdf/);
+    expect(res.headers['content-disposition']).toBe(
+      `attachment; filename="orcamento-${quoteBId}.pdf"`,
+    );
   });
 
   it('GET /quotes/public/:token retorna 200 sem Authorization header', async () => {

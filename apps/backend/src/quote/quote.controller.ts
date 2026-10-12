@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   HttpCode,
   Param,
   Patch,
@@ -62,11 +61,17 @@ export class QuoteController {
   }
 
   @Get(':id/pdf')
-  @Header('Content-Type', 'application/pdf')
-  @Header('Content-Disposition', 'inline; filename="orcamento.pdf"')
-  async pdf(@Param('id') id: string, @Req() req: TenantRequest): Promise<StreamableFile> {
+  async pdf(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @Query('download') download?: string,
+  ): Promise<StreamableFile> {
     const buffer = await this.quoteService.generatePdf(id, req.companyId);
-    return new StreamableFile(buffer);
+    const disposition = download === '1' ? 'attachment' : 'inline';
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `${disposition}; filename="orcamento-${id}.pdf"`,
+    });
   }
 
   @Post()

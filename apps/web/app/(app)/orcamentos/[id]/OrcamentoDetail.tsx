@@ -10,6 +10,7 @@ import {
   Copy,
   MessageCircle,
   Download,
+  Eye,
   X,
   Send,
   Pencil,
@@ -401,8 +402,15 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
             }
             style={headerBtn}
           >
-            <Download size={15} /> Baixar PDF
+            <Eye size={15} /> Ver PDF
           </button>
+          <a
+            href={`/api/quotes/${quote.id}/pdf?download=1`}
+            download={`orcamento-${quote.number}.pdf`}
+            style={{ ...headerBtn, textDecoration: 'none' }}
+          >
+            <Download size={15} /> Baixar PDF
+          </a>
           <button
             onClick={async () => {
               const r = await duplicateQuote(quote.id);
@@ -811,12 +819,29 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
                 </button>
               )}
               {quote.pdf_url && (
-                <button
-                  onClick={() => window.open(quote.pdf_url!, '_blank', 'noopener,noreferrer')}
-                  style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                  <Download size={16} /> Baixar PDF
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() =>
+                      window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')
+                    }
+                    style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <Eye size={16} /> Ver PDF
+                  </button>
+                  <a
+                    href={`/api/quotes/${quote.id}/pdf?download=1`}
+                    download={`orcamento-${quote.number}.pdf`}
+                    style={{
+                      ...btnSecondary,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <Download size={16} /> Baixar PDF
+                  </a>
+                </div>
               )}
               {allowedActions.includes('recusar') && (
                 <button
@@ -901,13 +926,28 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
               </div>
             )}
             {quote.pdf_url && (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => window.open(quote.pdf_url!, '_blank', 'noopener,noreferrer')}
+                  onClick={() =>
+                    window.open(`/api/quotes/${quote.id}/pdf`, '_blank', 'noopener,noreferrer')
+                  }
                   style={{ ...btnSecondary, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
-                  <Download size={16} /> Baixar PDF
+                  <Eye size={16} /> Ver PDF
                 </button>
+                <a
+                  href={`/api/quotes/${quote.id}/pdf?download=1`}
+                  download={`orcamento-${quote.number}.pdf`}
+                  style={{
+                    ...btnSecondary,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    textDecoration: 'none',
+                  }}
+                >
+                  <Download size={16} /> Baixar PDF
+                </a>
               </div>
             )}
           </div>

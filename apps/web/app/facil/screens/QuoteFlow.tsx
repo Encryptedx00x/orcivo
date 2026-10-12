@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Eye,
   Link2,
   Image as ImageIcon,
   MessageCircle,
@@ -1796,9 +1797,17 @@ function Done() {
         </Btn>
         <Btn
           tone="outline"
-          icon={Download}
+          icon={Eye}
           height={56}
           onClick={() => r && window.open(`/api/quotes/${r.id}/pdf`, '_blank', 'noopener')}
+        >
+          Ver PDF
+        </Btn>
+        <Btn
+          tone="outline"
+          icon={Download}
+          height={56}
+          onClick={() => r && downloadQuotePdf(r.id, r.number)}
         >
           Baixar PDF
         </Btn>
@@ -1817,4 +1826,14 @@ function Done() {
       </ActionBar>
     </>
   );
+}
+
+function downloadQuotePdf(id: string, number: number): void {
+  const anchor = document.createElement('a');
+  anchor.href = `/api/quotes/${id}/pdf?download=1`;
+  anchor.download = `orcamento-${number}.pdf`;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
