@@ -339,6 +339,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes com fake timers; teste de botão OK e aria-live/acessibilidade
 - **Testes visuais:** toasts de sucesso/erro nas seis combinações e três viewports
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-12):** o inventário do escopo encontrou um único toast temporizado compartilhado no modo fácil web, antes fixado em 6 segundos. Toasts comuns agora fecham em 3 segundos, enquanto mensagens com ação `Desfazer` preservam 6 segundos; todos exibem `OK`, limpam o timer ao dispensar/desmontar e são anunciados por `role=status`, `aria-live=polite` e `aria-atomic=true`. Toasts reais de sucesso e erro foram reproduzidos em `1440×900`, `390×844` e `360×800`, sempre contidos no viewport e sem overflow; `OK` removeu o aviso imediatamente. No modo completo web não existe toast temporizado no escopo — feedbacks são persistentes/inline — e a ausência foi confirmada nos três viewports, sem overflow. No app, os fluxos inventariados usam `Alert.alert`, que já oferece `OK` nativo e não expira automaticamente; portanto o defeito foi **não reproduzido/não aplicável** e a execução autenticada segue adiada até B4-15/B4-16. Três testes com timers falsos e contrato de acessibilidade passaram, junto de typecheck/lint web e mobile (somente avisos preexistentes de `<img>` no web).
 
 ### B4-11-quote-unsaved-item-guard — Avisar item digitado não adicionado
 

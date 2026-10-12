@@ -2,7 +2,16 @@
 
 // Modo fácil primitives — sizes/colors follow docs/design-handoff/modo-facil (v2).
 import { ChevronLeft, RotateCcw, WifiOff, type LucideIcon } from 'lucide-react';
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { scheduleToastDismiss } from './toast-timing';
 
 export const C = {
   purple: '#6D28D9',
@@ -607,14 +616,22 @@ export function ToastProvider({
   const show = useCallback((msg: string, undo?: () => void) => {
     clearTimeout(timer.current);
     setToast({ msg, undo });
-    timer.current = setTimeout(() => setToast(null), 6000);
+    timer.current = scheduleToastDismiss(() => setToast(null), !!undo);
   }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const dismiss = () => {
+    clearTimeout(timer.current);
+    setToast(null);
+  };
   return (
     <ToastCtx.Provider value={show}>
       {children}
       {toast && (
         <div
           role="status"
+          aria-live="polite"
+          aria-atomic="true"
           style={{
             position: 'fixed',
             left: 12,
@@ -627,9 +644,10 @@ export function ToastProvider({
             color: '#FFFFFF',
             borderRadius: 18,
             padding: '6px 6px 6px 16px',
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: '24px minmax(0, 1fr) auto',
             alignItems: 'center',
-            gap: 12,
+            gap: 10,
             boxShadow: '0 20px 40px rgba(15,23,42,0.18)',
             minHeight: 64,
           }}
@@ -648,39 +666,57 @@ export function ToastProvider({
             <path d="m9 12 2 2 4-4" />
           </svg>
           <span
-            style={{ fontSize: 17, lineHeight: '22px', fontWeight: 600, flex: 1, padding: '8px 0' }}
+            style={{
+              minWidth: 0,
+              fontSize: 17,
+              lineHeight: '22px',
+              fontWeight: 600,
+              padding: '8px 0',
+              overflowWrap: 'anywhere',
+            }}
           >
             {toast.msg}
           </span>
-          {toast.undo && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+            {toast.undo && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.undo?.();
+                  dismiss();
+                }}
+                style={toastActionStyle}
+              >
+                Desfazer
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => {
-                clearTimeout(timer.current);
-                toast.undo?.();
-                setToast(null);
-              }}
-              style={{
-                height: 56,
-                padding: '0 14px',
-                border: 'none',
-                borderRadius: 14,
-                background: 'transparent',
-                color: C.purple300,
-                fontSize: 17,
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
+              aria-label="Dispensar notificação"
+              onClick={dismiss}
+              style={toastActionStyle}
             >
-              Desfazer
+              OK
             </button>
-          )}
+          </div>
         </div>
       )}
     </ToastCtx.Provider>
   );
 }
+
+const toastActionStyle = {
+  height: 48,
+  padding: '0 12px',
+  border: 'none',
+  borderRadius: 12,
+  background: 'transparent',
+  color: C.purple300,
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+} as const;
 
 // ── formatting helpers ────────────────────────────────────────────────
 export function initialsOf(name: string): string {
