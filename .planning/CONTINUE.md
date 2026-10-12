@@ -48,8 +48,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       fácil/completo registradas (`a194c90`).
 - [x] **B4-05 — recebimento excedente:** comparação Decimal, confirmação consciente, motivo e auditoria
       (`9264655`).
-- [ ] **B4-06…B4-14 — visual/UX:** overflows, PDF visualizar/baixar, assinatura vazia, toasts, item não adicionado,
-      navegação pós-geração e crop/zoom da logo.
+- [x] **B4-06 — layout mobile da OS:** ações ganharam linha própria e o badge pode quebrar sem cobrir conteúdo
+      (`a3aca11`).
+- [ ] **B4-07…B4-14 — visual/UX:** overflow da data, PDF visualizar/baixar, assinatura vazia, toasts, item não
+      adicionado, navegação pós-geração e crop/zoom da logo.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
       `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`; bloqueia `DEPLOY-B4-1`.
 - [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
@@ -61,8 +63,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-06-work-order-mobile-overflow`. Reproduzir e conter badge, título e ação da OS no
-modo completo mobile, verificando o comportamento equivalente no fácil e no app quando o fluxo existir.
+**Próxima tarefa pronta:** `B4-07-payment-date-modal-overflow`. Reproduzir o vazamento do campo de data no modal de
+recebimento e conter largura, safe area, teclado e rolagem nos viewports do protocolo.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
