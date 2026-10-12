@@ -560,7 +560,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-09-signature-empty-copy",

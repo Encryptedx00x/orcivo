@@ -51,8 +51,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-06 — layout mobile da OS:** ações ganharam linha própria e o badge pode quebrar sem cobrir conteúdo
       (`a3aca11`).
 - [x] **B4-07 — data no modal:** grade contida e cartão rolável com teclado/viewport reduzida (`8680b68`).
-- [ ] **B4-08…B4-14 — visual/UX:** PDF visualizar/baixar, assinatura vazia, toasts, item não
-      adicionado, navegação pós-geração e crop/zoom da logo.
+- [x] **B4-08 — PDF visualizar/baixar:** preview inline separado de download real com attachment; matriz web
+      fácil/completo e fallback nativo cobertos (`8f1f9f3`).
+- [ ] **B4-09…B4-14 — visual/UX:** assinatura vazia, toasts, item não adicionado, navegação pós-geração e
+      crop/zoom da logo.
 - [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
       responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -66,8 +68,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima tarefa pronta:** `B4-08-pdf-open-vs-download`. Reproduzir as ações reais de visualizar e baixar PDF,
-validar `Content-Disposition`/MIME e separar os comportamentos nas superfícies aplicáveis.
+**Próxima tarefa pronta:** `B4-09-signature-empty-copy`. Corrigir o estado vazio para oferecer **Adicionar
+assinatura** em vez de **Trocar assinatura**, reproduzindo e verificando cada superfície aplicável.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
