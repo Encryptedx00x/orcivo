@@ -5,7 +5,7 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-11)
+## 1. Estado agora (atualizado 2026-10-12)
 
 | Item | Valor |
 | --- | --- |
@@ -13,7 +13,7 @@
 | Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
 | Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
-| Próxima fila | **Improvement Batch 4 planejado, execução manual pelo Codex nesta conversa**: 46 tarefas em `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`, sem autopilot/dispatcher, três checkpoints de deploy e fonte humana em `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md`. |
+| Próxima fila | **Improvement Batch 4 em andamento, execução manual pelo Codex nesta conversa**: 49 tarefas em `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`, sem autopilot/dispatcher, três checkpoints de deploy e fonte humana em `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md`. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
 
 Antes de qualquer coisa: `git status --short`, `git log --oneline -5`, `git fetch && git status -sb`.
@@ -33,7 +33,7 @@ Outra IA pode ter commitado no meio (já aconteceu: o Codex commitou a R5a junto
 
 Formato: `[ ]` a fazer · `[~]` em andamento (diga onde parou) · `[x]` feito (commit).
 
-### Improvement Batch 4 — UAT do primeiro Key User (46 tarefas; em andamento)
+### Improvement Batch 4 — UAT do primeiro Key User (49 tarefas; em andamento)
 
 Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`. O plano foi gerado por
@@ -53,13 +53,15 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-07 — data no modal:** grade contida e cartão rolável com teclado/viewport reduzida (`8680b68`).
 - [ ] **B4-08…B4-14 — visual/UX:** PDF visualizar/baixar, assinatura vazia, toasts, item não
       adicionado, navegação pós-geração e crop/zoom da logo.
+- [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
+      responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
       `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`; bloqueia `DEPLOY-B4-1`.
 - [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
 - [ ] **B4-19…B4-23 — fluxos:** responsável pelo serviço, completude do orçamento e assinatura/opções de recibo.
 - [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
-- [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32.
+- [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
@@ -73,7 +75,7 @@ atribuir o defeito a desktop/app e registrar `não reproduzido` com evidência. 
 
 Pontos de deploy futuros, sempre pela receita da §6 e somente após evidência exploratória:
 
-1. `DEPLOY-B4-1` depois de B4-14A: blocos 1–2, após checklist curto registrado em `docs/qa`.
+1. `DEPLOY-B4-1` depois de B4-14A: blocos 1–2 e achados B4-46…B4-48, após checklist curto registrado em `docs/qa`.
 2. `DEPLOY-B4-2` depois de B4-44: blocos 3–5 e regressão dos blocos 1–2.
 3. `DEPLOY-B4-3` depois de B4-45: onda estratégica B4-34…B4-42 aprovada pelo dono.
 

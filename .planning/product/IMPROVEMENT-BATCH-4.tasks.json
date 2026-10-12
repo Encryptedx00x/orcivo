@@ -2,7 +2,7 @@
   "schemaVersion": "orcivo.product-batch/1",
   "batch": "IMPROVEMENT-BATCH-4",
   "state": "OWNER_APPROVED",
-  "ownerDecision": "2026-10-11: o dono autorizou criar e executar o lote de correções, UX, funcionalidades e levantamentos descritos nos achados do primeiro Key User. Em 2026-10-11, determinou DAG por dependências reais, B4-43 imediatamente após B4-01, passadas exploratórias pré-deploy em B4-14/B4-44/B4-45 e B4-44 dependente de todas as tarefas A/B B4-02…B4-32, B4-14A como passada exploratória curta obrigatória e três pontos de deploy. Esta aprovação não executa deploy agora nem autoriza mutação de dados de produção, publicação de app, lojas, DNS, billing, LGPD, mudança de stack/design system ou implementação estratégica antes de B4-33.",
+  "ownerDecision": "2026-10-11: o dono autorizou criar e executar o lote de correções, UX, funcionalidades e levantamentos descritos nos achados do primeiro Key User. Em 2026-10-11, determinou DAG por dependências reais, B4-43 imediatamente após B4-01, passadas exploratórias pré-deploy em B4-14/B4-44/B4-45 e B4-44 dependente de todas as tarefas A/B B4-02…B4-32, B4-14A como passada exploratória curta obrigatória e três pontos de deploy. Em 2026-10-12, acrescentou auditoria/correção transversal da responsividade de formulários e a revisão da entrega de PDF em rascunho, todas antes do primeiro checkpoint. Esta aprovação não executa deploy agora nem autoriza mutação de dados de produção, publicação de app, lojas, DNS, billing, LGPD, mudança de stack/design system ou implementação estratégica antes de B4-33.",
   "phaseOrder": [
     "B4-CRITICAL",
     "B4-VISUAL",
@@ -43,7 +43,7 @@
       "doc": ".planning/phases/03.1-estabilizacao-pos-fase-3/03.1-P03-T10-T13-RESULT.md"
     }
   },
-  "reviewChecklist": "Sem deploy nem dados de produção. Reproduzir antes em web desktop e app; registrar não reproduzido com evidência. UI verificada em 1440x900, 390x844 e 360x800, fácil/completo e app quando existir. Regra de negócio no backend/shared-types; npm run build após shared-types; dinheiro Decimal/string decimal/formatMoney, nunca Number; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre/Solo/Mais/Equipe; Lucide e #6D28D9; não recriar design system; não tocar Olivers Burger; preservar não rastreados; sem reset/stash/clean/force-push/histórico reescrito; B4-43 roda após B4-01 e rege todas as tarefas de UI; B4-44 depende de todas as tarefas A/B B4-02…B4-32; DEPLOY-B4-1 exige B4-14A documentada; deploys somente após DEPLOY-B4-1/2/3 e suas passadas exploratórias; tarefas estratégicas param no ADR e B4-33.",
+  "reviewChecklist": "Sem deploy nem dados de produção. Reproduzir antes em web desktop e app; registrar não reproduzido com evidência. UI verificada em 1440x900, 390x844 e 360x800, fácil/completo e app quando existir; B4-46 também audita 320px/painel estreito como diagnóstico. Regra de negócio no backend/shared-types; npm run build após shared-types; dinheiro Decimal/string decimal/formatMoney, nunca Number; dados novos com company_id; migrations idempotentes; pt-BR; planos Orcivo Livre/Solo/Mais/Equipe; Lucide e #6D28D9; não recriar design system; não tocar Olivers Burger; preservar não rastreados; sem reset/stash/clean/force-push/histórico reescrito; B4-43 roda após B4-01 e rege todas as tarefas de UI; B4-44 depende de todas as tarefas A/B B4-02…B4-32 e dos achados adicionais B4-46…B4-48; DEPLOY-B4-1 exige B4-14A documentada após B4-46…B4-48; deploys somente após DEPLOY-B4-1/2/3 e suas passadas exploratórias; tarefas estratégicas param no ADR e B4-33.",
   "tasks": [
     {
       "taskId": "B4-01-approval-concurrency",
@@ -958,7 +958,10 @@
         "B4-11-quote-unsaved-item-guard",
         "B4-12-post-generation-navigation-adr",
         "B4-13-post-generation-navigation",
-        "B4-14-logo-crop-position-zoom"
+        "B4-14-logo-crop-position-zoom",
+        "B4-46-responsive-form-inventory",
+        "B4-47-responsive-form-controls",
+        "B4-48-draft-pdf-delivery-semantics"
       ],
       "scope": [
         "docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md",
@@ -2843,7 +2846,10 @@
         "B4-29-neutral-positioning-adr",
         "B4-30-multicompany-adr",
         "B4-31-web-mobile-mode-adr",
-        "B4-32-partial-work-order-adr"
+        "B4-32-partial-work-order-adr",
+        "B4-46-responsive-form-inventory",
+        "B4-47-responsive-form-controls",
+        "B4-48-draft-pdf-delivery-semantics"
       ],
       "scope": [
         "docs/qa",
@@ -2941,6 +2947,189 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-QA-STRATEGIC",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-46-responsive-form-inventory",
+      "title": "Inventariar responsividade de formulários e modais",
+      "type": "TEST",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "hipótese que precisa ser reproduzida",
+      "description": "Auditar transversalmente formulários, modais, sheets, campos e barras de ação vistos desde login/onboarding até cliente, orçamento, OS e recebimento, identificando overflow, controles estreitos, rótulos ilegíveis e botões inacessíveis.",
+      "expectedBehavior": "Existe inventário reproduzível por rota, modo, viewport e superfície, com evidência e severidade; a matriz oficial cobre 1440×900, 390×844 e 360×800, e 320px/painel estreito é usado como diagnóstico adicional sem substituir os viewports oficiais.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Criar docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md com rota/etapa, superfície, modo, viewport, componente, sintoma, severidade e evidência. Cobrir login, onboarding, cliente, orçamento, OS, recebimento e assinatura quando existirem. Registrar app como não reproduzido quando bloqueado ou quando o fluxo não existir, sem atribuir defeito nativo por evidência web.",
+      "automatedTests": [
+        "checagem de overflow horizontal e largura/visibilidade dos controles críticos nos três viewports oficiais",
+        "testes de fonte para padrões de modal/sheet e barras de ação que forem inventariados"
+      ],
+      "visualTests": [
+        "1440×900, 390×844 e 360×800 em fácil/completo",
+        "320px ou painel estreito como diagnóstico adicional",
+        "Expo web :8081 quando o fluxo existir após B4-15/B4-16"
+      ],
+      "dependencies": [
+        "B4-43-qa-gap-regression-protocol"
+      ],
+      "scope": [
+        "docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md",
+        "apps/web/app/(auth)",
+        "apps/web/app/(app)",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md"
+      ],
+      "risk": "A",
+      "autonomyLevel": "A",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "B",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-47-responsive-form-controls",
+      "title": "Corrigir responsividade transversal de formulários",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "bug confirmado",
+      "description": "Corrigir os vazamentos, campos estreitos/ilegíveis, sobreposições e botões inacessíveis confirmados pela B4-46 sem recriar ou alterar o design system.",
+      "expectedBehavior": "Formulários e modais empilham, quebram e rolam de forma segura; rótulos, valores e CTAs permanecem legíveis e operáveis com teclado virtual/safe area nos viewports aplicáveis.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Todos os defeitos P0/P1/P2 registrados pela B4-46 estão corrigidos ou justificados como não reproduzidos com evidência. Não há overflow horizontal da página/modal, corte de CTA, campo inutilizavelmente estreito ou rótulo essencial ilegível nos três viewports oficiais e nos dois modos. No app, corrigir apenas o reproduzido nele.",
+      "automatedTests": [
+        "regressões de layout/overflow para os componentes corrigidos",
+        "typecheck e lint web/mobile",
+        "testes de componente/fonte dos layouts responsivos"
+      ],
+      "visualTests": [
+        "1440×900, 390×844 e 360×800 em fácil/completo",
+        "teclado virtual/safe area nos formulários móveis aplicáveis",
+        "Expo web :8081 quando o fluxo existir após B4-15/B4-16"
+      ],
+      "dependencies": [
+        "B4-46-responsive-form-inventory"
+      ],
+      "scope": [
+        "apps/web/app/(auth)",
+        "apps/web/app/(app)",
+        "apps/web/app/facil",
+        "apps/web/components",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy",
+        "docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md"
+      ],
+      "touchesPaths": [
+        "apps/web",
+        "apps/mobile",
+        "docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-VISUAL",
+      "status": "SCHEDULED"
+    },
+    {
+      "taskId": "B4-48-draft-pdf-delivery-semantics",
+      "title": "Proteger entrega de orçamento em rascunho",
+      "type": "BUG",
+      "source": "docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md",
+      "classification": "melhoria de UX",
+      "description": "Revisar e explicitar a diferença entre pré-visualizar/baixar um rascunho para revisão interna e entregar um orçamento ao cliente, evitando compartilhamento acidental de documento em estado DRAFT.",
+      "expectedBehavior": "Rascunho pode ser pré-visualizado internamente com marcação inequívoca; baixar/compartilhar para entrega exige envio do orçamento ou confirmação explícita, e o fluxo normal ao cliente usa estado SENT sem ambiguidade.",
+      "surfaces": [
+        "web desktop - fácil",
+        "web desktop - completo",
+        "web mobile - fácil",
+        "web mobile - completo",
+        "app nativo - fácil",
+        "app nativo - completo"
+      ],
+      "acceptance": "Backend/shared-types preservam e testam a semântica DRAFT/SENT. A UI identifica prévia interna de rascunho e impede que a ação apresentada como envio/compartilhamento entregue silenciosamente um rascunho. O PDF DRAFT contém marcação clara; o PDF enviado contém o estado correto. App somente após reprodução e desbloqueio da autenticação.",
+      "automatedTests": [
+        "integração DRAFT versus SENT com --runInBand",
+        "teste de UI para aviso/guard de download ou compartilhamento do rascunho",
+        "teste do conteúdo/marcação de estado no PDF"
+      ],
+      "visualTests": [
+        "prévia e download de rascunho e orçamento enviado nos três viewports e dois modos",
+        "app após B4-15/B4-16 quando o fluxo existir"
+      ],
+      "dependencies": [
+        "B4-08-pdf-open-vs-download"
+      ],
+      "scope": [
+        "packages/shared-types/src",
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "touchesPaths": [
+        "packages/shared-types/src",
+        "apps/backend/src/quote",
+        "apps/web/app/(app)/orcamentos",
+        "apps/web/app/facil",
+        "apps/mobile/src/screens",
+        "apps/mobile/src/easy"
+      ],
+      "risk": "B",
+      "autonomyLevel": "B",
+      "productBatch": "IMPROVEMENT-BATCH-4",
+      "ownerGate": "none",
+      "blockedByGates": [
+        "P02-T12",
+        "P02-T13",
+        "P03"
+      ],
+      "candidateConstraints": {
+        "preserveUntracked": true,
+        "noDeploy": true,
+        "noProductionDataMutation": true
+      },
+      "verificationProfile": "C",
+      "phaseGate": "B4-VISUAL",
       "status": "SCHEDULED"
     }
   ],

@@ -106,7 +106,7 @@ corrigir a causa ao executar a reprodução. O protocolo correspondente está em
 |     17 | A QA do repositório não comparou a build realmente instalada, seus metadados e o fluxo de convite existente; o login impediu ir além.   | Auditoria de versão/build, design handoff, Home e convite sem inferir sobre telas internas não acessadas.     |
 |     18 | Não houve medição reproduzível do artefato instalado nem orçamento de tamanho; a percepção de 73 MB ficou fora dos testes funcionais.   | Análise de composição do bundle/artefato, baseline, orçamento e verificação de regressão sem cortar recursos. |
 
-Regra vigente: nenhuma tarefa de UI B4-02…B4-42 fecha sem a matriz de evidência aplicável. “Não reproduzido” e
+Regra vigente: nenhuma tarefa de UI B4-02…B4-42 ou B4-46…B4-48 fecha sem a matriz de evidência aplicável. “Não reproduzido” e
 “não aplicável” não são sinônimos: ambos precisam de superfície/build, passos e evidência; o segundo exige provar que
 o fluxo não existe naquela superfície. Ações como download, voltar, concorrência e build distribuída devem ser reais.
 
@@ -147,10 +147,10 @@ Estas são hipóteses de planejamento, não conclusões finais. `B4-43` deve con
 
 1. `B4-01`: aprovação concorrente.
 2. `B4-43`: protocolo de QA obrigatório, imediatamente após B4-01.
-3. Blocos 1–2: `B4-02`…`B4-14`; depois `B4-14A` executa e registra a passada exploratória curta obrigatória.
+3. Blocos 1–2: `B4-02`…`B4-14`, somados aos achados adicionais `B4-46`…`B4-48`; depois `B4-14A` executa e registra a passada exploratória curta obrigatória.
 4. Blocos 3–5: `B4-15`…`B4-27`, sem dependências artificiais entre app, fluxos e documentos.
 5. `B4-28`…`B4-32`: levantamentos/ADRs; B4-32 é o último item da fase serial não bloqueada.
-6. `B4-44`: passada exploratória pré-deploy, dependente explicitamente de todas as tarefas A/B B4-02…B4-32.
+6. `B4-44`: passada exploratória pré-deploy, dependente explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 7. `B4-33`: gate das decisões do dono, depois da passada pré-deploy.
 8. `B4-34`…`B4-42`: ramos estratégicos aprovados.
 9. `B4-45`: passada exploratória pós-onda estratégica.
@@ -173,15 +173,33 @@ Publicação do app, lojas, DNS, billing, LGPD, stack e design system continuam 
 
 Nenhum deploy é executado nesta etapa. Na execução futura, os únicos checkpoints planejados são:
 
-| Gate          | Depois de | Escopo                                                             | Evidência obrigatória anterior                                                                    |
-| ------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `DEPLOY-B4-1` | `B4-14A`  | Blocos 1–2: concorrência, dinheiro, estado, visual e UX            | checklist `IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`, protocolo B4-43 e nenhum defeito aberto |
-| `DEPLOY-B4-2` | `B4-44`   | Blocos 3–5: app, fluxos e documentos, com regressão dos blocos 1–2 | passada exploratória completa, testes verdes e nenhum defeito aberto                              |
-| `DEPLOY-B4-3` | `B4-45`   | Onda estratégica B4-34…B4-42 aprovada                              | passada exploratória pós-estratégia, testes verdes e nenhum defeito aberto                        |
+| Gate          | Depois de | Escopo                                                                | Evidência obrigatória anterior                                                                    |
+| ------------- | --------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `DEPLOY-B4-1` | `B4-14A`  | Blocos 1–2 e B4-46…B4-48: concorrência, dinheiro, estado, visual e UX | checklist `IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`, protocolo B4-43 e nenhum defeito aberto |
+| `DEPLOY-B4-2` | `B4-44`   | Blocos 3–5: app, fluxos e documentos, com regressão dos blocos 1–2    | passada exploratória completa, testes verdes e nenhum defeito aberto                              |
+| `DEPLOY-B4-3` | `B4-45`   | Onda estratégica B4-34…B4-42 aprovada                                 | passada exploratória pós-estratégia, testes verdes e nenhum defeito aberto                        |
 
 Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 
 ## Catálogo de tarefas
+
+## Achados adicionais durante a execução — 2026-10-12
+
+O acompanhamento visual do fluxo local revelou um problema transversal além dos 29 achados originais: formulários,
+modais, campos e botões vazaram ou ficaram estreitos demais para leitura em várias etapas desde login/onboarding até
+cliente e orçamento. A janela estreita usada no acompanhamento não substitui os viewports oficiais, mas expõe uma
+fragilidade responsiva séria que precisa ser inventariada e corrigida sistematicamente. Também foi confirmado que a
+ação de download pode gerar um PDF ainda em `DRAFT`: isso é útil para revisão interna, porém o produto deve impedir
+que o usuário o confunda com o documento pronto para o cliente.
+
+| Achado adicional                                                              | Categoria primária                                    | Tarefas      | Condição de fechamento                                                                   |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------- |
+| Formulários, modais, campos e CTAs com overflow ou largura insuficiente       | hipótese que precisa ser reproduzida + bug confirmado | B4-46, B4-47 | inventário completo, correções e matriz 3 viewports × 2 modos; app apenas se reproduzido |
+| Download/compartilhamento de orçamento em rascunho pode parecer entrega final | melhoria de UX                                        | B4-48        | diferença DRAFT/SENT explícita e testada no backend, PDF e superfícies                   |
+
+Essas tarefas pertencem aos blocos 1–2, são pré-requisitos de `B4-14A`, `DEPLOY-B4-1` e `B4-44` e não alteram o
+design system. `320px`/painel estreito é diagnóstico adicional; os critérios oficiais continuam sendo `1440×900`,
+`390×844` e `360×800`.
 
 ### B4-01-approval-concurrency — Aprovação concorrente idempotente
 
@@ -379,7 +397,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Comportamento esperado:** Checklist em docs/qa cobre 1440×900, 390×844 e 360×800 nos modos fácil e completo, além do app via Expo web quando o fluxo existir; defeitos encontrados são reabertos/corrigidos antes de liberar DEPLOY-B4-1.
 - **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
 - **Escopo provável:** `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`, `docs/qa`, `apps/web`, `apps/mobile`
-- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom
+- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom, B4-46-responsive-form-inventory, B4-47-responsive-form-controls, B4-48-draft-pdf-delivery-semantics
 - **Critérios de aceite:** Criar docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md com data, build/commit, superfície, modo, viewport, fluxo, resultado e evidência. Cobrir B4-01…B4-14 conforme aplicabilidade, duas sessões para aprovação, valores abaixo/igual/acima, download real e navegação; app somente onde reproduzido e acessível. DEPLOY-B4-1 permanece bloqueado até checklist completo, testes verdes e zero defeito aberto no escopo.
 - **Testes automáticos:** reexecutar testes adicionados em B4-01…B4-14; typecheck/lint dos apps tocados; specs de integração relevantes com --runInBand
 - **Testes visuais:** 1440×900 em fácil e completo; 390×844 em fácil e completo; 360×800 em fácil e completo; Expo web :8081 fácil/completo quando o fluxo existir
@@ -769,7 +787,7 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Comportamento esperado:** Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado.
 - **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
 - **Escopo provável:** `docs/qa`, `apps/backend`, `apps/web`, `apps/mobile`, `packages/shared-types`
-- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom, B4-15-mobile-api-environment-guard, B4-16-mobile-real-authentication, B4-17-mobile-start-invite-build-audit, B4-18-mobile-size-budget, B4-19-service-owner-adr, B4-20-service-owner-assignment, B4-21-quote-completeness-review, B4-22-receipt-signature-flow, B4-23-receipt-fields-inventory, B4-24-document-model, B4-25-quote-pdf-structure, B4-26-receipt-pdf-structure, B4-27-document-settings-surfaces, B4-28-usage-plans-adr, B4-29-neutral-positioning-adr, B4-30-multicompany-adr, B4-31-web-mobile-mode-adr, B4-32-partial-work-order-adr
+- **Dependências:** B4-02-approved-os-starts-pending, B4-03-mode-state-photo-consistency, B4-04-receivables-flow, B4-05-overpayment-confirmation, B4-06-work-order-mobile-overflow, B4-07-payment-date-modal-overflow, B4-08-pdf-open-vs-download, B4-09-signature-empty-copy, B4-10-toast-duration-dismiss, B4-11-quote-unsaved-item-guard, B4-12-post-generation-navigation-adr, B4-13-post-generation-navigation, B4-14-logo-crop-position-zoom, B4-15-mobile-api-environment-guard, B4-16-mobile-real-authentication, B4-17-mobile-start-invite-build-audit, B4-18-mobile-size-budget, B4-19-service-owner-adr, B4-20-service-owner-assignment, B4-21-quote-completeness-review, B4-22-receipt-signature-flow, B4-23-receipt-fields-inventory, B4-24-document-model, B4-25-quote-pdf-structure, B4-26-receipt-pdf-structure, B4-27-document-settings-surfaces, B4-28-usage-plans-adr, B4-29-neutral-positioning-adr, B4-30-multicompany-adr, B4-31-web-mobile-mode-adr, B4-32-partial-work-order-adr, B4-46-responsive-form-inventory, B4-47-responsive-form-controls, B4-48-draft-pdf-delivery-semantics
 - **Critérios de aceite:** Checklist/prints cobrem blocos 3–5 e regressão dos blocos 1–2; todo defeito é corrigido e revalidado; somente depois o checkpoint DEPLOY-B4-2 pode ser liberado. O app usa build distribuída equivalente com API correta; esta tarefa não faz deploy, apenas produz a evidência obrigatória anterior ao deploy. Nenhuma dependência estratégica B4-33…B4-42 é necessária.
 - **Testes automáticos:** suite completa serial, integração --runInBand, typecheck/lint/build e secret scan; reexecução de todos os testes adicionados no Batch 4
 - **Testes visuais:** 1440x900, 390x844, 360x800 em fácil/completo; app nativo fácil/completo; duas sessões, download real e fluxo completo com evidência
@@ -787,3 +805,42 @@ Cada deploy futuro usa exclusivamente a receita da seção 6 de `CONTINUE.md`.
 - **Testes automáticos:** suite completa serial, integração --runInBand, typecheck/lint/build e secret scan; reexecução de todos os testes adicionados no Batch 4
 - **Testes visuais:** 1440x900, 390x844, 360x800 em fácil/completo; app nativo fácil/completo; duas sessões, download real e fluxo completo com evidência
 - **Autonomia:** Nível A
+
+### B4-46-responsive-form-inventory — Inventariar responsividade de formulários e modais
+
+- **Categoria:** hipótese que precisa ser reproduzida
+- **Problema:** Formulários, modais, campos e barras de ação apresentaram vazamentos, controles estreitos e conteúdo ilegível em várias etapas do fluxo local.
+- **Comportamento esperado:** Inventário reproduzível por rota, superfície, modo e viewport, com sintoma, severidade e evidência; painel estreito/320px é diagnóstico adicional.
+- **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
+- **Escopo provável:** `docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md`, auth/onboarding, clientes, orçamentos, OS, recebimentos e assinatura no web/app
+- **Dependências:** B4-43-qa-gap-regression-protocol
+- **Critérios de aceite:** Cobrir login, onboarding, cliente, orçamento, OS, recebimento e assinatura onde existirem; registrar rota/etapa, viewport, modo, componente, severidade e evidência; não atribuir ao app defeito observado apenas no web.
+- **Testes automáticos:** checagem de overflow/largura/visibilidade dos controles críticos nos três viewports oficiais; testes de fonte para padrões inventariados
+- **Testes visuais:** 1440×900, 390×844 e 360×800 em fácil/completo; 320px/painel estreito adicional; app quando o fluxo estiver acessível
+- **Autonomia:** Nível A
+
+### B4-47-responsive-form-controls — Corrigir responsividade transversal de formulários
+
+- **Categoria:** bug confirmado
+- **Problema:** Corrigir os defeitos P0/P1/P2 confirmados no inventário B4-46 sem recriar nem alterar o design system.
+- **Comportamento esperado:** Campos, grupos, modais, sheets e CTAs empilham, quebram e rolam de forma segura; texto e ações essenciais continuam legíveis e operáveis, inclusive com teclado/safe area.
+- **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
+- **Escopo provável:** `apps/web/app/(auth)`, `apps/web/app/(app)`, `apps/web/app/facil`, `apps/web/components`, `apps/mobile/src/screens`, `apps/mobile/src/easy`
+- **Dependências:** B4-46-responsive-form-inventory
+- **Critérios de aceite:** Zero overflow horizontal, CTA cortado, campo inutilizavelmente estreito ou rótulo essencial ilegível nos três viewports oficiais e dois modos; app corrigido somente onde reproduzido.
+- **Testes automáticos:** regressões de layout dos componentes corrigidos; typecheck/lint web/mobile; testes de componente/fonte
+- **Testes visuais:** três viewports × dois modos, teclado/safe area e app aplicável
+- **Autonomia:** Nível B
+
+### B4-48-draft-pdf-delivery-semantics — Proteger entrega de orçamento em rascunho
+
+- **Categoria:** melhoria de UX
+- **Problema:** A prévia/download de um orçamento `DRAFT` pode ser confundida com o documento pronto para entregar ao cliente.
+- **Comportamento esperado:** Rascunho permanece disponível para revisão interna com marcação inequívoca; baixar/compartilhar para entrega exige envio ou confirmação explícita; o fluxo normal ao cliente usa `SENT`.
+- **Superfícies:** web desktop - fácil; web desktop - completo; web mobile - fácil; web mobile - completo; app nativo - fácil; app nativo - completo
+- **Escopo provável:** `packages/shared-types/src`, `apps/backend/src/quote`, telas de orçamento web fácil/completo e app fácil/completo
+- **Dependências:** B4-08-pdf-open-vs-download
+- **Critérios de aceite:** DRAFT/SENT testados no backend e PDF; prévia interna identificada; nenhuma ação apresentada como envio/compartilhamento entrega silenciosamente um rascunho; app somente após reprodução e autenticação desbloqueada.
+- **Testes automáticos:** integração DRAFT/SENT com `--runInBand`; UI do aviso/guard; conteúdo e marcação do PDF
+- **Testes visuais:** rascunho e enviado nos três viewports e dois modos; app após B4-15/B4-16 quando aplicável
+- **Autonomia:** Nível B
