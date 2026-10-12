@@ -14,6 +14,7 @@ import {
   X,
   Send,
   Pencil,
+  Plus,
   Undo2,
   Wrench,
   XCircle,
@@ -421,7 +422,10 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
           >
             <Copy size={15} /> Duplicar
           </button>
-          <button onClick={() => router.back()} style={headerBtn}>
+          <button onClick={() => router.replace('/orcamentos/novo')} style={headerBtn}>
+            <Plus size={15} /> Novo orçamento
+          </button>
+          <button onClick={() => router.replace('/orcamentos')} style={headerBtn}>
             Voltar
           </button>
         </div>

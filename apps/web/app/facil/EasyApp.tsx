@@ -12,7 +12,13 @@ import { AgendaScreen, AgendaNewScreen } from './screens/Agenda';
 import { MoneyScreen } from './screens/Money';
 import { MenuScreen } from './screens/Menu';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from './screens/Receipts';
-import { SettingsScreen, ApprovalsScreen, OsStatusesScreen, CatalogScreen, EditScreen } from './screens/Settings';
+import {
+  SettingsScreen,
+  ApprovalsScreen,
+  OsStatusesScreen,
+  CatalogScreen,
+  EditScreen,
+} from './screens/Settings';
 import { SheetProvider } from './sheet';
 import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { NoticesScreen } from './screens/Notices';
@@ -98,6 +104,8 @@ interface Nav {
   go: (screen: Screen, params?: Params) => void;
   /** Swap the current screen (e.g. a finished form for its result). */
   replace: (screen: Screen, params?: Params) => void;
+  /** End a flow and remove its editable screens from the in-app stack. */
+  reset: (screen: Screen, params?: Params) => void;
   tab: (screen: Screen, params?: Params) => void;
   back: () => void;
   draft: Draft;
@@ -175,6 +183,18 @@ export function EasyApp({ initial }: { initial?: Screen }): React.JSX.Element {
     setStack((s) => [...s.slice(0, -1), { screen, params }]);
     top();
   }, []);
+  const reset = useCallback((screen: Screen, params: Params = {}) => {
+    setStack(
+      screen === 'done'
+        ? [
+            { screen: 'quotes', params: {} },
+            { screen, params },
+          ]
+        : [{ screen, params }],
+    );
+    window.history.replaceState({ easy: true, terminal: true }, '');
+    top();
+  }, []);
   const tab = useCallback((screen: Screen, params: Params = {}) => {
     setStack([{ screen, params }]);
     top();
@@ -214,6 +234,7 @@ export function EasyApp({ initial }: { initial?: Screen }): React.JSX.Element {
     params: cur.params,
     go,
     replace,
+    reset,
     tab,
     back: historyBack,
     draft,

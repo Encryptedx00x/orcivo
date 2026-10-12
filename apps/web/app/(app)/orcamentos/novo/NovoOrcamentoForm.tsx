@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../../../../components/PaymentTermsFields';
@@ -198,6 +198,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const submitInFlight = useRef(false);
 
   useEffect(() => {
     fetch('/api/catalog')
@@ -336,7 +337,9 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
       setStep(1);
       return null;
     }
+    if (submitInFlight.current) return null;
 
+    submitInFlight.current = true;
     setLoading(true);
     try {
       const res = await fetch('/api/quotes', {
@@ -370,6 +373,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
       setError(err instanceof Error ? err.message : 'Erro ao criar orçamento.');
       return null;
     } finally {
+      submitInFlight.current = false;
       setLoading(false);
     }
   }
@@ -377,19 +381,19 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   // ── Ações: salvam o rascunho e então executam (PDF / detalhe) ───────
   async function handleSave() {
     const id = await saveDraft();
-    if (id) router.push(`/orcamentos/${id}`);
+    if (id) router.replace(`/orcamentos/${id}`);
   }
   async function handlePdf() {
     const id = await saveDraft();
     if (!id) return;
     window.open(`/api/quotes/${id}/pdf`, '_blank', 'noopener,noreferrer');
-    router.push(`/orcamentos/${id}`);
+    router.replace(`/orcamentos/${id}`);
   }
   async function handleWhatsApp() {
     // O link de aprovação só existe após o envio — salva e leva ao detalhe,
     // onde o fluxo de envio + compartilhamento funciona corretamente.
     const id = await saveDraft();
-    if (id) router.push(`/orcamentos/${id}?compartilhar=1`);
+    if (id) router.replace(`/orcamentos/${id}?compartilhar=1`);
   }
 
   // ── Step content ─────────────────────────────────────────────────

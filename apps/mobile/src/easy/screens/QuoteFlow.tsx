@@ -421,6 +421,7 @@ export function QuoteReviewScreen() {
     'Não foi possível carregar as formas de aprovação.',
   );
   const [busy, setBusy] = useState(false);
+  const submitInFlight = useRef(false);
   const createKey = useRef(newIdempotencyKey());
   const saved = draft.savedSignature;
 
@@ -498,7 +499,8 @@ export function QuoteReviewScreen() {
   };
 
   const send = async () => {
-    if (busy || !draft.client) return;
+    if (submitInFlight.current || busy || !draft.client) return;
+    submitInFlight.current = true;
     setBusy(true);
     const dto = buildDto();
     let created: { id: string; number: number };
@@ -508,6 +510,7 @@ export function QuoteReviewScreen() {
         : await easy.createQuote(dto, createKey.current);
     } catch (err) {
       setBusy(false);
+      submitInFlight.current = false;
       return Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o orçamento.'));
     }
     try {
@@ -552,11 +555,14 @@ export function QuoteReviewScreen() {
         index: 1,
         routes: [{ name: 'EasyTabs' }, { name: 'QuoteDetail', params: { id: created.id } }],
       });
+    } finally {
+      submitInFlight.current = false;
     }
   };
 
   const saveDraft = async () => {
-    if (busy || !draft.client) return;
+    if (submitInFlight.current || busy || !draft.client) return;
+    submitInFlight.current = true;
     setBusy(true);
     try {
       const dto = buildDto();
@@ -570,6 +576,7 @@ export function QuoteReviewScreen() {
     } catch (err) {
       Alert.alert('Não deu certo', errorText(err, 'Não foi possível guardar o orçamento.'));
     } finally {
+      submitInFlight.current = false;
       setBusy(false);
     }
   };
@@ -1083,6 +1090,18 @@ export function QuoteDoneScreen({
           </Btn>
           <Btn tone="link" onPress={() => void Share.share({ message: url })}>
             Compartilhar link de aprovação
+          </Btn>
+          <Btn
+            tone="soft"
+            icon={Plus}
+            onPress={() =>
+              navigation.reset({
+                index: 1,
+                routes: [{ name: 'EasyTabs' }, { name: 'QuoteClient' }],
+              })
+            }
+          >
+            Novo orçamento
           </Btn>
           <Btn
             tone="link"

@@ -85,6 +85,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   const [warranty, setWarranty] = useState('');
   const [items, setItems] = useState<FormItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -251,10 +252,12 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
   const submitKey = useRef(newIdempotencyKey());
 
   const handleSubmit = async () => {
+    if (submitInFlight.current) return;
     if (!validate()) {
       Alert.alert('Dados inválidos', Object.values(errors).filter(Boolean).join('\n'));
       return;
     }
+    submitInFlight.current = true;
     try {
       setSubmitting(true);
       let parsedDate: string | undefined;
@@ -294,6 +297,7 @@ export function QuoteCreateScreen({ navigation, route }: Props) {
       const msg = error.data?.message ?? 'Não foi possível criar o orçamento.';
       Alert.alert('Erro', typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
+      submitInFlight.current = false;
       setSubmitting(false);
     }
   };

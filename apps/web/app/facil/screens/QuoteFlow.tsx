@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
   Check,
@@ -895,7 +895,7 @@ function CheckRow({
 // ── 3. Revisar e enviar ───────────────────────────────────────────────
 
 function Q3() {
-  const { draft, setDraft, go, back, tab } = useNav();
+  const { draft, setDraft, go, back, reset } = useNav();
   const toast = useToast();
   const { subtotal, discount, total } = useTotals();
   const [saved, setSaved] = useState<string | null>(null);
@@ -903,6 +903,7 @@ function Q3() {
   const approvals = useLoad(getApprovalMethods);
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const submitInFlight = useRef(false);
 
   useEffect(() => {
     // First visit: the company's "Condições padrão" (Configurações) fill terms and validity.
@@ -991,40 +992,51 @@ function Q3() {
   // "Concluir orçamento": saves and registers the quote (PDF + approval link) first;
   // the Pronto screen then sends it by WhatsApp, PDF or link — all with a fresh tap.
   const conclude = async () => {
-    if (busy || !draft.client) return;
+    if (submitInFlight.current || busy || !draft.client) return;
+    submitInFlight.current = true;
     setBusy(true);
-    const created = await create();
-    if (!created) return setBusy(false);
-    const sent = await sendQuoteWithSignature(
-      created.id,
-      draft.signature.mode !== 'none',
-      draft.signature.mode === 'once' ? draft.signature.dataUrl : undefined,
-    );
-    setBusy(false);
-    if (!sent.ok) {
-      toast('Não foi possível concluir agora. O orçamento ficou guardado como rascunho.');
-      return;
+    try {
+      const created = await create();
+      if (!created) return;
+      const sent = await sendQuoteWithSignature(
+        created.id,
+        draft.signature.mode !== 'none',
+        draft.signature.mode === 'once' ? draft.signature.dataUrl : undefined,
+      );
+      if (!sent.ok) {
+        toast('Não foi possível concluir agora. O orçamento ficou guardado como rascunho.');
+        return;
+      }
+      const q = sent.quote as { approvalUrl?: string; approval_token?: string };
+      const url =
+        q.approvalUrl ??
+        (q.approval_token ? `${window.location.origin}/approve/${q.approval_token}` : '');
+      const phone = draft.client.phone;
+      setDraft((d) => ({
+        ...d,
+        result: { id: created.id, number: created.number, total, url, phone },
+      }));
+      reset('done');
+    } finally {
+      submitInFlight.current = false;
+      setBusy(false);
     }
-    const q = sent.quote as { approvalUrl?: string; approval_token?: string };
-    const url =
-      q.approvalUrl ??
-      (q.approval_token ? `${window.location.origin}/approve/${q.approval_token}` : '');
-    const phone = draft.client.phone;
-    setDraft((d) => ({
-      ...d,
-      result: { id: created.id, number: created.number, total, url, phone },
-    }));
-    go('done');
   };
 
   const saveDraft = async () => {
+    if (submitInFlight.current || busy) return;
+    submitInFlight.current = true;
     setBusy(true);
-    const created = await create();
-    setBusy(false);
-    if (!created) return;
-    toast(`Rascunho #${created.number} guardado em Orçamentos.`);
-    setDraft(emptyDraft());
-    tab('quotes');
+    try {
+      const created = await create();
+      if (!created) return;
+      toast(`Rascunho #${created.number} guardado em Orçamentos.`);
+      setDraft(emptyDraft());
+      reset('quotes');
+    } finally {
+      submitInFlight.current = false;
+      setBusy(false);
+    }
   };
 
   const bits = [
@@ -1740,7 +1752,7 @@ function Sign() {
 
 // ── Pronto ────────────────────────────────────────────────────────────
 function Done() {
-  const { draft, setDraft, tab } = useNav();
+  const { draft, setDraft, reset } = useNav();
   const toast = useToast();
   const r = draft.result;
   const docTitle = resolveQuoteDocOptions(draft.docOptions).title;
@@ -1864,10 +1876,20 @@ function Done() {
           Copiar link de aprovação
         </Btn>
         <Btn
+          tone="soft"
+          icon={Plus}
+          onClick={() => {
+            setDraft(emptyDraft());
+            reset('q1');
+          }}
+        >
+          Novo orçamento
+        </Btn>
+        <Btn
           tone="link"
           onClick={() => {
             setDraft(emptyDraft());
-            tab('quotes');
+            reset('quotes');
           }}
         >
           Ver orçamentos

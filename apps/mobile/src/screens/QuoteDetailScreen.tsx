@@ -17,6 +17,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
+  Plus,
   XCircle,
 } from 'lucide-react-native';
 import { Switch } from 'react-native';
@@ -308,6 +309,14 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
       <TouchableOpacity accessibilityRole="button" style={styles.moreBtn} onPress={openMore}>
         <MoreHorizontal size={20} color="#6D28D9" />
         <Text style={styles.moreBtnText}>Mais ações</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        style={styles.moreBtn}
+        onPress={() => navigation.replace('QuoteCreate')}
+      >
+        <Plus size={20} color="#6D28D9" />
+        <Text style={styles.moreBtnText}>Novo orçamento</Text>
       </TouchableOpacity>
       <AuditHistorySection key={`${id}:${quote.status}`} entityType="quote" entityId={id} />
     </ScrollView>
