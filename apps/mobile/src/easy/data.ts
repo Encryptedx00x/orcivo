@@ -353,13 +353,16 @@ export const easy = {
   // ── Empresa / Configurações ──
   company: () => api.get<EasyCompany>('/company/me'),
   updateCompany: (body: Record<string, unknown>) => api.patch<EasyCompany>('/company/me', body),
-  uploadLogo: (uri: string) => {
+  uploadLogo: (uri: string, mimeType?: string) => {
     const form = new FormData();
-    const png = uri.toLowerCase().endsWith('.png');
+    const normalizedType =
+      mimeType === 'image/png' || mimeType === 'image/webp' ? mimeType : 'image/jpeg';
+    const extension =
+      normalizedType === 'image/png' ? 'png' : normalizedType === 'image/webp' ? 'webp' : 'jpg';
     form.append('file', {
       uri,
-      type: png ? 'image/png' : 'image/jpeg',
-      name: png ? 'logo.png' : 'logo.jpg',
+      type: normalizedType,
+      name: `logo.${extension}`,
     } as unknown as Blob);
     return api.putFormData<EasyCompany>('/company/logo', form);
   },

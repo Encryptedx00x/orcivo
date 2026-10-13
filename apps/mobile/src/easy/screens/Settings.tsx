@@ -598,16 +598,18 @@ export function LogoPicker({ large = true }: { large?: boolean }) {
         return Alert.alert('Permissão negada', 'Libere o acesso nas configurações do celular.');
       const opts: ImagePicker.ImagePickerOptions = {
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 1,
         allowsEditing: true,
+        aspect: [2, 1],
       };
       const r = camera
         ? await ImagePicker.launchCameraAsync(opts)
         : await ImagePicker.launchImageLibraryAsync(opts);
       if (r.canceled || !r.assets[0]) return;
+      const asset = r.assets[0];
       setBusy(true);
       try {
-        company.setData(await easy.uploadLogo(r.assets[0].uri));
+        company.setData(await easy.uploadLogo(asset.uri, asset.mimeType ?? undefined));
         Alert.alert('Pronto', 'Logo atualizado. Ele aparece nos próximos PDFs.');
       } catch (err) {
         Alert.alert(
@@ -690,7 +692,10 @@ function LogoEdit() {
   return (
     <Page>
       <H1 size={30}>Logo</H1>
-      <Sub>Aparece no topo dos orçamentos, serviços e recibos.</Sub>
+      <Sub>
+        Aparece no topo dos orçamentos, serviços e recibos. Ao escolher a imagem, você pode
+        reposicionar e ampliar antes de salvar.
+      </Sub>
       <LogoPicker />
     </Page>
   );

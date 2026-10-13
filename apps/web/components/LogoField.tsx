@@ -1,32 +1,85 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { ImagePlus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ImagePlus, Move, Save, Trash2, X } from 'lucide-react';
+import { calculateLogoCrop, LOGO_OUTPUT_HEIGHT, LOGO_OUTPUT_WIDTH } from './logo-crop';
 
-/** Phone photos are several MB; a logo reads fine at 1024px (keeps it under the 2 MB limit). */
-function downscale(file: File, max = 1024): Promise<Blob> {
+interface PendingLogo {
+  file: File;
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  previewUrl: string;
+  close?: () => void;
+}
+
+const ACCEPTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+async function decodeLogo(file: File): Promise<PendingLogo> {
+  const previewUrl = URL.createObjectURL(file);
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return {
+        file,
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        previewUrl,
+        close: () => bitmap.close(),
+      };
+    } catch {
+      // Safari versions without the orientation option use the HTMLImageElement fallback.
+    }
+  }
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new window.Image();
-    img.onload = () => {
-      const k = Math.min(1, max / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * k);
-      canvas.height = Math.round(img.height * k);
-      const ctx = canvas.getContext('2d');
-      URL.revokeObjectURL(url);
-      if (!ctx) return reject(new Error('canvas'));
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      // PNG keeps transparent backgrounds; JPEG for photos.
-      const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), type, 0.85);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
+    const image = new window.Image();
+    image.onload = () =>
+      resolve({
+        file,
+        source: image,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        previewUrl,
+      });
+    image.onerror = () => {
+      URL.revokeObjectURL(previewUrl);
       reject(new Error('image'));
     };
-    img.src = url;
+    image.src = previewUrl;
   });
+}
+
+function paintLogo(
+  canvas: HTMLCanvasElement,
+  pending: PendingLogo,
+  zoom: number,
+  positionX: number,
+  positionY: number,
+): void {
+  canvas.width = LOGO_OUTPUT_WIDTH;
+  canvas.height = LOGO_OUTPUT_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const crop = calculateLogoCrop(pending.width, pending.height, zoom, positionX, positionY);
+  ctx.drawImage(
+    pending.source,
+    crop.sx,
+    crop.sy,
+    crop.sw,
+    crop.sh,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+}
+
+function canvasBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('blob'))), type, quality),
+  );
 }
 
 /**
@@ -47,23 +100,72 @@ export function LogoField({
   const [url, setUrl] = useState(initialUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pending, setPending] = useState<PendingLogo | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [positionX, setPositionX] = useState(0);
+  const [positionY, setPositionY] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
   const say = (m: string, isError = false) => {
     if (isError) setError(m);
     else setError('');
     onMessage?.(m);
   };
 
-  const upload = async (file?: File) => {
+  useEffect(() => {
+    if (!pending || !canvas.current) return;
+    paintLogo(canvas.current, pending, zoom, positionX, positionY);
+  }, [pending, positionX, positionY, zoom]);
+
+  useEffect(
+    () => () => {
+      if (!pending) return;
+      pending.close?.();
+      URL.revokeObjectURL(pending.previewUrl);
+    },
+    [pending],
+  );
+
+  const choose = async (file?: File) => {
     if (!file) return;
+    if (!ACCEPTED_TYPES.has(file.type)) {
+      say('Use uma imagem PNG, JPG ou WebP.', true);
+      return;
+    }
+    try {
+      setPending(await decodeLogo(file));
+      setZoom(1);
+      setPositionX(0);
+      setPositionY(0);
+      say('Ajuste o enquadramento antes de salvar.');
+    } catch {
+      say('Não foi possível ler essa imagem. Tente outra.', true);
+    } finally {
+      if (input.current) input.current.value = '';
+    }
+  };
+
+  const cancelCrop = () => {
+    setPending(null);
+    setZoom(1);
+    setPositionX(0);
+    setPositionY(0);
+    say('Edição cancelada. O logo atual não foi alterado.');
+  };
+
+  const upload = async () => {
+    if (!pending || !canvas.current) return;
     setBusy(true);
     try {
-      const blob = await downscale(file);
+      paintLogo(canvas.current, pending, zoom, positionX, positionY);
+      const preferredType = pending.file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      let blob = await canvasBlob(canvas.current, preferredType, 0.9);
+      if (blob.size > 2 * 1024 * 1024) blob = await canvasBlob(canvas.current, 'image/webp', 0.88);
+      if (blob.size > 2 * 1024 * 1024) throw new Error('size');
       const form = new FormData();
-      form.append(
-        'file',
-        new File([blob], blob.type === 'image/jpeg' ? 'logo.jpg' : 'logo.png', { type: blob.type }),
-      );
+      const extension =
+        blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      form.append('file', new File([blob], `logo.${extension}`, { type: blob.type }));
       const res = await fetch('/api/company/logo', { method: 'PUT', body: form });
       const data = (await res.json().catch(() => null)) as {
         logo_url?: string | null;
@@ -79,12 +181,12 @@ export function LogoField({
         return;
       }
       setUrl(data?.logo_url ?? null);
+      setPending(null);
       say('Logo atualizado. Ele aparece nos próximos PDFs.');
     } catch {
-      say('Não foi possível ler essa imagem. Tente outra.', true);
+      say('Não foi possível preparar o logo. Ajuste o recorte ou use outra imagem.', true);
     } finally {
       setBusy(false);
-      if (input.current) input.current.value = '';
     }
   };
 
@@ -121,6 +223,130 @@ export function LogoField({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {pending && (
+        <div
+          role="dialog"
+          aria-label="Ajustar logo"
+          style={{
+            border: '1px solid #DDD6FE',
+            background: '#FAF5FF',
+            borderRadius: large ? 20 : 14,
+            padding: large ? 18 : 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+          }}
+        >
+          <div>
+            <strong style={{ display: 'block', color: '#0A0A0F', fontSize: large ? 18 : 15 }}>
+              Ajuste o enquadramento
+            </strong>
+            <span style={{ color: '#64748B', fontSize: large ? 15 : 13 }}>
+              O recorte abaixo é o que aparecerá nos documentos.
+            </span>
+          </div>
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 560,
+              aspectRatio: '2 / 1',
+              background: '#FFFFFF',
+              border: '2px solid #6D28D9',
+              borderRadius: 14,
+              overflow: 'hidden',
+              boxShadow: '0 8px 24px rgba(76, 29, 149, 0.12)',
+            }}
+          >
+            <canvas
+              ref={canvas}
+              aria-label="Prévia do logo recortado"
+              style={{ width: '100%', height: '100%', display: 'block' }}
+            />
+          </div>
+          <label style={{ display: 'grid', gap: 6, color: '#334155', fontWeight: 600 }}>
+            Zoom · {zoom.toFixed(1)}×
+            <input
+              aria-label="Zoom do logo"
+              type="range"
+              min="1"
+              max="3"
+              step="0.1"
+              value={zoom}
+              onChange={(event) => setZoom(Number(event.target.value))}
+              style={{ accentColor: '#6D28D9', width: '100%' }}
+            />
+          </label>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <label style={{ display: 'grid', gap: 6, color: '#334155', fontWeight: 600 }}>
+              Posição horizontal
+              <input
+                aria-label="Posição horizontal do logo"
+                type="range"
+                min="-1"
+                max="1"
+                step="0.05"
+                value={positionX}
+                onChange={(event) => setPositionX(Number(event.target.value))}
+                style={{ accentColor: '#6D28D9', width: '100%' }}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6, color: '#334155', fontWeight: 600 }}>
+              Posição vertical
+              <input
+                aria-label="Posição vertical do logo"
+                type="range"
+                min="-1"
+                max="1"
+                step="0.05"
+                value={positionY}
+                onChange={(event) => setPositionY(Number(event.target.value))}
+                style={{ accentColor: '#6D28D9', width: '100%' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void upload()}
+              style={{ ...btn, border: 'none', background: '#6D28D9', color: '#FFFFFF' }}
+            >
+              <Save size={large ? 21 : 16} aria-hidden="true" />
+              {busy ? 'Salvando…' : 'Salvar logo'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={cancelCrop}
+              style={{
+                ...btn,
+                border: '1px solid #CBD5E1',
+                background: '#FFFFFF',
+                color: '#334155',
+              }}
+            >
+              <X size={large ? 20 : 15} aria-hidden="true" /> Cancelar
+            </button>
+          </div>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#64748B',
+              fontSize: 13,
+            }}
+          >
+            <Move size={15} aria-hidden="true" /> Use os controles para reposicionar e ampliar.
+          </span>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
         <div
           style={{
@@ -159,7 +385,7 @@ export function LogoField({
               style={{ ...btn, border: 'none', background: '#6D28D9', color: '#FFFFFF' }}
             >
               <ImagePlus size={large ? 22 : 16} aria-hidden="true" />
-              {busy ? 'Enviando…' : url ? 'Trocar logo' : 'Enviar logo'}
+              {pending ? 'Escolher outra imagem' : url ? 'Trocar logo' : 'Enviar logo'}
             </button>
             {url && (
               <button
@@ -192,7 +418,7 @@ export function LogoField({
         type="file"
         accept="image/png,image/jpeg,image/webp"
         hidden
-        onChange={(e) => void upload(e.target.files?.[0])}
+        onChange={(e) => void choose(e.target.files?.[0])}
       />
     </div>
   );

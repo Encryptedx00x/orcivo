@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CompanyService } from './company.service';
 
 const mockPrisma = { company: { findUnique: jest.fn() } };
@@ -193,5 +193,76 @@ describe('CompanyService.updateHomeShortcuts (R8)', () => {
         to: ['QUOTE', 'PAYMENT'],
       }),
     );
+  });
+});
+
+describe('CompanyService.uploadLogo', () => {
+  const mockTx = { company: { update: jest.fn() } };
+  const uploadPrisma = {
+    company: { findUnique: jest.fn() },
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(mockTx)),
+  };
+  const mockStorage = {
+    assertUploadable: jest.fn(),
+    uploadBuffer: jest.fn(),
+    getSignedUrl: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAudit.record.mockResolvedValue(undefined);
+    mockStorage.uploadBuffer.mockResolvedValue(undefined);
+    mockStorage.getSignedUrl.mockResolvedValue('https://storage.local/logo');
+    uploadPrisma.company.findUnique.mockResolvedValue({ id: 'c1', logo_url: 'c1/branding/logo' });
+  });
+
+  it.each(['image/png', 'image/jpeg', 'image/webp'])(
+    'valida e armazena %s no espaço isolado da empresa',
+    async (mimetype) => {
+      const service = new CompanyService(
+        uploadPrisma as never,
+        mockAudit as never,
+        mockStorage as never,
+      );
+      const buffer = Buffer.from('logo');
+
+      const result = await service.uploadLogo('c1', { buffer, mimetype }, 'u1');
+
+      expect(mockStorage.assertUploadable).toHaveBeenCalledWith(buffer, mimetype, 2 * 1024 * 1024, [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+      ]);
+      expect(mockStorage.uploadBuffer).toHaveBeenCalledWith(
+        'orcivo-photos',
+        'c1/branding/logo',
+        buffer,
+        mimetype,
+      );
+      expect(mockTx.company.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { logo_url: 'c1/branding/logo' },
+      });
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          companyId: 'c1',
+          actorUserId: 'u1',
+          action: 'company.logo_updated',
+        }),
+      );
+      expect(result.logo_url).toBe('https://storage.local/logo');
+    },
+  );
+
+  it('recusa requisição sem imagem', async () => {
+    const service = new CompanyService(
+      uploadPrisma as never,
+      mockAudit as never,
+      mockStorage as never,
+    );
+
+    await expect(service.uploadLogo('c1', undefined, 'u1')).rejects.toThrow(BadRequestException);
+    expect(mockStorage.uploadBuffer).not.toHaveBeenCalled();
   });
 });
