@@ -3005,7 +3005,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-47-responsive-form-controls",

@@ -67,8 +67,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       em `4427f5a`; matriz web horizontal/quadrada/retrato concluída em `1440×900`, `390×844` e `360×800`, nos modos
       fácil/completo. Saída local confirmada como PNG `1024×512`; app registrado como não reproduzido/bloqueado até
       B4-15/B4-16, sem inferir defeito nativo.
-- [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
-      responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
+- [x] **B4-46 — inventário responsivo:** matriz de login/onboarding, cliente, orçamento, OS, recebimento e assinatura
+      registrada em `docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md`; RF-01…RF-03 seguem para B4-47.
+- [ ] **B4-47…B4-48 — achados durante a execução:** corrigir formulários/modais inventariados e proteger contra
+      entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
       `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`; bloqueia `DEPLOY-B4-1`.
 - [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
@@ -80,12 +82,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** iniciar `B4-46-responsive-form-inventory`, inventariando login/onboarding, cliente,
-orçamento, OS, recebimento e assinatura nos três viewports oficiais e nos modos fácil/completo. Registrar cada
-overflow, controle ilegível e CTA truncado com rota, modo, viewport e evidência; não corrigir antecipadamente o que
-pertence à B4-47. A B4-14 está concluída: `company.service.spec.ts` 12/12, contratos crop/picker 6/6, typecheck/lint
-de backend/web/mobile com código 0 e matriz visual web completa; execução autenticada no app permanece para
-B4-15/B4-16.
+**Próxima ação concreta:** executar `B4-47-responsive-form-controls`. Corrigir RF-01 (grade do recebimento completo
+em 360 px), RF-02 (fragmento solto na faixa de abas de Configurações) e RF-03 (overflow latente do shell fácil em
+320 px) sem recriar o design system. Repetir os três viewports oficiais nos modos fácil/completo e manter 320 px
+somente como diagnóstico. O app permanece sem atribuição até B4-15/B4-16.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
