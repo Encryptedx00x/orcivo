@@ -915,7 +915,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-14A-exploratory-block-1-2",

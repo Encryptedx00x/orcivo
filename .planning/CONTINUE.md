@@ -5,7 +5,7 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-12)
+## 1. Estado agora (atualizado 2026-10-13)
 
 | Item | Valor |
 | --- | --- |
@@ -63,9 +63,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       histórico e edição/novo orçamento somente por ações explícitas (`04d6adc`, ADR-018).
 - [x] **B4-13 — navegação pós-geração:** criação substitui o editor pelo detalhe, Voltar abre a lista, CTAs explícitos
       e guardas contra duplo toque nas superfícies equivalentes (`685970f`).
-- [~] **B4-14 — visual/UX:** implementação e testes automáticos entregues em `4427f5a`; falta somente a
-      verificação visual real de logo horizontal/quadrada/retrato em `1440×900`, `390×844` e `360×800`, nos modos
-      fácil/completo, e o app quando acessível após B4-15/B4-16. Não marcar `DONE` antes dessa evidência.
+- [x] **B4-14 — visual/UX:** crop 2:1, zoom, reposicionamento, cancelamento não destrutivo e upload seguro entregues
+      em `4427f5a`; matriz web horizontal/quadrada/retrato concluída em `1440×900`, `390×844` e `360×800`, nos modos
+      fácil/completo. Saída local confirmada como PNG `1024×512`; app registrado como não reproduzido/bloqueado até
+      B4-15/B4-16, sem inferir defeito nativo.
 - [ ] **B4-46…B4-48 — achados durante a execução:** inventário e correção transversal de formulários/modais
       responsivos e proteção contra entrega acidental de PDF em rascunho; entram antes da passada curta.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
@@ -79,17 +80,12 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir `B4-14-logo-crop-position-zoom`. O código já está em `4427f5a`: web usa canvas
-2:1 (1024×512) com zoom/posição, cancelamento não destrutivo e orientação EXIF; app usa o editor nativo 2:1 e
-preserva MIME; backend tem cobertura PNG/JPEG/WebP e limite de 2 MB. Entrar em Configurações → Logo no web completo
-e fácil, selecionar imagens horizontal/quadrada/retrato, confirmar preview, cancelamento e salvamento nos três
-viewports oficiais. Registrar a evidência em `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md`, mudar o status da tarefa
-para `DONE`, reconciliar, commitar/pushar o registro e então iniciar `B4-46-responsive-form-inventory`.
-
-Validação já executada para `4427f5a`: `company.service.spec.ts` 12/12; contratos locais de crop/picker 6/6;
-typecheck e lint de backend/web/mobile com exit 0 (somente warnings preexistentes). A automação visual desta sessão
-foi bloqueada pela política do controlador ao tentar vincular a aba local; isso não vale como evidência nem como
-falha do produto. O `tasks.json` permanece corretamente `SCHEDULED` porque a tarefa ainda não fechou.
+**Próxima ação concreta:** iniciar `B4-46-responsive-form-inventory`, inventariando login/onboarding, cliente,
+orçamento, OS, recebimento e assinatura nos três viewports oficiais e nos modos fácil/completo. Registrar cada
+overflow, controle ilegível e CTA truncado com rota, modo, viewport e evidência; não corrigir antecipadamente o que
+pertence à B4-47. A B4-14 está concluída: `company.service.spec.ts` 12/12, contratos crop/picker 6/6, typecheck/lint
+de backend/web/mobile com código 0 e matriz visual web completa; execução autenticada no app permanece para
+B4-15/B4-16.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

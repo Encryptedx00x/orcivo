@@ -395,6 +395,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** spec de upload/transformação; testes de crop cancel/save e orientação EXIF; typecheck/lint
 - **Testes visuais:** logo horizontal, quadrada e retrato nos três viewports e app
 - **Autonomia:** Nível B
+- **Evidência de execução (2026-10-13):** no web completo (`Configurações → Identidade visual`) e no web fácil (`Menu → Configurações → Logo`), imagens horizontal, quadrada e retrato foram carregadas em `1440×900`, `390×844` e `360×800`. Nos seis cenários o editor 2:1 permaneceu contido, com rolagem vertical quando necessária e sem overflow horizontal; zoom e reposicionamento horizontal/vertical alteraram o preview, `Cancelar` preservou a logo anterior e `Salvar` substituiu a logo. A saída persistida foi conferida pela API local/armazenamento local como PNG `1024×512` de 134.528 bytes, equivalente ao preview confirmado. O app nativo está **não reproduzido/bloqueado para execução autenticada** até B4-15/B4-16; o componente compartilhado pelos modos fácil/completo está coberto pelos dois testes de contrato, sem atribuir ao app um defeito não observado. `company.service.spec.ts` passou 12/12, contratos web/mobile passaram 6/6, e typecheck/lint de backend, web e mobile encerraram com código 0 (somente avisos preexistentes no backend/web).
 
 ### B4-14A-exploratory-block-1-2 — Passada exploratória curta dos blocos 1–2
 
