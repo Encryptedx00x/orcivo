@@ -1157,7 +1157,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-MOBILE",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-18-mobile-size-budget",
