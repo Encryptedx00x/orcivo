@@ -62,4 +62,6 @@ Build avaliada: `main` em `2a8617a`, com backend, web e Expo web locais. Postgre
 
 ## Conclusão do gate
 
-`DEPLOY-B4-1` pode ser liberado após marcar B4-14A como `DONE` e reconciliar o lote. Não há migração nova nesta tarefa e nenhuma operação foi feita em produção.
+`DEPLOY-B4-1` foi executado em 2026-10-14 a partir de `fade582`: backup `pre-20261014-005020.sql.gz`, tag
+`prev-20261014-005020`, `HEALTH: healthy healthy healthy` e `DEPLOY_DONE`. A consulta SQL somente leitura confirmou
+34 migrations concluídas e `20261011210000_payment_overpayment_confirmation` aplicada exatamente uma vez.

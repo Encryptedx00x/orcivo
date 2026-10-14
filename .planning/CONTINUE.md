@@ -9,9 +9,9 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `d3549b9` — B4-14A concluída; registro/reconciliação desta entrega vem no commit seguinte; produção permanece em `6904bb1` |
-| Produção (app/site/api.orcivo.com.br) | `6904bb1` — deploy `20261011-123450`, saudável (`HEALTH` 3× + `DEPLOY_DONE`); migrations aplicadas até `20261010160000_company_home_shortcuts` |
-| Banco de produção | Reinicializado em 2026-10-11 14:00 BRT para o primeiro Key User: 33 migrations, 4 `PlanLimit` e 0 linhas de negócio; backup restaurável em `/srv/orcivo/backups/manual-pre-key-user-reset-20261011T165917Z.sql.gz` |
+| `main` / `origin/main` | `fade582` — B4-14A concluída, reconciliada e publicada; registro do deploy vem no commit seguinte |
+| Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
+| Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
 | Próxima fila | **Improvement Batch 4 em andamento, execução manual pelo Codex nesta conversa**: 49 tarefas em `.planning/product/IMPROVEMENT-BATCH-4.tasks.json`, sem autopilot/dispatcher, três checkpoints de deploy e fonte humana em `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md`. |
 | Trabalho de segurança (Codex) | concluído; pendências do dono em §5 |
@@ -85,9 +85,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar `DEPLOY-B4-1` pela receita da §6, confirmar `HEALTH healthy` 3×,
-`DEPLOY_DONE` e migrations em produção sem mutar dados de negócio. Depois seguir para
-`B4-15-mobile-api-environment-guard` usando somente infraestrutura local no desenvolvimento.
+**Próxima ação concreta:** executar `B4-15-mobile-api-environment-guard`. Centralizar a URL por ambiente,
+bloquear loopback em builds distribuídos e adicionar a checagem automática; usar somente infraestrutura local
+no desenvolvimento e não publicar o app.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
@@ -95,7 +95,8 @@ atribuir o defeito a desktop/app e registrar `não reproduzido` com evidência. 
 
 Pontos de deploy futuros, sempre pela receita da §6 e somente após evidência exploratória:
 
-1. `DEPLOY-B4-1` depois de B4-14A: blocos 1–2 e achados B4-46…B4-48, após checklist curto registrado em `docs/qa`.
+1. [x] `DEPLOY-B4-1` depois de B4-14A: executado em `20261014-005020` a partir de `fade582`; backup e tag
+   `prev-20261014-005020`, `HEALTH` 3×, `DEPLOY_DONE` e 34 migrations confirmadas.
 2. `DEPLOY-B4-2` depois de B4-44: blocos 3–5 e regressão dos blocos 1–2.
 3. `DEPLOY-B4-3` depois de B4-45: onda estratégica B4-34…B4-42 aprovada pelo dono.
 

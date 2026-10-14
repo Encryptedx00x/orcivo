@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 em andamento — B4-01…B4-14A e B4-43/B4-46…B4-48 concluídas; `DEPLOY-B4-1` é o próximo checkpoint; execução manual, sem autopilot | `a94d073`…`d3549b9` |
+| Improvement Batch 4 | 🟡 em andamento — B4-01…B4-14A e B4-43/B4-46…B4-48 concluídas; `DEPLOY-B4-1` saudável em produção; próxima tarefa B4-15; execução manual, sem autopilot | `a94d073`…`fade582` |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -65,8 +65,9 @@ Depois, o Codex executa manualmente nesta conversa, sem `pilot.ps1`/dispatcher/a
 Dependências, checkpoints, escopo, critérios e autonomia estão no JSON e no documento UAT. As decisões estratégicas
 são Nível C no gate `B4-33`; levantamentos/ADRs anteriores são Nível B e não antecipam mudanças de produto.
 
-Andamento em 2026-10-13: blocos 1–2 encerrados com zero defeito aberto no checklist
-`docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`. A próxima operação é `DEPLOY-B4-1`; depois começa B4-15.
+Andamento em 2026-10-14: blocos 1–2 encerrados com zero defeito aberto no checklist
+`docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`. `DEPLOY-B4-1` `20261014-005020` concluiu com backup,
+tag `prev-*`, `HEALTH` 3×, `DEPLOY_DONE` e 34 migrations confirmadas por consulta somente leitura. Próxima: B4-15.
 
 ---
 
