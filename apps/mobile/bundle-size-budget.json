@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "platform": "android",
+  "baseline": {
+    "hermesBytecodeBytes": 3226080,
+    "gzipHermesBytecodeBytes": 1255294,
+    "packagedAssetBytes": 1655,
+    "sourceModuleCount": 2761
+  },
+  "limits": {
+    "hermesBytecodeBytes": 3548688,
+    "packagedAssetBytes": 262144
+  },
+  "tolerancePercent": 10,
+  "notes": [
+    "O limite do bytecode Hermes corresponde ao baseline local mais 10%.",
+    "Assets nativos de icon/splash nao fazem parte do export Metro e sao inventariados no relatorio de QA.",
+    "O tamanho aproximado de 73 MB observado pelo Key User nao e usado como baseline automatica sem o APK original."
+  ]
+}
