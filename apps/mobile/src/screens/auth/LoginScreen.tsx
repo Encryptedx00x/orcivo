@@ -3,10 +3,10 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import { LockKeyhole, Mail } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
-import { API_URL } from '../../config';
 import type { AuthStackParamList } from '../../navigation/AuthStack';
 import { AuthScaffold } from '../../components/AuthScaffold';
 import { theme } from '../../theme';
+import { describeLoginError } from './login-feedback';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -22,15 +22,8 @@ export function LoginScreen({ navigation }: Props) {
     try {
       await login(email, password);
     } catch (e: unknown) {
-      const error = (e ?? {}) as { status?: number; message?: string };
-      if (error.status === 401) {
-        Alert.alert('Erro', 'E-mail ou senha inválidos.');
-      } else {
-        Alert.alert(
-          'Erro de conexão',
-          `Não foi possível conectar ao servidor.\n\nURL: ${API_URL}\nDetalhe: ${error.message ?? 'desconhecido'}`,
-        );
-      }
+      const feedback = describeLoginError(e);
+      Alert.alert(feedback.title, feedback.message);
     } finally {
       setLoading(false);
     }
