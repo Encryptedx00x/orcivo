@@ -409,6 +409,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** reexecutar testes adicionados em B4-01…B4-14; typecheck/lint dos apps tocados; specs de integração relevantes com --runInBand
 - **Testes visuais:** 1440×900 em fácil e completo; 390×844 em fácil e completo; 360×800 em fácil e completo; Expo web :8081 fácil/completo quando o fluxo existir
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-13):** checklist completo em `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`. A matriz web fácil/completo passou em `1440×900`, `390×844` e `360×800`, sem overflow horizontal. Duas abas aprovaram o mesmo link: a primeira concluiu e a segunda mostrou `Este orçamento já foi aprovado. A tela foi atualizada.`, sem erro técnico ou duplicação. O cenário visual de excedente mostrou esperado `R$ 250,00`, recebido `R$ 275,00` e diferença `R$ 25,00`, exigindo confirmação; a alteração foi cancelada sem persistência. O download real produziu PDF A4 de uma página/47.360 bytes com marca `Rascunho`, e `Voltar` abriu a lista sem restaurar o editor. As regressões frescas fecharam em 38/38 contratos de UI e 191/191 testes backend, além de build/test/typecheck/lint verdes. O app permaneceu **não reproduzido/bloqueado** até B4-15/B4-16, sem inferência de defeito nativo. Zero defeito aberto no escopo; `DEPLOY-B4-1` está apto após reconciliação.
 
 ### B4-15-mobile-api-environment-guard — Bloquear localhost em build distribuída
 
