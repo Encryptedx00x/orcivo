@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
-import type { QuoteAction, QuoteUpdateDto } from '@orcivo/shared-types';
+import type { QuoteAction, QuoteCompletenessReview, QuoteUpdateDto } from '@orcivo/shared-types';
 import type { Quote } from '../../../lib/quote.service';
 
 /**
@@ -28,7 +28,10 @@ const ACTION_ROUTES: Record<DirectQuoteAction, string> = {
   corrigir: 'correct',
 };
 
-export type QuoteWithActions = Quote & { allowed_actions?: QuoteAction[] };
+export type QuoteWithActions = Quote & {
+  allowed_actions?: QuoteAction[];
+  completeness?: QuoteCompletenessReview;
+};
 
 export interface QuoteActionInput {
   action: DirectQuoteAction;

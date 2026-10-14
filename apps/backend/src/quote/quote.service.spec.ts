@@ -301,6 +301,36 @@ describe('QuoteService', () => {
     });
   });
 
+  describe('findOne()', () => {
+    it('devolve a revisão não bloqueante dos opcionais do documento', async () => {
+      mockPrisma.quote.findFirst.mockResolvedValue({
+        id: 'q-completeness',
+        status: 'DRAFT',
+        valid_until: null,
+        payment_terms: null,
+        warranty: null,
+        notes: null,
+        doc_options: null,
+        pdf_url: null,
+        approval: null,
+        items: [],
+        customer: { id: 'cust-1', name: 'Cliente' },
+      });
+
+      const quote = await service.findOne('q-completeness', 'comp-1', 'OWNER');
+
+      expect(quote.completeness).toEqual({
+        complete: false,
+        missing: [
+          expect.objectContaining({ field: 'valid_until' }),
+          expect.objectContaining({ field: 'payment_terms' }),
+          expect.objectContaining({ field: 'warranty' }),
+          expect.objectContaining({ field: 'notes' }),
+        ],
+      });
+    });
+  });
+
   describe('update()', () => {
     const baseDraft = {
       id: 'q1',

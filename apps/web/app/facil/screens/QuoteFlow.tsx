@@ -30,6 +30,7 @@ import {
   resolveQuoteDocOptions,
   isFeminineDocTitle,
   quotePendingItemState,
+  reviewQuoteCompleteness,
 } from '@orcivo/shared-types';
 import {
   createCatalogItem,
@@ -902,6 +903,7 @@ function Q3() {
   const [savedChecked, setSavedChecked] = useState(false);
   const approvals = useLoad(getApprovalMethods);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [completenessAcknowledged, setCompletenessAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const submitInFlight = useRef(false);
 
@@ -957,6 +959,13 @@ function Q3() {
     d.setHours(23, 59, 59, 0);
     return d.toISOString();
   };
+  const completeness = reviewQuoteCompleteness({
+    valid_until: draft.validityDays > 0 ? 'configurada' : null,
+    payment_terms: draft.paymentTerms,
+    warranty: draft.warranty,
+    notes: draft.terms,
+    doc_options: draft.docOptions,
+  });
   const create = async () => {
     if (!draft.client) return null;
     const dto = {
@@ -993,6 +1002,10 @@ function Q3() {
   // the Pronto screen then sends it by WhatsApp, PDF or link — all with a fresh tap.
   const conclude = async () => {
     if (submitInFlight.current || busy || !draft.client) return;
+    if (!completeness.complete && !completenessAcknowledged) {
+      toast('Confira os opcionais ou escolha continuar sem preencher.');
+      return;
+    }
     submitInFlight.current = true;
     setBusy(true);
     try {
@@ -1104,6 +1117,44 @@ function Q3() {
                   {maskPhone(draft.client.phone)}
                 </span>
               </span>
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            ...card,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            background: completeness.complete ? '#F0FDF4' : C.purple50,
+            borderColor: completeness.complete ? '#BBF7D0' : C.purple200,
+          }}
+        >
+          <span style={{ fontSize: 18, fontWeight: 700 }}>Revisão de completude</span>
+          <span style={{ fontSize: 15, lineHeight: '21px', color: C.fg2 }}>
+            {completeness.complete
+              ? 'Os dados opcionais relevantes estão preenchidos.'
+              : 'Estes dados são opcionais. Se ficarem vazios, não aparecerão no documento.'}
+          </span>
+          {!completeness.complete && (
+            <ul style={{ margin: 0, paddingLeft: 20, color: C.fg2 }}>
+              {completeness.missing.map((item) => (
+                <li key={item.field} style={{ marginBottom: 4 }}>
+                  <strong>{item.label}:</strong> {item.description}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!completeness.complete && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <Btn tone="soft" onClick={() => setMoreOpen(true)}>
+                Preencher agora
+              </Btn>
+              <Btn tone="link" onClick={() => setCompletenessAcknowledged(true)}>
+                Continuar sem preencher
+              </Btn>
             </div>
           )}
         </div>

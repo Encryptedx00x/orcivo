@@ -508,6 +508,8 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** schema/contrato da completude; testes de campos presentes/ausentes e continuar; testes de navegação sem perda
 - **Testes visuais:** completo/incompleto nos três viewports e dois modos/app
 - **Autonomia:** Nível B
+- **Evidência automática parcial (2026-10-14):** `reviewQuoteCompleteness` centraliza no shared-types os opcionais relevantes e respeita opções ocultas do documento; o backend anexa o resultado tenant-safe às respostas de orçamento. Web completa/fácil e app completo/fácil mostram ausências antes de gerar/enviar, oferecem preenchimento dentro do fluxo e continuação consciente sem tornar opcionais obrigatórios. Shared passou `3/3`, backend `66/66`, contratos das quatro experiências `4/4`, e typecheck/lint passaram nos quatro pacotes (somente avisos preexistentes no backend/web).
+- **Verificação visual pendente:** a matriz `1440×900`, `390×844`, `360×800`, fácil/completo e Expo web continua bloqueada pela recusa do controlador em vincular a aba localhost. A tarefa permanece aberta; não foi atribuída falha visual ao app sem reprodução.
 
 ### B4-22-receipt-signature-flow — Selecionar ou adicionar assinatura no recibo
 

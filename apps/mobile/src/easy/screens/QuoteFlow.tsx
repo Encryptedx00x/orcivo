@@ -29,6 +29,7 @@ import {
   resolveQuoteDocOptions,
   isFeminineDocTitle,
   quotePendingItemState,
+  reviewQuoteCompleteness,
 } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../PaymentTerms';
 import { newIdempotencyKey } from '../../services/api';
@@ -421,6 +422,7 @@ export function QuoteReviewScreen() {
     'Não foi possível carregar as formas de aprovação.',
   );
   const [busy, setBusy] = useState(false);
+  const [completenessAcknowledged, setCompletenessAcknowledged] = useState(false);
   const submitInFlight = useRef(false);
   const createKey = useRef(newIdempotencyKey());
   const saved = draft.savedSignature;
@@ -497,9 +499,23 @@ export function QuoteReviewScreen() {
       })),
     } as QuoteCreateDto;
   };
+  const completeness = reviewQuoteCompleteness({
+    valid_until: draft.validityDays > 0 ? 'configurada' : null,
+    payment_terms: draft.paymentTerms,
+    warranty: draft.warranty,
+    notes: draft.terms,
+    doc_options: draft.docOptions,
+  });
 
   const send = async () => {
     if (submitInFlight.current || busy || !draft.client) return;
+    if (!completeness.complete && !completenessAcknowledged) {
+      Alert.alert(
+        'Revise os dados opcionais',
+        'Preencha os campos sugeridos abaixo ou escolha continuar sem preencher.',
+      );
+      return;
+    }
     submitInFlight.current = true;
     setBusy(true);
     const dto = buildDto();
@@ -608,6 +624,57 @@ export function QuoteReviewScreen() {
             ? ` · desconto de ${formatMoney(totals.discount)}`
             : ''}
         </Text>
+      </Card>
+
+      <Card
+        style={{
+          padding: 16,
+          gap: 12,
+          backgroundColor: completeness.complete ? '#F0FDF4' : C.purple50,
+          borderColor: completeness.complete ? '#BBF7D0' : C.purple200,
+        }}
+      >
+        <Text style={[s.body, { fontWeight: '700', fontSize: 18 }]}>Revisão de completude</Text>
+        <Text style={s.muted}>
+          {completeness.complete
+            ? 'Os dados opcionais relevantes estão preenchidos.'
+            : 'Estes dados são opcionais. Se ficarem vazios, não aparecerão no documento.'}
+        </Text>
+        {completeness.missing.some((item) => item.field === 'payment_terms') ? (
+          <>
+            <Text style={[s.body, { fontWeight: '600' }]}>Condição de pagamento</Text>
+            <PaymentTermsFields
+              value={draft.paymentTerms}
+              onChange={(value) => setDraft((current) => ({ ...current, paymentTerms: value }))}
+            />
+          </>
+        ) : null}
+        {completeness.missing.some((item) => item.field === 'warranty') ? (
+          <Field
+            label="Garantia (opcional)"
+            value={draft.warranty}
+            onChange={(value) =>
+              setDraft((current) => ({ ...current, warranty: value.slice(0, 2000) }))
+            }
+            placeholder="Ex.: 90 dias sobre a mão de obra"
+            multiline
+          />
+        ) : null}
+        {completeness.missing.some((item) => item.field === 'notes') ? (
+          <Field
+            label="Condições e informações adicionais (opcional)"
+            value={draft.terms}
+            onChange={(value) =>
+              setDraft((current) => ({ ...current, terms: value.slice(0, 2000) }))
+            }
+            multiline
+          />
+        ) : null}
+        {!completeness.complete ? (
+          <Btn tone="link" onPress={() => setCompletenessAcknowledged(true)}>
+            Continuar sem preencher
+          </Btn>
+        ) : null}
       </Card>
 
       <Card style={{ padding: 16, gap: 8 }}>

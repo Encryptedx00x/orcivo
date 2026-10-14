@@ -21,6 +21,7 @@ import {
   assertValidQuoteAction,
   quoteAllowedActions,
   calculateQuoteTotals,
+  reviewQuoteCompleteness,
 } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -242,7 +243,9 @@ export class QuoteService {
     });
     return {
       data: await Promise.all(
-        data.map(async (q) => this.withAllowedActions(await this.withSignedUrls(q), role)),
+        data.map(async (q) =>
+          this.withAllowedActions(this.withCompleteness(await this.withSignedUrls(q)), role),
+        ),
       ),
       page,
       limit,
@@ -255,7 +258,28 @@ export class QuoteService {
       include: { items: true, customer: true, approval: true },
     });
     if (!quote) throw new NotFoundException();
-    return this.withAllowedActions(await this.withSignedUrls(quote), role);
+    return this.withAllowedActions(this.withCompleteness(await this.withSignedUrls(quote)), role);
+  }
+
+  private withCompleteness<
+    T extends {
+      valid_until?: Date | string | null;
+      payment_terms?: unknown;
+      warranty?: string | null;
+      notes?: string | null;
+      doc_options?: unknown;
+    },
+  >(quote: T) {
+    return {
+      ...quote,
+      completeness: reviewQuoteCompleteness({
+        valid_until: quote.valid_until,
+        payment_terms: quote.payment_terms as QuotePaymentTerms | null | undefined,
+        warranty: quote.warranty,
+        notes: quote.notes,
+        doc_options: quote.doc_options as QuoteCreateDto['doc_options'],
+      }),
+    };
   }
 
   /**

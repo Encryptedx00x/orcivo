@@ -17,6 +17,7 @@ import {
   calculateQuoteTotals,
   isNonNegativeDecimal,
   isPositiveDecimal,
+  reviewQuoteCompleteness,
 } from '@orcivo/shared-types';
 import { maskPhone } from '@orcivo/shared-types';
 
@@ -198,6 +199,10 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pendingCompletionAction, setPendingCompletionAction] = useState<'pdf' | 'share' | null>(
+    null,
+  );
+  const [completenessAcknowledged, setCompletenessAcknowledged] = useState(false);
   const submitInFlight = useRef(false);
 
   useEffect(() => {
@@ -394,6 +399,38 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
     // onde o fluxo de envio + compartilhamento funciona corretamente.
     const id = await saveDraft();
     if (id) router.replace(`/orcamentos/${id}?compartilhar=1`);
+  }
+
+  const completeness = reviewQuoteCompleteness({
+    valid_until: validUntil || null,
+    payment_terms: paymentTerms,
+    warranty,
+    notes: terms,
+    doc_options: docOptions,
+  });
+
+  function runCompletionAction(action: 'pdf' | 'share'): void {
+    if (action === 'pdf') void handlePdf();
+    else void handleWhatsApp();
+  }
+
+  function requestCompletionAction(action: 'pdf' | 'share'): void {
+    if (!completeness.complete && !completenessAcknowledged) {
+      setPendingCompletionAction(action);
+      setStep(4);
+      setError('Confira os dados opcionais abaixo ou escolha continuar sem preencher.');
+      return;
+    }
+    runCompletionAction(action);
+  }
+
+  function continueAfterCompletenessReview(): void {
+    if (!pendingCompletionAction) return;
+    const action = pendingCompletionAction;
+    setCompletenessAcknowledged(true);
+    setPendingCompletionAction(null);
+    setError('');
+    runCompletionAction(action);
   }
 
   // ── Step content ─────────────────────────────────────────────────
@@ -647,6 +684,89 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
           <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: T.ink }}>
             Revisão
           </h3>
+
+          <div
+            style={{
+              border: `1px solid ${completeness.complete ? '#BBF7D0' : '#DDD6FE'}`,
+              background: completeness.complete ? '#F0FDF4' : T.purple50,
+              borderRadius: 10,
+              padding: 14,
+              marginBottom: 18,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, color: T.ink }}>Revisão de completude</div>
+              <div style={{ marginTop: 3, color: T.fg2, fontSize: 13, lineHeight: '18px' }}>
+                {completeness.complete
+                  ? 'Os dados opcionais relevantes estão preenchidos.'
+                  : 'Estes dados são opcionais. Se ficarem vazios, não aparecerão no documento.'}
+              </div>
+            </div>
+
+            {completeness.missing.some((item) => item.field === 'valid_until') && (
+              <div>
+                <label className="ov-label" htmlFor="quote-review-validity">
+                  Validade (opcional)
+                </label>
+                <input
+                  id="quote-review-validity"
+                  className="ov-input"
+                  type="date"
+                  value={validUntil}
+                  onChange={(event) => setValidUntil(event.target.value)}
+                />
+              </div>
+            )}
+            {completeness.missing.some((item) => item.field === 'payment_terms') && (
+              <div>
+                <label className="ov-label">Condição de pagamento (opcional)</label>
+                <PaymentTermsFields value={paymentTerms} onChange={setPaymentTerms} />
+              </div>
+            )}
+            {completeness.missing.some((item) => item.field === 'warranty') && (
+              <div>
+                <label className="ov-label" htmlFor="quote-review-warranty">
+                  Garantia (opcional)
+                </label>
+                <textarea
+                  id="quote-review-warranty"
+                  className="ov-input"
+                  rows={2}
+                  maxLength={2000}
+                  value={warranty}
+                  onChange={(event) => setWarranty(event.target.value)}
+                  placeholder="Ex.: 90 dias sobre a mão de obra"
+                />
+              </div>
+            )}
+            {completeness.missing.some((item) => item.field === 'notes') && (
+              <div>
+                <label className="ov-label" htmlFor="quote-review-notes">
+                  Condições e informações adicionais (opcional)
+                </label>
+                <textarea
+                  id="quote-review-notes"
+                  className="ov-input"
+                  rows={3}
+                  maxLength={2000}
+                  value={terms}
+                  onChange={(event) => setTerms(event.target.value)}
+                />
+              </div>
+            )}
+            {!completeness.complete && pendingCompletionAction && (
+              <button
+                type="button"
+                className="ov-btn ov-btn-outline"
+                onClick={continueAfterCompletenessReview}
+              >
+                Continuar sem preencher
+              </button>
+            )}
+          </div>
 
           <div
             style={{
@@ -1022,7 +1142,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
               style={{ gap: 8 }}
               disabled={loading}
               onClick={() => {
-                void handlePdf();
+                requestCompletionAction('pdf');
               }}
             >
               <FileText size={16} />
@@ -1190,7 +1310,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
                   style={{ justifyContent: 'flex-start', gap: 8 }}
                   disabled={loading}
                   onClick={() => {
-                    void handleWhatsApp();
+                    requestCompletionAction('share');
                   }}
                 >
                   <Share2 size={14} />
@@ -1202,7 +1322,7 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
                   style={{ justifyContent: 'flex-start', gap: 8 }}
                   disabled={loading}
                   onClick={() => {
-                    void handlePdf();
+                    requestCompletionAction('pdf');
                   }}
                 >
                   <FileText size={14} />

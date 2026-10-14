@@ -25,13 +25,28 @@ import { easy } from '../easy/data';
 import { approvalUrl as approvalUrlOf, draftFromQuote, useDraft } from '../easy/draft';
 import { useQuoteMore } from '../easy/screens/Quotes';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { formatMoney, sumDecimal } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  reviewQuoteCompleteness,
+  sumDecimal,
+  type QuoteCompletenessReview,
+  type QuoteDocOptions,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 
 import { AuditHistorySection } from './WorkOrderDetailScreen';
 
 type Props = NativeStackScreenProps<QuotesStackParamList, 'QuoteDetail'>;
+type QuoteWithCompleteness = Quote & {
+  notes?: string | null;
+  valid_until?: string | null;
+  payment_terms?: QuotePaymentTerms | null;
+  warranty?: string | null;
+  doc_options?: QuoteDocOptions | null;
+  completeness?: QuoteCompletenessReview;
+};
 
 const STATUS_LABEL: Record<QuoteStatus, string> = {
   DRAFT: 'Rascunho',
@@ -60,7 +75,7 @@ function buildWhatsAppLink(phone: string, message: string): string {
 
 export function QuoteDetailScreen({ route, navigation }: Props) {
   const { id } = route.params;
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quote, setQuote] = useState<QuoteWithCompleteness | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +129,7 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
     }
   };
 
-  const handleSend = async () => {
+  const performSend = async () => {
     if (!quote) return;
     try {
       setSending(true);
@@ -127,6 +142,32 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSend = () => {
+    if (!quote) return;
+    const completeness =
+      quote.completeness ??
+      reviewQuoteCompleteness({
+        valid_until: quote.valid_until,
+        payment_terms: quote.payment_terms,
+        warranty: quote.warranty,
+        notes: quote.notes,
+        doc_options: quote.doc_options,
+      });
+    if (completeness.complete) {
+      void performSend();
+      return;
+    }
+    Alert.alert(
+      'Revise antes de enviar',
+      `Não aparecerão no documento: ${completeness.missing.map((item) => item.label).join(', ')}.`,
+      [
+        { text: 'Editar agora', onPress: () => void edit() },
+        { text: 'Enviar assim mesmo', onPress: () => void performSend() },
+        { text: 'Voltar', style: 'cancel' },
+      ],
+    );
   };
 
   const { openMore } = useQuoteMore(
@@ -175,6 +216,15 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
 
   const statusColor = STATUS_COLOR[quote.status];
   const hasDiscount = quote.discount_value !== '0.00' && quote.discount_value !== '0';
+  const completeness =
+    quote.completeness ??
+    reviewQuoteCompleteness({
+      valid_until: quote.valid_until,
+      payment_terms: quote.payment_terms,
+      warranty: quote.warranty,
+      notes: quote.notes,
+      doc_options: quote.doc_options,
+    });
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -245,6 +295,27 @@ export function QuoteDetailScreen({ route, navigation }: Props) {
       {/* Ações por status */}
       {quote.status === 'DRAFT' && (
         <View style={styles.actions}>
+          <View
+            style={[
+              styles.completenessBox,
+              completeness.complete ? styles.completenessBoxComplete : undefined,
+            ]}
+          >
+            <Text style={styles.completenessTitle}>Revisão de completude</Text>
+            <Text style={styles.completenessText}>
+              {completeness.complete
+                ? 'Os dados opcionais relevantes estão preenchidos.'
+                : `Opcionais que não aparecerão: ${completeness.missing
+                    .map((item) => item.label)
+                    .join(', ')}.`}
+            </Text>
+            {!completeness.complete ? (
+              <TouchableOpacity style={styles.completenessEdit} onPress={() => void edit()}>
+                <Pencil size={17} color="#6D28D9" />
+                <Text style={styles.completenessEditText}>Preencher agora</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
           <TouchableOpacity
             style={[styles.primaryBtn, sending && styles.btnDisabled]}
             onPress={handleSend}
@@ -393,6 +464,29 @@ const styles = StyleSheet.create({
   grandTotalLabel: { fontSize: 16, fontWeight: '700', color: '#0A0A0F' },
   grandTotalValue: { fontSize: 16, fontWeight: '700', color: '#6D28D9' },
   actions: { gap: 12 },
+  completenessBox: {
+    gap: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    borderRadius: 10,
+    backgroundColor: '#F5F3FF',
+  },
+  completenessBoxComplete: { borderColor: '#BBF7D0', backgroundColor: '#F0FDF4' },
+  completenessTitle: { fontSize: 16, fontWeight: '700', color: '#0A0A0F' },
+  completenessText: { fontSize: 14, lineHeight: 20, color: '#475569' },
+  completenessEdit: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  completenessEditText: { fontSize: 15, fontWeight: '600', color: '#6D28D9' },
   primaryBtn: {
     backgroundColor: '#6D28D9',
     paddingVertical: 14,

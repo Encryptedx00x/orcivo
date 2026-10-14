@@ -7,6 +7,7 @@ import {
   maskPhone,
   multiplyDecimal,
   quotePdfDeliveryPolicy,
+  reviewQuoteCompleteness,
   type QuoteDocOptions,
   type QuotePaymentTerms,
 } from '@orcivo/shared-types';
@@ -114,6 +115,8 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
   const [typedSignatureName, setTypedSignatureName] = useState('');
   const [historyRevision, setHistoryRevision] = useState(0);
   const [showDraftPdfConfirm, setShowDraftPdfConfirm] = useState(false);
+  const [showCompletenessReview, setShowCompletenessReview] = useState(false);
+  const [completenessAcknowledged, setCompletenessAcknowledged] = useState(false);
 
   // PB1-P35/AC2: os botões vêm direto da lista de ações permitidas calculada
   // pelo backend para o estado atual + papel do usuário logado.
@@ -341,7 +344,17 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
     return '';
   }
 
-  async function handleSend() {
+  const completeness =
+    quote.completeness ??
+    reviewQuoteCompleteness({
+      valid_until: quote.valid_until,
+      payment_terms: quote.payment_terms,
+      warranty: quote.warranty,
+      notes: quote.notes,
+      doc_options: quote.doc_options,
+    });
+
+  async function performSend() {
     setLoading(true);
     setError('');
     try {
@@ -355,6 +368,14 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSend(): void {
+    if (!completeness.complete && !completenessAcknowledged) {
+      setShowCompletenessReview(true);
+      return;
+    }
+    void performSend();
   }
 
   const currentApprovalUrl = getApprovalUrl(quote);
@@ -555,6 +576,50 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
 
         {quote.status === 'DRAFT' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div
+              style={{
+                border: `1px solid ${completeness.complete ? '#BBF7D0' : '#DDD6FE'}`,
+                backgroundColor: completeness.complete ? '#F0FDF4' : '#F5F3FF',
+                borderRadius: 8,
+                padding: 14,
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0A0A0F' }}>
+                Revisão de completude
+              </p>
+              <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: '18px', color: '#475569' }}>
+                {completeness.complete
+                  ? 'Os dados opcionais relevantes estão preenchidos.'
+                  : 'Os itens abaixo são opcionais. Se ficarem vazios, não aparecerão no documento.'}
+              </p>
+              {!completeness.complete && (
+                <ul style={{ margin: '10px 0 0', paddingLeft: 20, color: '#334155', fontSize: 13 }}>
+                  {completeness.missing.map((item) => (
+                    <li key={item.field} style={{ marginBottom: 4 }}>
+                      <strong>{item.label}:</strong> {item.description}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!completeness.complete && showCompletenessReview && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                  <button type="button" onClick={openEdit} style={btnSecondary}>
+                    Preencher agora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompletenessAcknowledged(true);
+                      setShowCompletenessReview(false);
+                      void performSend();
+                    }}
+                    style={btnPrimary}
+                  >
+                    Enviar sem preencher
+                  </button>
+                </div>
+              )}
+            </div>
             {/* If just sent (approvalUrl available after send click) */}
             {approvalUrl && (
               <div

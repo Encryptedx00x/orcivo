@@ -42,6 +42,7 @@ export * from './company/inventory-settings';
 export * from './quote/quote-payment-terms';
 export * from './quote/quote-totals';
 export * from './quote/quote-pending-item';
+export * from './quote/quote-completeness';
 export * from './finance/expense';
 export * from './appointment/appointment';
 export * from './reports/reports.dto';
