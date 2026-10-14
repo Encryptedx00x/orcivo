@@ -1043,7 +1043,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-MOBILE",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-16-mobile-real-authentication",

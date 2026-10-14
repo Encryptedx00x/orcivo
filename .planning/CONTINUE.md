@@ -5,11 +5,11 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-13)
+## 1. Estado agora (atualizado 2026-10-14)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `fade582` — B4-14A concluída, reconciliada e publicada; registro do deploy vem no commit seguinte |
+| `main` / `origin/main` | `bc4ddc8` — B4-15 implementada e validada; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -76,7 +76,10 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-14A — passada curta:** matriz 3 viewports × 2 modos, concorrência em duas sessões, excedente,
       download real e navegação registrados em `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`;
       app não reproduzido até B4-15/B4-16, zero defeito aberto (`d3549b9`).
-- [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
+- [x] **B4-15 — configuração do app:** URL centralizada por ambiente, perfis distribuídos exigem endpoint HTTP(S)
+      público e rejeitam loopback antes da build; Expo equivalente a produção validado em 390×844 e 360×800
+      (`bc4ddc8`).
+- [ ] **B4-16…B4-18 — app:** autenticação real, auditoria Home/convite/build e tamanho.
 - [ ] **B4-19…B4-23 — fluxos:** responsável pelo serviço, completude do orçamento e assinatura/opções de recibo.
 - [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
@@ -85,9 +88,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar `B4-15-mobile-api-environment-guard`. Centralizar a URL por ambiente,
-bloquear loopback em builds distribuídos e adicionar a checagem automática; usar somente infraestrutura local
-no desenvolvimento e não publicar o app.
+**Próxima ação concreta:** executar `B4-16-mobile-real-authentication`. Validar login, refresh, logout e erro de
+conexão contra o backend local acessível, cobrindo os modos fácil/completo e registrando limitações objetivas do
+harness nativo, sem publicar o app.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
