@@ -104,7 +104,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [~] **B4-27 — documentos:** defaults e preview consistentes em web/app, fácil/completo; `26/26` specs e `4/4`
       contratos verdes. Falta a matriz visual bloqueada pelo `ERR_TOO_MANY_REDIRECTS` da aba local.
 - [x] **B4-28 — ADR de Uso/planos:** inventário de limites/gates, contrato backend, tela Uso, estados e wireframes
-      propostos na ADR-020; sete escolhas comerciais reservadas ao gate B4-33.
+      propostos na ADR-020; sete escolhas comerciais reservadas ao gate B4-33 (`ca0b4cc`).
 - [ ] **B4-29…B4-32 — ADRs:** posicionamento, multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
