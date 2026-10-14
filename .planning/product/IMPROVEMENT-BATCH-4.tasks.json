@@ -2042,7 +2042,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-STRATEGY",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "decisionDeliverable": "ADR de estratégia de modos no web mobile"
     },
     {

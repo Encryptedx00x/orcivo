@@ -658,6 +658,15 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** inventário de rotas/telemetria disponível e gaps
 - **Testes visuais:** auditoria 390x844/360x800 em ambos os modos
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/qa/B4-31-WEB-MOBILE-MODE-INVENTORY.md` confronta as `24` rotas
+  completas com os `25` estados de tela do fácil, documenta a preferência por aparelho, o escape “Mais opções”, gaps
+  de deep link/draft e a ausência de telemetria de uso. As matrizes já registradas em B4-14A/B4-46 cobrem
+  `1440×900`, `390×844` e `360×800` nos dois modos e sustentam que ocultar o completo não eliminaria deep links nem
+  manutenção responsiva. Oito regressões automatizadas de OS, modal e abas móveis passaram. A repetição ao vivo atual
+  ficou bloqueada porque o navegador integrado substituiu as abas locais por `ERR_TOO_MANY_REDIRECTS`; isso foi
+  registrado como limitação da ferramenta, não falha do produto. A ADR-023 recomenda fácil como entrada em novos
+  aparelhos e completo acessível/adaptado, com confirmação para draft, sem alterar UI ou app nativo; cinco decisões
+  ficam reservadas ao dono na B4-33.
 
 ### B4-32-partial-work-order-adr — ADR de realização parcial da OS
 
