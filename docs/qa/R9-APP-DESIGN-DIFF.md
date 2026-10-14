@@ -56,3 +56,22 @@ Resultado: nenhuma divergência relevante de token, hierarquia, toque,
 componente, texto ou ícone nas telas verificadas. O app nativo continua
 dependendo de novo build EAS para chegar aos aparelhos; publicação em loja não
 faz parte desta rodada.
+
+## Reauditoria B4-17 — Home, convite e build observada (2026-10-14)
+
+- A build observada pelo Key User não pôde ser identificada por hash ou versão: o APK instalado não está disponível
+  neste workspace e esta máquina não possui Android SDK, `adb`, emulador ou dispositivo conectado. Portanto, a
+  conclusão sobre versão é uma inferência controlada, não uma identificação do binário.
+- O texto relatado, `Tenho um convite`, pertence à linhagem anterior do app. O HEAD usa `Entrar com um convite`,
+  aplicado na rodada de fidelidade visual, e leva à tela funcional `Aceitar convite`.
+- O fluxo existe de ponta a ponta no código atual: rota de autenticação, aceite público `POST /invites/accept`, estados
+  inexistente/expirado/já usado, criação de usuário e vínculo com a empresa, invalidação dos caches de tenant e
+  contrato compartilhado com token UUID e senha mínima.
+- No runtime local autenticado, a Home fácil e a Home completa foram abertas em `390×844`, ambas sem overflow e com
+  hierarquia, roxo, Lucide, ações e nomenclatura alinhados ao handoff. A Home completa vigente é registrada por
+  `AppTabs` como `screens/inicio/InicioScreen.tsx`; o caminho antigo `screens/HomeScreen.tsx` não existe no HEAD.
+- A tela de convite foi aberta a partir do login em `390×844`, permaneceu contida e apresentou código/link, nome,
+  senha, ação de aceite e retorno ao login. Não foi usado convite real nem criado vínculo por essa verificação visual.
+- Assim, a hipótese de tela inicial genericamente incorreta ficou **não reproduzida no HEAD**. A evidência disponível
+  é compatível com build instalada desatualizada; nenhuma conclusão foi estendida às telas internas que o Key User
+  não conseguiu acessar.

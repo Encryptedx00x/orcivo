@@ -451,6 +451,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes do fluxo de convite e versão/configuração; inventário de rotas
 - **Testes visuais:** comparação build instalada/Expo web/HEAD e handoff; prints apenas de telas realmente acessadas
 - **Autonomia:** Nível B
+- **Evidência de execução (2026-10-14):** a comparação detalhada foi acrescentada a `docs/qa/R9-APP-DESIGN-DIFF.md`. O texto relatado `Tenho um convite` aparece na história anterior do app e foi substituído no HEAD por `Entrar com um convite`; como o APK observado não está disponível e não há Android SDK/`adb`/emulador nesta máquina, a identificação da build como antiga é uma inferência consistente, não um hash confirmado. O fluxo atual foi mantido porque existe de ponta a ponta: rota `AcceptInvite`, endpoint público, contrato UUID/senha, estados terminalmente distintos, criação de usuário/vínculo e invalidação de cache. A tela `Aceitar convite` abriu em `390×844` sem overflow, e 10/10 testes de inventário/recuperação mais 3/3 specs do serviço passaram. Após o login local da B4-16, as Homes fácil e completa abriram no mesmo viewport sem overflow e alinhadas ao handoff; a hipótese de Home genérica ficou **não reproduzida no HEAD**. O caminho planejado `screens/HomeScreen.tsx` não existe mais: `AppTabs` referencia `screens/inicio/InicioScreen.tsx`. Nenhuma conclusão foi generalizada para telas internas não observadas e nenhuma build foi publicada.
 
 ### B4-18-mobile-size-budget — Medir e otimizar tamanho do app com orçamento
 
