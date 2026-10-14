@@ -1,7 +1,11 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
+import type {
+  WorkOrderAssignableMember,
+  WorkOrderDetails,
+  WorkOrderField,
+} from '@orcivo/shared-types';
 import { OsDetailsFields, cleanDetails } from '../../../../components/OsDetailsFields';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -35,18 +39,27 @@ function NovaOSContent(): React.JSX.Element {
     notes: '',
     scheduled_at: '',
     scheduled_time: '',
+    assigned_to_user_id: '',
   });
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [osFields, setOsFields] = useState<WorkOrderField[]>([]);
   const [details, setDetails] = useState<WorkOrderDetails>({});
+  const [assignableMembers, setAssignableMembers] = useState<WorkOrderAssignableMember[]>([]);
 
   useEffect(() => {
     fetch('/api/company/me')
       .then((r) => r.json())
       .then((d: { work_order_fields?: WorkOrderField[] }) => setOsFields(d.work_order_fields ?? []))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/work-orders/assignable-members')
+      .then((response) => (response.ok ? response.json() : []))
+      .then((members: WorkOrderAssignableMember[]) => setAssignableMembers(members))
+      .catch(() => setAssignableMembers([]));
   }, []);
 
   useEffect(() => {
@@ -146,6 +159,7 @@ function NovaOSContent(): React.JSX.Element {
       title: form.title,
       notes: form.notes || undefined,
       scheduled_at,
+      ...(form.assigned_to_user_id ? { assigned_to_user_id: form.assigned_to_user_id } : {}),
       ...(Object.keys(cleanDetails(details)).length ? { details: cleanDetails(details) } : {}),
     };
 
@@ -482,6 +496,35 @@ function NovaOSContent(): React.JSX.Element {
               )}
             </div>
 
+            <div style={card}>
+              <h3 style={sectionTitle}>
+                <User
+                  size={14}
+                  style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }}
+                />
+                Organização
+              </h3>
+              <Field label="Responsável pelo serviço (opcional)">
+                <select
+                  style={inp}
+                  value={form.assigned_to_user_id}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      assigned_to_user_id: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Sem responsável</option>
+                  {assignableMembers.map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
             {/* Agendamento */}
             <div style={card}>
               <h3 style={sectionTitle}>
@@ -629,7 +672,7 @@ function NovaOSContent(): React.JSX.Element {
                 <div style={{ fontSize: 13, color: '#3B0764', lineHeight: '18px' }}>
                   <strong>Mínimo:</strong> cliente + título.
                   <br />
-                  Fotos de antes/durante/depois são adicionadas pelo técnico no app mobile.
+                  Fotos de antes/durante/depois são adicionadas pelo responsável no app mobile.
                 </div>
               </div>
             </div>

@@ -12,6 +12,7 @@ import type {
   QuoteDocOptions,
   QuotePaymentTerms,
   WorkOrderAction,
+  WorkOrderAssignableMember,
   WorkOrderDetails,
   WorkOrderExtraStatus,
   WorkOrderField,
@@ -249,9 +250,30 @@ export interface EasyWorkOrder {
   scheduled_at?: string | null;
   created_at?: string;
   customer: { id: string; name: string };
+  assigned_to?: { id: string; name: string } | null;
   photos?: Array<{ id: string; photo_stage: 'BEFORE' | 'DURING' | 'AFTER'; file_url: string }>;
   /** Calculado pelo backend por estado + papel + status extras da empresa (R5b). */
   allowed_actions?: WorkOrderAction[];
+}
+export async function listAssignableMembers(): Promise<Result<WorkOrderAssignableMember[]>> {
+  return run(
+    () => apiFetch<WorkOrderAssignableMember[]>('/work-orders/assignable-members'),
+    'Não foi possível carregar os responsáveis.',
+  );
+}
+
+export async function updateEasyWorkOrderResponsible(
+  id: string,
+  assignedToUserId: string | null,
+): Promise<Result<EasyWorkOrder>> {
+  return run(
+    () =>
+      apiFetch<EasyWorkOrder>(`/work-orders/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigned_to_user_id: assignedToUserId }),
+      }),
+    'Não foi possível alterar o responsável.',
+  );
 }
 export async function listWorkOrders(): Promise<Result<EasyWorkOrder[]>> {
   return run(async () => {

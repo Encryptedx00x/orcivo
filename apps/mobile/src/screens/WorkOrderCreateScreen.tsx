@@ -11,10 +11,16 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { UserRound, UserX } from 'lucide-react-native';
 import { api, newIdempotencyKey } from '../services/api';
 import type { MaisStackParamList } from '../navigation/MaisStack';
-import type { WorkOrderDetails, WorkOrderField } from '@orcivo/shared-types';
+import type {
+  WorkOrderAssignableMember,
+  WorkOrderDetails,
+  WorkOrderField,
+} from '@orcivo/shared-types';
 import { OsDetailsFields, cleanDetails } from './os/OsDetailsFields';
+import { useSheet } from '../easy/sheet';
 
 type Props = NativeStackScreenProps<MaisStackParamList, 'WorkOrderCreate'>;
 interface Customer {
@@ -52,9 +58,12 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
   const [notes, setNotes] = useState('');
   const [osFields, setOsFields] = useState<WorkOrderField[]>([]);
   const [details, setDetails] = useState<WorkOrderDetails>({});
+  const [assignableMembers, setAssignableMembers] = useState<WorkOrderAssignableMember[]>([]);
+  const [assignedToUserId, setAssignedToUserId] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const key = useRef(newIdempotencyKey());
+  const sheet = useSheet();
 
   useEffect(() => {
     api
@@ -62,6 +71,31 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
       .then((c) => setOsFields(c.work_order_fields ?? []))
       .catch(() => setOsFields([]));
   }, []);
+
+  useEffect(() => {
+    api
+      .get<WorkOrderAssignableMember[]>('/work-orders/assignable-members')
+      .then(setAssignableMembers)
+      .catch(() => setAssignableMembers([]));
+  }, []);
+
+  const chooseResponsible = () =>
+    sheet({
+      title: 'Responsável pelo serviço',
+      sub: 'Opcional — você pode definir ou alterar depois.',
+      actions: [
+        {
+          label: 'Sem responsável',
+          icon: UserX,
+          run: () => setAssignedToUserId(''),
+        },
+        ...assignableMembers.map((member) => ({
+          label: member.name,
+          icon: UserRound,
+          run: () => setAssignedToUserId(member.user_id),
+        })),
+      ],
+    });
 
   useEffect(() => {
     if (customer || !search.trim()) {
@@ -92,6 +126,7 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
           title: title.trim(),
           ...(notes.trim() ? { notes: notes.trim() } : {}),
           ...(scheduled ? { scheduled_at: scheduled } : {}),
+          ...(assignedToUserId ? { assigned_to_user_id: assignedToUserId } : {}),
           ...(Object.keys(cleanDetails(details)).length ? { details: cleanDetails(details) } : {}),
         },
         { idempotencyKey: key.current },
@@ -150,6 +185,20 @@ export function WorkOrderCreateScreen({ navigation }: Props) {
           onChangeText={setTitle}
           maxLength={300}
         />
+
+        <Text style={styles.label}>Responsável pelo serviço (opcional)</Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Escolher responsável pelo serviço"
+          style={[styles.input, styles.selector]}
+          onPress={chooseResponsible}
+        >
+          <UserRound size={18} color="#6D28D9" />
+          <Text style={styles.selectorText}>
+            {assignableMembers.find((member) => member.user_id === assignedToUserId)?.name ??
+              'Sem responsável'}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.row}>
           <View style={styles.flex}>
@@ -222,6 +271,8 @@ const styles = StyleSheet.create({
   },
   multiline: { minHeight: 90, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
+  selector: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  selectorText: { flex: 1, fontSize: 15, color: '#0A0A0F' },
   suggestion: {
     paddingVertical: 10,
     paddingHorizontal: 12,

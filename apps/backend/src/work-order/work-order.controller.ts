@@ -70,6 +70,11 @@ export class WorkOrderController {
     );
   }
 
+  @Get('assignable-members')
+  listAssignableMembers(@Req() req: TenantRequest) {
+    return this.workOrderService.listAssignableMembers(req.companyId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: TenantRequest) {
     return this.workOrderService.findOne(id, req.companyId, req.role);

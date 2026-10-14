@@ -10,6 +10,7 @@ import type {
   QuoteDocOptions,
   QuotePaymentTerms,
   WorkOrderAction,
+  WorkOrderAssignableMember,
   WorkOrderDetails,
   WorkOrderField,
   WorkOrderStatus,
@@ -97,6 +98,7 @@ export interface EasyWorkOrder {
   scheduled_at?: string | null;
   created_at?: string;
   customer: { id: string; name: string };
+  assigned_to?: { id: string; name: string } | null;
   photos?: Array<{ id: string; photo_stage: 'BEFORE' | 'DURING' | 'AFTER'; file_url: string }>;
 }
 export interface EasyAppointment {
@@ -249,6 +251,13 @@ export const easy = {
   workOrders: async () =>
     list(await api.get<{ data: EasyWorkOrder[] }>('/work-orders?page=1&limit=100')),
   workOrder: (id: string) => api.get<EasyWorkOrder>(`/work-orders/${enc(id)}`),
+  assignableMembers: () => api.get<WorkOrderAssignableMember[]>('/work-orders/assignable-members'),
+  updateWorkOrderResponsible: (id: string, userId: string | null) =>
+    api.patch<EasyWorkOrder>(
+      `/work-orders/${enc(id)}`,
+      { assigned_to_user_id: userId },
+      { idempotencyKey: newIdempotencyKey() },
+    ),
   startWorkOrder: (id: string) => api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/start`, {}),
   completeWorkOrder: (id: string) =>
     api.patch<EasyWorkOrder>(`/work-orders/${enc(id)}/complete`, {}),

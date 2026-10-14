@@ -31,6 +31,7 @@ import {
   formatMoney,
   sumDecimal,
   type StatusAction,
+  type WorkOrderAssignableMember,
   type WorkOrderStatus,
 } from '@orcivo/shared-types';
 import type { WorkOrderPayment, WorkOrderPhoto } from '../../../../lib/work-order.service';
@@ -185,6 +186,9 @@ const PAYMENT_STATUS: Record<string, string> = {
 export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): React.JSX.Element {
   const router = useRouter();
   const [order, setOrder] = useState<WorkOrderWithActions>(initial);
+  const [assignableMembers, setAssignableMembers] = useState<WorkOrderAssignableMember[]>([]);
+  const [savingResponsible, setSavingResponsible] = useState(false);
+  const [responsibleError, setResponsibleError] = useState<string | null>(null);
   const contact = contactLinks(order.customer.phone);
   const [pendingAction, setPendingAction] = useState<WorkOrderAction | null>(null);
   const [manualStatus, setManualStatus] = useState<WorkOrderStatus | null>(null);
@@ -202,6 +206,34 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
   const [historyRevision, setHistoryRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<'servico' | 'agenda' | 'financeiro'>('servico');
   const fileInputRefs = useRef<Partial<Record<PhotoStage, HTMLInputElement | null>>>({});
+
+  useEffect(() => {
+    fetch('/api/work-orders/assignable-members')
+      .then((response) => (response.ok ? response.json() : []))
+      .then((members: WorkOrderAssignableMember[]) => setAssignableMembers(members))
+      .catch(() => setAssignableMembers([]));
+  }, []);
+
+  async function updateResponsible(userId: string): Promise<void> {
+    setSavingResponsible(true);
+    setResponsibleError(null);
+    try {
+      const response = await fetch(`/api/work-orders/${order.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigned_to_user_id: userId || null }),
+      });
+      if (!response.ok) throw new Error('Não foi possível alterar o responsável.');
+      setOrder((await response.json()) as WorkOrderWithActions);
+      setHistoryRevision((value) => value + 1);
+    } catch (error) {
+      setResponsibleError(
+        error instanceof Error ? error.message : 'Não foi possível alterar o responsável.',
+      );
+    } finally {
+      setSavingResponsible(false);
+    }
+  }
 
   // AC4: os botões vêm direto da lista de ações permitidas calculada pelo
   // backend para o estado atual + papel do usuário logado.
@@ -378,7 +410,7 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                 <Pill status={order.status} />
               </div>
               <div style={{ fontSize: 13, color: '#64748B' }}>
-                {order.technician ? `Técnico: ${order.technician.name}` : 'Sem técnico atribuído'}
+                {order.assigned_to ? `Responsável: ${order.assigned_to.name}` : 'Sem responsável'}
                 {order.started_at ? ` · Iniciada ${formatDateShort(order.started_at)}` : ''}
               </div>
             </div>
@@ -802,7 +834,13 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
         <div
           role="tablist"
           aria-label="Detalhes da ordem de serviço"
-          style={{ display: 'flex', gap: 4, padding: '0 24px', marginBottom: 16, borderBottom: '1px solid #E2E8F0' }}
+          style={{
+            display: 'flex',
+            gap: 4,
+            padding: '0 24px',
+            marginBottom: 16,
+            borderBottom: '1px solid #E2E8F0',
+          }}
         >
           {[
             { id: 'servico' as const, label: 'Serviço', icon: ClipboardList },
@@ -820,10 +858,17 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
                 aria-controls={`os-panel-${id}`}
                 onClick={() => setActiveTab(id)}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 12px',
-                  border: 'none', borderBottom: `2px solid ${selected ? '#6D28D9' : 'transparent'}`,
-                  background: 'transparent', color: selected ? '#6D28D9' : '#64748B',
-                  font: '600 13px inherit', cursor: 'pointer', marginBottom: -1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '10px 12px',
+                  border: 'none',
+                  borderBottom: `2px solid ${selected ? '#6D28D9' : 'transparent'}`,
+                  background: 'transparent',
+                  color: selected ? '#6D28D9' : '#64748B',
+                  font: '600 13px inherit',
+                  cursor: 'pointer',
+                  marginBottom: -1,
                 }}
               >
                 <Icon size={15} /> {label}
@@ -849,182 +894,229 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
             aria-labelledby={`os-tab-${activeTab}`}
             style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
           >
-            {activeTab === 'servico' && <>
-            {/* Informações */}
-            <div style={card}>
-              <div style={cardHeader}>
-                <h3 style={cardTitle}>Informações</h3>
-              </div>
-              <div className="ov-grid-3" style={{ padding: '14px 18px' }}>
-                <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
-                <KV label="Iniciada em" value={formatDate(order.started_at)} />
-                <KV label="Concluída em" value={formatDate(order.finished_at)} />
-                {order.quote && (
-                  <div>
-                    <div style={kvLabel}>Orçamento vinculado</div>
-                    <Link
-                      href={`/orcamentos/${order.quote.id}`}
-                      style={{
-                        fontSize: 14,
-                        color: '#6D28D9',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                      }}
-                    >
-                      #{order.quote.number}
-                    </Link>
+            {activeTab === 'servico' && (
+              <>
+                {/* Informações */}
+                <div style={card}>
+                  <div style={cardHeader}>
+                    <h3 style={cardTitle}>Informações</h3>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <OsDetailsCard
-              id={order.id}
-              fields={osFields}
-              initial={(order.details ?? {}) as WorkOrderDetails}
-              editable={!WO_CLOSED_STATUSES.includes(order.status)}
-            />
-
-            {/* Fotos */}
-            <div style={card}>
-              <div style={cardHeader}>
-                <h3 style={cardTitle}>Fotos</h3>
-              </div>
-              <div
-                style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 20 }}
-              >
-                {uploadError && (
-                  <div
-                    style={{
-                      background: '#FEF2F2',
-                      border: '1px solid #FECACA',
-                      borderRadius: 8,
-                      padding: '8px 12px',
-                      color: '#DC2626',
-                      fontSize: 13,
-                    }}
-                  >
-                    {uploadError}
-                  </div>
-                )}
-                {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map((stage) => {
-                  const photos = photosByStage(stage);
-                  return (
-                    <div key={stage}>
-                      <div
+                  <div className="ov-grid-3" style={{ padding: '14px 18px' }}>
+                    <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
+                    <KV label="Iniciada em" value={formatDate(order.started_at)} />
+                    <KV label="Concluída em" value={formatDate(order.finished_at)} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={kvLabel}>Responsável pelo serviço</div>
+                      <select
+                        aria-label="Responsável pelo serviço"
+                        value={order.assigned_to?.id ?? ''}
+                        disabled={savingResponsible || WO_CLOSED_STATUSES.includes(order.status)}
+                        onChange={(event) => void updateResponsible(event.target.value)}
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: 10,
+                          width: '100%',
+                          minWidth: 0,
+                          minHeight: 40,
+                          border: '1px solid #E2E8F0',
+                          borderRadius: 8,
+                          padding: '8px 10px',
+                          background: '#FFFFFF',
+                          color: '#0A0A0F',
                         }}
                       >
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
-                          {STAGE_LABELS[stage]}
-                        </span>
-                        <label
+                        <option value="">Sem responsável</option>
+                        {assignableMembers.map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.name}
+                          </option>
+                        ))}
+                      </select>
+                      {responsibleError ? (
+                        <div role="alert" style={{ marginTop: 6, color: '#B91C1C', fontSize: 12 }}>
+                          {responsibleError}
+                        </div>
+                      ) : null}
+                    </div>
+                    {order.quote && (
+                      <div>
+                        <div style={kvLabel}>Orçamento vinculado</div>
+                        <Link
+                          href={`/orcamentos/${order.quote.id}`}
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 5,
-                            background: '#F5F3FF',
+                            fontSize: 14,
                             color: '#6D28D9',
-                            border: '1px solid #DDD6FE',
-                            borderRadius: 8,
-                            padding: '5px 12px',
-                            fontSize: 12,
                             fontWeight: 600,
-                            cursor: uploadingStage !== null ? 'not-allowed' : 'pointer',
-                            opacity: uploadingStage !== null ? 0.6 : 1,
+                            textDecoration: 'none',
                           }}
                         >
-                          <Upload size={13} />
-                          {uploadingStage === stage ? 'Enviando…' : 'Adicionar'}
-                          <input
-                            ref={(el) => {
-                              fileInputRefs.current[stage] = el;
-                            }}
-                            type="file"
-                            accept="image/*"
-                            style={{ display: 'none' }}
-                            disabled={uploadingStage !== null}
-                            onChange={(e) => {
-                              void handleFileChange(stage, e);
-                            }}
-                          />
-                        </label>
+                          #{order.quote.number}
+                        </Link>
                       </div>
-                      {photos.length === 0 ? (
-                        <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>
-                          Nenhuma foto adicionada.
-                        </p>
-                      ) : (
-                        <div
-                          className="ov-photo-grid"
-                          style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}
-                        >
-                          {photos.map((photo) => (
-                            <div
-                              key={photo.id}
+                    )}
+                  </div>
+                </div>
+
+                <OsDetailsCard
+                  id={order.id}
+                  fields={osFields}
+                  initial={(order.details ?? {}) as WorkOrderDetails}
+                  editable={!WO_CLOSED_STATUSES.includes(order.status)}
+                />
+
+                {/* Fotos */}
+                <div style={card}>
+                  <div style={cardHeader}>
+                    <h3 style={cardTitle}>Fotos</h3>
+                  </div>
+                  <div
+                    style={{
+                      padding: '14px 18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 20,
+                    }}
+                  >
+                    {uploadError && (
+                      <div
+                        style={{
+                          background: '#FEF2F2',
+                          border: '1px solid #FECACA',
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          color: '#DC2626',
+                          fontSize: 13,
+                        }}
+                      >
+                        {uploadError}
+                      </div>
+                    )}
+                    {(['BEFORE', 'DURING', 'AFTER'] as PhotoStage[]).map((stage) => {
+                      const photos = photosByStage(stage);
+                      return (
+                        <div key={stage}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: 10,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                              {STAGE_LABELS[stage]}
+                            </span>
+                            <label
                               style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                background: '#F5F3FF',
+                                color: '#6D28D9',
+                                border: '1px solid #DDD6FE',
                                 borderRadius: 8,
-                                overflow: 'hidden',
-                                border: '1px solid #E2E8F0',
-                                position: 'relative',
-                                aspectRatio: '1',
+                                padding: '5px 12px',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: uploadingStage !== null ? 'not-allowed' : 'pointer',
+                                opacity: uploadingStage !== null ? 0.6 : 1,
                               }}
                             >
-                              <img
-                                src={photo.file_url}
-                                alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`}
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  display: 'block',
+                              <Upload size={13} />
+                              {uploadingStage === stage ? 'Enviando…' : 'Adicionar'}
+                              <input
+                                ref={(el) => {
+                                  fileInputRefs.current[stage] = el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                disabled={uploadingStage !== null}
+                                onChange={(e) => {
+                                  void handleFileChange(stage, e);
                                 }}
                               />
-                              <button
-                                onClick={() => {
-                                  void handleDeletePhoto(photo.id);
-                                }}
-                                disabled={deletingPhotoId === photo.id}
-                                title="Excluir"
-                                style={{
-                                  position: 'absolute',
-                                  top: 4,
-                                  right: 4,
-                                  background: 'rgba(10,10,15,0.6)',
-                                  border: 'none',
-                                  borderRadius: 5,
-                                  padding: '3px 4px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  opacity: deletingPhotoId === photo.id ? 0.5 : 1,
-                                }}
-                              >
-                                <Trash2 size={12} color="#fff" />
-                              </button>
+                            </label>
+                          </div>
+                          {photos.length === 0 ? (
+                            <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>
+                              Nenhuma foto adicionada.
+                            </p>
+                          ) : (
+                            <div
+                              className="ov-photo-grid"
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(6, 1fr)',
+                                gap: 8,
+                              }}
+                            >
+                              {photos.map((photo) => (
+                                <div
+                                  key={photo.id}
+                                  style={{
+                                    borderRadius: 8,
+                                    overflow: 'hidden',
+                                    border: '1px solid #E2E8F0',
+                                    position: 'relative',
+                                    aspectRatio: '1',
+                                  }}
+                                >
+                                  <img
+                                    src={photo.file_url}
+                                    alt={photo.caption ?? `Foto ${STAGE_LABELS[stage]}`}
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      objectFit: 'cover',
+                                      display: 'block',
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      void handleDeletePhoto(photo.id);
+                                    }}
+                                    disabled={deletingPhotoId === photo.id}
+                                    title="Excluir"
+                                    style={{
+                                      position: 'absolute',
+                                      top: 4,
+                                      right: 4,
+                                      background: 'rgba(10,10,15,0.6)',
+                                      border: 'none',
+                                      borderRadius: 5,
+                                      padding: '3px 4px',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      opacity: deletingPhotoId === photo.id ? 0.5 : 1,
+                                    }}
+                                  >
+                                    <Trash2 size={12} color="#fff" />
+                                  </button>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            </>}
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             {activeTab === 'agenda' && (
               <div style={card}>
-                <div style={cardHeader}><h3 style={cardTitle}>Agenda do serviço</h3></div>
+                <div style={cardHeader}>
+                  <h3 style={cardTitle}>Agenda do serviço</h3>
+                </div>
                 <div className="ov-grid-3" style={{ padding: '14px 18px' }}>
                   <KV label="Agendada para" value={formatDate(order.scheduled_at)} />
                   <KV label="Iniciada em" value={formatDate(order.started_at)} />
                   <KV label="Concluída em" value={formatDate(order.finished_at)} />
-                  <KV label="Técnico responsável" value={order.technician?.name ?? 'Sem técnico atribuído'} />
+                  <KV
+                    label="Responsável pelo serviço"
+                    value={order.assigned_to?.name ?? 'Sem responsável'}
+                  />
                 </div>
                 {!order.scheduled_at && (
                   <p style={{ padding: '0 18px 14px', margin: 0, fontSize: 13, color: '#64748B' }}>
@@ -1093,130 +1185,146 @@ export function WorkOrderDetail({ initial, payments, costs, osFields }: Props): 
             </div>
 
             {/* Financeiro: recebimentos e custos ficam juntos nesta aba. */}
-            {activeTab === 'financeiro' && <div style={card}>
-              <div style={{ padding: '14px 18px' }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: '#64748B',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    fontWeight: 600,
-                    marginBottom: 12,
-                  }}
-                >
-                  Financeiro
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 14,
-                    marginBottom: 6,
-                  }}
-                >
-                  <span style={{ color: '#64748B' }}>Total da OS</span>
-                  <span style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
-                    {(order.total ?? order.quote?.total)
-                      ? formatMoney((order.total ?? order.quote?.total) as string)
-                      : '—'}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 14,
-                    marginBottom: 8,
-                  }}
-                >
-                  <span style={{ color: '#64748B' }}>Recebido</span>
-                  <span
+            {activeTab === 'financeiro' && (
+              <div style={card}>
+                <div style={{ padding: '14px 18px' }}>
+                  <div
                     style={{
+                      fontSize: 11,
+                      color: '#64748B',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
                       fontWeight: 600,
-                      fontFamily: 'JetBrains Mono, monospace',
-                      color: '#16A34A',
+                      marginBottom: 12,
                     }}
                   >
-                    {formatMoney(received)}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontWeight: 700,
-                    fontSize: 14,
-                    borderTop: '1px solid #F1F5F9',
-                    paddingTop: 8,
-                  }}
-                >
-                  <span>Pendente</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {formatMoney(pending)}
-                  </span>
-                </div>
-                {payments.length ? (
-                  <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 12, paddingTop: 10 }}>
-                    <div
+                    Financeiro
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: 14,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ color: '#64748B' }}>Total da OS</span>
+                    <span style={{ fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
+                      {(order.total ?? order.quote?.total)
+                        ? formatMoney((order.total ?? order.quote?.total) as string)
+                        : '—'}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: 14,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span style={{ color: '#64748B' }}>Recebido</span>
+                    <span
                       style={{
-                        fontSize: 11,
-                        color: '#64748B',
                         fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '.06em',
-                        marginBottom: 6,
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: '#16A34A',
                       }}
                     >
-                      Recebimentos registrados
-                    </div>
-                    {payments.map((payment) => (
-                      <div
-                        key={payment.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0' }}
-                      >
-                        <span
-                          style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}
-                        >
-                          {formatMoney(payment.amount)}
-                        </span>
-                        <span style={{ color: '#64748B', fontSize: 12 }}>
-                          {PAYMENT_STATUS[payment.status] ?? payment.status}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label="Editar recebimento"
-                          onClick={() => setEditingPayment(editablePayment(payment))}
-                          style={{ ...btnOutline, height: 28, padding: '0 7px' }}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Excluir recebimento"
-                          onClick={() => setDeletingPayment(editablePayment(payment))}
-                          style={{ ...btnOutline, height: 28, padding: '0 7px', color: '#DC2626' }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))}
+                      {formatMoney(received)}
+                    </span>
                   </div>
-                ) : null}
-                <OsCosts workOrderId={order.id} costs={costs} received={received} />
-                <button
-                  onClick={() => setShowPaymentModal(true)}
-                  style={{
-                    ...btnPrimary,
-                    width: '100%',
-                    marginTop: 12,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Plus size={14} /> Registrar recebimento
-                </button>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontWeight: 700,
+                      fontSize: 14,
+                      borderTop: '1px solid #F1F5F9',
+                      paddingTop: 8,
+                    }}
+                  >
+                    <span>Pendente</span>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                      {formatMoney(pending)}
+                    </span>
+                  </div>
+                  {payments.length ? (
+                    <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 12, paddingTop: 10 }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: '#64748B',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.06em',
+                          marginBottom: 6,
+                        }}
+                      >
+                        Recebimentos registrados
+                      </div>
+                      {payments.map((payment) => (
+                        <div
+                          key={payment.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 0',
+                          }}
+                        >
+                          <span
+                            style={{
+                              flex: 1,
+                              fontFamily: 'JetBrains Mono, monospace',
+                              fontSize: 12,
+                            }}
+                          >
+                            {formatMoney(payment.amount)}
+                          </span>
+                          <span style={{ color: '#64748B', fontSize: 12 }}>
+                            {PAYMENT_STATUS[payment.status] ?? payment.status}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Editar recebimento"
+                            onClick={() => setEditingPayment(editablePayment(payment))}
+                            style={{ ...btnOutline, height: 28, padding: '0 7px' }}
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Excluir recebimento"
+                            onClick={() => setDeletingPayment(editablePayment(payment))}
+                            style={{
+                              ...btnOutline,
+                              height: 28,
+                              padding: '0 7px',
+                              color: '#DC2626',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <OsCosts workOrderId={order.id} costs={costs} received={received} />
+                  <button
+                    onClick={() => setShowPaymentModal(true)}
+                    style={{
+                      ...btnPrimary,
+                      width: '100%',
+                      marginTop: 12,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Plus size={14} /> Registrar recebimento
+                  </button>
+                </div>
               </div>
-            </div>}
+            )}
 
             {/* Histórico */}
             <div style={card}>

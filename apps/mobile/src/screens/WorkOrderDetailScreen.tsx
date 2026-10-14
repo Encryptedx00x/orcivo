@@ -19,9 +19,12 @@ import {
   MessageCircle,
   RotateCcw,
   ShieldAlert,
+  UserRound,
+  UserX,
   XCircle,
 } from 'lucide-react-native';
 import { formatMoney, WORK_ORDER_STATUS_LABELS } from '@orcivo/shared-types';
+import type { WorkOrderAssignableMember } from '@orcivo/shared-types';
 import { easy, errorText } from '../easy/data';
 import { reasonSheet, useSheet } from '../easy/sheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -250,6 +253,7 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [assignableMembers, setAssignableMembers] = useState<WorkOrderAssignableMember[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -267,6 +271,13 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    workOrderService
+      .listAssignableMembers()
+      .then(setAssignableMembers)
+      .catch(() => setAssignableMembers([]));
+  }, []);
 
   const sheet = useSheet();
   // Domain actions (the backend has no free status edit): iniciar, concluir,
@@ -330,6 +341,37 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
     navigation.navigate('WorkOrderPhoto', { workOrderId: id, stage, onPhotoUploaded: load });
   };
 
+  const chooseResponsible = () => {
+    if (!order) return;
+    if (woIsClosed(order.status)) {
+      Alert.alert('Serviço encerrado', 'Reabra o serviço para alterar o responsável.');
+      return;
+    }
+    const change = async (userId: string | null) => {
+      try {
+        setUpdatingStatus(true);
+        setOrder(await workOrderService.updateResponsible(order.id, userId));
+        Alert.alert('Pronto', userId ? 'Responsável atualizado.' : 'Responsável removido.');
+      } catch (err) {
+        Alert.alert('Erro', errorText(err, 'Não foi possível alterar o responsável.'));
+      } finally {
+        setUpdatingStatus(false);
+      }
+    };
+    sheet({
+      title: 'Responsável pelo serviço',
+      sub: 'Escolha um membro ativo da empresa.',
+      actions: [
+        { label: 'Sem responsável', icon: UserX, run: () => void change(null) },
+        ...assignableMembers.map((member) => ({
+          label: member.name,
+          icon: UserRound,
+          run: () => void change(member.user_id),
+        })),
+      ],
+    });
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -376,6 +418,20 @@ export function WorkOrderDetailScreen({ navigation, route }: Props) {
           ) : null}
           {order.quote ? <Fact label="Orçamento" value={`#${order.quote.number}`} /> : null}
         </View>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Alterar responsável pelo serviço"
+          style={styles.responsibleBtn}
+          onPress={chooseResponsible}
+        >
+          <UserRound size={18} color="#6D28D9" />
+          <View style={styles.responsibleText}>
+            <Text style={styles.responsibleLabel}>Responsável pelo serviço</Text>
+            <Text style={styles.responsibleValue}>
+              {order.assigned_to?.name ?? 'Sem responsável'}
+            </Text>
+          </View>
+        </TouchableOpacity>
         {order.notes ? <Text style={styles.notes}>{order.notes}</Text> : null}
         {order.customer.phone ? (
           <TouchableOpacity
@@ -508,6 +564,21 @@ const styles = StyleSheet.create({
   factLabel: { fontSize: 11, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase' },
   factValue: { fontSize: 15, fontWeight: '600', color: '#0A0A0F', marginTop: 2 },
   notes: { fontSize: 14, color: '#334155', marginTop: 12, lineHeight: 20 },
+  responsibleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 48,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+  },
+  responsibleText: { flex: 1 },
+  responsibleLabel: { fontSize: 12, color: '#64748B' },
+  responsibleValue: { fontSize: 15, fontWeight: '600', color: '#0A0A0F', marginTop: 2 },
   whatsBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -127,8 +127,8 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
     else if (result.order) list.replace({ ...order, ...result.order } as WorkOrder);
   }
 
-  const technicianNames = Array.from(
-    new Set(orders.map((o) => o.technician?.name).filter(Boolean) as string[]),
+  const responsibleNames = Array.from(
+    new Set(orders.map((o) => o.assigned_to?.name).filter(Boolean) as string[]),
   );
 
   const filtered = orders.filter((o) => {
@@ -137,7 +137,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
       o.title?.toLowerCase().includes(q.toLowerCase()) ||
       o.customer?.name?.toLowerCase().includes(q.toLowerCase());
     const matchStatus = statusFilter === 'todos' || o.status === statusFilter;
-    const matchTech = techFilter === 'todos' || o.technician?.name === techFilter;
+    const matchTech = techFilter === 'todos' || o.assigned_to?.name === techFilter;
     return matchQ && matchStatus && matchTech;
   });
 
@@ -290,7 +290,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar OS, cliente, técnico…"
+            placeholder="Buscar OS, cliente, responsável…"
           />
         </div>
         <select
@@ -312,8 +312,8 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
           value={techFilter}
           onChange={(e) => setTechFilter(e.target.value)}
         >
-          <option value="todos">Todos os técnicos</option>
-          {technicianNames.map((n) => (
+          <option value="todos">Todos os responsáveis</option>
+          {responsibleNames.map((n) => (
             <option key={n} value={n}>
               {n}
             </option>
@@ -347,7 +347,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
             Nenhuma ordem de serviço encontrada.
           </p>
           <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>
-            As ordens são criadas pelo aplicativo mobile pelos técnicos em campo.
+            As ordens podem ser acompanhadas pelo aplicativo mobile pela equipe em campo.
           </p>
         </div>
       )}
@@ -361,7 +361,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                 <th>Número</th>
                 <th>Cliente</th>
                 <th>Serviço</th>
-                <th>Técnico</th>
+                <th>Responsável</th>
                 <th>Status</th>
                 <th>Agendada</th>
                 <th>Finalizada</th>
@@ -391,8 +391,8 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                   <td data-label="Serviço" className="muted">
                     {order.title ?? '—'}
                   </td>
-                  <td data-label="Técnico" className="muted">
-                    {order.technician?.name ?? '—'}
+                  <td data-label="Responsável" className="muted">
+                    {order.assigned_to?.name ?? 'Sem responsável'}
                   </td>
                   <td data-label="Status">
                     <Pill k={SM[order.status] ?? 'slate'}>
@@ -533,7 +533,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
                       {order.customer?.name ?? 'Cliente não informado'}
                     </p>
                     <p style={{ color: '#64748B', fontSize: 12, margin: 0 }}>
-                      {order.technician?.name ?? 'Sem técnico'} · Agendada:{' '}
+                      {order.assigned_to?.name ?? 'Sem responsável'} · Agendada:{' '}
                       {fmtDate(order.scheduled_at)}
                     </p>
                     <div

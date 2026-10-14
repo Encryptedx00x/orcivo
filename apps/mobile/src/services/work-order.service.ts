@@ -1,4 +1,8 @@
-import type { WorkOrderAction, WorkOrderStatus } from '@orcivo/shared-types';
+import type {
+  WorkOrderAction,
+  WorkOrderAssignableMember,
+  WorkOrderStatus,
+} from '@orcivo/shared-types';
 import { api, WriteOptions } from './api';
 
 // X-Client-Request-Id incluido automaticamente via api.post / api.patch (interceptor em api.ts)
@@ -25,6 +29,7 @@ export interface WorkOrder {
   /** Ações liberadas pelo backend (estado + papel + status extras da empresa). */
   allowed_actions?: readonly WorkOrderAction[];
   customer: WorkOrderCustomer;
+  assigned_to?: { id: string; name: string } | null;
   scheduled_at?: string;
   finished_at?: string | null;
   notes?: string | null;
@@ -49,6 +54,14 @@ export const workOrderService = {
 
   async fetchOne(id: string): Promise<WorkOrder> {
     return api.get<WorkOrder>(`/work-orders/${id}`);
+  },
+
+  async listAssignableMembers(): Promise<WorkOrderAssignableMember[]> {
+    return api.get<WorkOrderAssignableMember[]>('/work-orders/assignable-members');
+  },
+
+  async updateResponsible(id: string, userId: string | null): Promise<WorkOrder> {
+    return api.patch<WorkOrder>(`/work-orders/${id}`, { assigned_to_user_id: userId });
   },
 
   async updateStatus(id: string, status: string, opts?: WriteOptions): Promise<WorkOrder> {

@@ -26,6 +26,7 @@ export * from './quote/quote-approval.dto';
 export * from './quote/quote-doc-options';
 export * from './work-order/work-order-create.dto';
 export * from './work-order/work-order-update.dto';
+export * from './work-order/work-order-assignee';
 export * from './work-order/work-order-fields';
 export * from './work-order/work-order-statuses';
 export * from './plan/plan-feature.enum';

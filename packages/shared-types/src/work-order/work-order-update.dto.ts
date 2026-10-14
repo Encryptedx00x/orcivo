@@ -9,7 +9,7 @@ export const WorkOrderUpdateSchema = z.object({
   scheduled_at: z.string().datetime().optional(),
   started_at: z.string().datetime().optional(),
   finished_at: z.string().datetime().optional(),
-  assigned_to_user_id: z.string().uuid().optional(),
+  assigned_to_user_id: z.string().uuid().nullable().optional(),
   details: WorkOrderDetailsSchema.optional(),
 });
 

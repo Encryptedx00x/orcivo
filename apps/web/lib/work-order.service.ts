@@ -32,7 +32,7 @@ export interface WorkOrder {
   title: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
   customer: { id: string; name: string };
-  technician?: { id: string; name: string } | null;
+  assigned_to?: { id: string; name: string } | null;
   scheduled_at?: string;
   started_at?: string;
   finished_at?: string;

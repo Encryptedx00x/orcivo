@@ -22,6 +22,9 @@ const mockPrisma = {
   company: {
     findUnique: jest.fn().mockResolvedValue({ work_order_statuses: [] }),
   },
+  companyMember: {
+    findMany: jest.fn(),
+  },
   workOrder: {
     create: jest.fn(),
     findMany: jest.fn(),
@@ -730,6 +733,94 @@ describe('WorkOrderService — state machine (P-01)', () => {
           scheduled_at: 'não é data',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── responsável pelo serviço (B4-20 / ADR-019) ───────────────────────────
+
+  describe('responsável pelo serviço', () => {
+    it('lista somente o contrato mínimo dos membros ativos do tenant', async () => {
+      mockPrisma.companyMember.findMany.mockResolvedValue([
+        { user_id: 'user-1', user: { name: 'Ana' } },
+        { user_id: 'user-2', user: { name: 'Bruno' } },
+      ]);
+
+      await expect(service.listAssignableMembers('comp-1')).resolves.toEqual([
+        { user_id: 'user-1', name: 'Ana' },
+        { user_id: 'user-2', name: 'Bruno' },
+      ]);
+      expect(mockPrisma.companyMember.findMany).toHaveBeenCalledWith({
+        where: { company_id: 'comp-1', active: true },
+        orderBy: [{ user: { name: 'asc' } }, { user_id: 'asc' }],
+        select: { user_id: true, user: { select: { name: true } } },
+      });
+    });
+
+    it('valida o membro no tenant e audita a atribuição com linguagem neutra', async () => {
+      mockCurrentWo();
+
+      await service.update(
+        'wo-1',
+        { assigned_to_user_id: '11111111-1111-4111-8111-111111111111' },
+        'comp-1',
+        'user-1',
+      );
+
+      expect(mockOwnership.assertActiveMember).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        'comp-1',
+      );
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'wo-1', company_id: 'comp-1', status: { in: ['PENDING', 'IN_PROGRESS'] } },
+          data: expect.objectContaining({
+            assigned_to_user_id: '11111111-1111-4111-8111-111111111111',
+          }),
+        }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.responsible_changed',
+          from: null,
+          to: '11111111-1111-4111-8111-111111111111',
+          humanText: 'Responsável pelo serviço da OS #7 alterado',
+        }),
+      );
+    });
+
+    it('permite remover a atribuição com null', async () => {
+      mockCurrentWo({ assigned_to_user_id: '11111111-1111-4111-8111-111111111111' });
+
+      await service.update('wo-1', { assigned_to_user_id: null }, 'comp-1', 'user-1');
+
+      expect(mockOwnership.assertActiveMember).toHaveBeenCalledWith(undefined, 'comp-1');
+      expect(mockTx.workOrder.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ assigned_to_user_id: null }) }),
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'work_order.responsible_changed',
+          from: '11111111-1111-4111-8111-111111111111',
+          to: null,
+        }),
+      );
+    });
+
+    it('não muta quando o membro não pertence ao tenant', async () => {
+      mockCurrentWo();
+      mockOwnership.assertActiveMember.mockRejectedValueOnce(new Error('Membro não encontrado'));
+
+      await expect(
+        service.update(
+          'wo-1',
+          { assigned_to_user_id: '22222222-2222-4222-8222-222222222222' },
+          'comp-1',
+          'user-1',
+        ),
+      ).rejects.toThrow('Membro não encontrado');
+      expect(mockTx.workOrder.updateMany).not.toHaveBeenCalled();
     });
   });
 

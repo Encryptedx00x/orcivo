@@ -2,12 +2,17 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { cleanupDatabase, getTestApp } from '../../test/setup';
 
+jest.setTimeout(60_000);
+
 // TENANT-WO: empresa A não acessa work-orders da empresa B
 describe('WorkOrder — Multi-tenant isolation', () => {
   let app: INestApplication;
   let tokenA: string;
   let tokenB: string;
   let workOrderBId: string;
+  let workOrderAId: string;
+  let userAId: string;
+  let userBId: string;
 
   beforeAll(async () => {
     app = await getTestApp();
@@ -38,6 +43,17 @@ describe('WorkOrder — Multi-tenant isolation', () => {
       .post('/auth/login')
       .send({ email: 'wo-a@isolation.test', password: 'Senha@123' });
     tokenA = loginA.body.access_token;
+    userAId = loginA.body.user.id;
+
+    const customerA = await request(app.getHttpServer())
+      .post('/customers')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ name: 'Cliente WO A', phone: '11900000098', customer_type: 'INDIVIDUAL' });
+    const woA = await request(app.getHttpServer())
+      .post('/work-orders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ customer_id: customerA.body.id, title: 'OS de Tenant A' });
+    workOrderAId = woA.body.id;
 
     // Criar Tenant B
     const userB = await request(app.getHttpServer()).post('/auth/signup/user').send({
@@ -65,6 +81,7 @@ describe('WorkOrder — Multi-tenant isolation', () => {
       .post('/auth/login')
       .send({ email: 'wo-b@isolation.test', password: 'Senha@456' });
     tokenB = loginB.body.access_token;
+    userBId = loginB.body.user.id;
 
     // Criar customer na Empresa B
     const customerRes = await request(app.getHttpServer())
@@ -90,16 +107,51 @@ describe('WorkOrder — Multi-tenant isolation', () => {
 
   afterAll(async () => {
     await cleanupDatabase();
-    await app.close();
+    await app?.close();
   });
 
-  it('empresa A não lista work-orders da empresa B (GET /work-orders retorna data=[])', async () => {
+  it('empresa A lista somente work-orders da própria empresa', async () => {
     const res = await request(app.getHttpServer())
       .get('/work-orders')
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
 
-    expect(res.body.data).toEqual([]);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe(workOrderAId);
+  });
+
+  it('lista somente membros atribuíveis da empresa corrente', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/work-orders/assignable-members')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    expect(res.body).toEqual([{ user_id: userAId, name: 'WO Tenant A' }]);
+    expect(res.body).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ user_id: userBId })]),
+    );
+  });
+
+  it('atribui e remove membro do mesmo tenant, mas rejeita membro de outra empresa', async () => {
+    const assigned = await request(app.getHttpServer())
+      .patch(`/work-orders/${workOrderAId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ assigned_to_user_id: userAId })
+      .expect(200);
+    expect(assigned.body.assigned_to).toEqual({ id: userAId, name: 'WO Tenant A' });
+
+    await request(app.getHttpServer())
+      .patch(`/work-orders/${workOrderAId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ assigned_to_user_id: userBId })
+      .expect(404);
+
+    const cleared = await request(app.getHttpServer())
+      .patch(`/work-orders/${workOrderAId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ assigned_to_user_id: null })
+      .expect(200);
+    expect(cleared.body.assigned_to).toBeNull();
   });
 
   it('GET /work-orders/:idDeB como empresa A retorna 404', async () => {

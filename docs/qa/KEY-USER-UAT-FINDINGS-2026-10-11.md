@@ -493,6 +493,8 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** shared-types build; specs de tenant/membro e CRUD --runInBand; testes das UIs
 - **Testes visuais:** criar/editar com, sem e removendo responsável nas seis combinações
 - **Autonomia:** Nível B
+- **Evidência automática parcial (2026-10-14):** implementação concluída em backend/shared-types, web completa/fácil e app completo/fácil. O endpoint mínimo lista somente membros ativos da empresa; criação aceita atribuição opcional; edição atribui, troca e remove com auditoria; outra empresa recebe `404`. `shared-types build` passou, os specs de estado + isolamento passaram `86/86` com PostgreSQL/Redis locais e `--runInBand`, os contratos de UI passaram `4/4`, e lint/typecheck passaram nos quatro pacotes (somente avisos preexistentes no backend/web).
+- **Verificação visual pendente:** o navegador integrado recusou vincular a aba local `http://127.0.0.1:3001` por política do controlador, mesmo com backend e web saudáveis; portanto ainda não há evidência válida para `1440×900`, `390×844`, `360×800`, fácil/completo e Expo web. Isso é limitação da ferramenta, não defeito reproduzido no produto. A tarefa permanece aberta até executar criação com/sem responsável e edição/remoção nas seis combinações.
 
 ### B4-21-quote-completeness-review — Revisão de completude antes de gerar/enviar
 

@@ -17,6 +17,8 @@ import {
   Play,
   ShieldAlert,
   Undo2,
+  UserRound,
+  UserX,
   X,
 } from 'lucide-react-native';
 import { easy, errorText, type EasyWorkOrder } from '../data';
@@ -378,6 +380,8 @@ export function RunScreen({
   const load = useCallback(() => easy.workOrder(id), [id]);
   const order = useLoad(load, 'Não foi possível carregar este serviço.');
   const company = useLoad(easy.company, 'Não foi possível carregar os campos do serviço.');
+  const members = useLoad(easy.assignableMembers, 'Não foi possível carregar os responsáveis.');
+  const sheet = useSheet();
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -432,6 +436,34 @@ export function RunScreen({
     } finally {
       setFinishing(false);
     }
+  };
+
+  const chooseResponsible = () => {
+    if (woIsClosed(o.status)) {
+      Alert.alert('Serviço encerrado', 'Reabra o serviço para alterar o responsável.');
+      return;
+    }
+    const change = async (userId: string | null) => {
+      try {
+        await easy.updateWorkOrderResponsible(o.id, userId);
+        await order.refresh();
+        Alert.alert('Pronto', userId ? 'Responsável atualizado.' : 'Responsável removido.');
+      } catch (err) {
+        Alert.alert('Não deu certo', errorText(err, 'Não foi possível alterar o responsável.'));
+      }
+    };
+    sheet({
+      title: 'Responsável pelo serviço',
+      sub: 'Escolha um membro ativo da empresa.',
+      actions: [
+        { label: 'Sem responsável', icon: UserX, run: () => void change(null) },
+        ...(members.data ?? []).map((member) => ({
+          label: member.name,
+          icon: UserRound,
+          run: () => void change(member.user_id),
+        })),
+      ],
+    });
   };
 
   // R5b: extra "Aguardando pagamento" ligado — recebe e conclui o serviço.
@@ -505,6 +537,13 @@ export function RunScreen({
         <Text style={[s.body, { color: o.notes ? C.ink : C.fg3 }]}>
           {o.notes?.trim() || 'Sem observações neste serviço.'}
         </Text>
+      </Card>
+      <Card style={{ paddingHorizontal: 16 }}>
+        <Row
+          icon={UserRound}
+          label={`Responsável: ${o.assigned_to?.name ?? 'Sem responsável'}`}
+          onPress={chooseResponsible}
+        />
       </Card>
       <EasyDetailsCard
         id={o.id}

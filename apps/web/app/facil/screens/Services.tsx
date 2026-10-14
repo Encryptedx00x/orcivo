@@ -32,9 +32,11 @@ import {
   completeWorkOrder,
   getCompany,
   getWorkOrder,
+  listAssignableMembers,
   listWorkOrders,
   startWorkOrder,
   updateEasyWorkOrderDetails,
+  updateEasyWorkOrderResponsible,
   type EasyWorkOrder,
 } from '../actions';
 import { uploadWorkOrderPhoto } from '../../../lib/upload-photo';
@@ -419,6 +421,7 @@ export function RunScreen(): React.JSX.Element {
   const id = params.id ?? '';
   const order = useLoad(() => getWorkOrder(id), [id]);
   const company = useLoad(getCompany);
+  const members = useLoad(listAssignableMembers);
   const more = useServiceMore(order.reload);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
@@ -453,6 +456,12 @@ export function RunScreen(): React.JSX.Element {
     const r = await workOrderAction(o.id, { action: 'receber_pagamento' });
     if (r.error) return toast(r.error);
     toast('Pagamento recebido — serviço concluído.');
+    order.reload();
+  };
+  const changeResponsible = async (userId: string) => {
+    const result = await updateEasyWorkOrderResponsible(o.id, userId || null);
+    if (!result.ok) return toast(result.message);
+    toast(userId ? 'Responsável atualizado.' : 'Responsável removido.');
     order.reload();
   };
 
@@ -537,6 +546,40 @@ export function RunScreen(): React.JSX.Element {
         <span style={{ fontSize: 17, color: C.fg2 }}>{o.customer?.name}</span>
       </div>
       <Chip kind={STATUS[o.status].kind} label={STATUS[o.status].label} />
+      <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label htmlFor={`responsible-${o.id}`} style={{ fontSize: 16, fontWeight: 700 }}>
+          Responsável pelo serviço
+        </label>
+        <select
+          id={`responsible-${o.id}`}
+          value={o.assigned_to?.id ?? ''}
+          disabled={!open || members.loading}
+          onChange={(event) => void changeResponsible(event.target.value)}
+          style={{
+            width: '100%',
+            minWidth: 0,
+            minHeight: 48,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: '10px 12px',
+            background: '#FFFFFF',
+            color: C.ink,
+            fontSize: 16,
+          }}
+        >
+          <option value="">Sem responsável</option>
+          {(members.data ?? []).map((member) => (
+            <option key={member.user_id} value={member.user_id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+        {!open ? (
+          <span style={{ color: C.fg3, fontSize: 13 }}>
+            Reabra o serviço para alterar o responsável.
+          </span>
+        ) : null}
+      </div>
       {o.notes && (
         <div style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontSize: 19, fontWeight: 700 }}>O que fazer</span>

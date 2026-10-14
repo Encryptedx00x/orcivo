@@ -45,6 +45,7 @@ export type {
 const WO_DETAIL_INCLUDE = {
   customer: true,
   photos: true,
+  assigned_to: { select: { id: true, name: true } },
   // total: the work order's value is the approved quote's (no amount of its own).
   quote: { select: { id: true, number: true, total: true } },
 } as const;
@@ -254,7 +255,7 @@ export class WorkOrderService {
       data.assigned_to_user_id !== undefined &&
       wo.assigned_to_user_id !== data.assigned_to_user_id
     ) {
-      diff.push('técnico atribuído alterado');
+      diff.push('responsável pelo serviço alterado');
     }
 
     const humanText =
@@ -410,6 +411,15 @@ export class WorkOrderService {
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
+  async listAssignableMembers(companyId: string) {
+    const members = await this.prisma.companyMember.findMany({
+      where: { company_id: companyId, active: true },
+      orderBy: [{ user: { name: 'asc' } }, { user_id: 'asc' }],
+      select: { user_id: true, user: { select: { name: true } } },
+    });
+    return members.map((member) => ({ user_id: member.user_id, name: member.user.name }));
+  }
+
   private async nextWorkOrderNumber(companyId: string): Promise<number> {
     const key = `work-order:seq:${companyId}`;
     const [current, maxResult] = await Promise.all([
@@ -427,7 +437,7 @@ export class WorkOrderService {
   async assertCreatable(dto: WorkOrderCreateDto, companyId: string, quoteId?: string) {
     await this.planLimitsService.enforceLimit(companyId, 'WORK_ORDERS_MONTH');
     await this.ownership.assertCustomer(dto.customer_id, companyId);
-    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id ?? undefined, companyId);
     await this.ownership.assertQuote(quoteId, companyId);
   }
 
@@ -457,7 +467,10 @@ export class WorkOrderService {
           created_by_user_id: userId,
           started_at: initialStatus === 'IN_PROGRESS' ? new Date() : undefined,
         },
-        include: { customer: { select: { name: true } } },
+        include: {
+          customer: { select: { name: true } },
+          assigned_to: { select: { id: true, name: true } },
+        },
       });
       await this.audit.record(tx, {
         companyId,
@@ -506,6 +519,7 @@ export class WorkOrderService {
         include: {
           customer: { select: { id: true, name: true } },
           photos: true,
+          assigned_to: { select: { id: true, name: true } },
           quote: WO_DETAIL_INCLUDE.quote,
         },
       }),
@@ -532,7 +546,7 @@ export class WorkOrderService {
 
   async update(id: string, dto: WorkOrderUpdateDto, companyId: string, userId: string) {
     const workOrder = await this.findOne(id, companyId);
-    await this.ownership.assertActiveMember(dto.assigned_to_user_id, companyId);
+    await this.ownership.assertActiveMember(dto.assigned_to_user_id ?? undefined, companyId);
     const { status, ...rest } = dto;
     if (status) {
       // P-01 (ADR-016): transições por `status` livre foram substituídas por
@@ -558,14 +572,43 @@ export class WorkOrderService {
         'As datas de início e conclusão são definidas pelas ações da OS.',
       );
     }
-    const updated = await this.prisma.workOrder.updateMany({
-      where: { id, company_id: companyId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
-      data: {
-        ...rest,
-        scheduled_at: rest.scheduled_at ? new Date(rest.scheduled_at) : undefined,
-      },
-    });
-    if (updated.count !== 1) throw new ConflictException('A OS foi encerrada durante a edição.');
+    const assignmentChanged =
+      rest.assigned_to_user_id !== undefined &&
+      workOrder.assigned_to_user_id !== rest.assigned_to_user_id;
+    const updateData = {
+      ...rest,
+      scheduled_at: rest.scheduled_at ? new Date(rest.scheduled_at) : undefined,
+    };
+    if (assignmentChanged) {
+      await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.workOrder.updateMany({
+          where: { id, company_id: companyId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+          data: updateData,
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException('A OS foi encerrada durante a edição.');
+        }
+        await this.audit.record(tx, {
+          companyId,
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'work_order.responsible_changed',
+          entityType: 'work_order',
+          entityId: id,
+          from: workOrder.assigned_to_user_id ?? null,
+          to: rest.assigned_to_user_id ?? null,
+          humanText: `Responsável pelo serviço da OS #${workOrder.number} alterado`,
+        });
+      });
+    } else {
+      const updated = await this.prisma.workOrder.updateMany({
+        where: { id, company_id: companyId, status: { in: ['PENDING', 'IN_PROGRESS'] } },
+        data: updateData,
+      });
+      if (updated.count !== 1) {
+        throw new ConflictException('A OS foi encerrada durante a edição.');
+      }
+    }
     return this.findOne(id, companyId);
   }
 }
