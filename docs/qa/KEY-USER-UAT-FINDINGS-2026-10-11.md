@@ -538,6 +538,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** revisão de contratos e snapshots atuais
 - **Testes visuais:** comparação visual do recibo Orcivo atual com a referência estrutural, sem copiar identidade
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/qa/B4-23-RECEIPT-FIELDS-INVENTORY.md` registra campo, origem, default, configuração, superfícies, PDF e lacuna. Foram renderizadas e comparadas as páginas A4 das referências e um recibo gerado pelo `ReceiptPdfService` do HEAD. O Orcivo já cobre cabeçalho, partes, valor, referência, pagamento, data, assinatura, Pix e rodapé, mas não possui opções próprias de recibo nem informações adicionais separadas; previews também não exibem todos os dados que o PDF conhece. A recomendação cria `ReceiptDocOptionsSchema` separado em B4-24, reutiliza valores empresariais existentes e mantém número, valor, pagador, referência e data como núcleo não ocultável. Nenhuma identidade visual da referência foi copiada e nenhum código de produto foi alterado.
 
 ### B4-24-document-model — Modelo compartilhado para orçamento e recibo evoluídos
 

@@ -1527,7 +1527,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-FLOWS",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "decisionDeliverable": "matriz de opções do recibo"
     },
     {
