@@ -1209,7 +1209,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-MOBILE",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-19-service-owner-adr",

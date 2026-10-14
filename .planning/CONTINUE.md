@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `19bb8e5` — B4-17 auditada e validada; registro reconciliado vem no commit seguinte |
+| `main` / `origin/main` | `a6e89c4` — B4-18 medida e validada; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -83,7 +83,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       sanitizado validados; sem Android SDK/emulador/dispositivo nesta máquina, limitação registrada (`8903276`).
 - [x] **B4-17 — Home/convite/build:** Home fácil/completa alinhadas ao handoff, convite funcional confirmado e
       texto antigo atribuído a uma provável build desatualizada sem generalizar telas internas (`19bb8e5`).
-- [ ] **B4-18 — tamanho do app:** medir artefatos e bundle, definir orçamento e otimizações seguras.
+- [x] **B4-18 — tamanho do app:** export Android Hermes reproduzível, composição e orçamento de regressão
+      registrados; APK/AAB/IPA permanecem não reproduzidos sem artefato/SDK, sem remover recursos (`a6e89c4`).
 - [ ] **B4-19…B4-23 — fluxos:** responsável pelo serviço, completude do orçamento e assinatura/opções de recibo.
 - [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
@@ -92,9 +93,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar `B4-18-mobile-size-budget`. Medir APK/AAB/IPA e composição do bundle de forma
-reproduzível, definir baseline/orçamento inicial e propor ou aplicar somente otimizações que não retirem recursos,
-sem publicar em loja.
+**Próxima ação concreta:** executar `B4-19-service-owner-adr`. Levantar o domínio e registrar a decisão técnica de
+atribuição opcional com nomenclatura neutra, sem antecipar personalização estratégica nem alterar produto antes do
+ADR.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
