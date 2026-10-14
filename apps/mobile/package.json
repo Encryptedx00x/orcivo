@@ -10,8 +10,10 @@
     "web": "expo start --web --port 8081",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "test:api-config": "node --test src/config/api-environment.test.mjs",
+    "validate:api-config": "node src/config/validate-api-config.mjs",
     "build": "echo 'Mobile: use EAS Build para gerar APK/IPA'",
-    "eas-build-post-install": "cd ../.. && pnpm --filter @orcivo/shared-types build"
+    "eas-build-post-install": "cd ../.. && pnpm --filter @orcivo/shared-types build && pnpm --filter @orcivo/mobile validate:api-config"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

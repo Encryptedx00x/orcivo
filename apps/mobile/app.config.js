@@ -1,3 +1,7 @@
+const { resolveApiUrl, resolveAppEnvironment } = require('./src/config/api-environment.cjs');
+
+const appEnvironment = resolveAppEnvironment(process.env);
+
 module.exports = {
   expo: {
     name: 'Orcivo',
@@ -24,7 +28,8 @@ module.exports = {
     },
     plugins: ['expo-secure-store'],
     extra: {
-      apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+      apiUrl: resolveApiUrl(process.env),
+      appEnvironment,
       webUrl: process.env.EXPO_PUBLIC_WEB_URL || 'https://app.orcivo.com.br',
       eas: {
         projectId: '8e7221e2-7469-4967-90f2-28e019ed93d8',

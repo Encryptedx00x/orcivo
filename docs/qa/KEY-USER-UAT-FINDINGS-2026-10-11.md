@@ -423,6 +423,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** teste que falha para localhost/127.0.0.1/::1 em perfil de produção; teste de resolução por perfil; typecheck mobile
 - **Testes visuais:** abrir build local equivalente a produção e conferir endpoint sanitizado sem expor valor
 - **Autonomia:** Nível A
+- **Evidência de execução (2026-10-14):** a resolução da API foi centralizada em um contrato único usado pelo `app.config.js`, pelo runtime e pelo pós-instalação do EAS. Desenvolvimento preserva fallback local explícito; `preview` e `production` exigem URL HTTP(S) e rejeitam `localhost`, toda a faixa `127.*`, `::1` e `0.0.0.0` antes de gerar a build. Os perfis distribuídos foram configurados sem credenciais, e a checagem registra somente o nome do perfil, nunca a URL. Cinco testes cobriram resolução, ausência obrigatória, protocolos e loopbacks; a execução negativa de produção com loopback encerrou com erro, enquanto configurações equivalentes a `preview`/`production` foram validadas de forma sanitizada. O Expo web foi iniciado localmente com perfil equivalente a produção e abriu a tela de login em `390×844` e `360×800`, com `scrollWidth` igual ao viewport e sem erro de conexão anterior ao login. Essa verificação comprova a configuração e a inicialização; autenticação, refresh e logout reais permanecem para B4-16, sem publicar uma build nem acessar produção.
 
 ### B4-16-mobile-real-authentication — Validar autenticação real do app
 
