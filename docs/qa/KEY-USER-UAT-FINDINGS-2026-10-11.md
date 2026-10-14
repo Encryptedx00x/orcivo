@@ -622,6 +622,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** varredura automatizada de termos com exclusões justificadas; inventário de contratos/copy
 - **Testes visuais:** amostras de copy e documentos no design Orcivo, sem implementação
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/qa/B4-29-NEUTRAL-TERMS-INVENTORY.md` registra a varredura reproduzível, `488` linhas no escopo amplo e `116` linhas de código de produto sem testes/specs, separando copy pública, papel/permissão, atribuição, assinatura, PDFs, usos adjetivos legítimos, legal e histórico. `docs/decisions/ADR-021-neutral-positioning-and-terminology.md` propõe posicionamento para empresas e profissionais de serviços, fallback “Responsável pelo serviço”, papel público “Membro”, assinatura neutra, preferências por usuário/empresa/vínculo e snapshot dos termos documentais. Códigos `TECNICO`, identificadores/storage de assinatura e o design handoff não são renomeados antecipadamente. Sete decisões, inclusive copy pública, onboarding e qualquer alteração LGPD, ficam para B4-33; nenhuma superfície foi modificada.
 
 ### B4-30-multicompany-adr — ADR de multiempresa e isolamento
 
