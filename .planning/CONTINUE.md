@@ -106,7 +106,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-28 — ADR de Uso/planos:** inventário de limites/gates, contrato backend, tela Uso, estados e wireframes
       propostos na ADR-020; sete escolhas comerciais reservadas ao gate B4-33 (`ca0b4cc`).
 - [x] **B4-29 — ADR de posicionamento:** inventário reproduzível, vocabulário neutro, preferências, compatibilidade e
-      amostras de copy propostos na ADR-021; sete decisões reservadas ao gate B4-33.
+      amostras de copy propostos na ADR-021; sete decisões reservadas ao gate B4-33 (`6843131`).
 - [ ] **B4-30…B4-32 — ADRs:** multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
