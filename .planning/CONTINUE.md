@@ -95,7 +95,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       `16/16` payment, build/typecheck/lint verdes. Falta a matriz visual bloqueada pelo controlador da aba local.
 - [x] **B4-23 — opções do recibo:** matriz de campos, origens, defaults, configuração, superfícies e lacunas
       concluída; referências e PDF Orcivo do HEAD renderizados e comparados sem copiar identidade visual (`acea7a7`).
-- [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
+- [x] **B4-24 — modelo documental:** tipo/unidade e subtotais por categoria no orçamento; opções e adicionais
+      congelados no recibo; migração local idempotente e contratos antigos compatíveis.
+- [ ] **B4-25…B4-27 — documentos:** PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
@@ -103,8 +105,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
 **Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22 assim que o navegador integrado aceitar
-a aba local; enquanto esse bloqueio externo persistir, avançar para `B4-24-document-model` seguindo o inventário
-da B4-23, sem antecipar a terminologia configurável das B4-29/B4-37.
+a aba local; enquanto esse bloqueio externo persistir, avançar para `B4-25-quote-pdf-structure` usando o modelo
+da B4-24, sem antecipar a terminologia configurável das B4-29/B4-37.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

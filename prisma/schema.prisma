@@ -62,6 +62,8 @@ model Company {
   quote_default_doc_options   Json?
   quote_default_payment_terms Json?
   quote_default_warranty      String?
+  /// Default ReceiptDocOptions; copied to the payment when a receipt number is assigned.
+  receipt_default_doc_options Json?
   /// Extra OS fields turned on for the segment (keys of WORK_ORDER_FIELDS).
   work_order_fields           String[]  @default([])
   /// Extra OS statuses turned on for the company (keys of WORK_ORDER_EXTRA_STATUSES, R5b).
@@ -334,6 +336,8 @@ model Quote {
   discount_type            DiscountType @default(PERCENT)
   discount_value           Decimal      @default(0) @db.Decimal(12, 2)
   subtotal                 Decimal      @default(0) @db.Decimal(12, 2)
+  service_subtotal         Decimal      @default(0) @db.Decimal(12, 2)
+  product_subtotal         Decimal      @default(0) @db.Decimal(12, 2)
   total                    Decimal      @default(0) @db.Decimal(12, 2)
   pdf_url                  String?
   technician_signature_key String?
@@ -368,6 +372,8 @@ model QuoteItem {
   quote_id        String
   catalog_item_id String?
   description     String
+  item_type       CatalogItemType @default(SERVICE)
+  unit            String?
   quantity        Decimal @db.Decimal(10, 3)
   unit_price      Decimal @db.Decimal(12, 2)
   total           Decimal @db.Decimal(12, 2)
@@ -715,6 +721,10 @@ model Payment {
   /// Frozen copy of the technician signature applied to the receipt (storage key).
   receipt_signature_key String?
   receipt_signer_name   String?
+  /// Resolved ReceiptDocOptions frozen when the receipt is numbered.
+  receipt_doc_options Json?
+  /// Optional content separate from the mandatory payment reference.
+  receipt_additional_info String?
 
   company  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
   customer Customer @relation(fields: [customer_id], references: [id])

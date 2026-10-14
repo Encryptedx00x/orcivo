@@ -1591,7 +1591,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-DOCS",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "protectedPathGrants": [
         "prisma/schema.prisma"
       ]

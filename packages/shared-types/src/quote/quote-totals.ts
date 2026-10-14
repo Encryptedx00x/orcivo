@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 export type QuoteMoneyItem = {
   quantity: string;
   unit_price: string;
+  item_type?: 'SERVICE' | 'PRODUCT';
 };
 
 export type QuoteDiscountType = 'PERCENT' | 'FIXED';
@@ -36,6 +37,33 @@ export function calculateQuoteTotals(
     subtotal: subtotal.toFixed(2),
     discount: discount.toFixed(2),
     total: subtotal.sub(discount).toFixed(2),
+  };
+}
+
+export type QuoteCategorySubtotals = {
+  serviceSubtotal: string;
+  productSubtotal: string;
+  subtotal: string;
+};
+
+/** Category totals for document sections; all arithmetic stays in Decimal. */
+export function calculateQuoteCategorySubtotals(items: QuoteMoneyItem[]): QuoteCategorySubtotals {
+  const service = items
+    .filter((item) => item.item_type !== 'PRODUCT')
+    .reduce(
+      (sum, item) => sum.add(new Decimal(item.quantity).mul(item.unit_price)),
+      new Decimal('0'),
+    );
+  const product = items
+    .filter((item) => item.item_type === 'PRODUCT')
+    .reduce(
+      (sum, item) => sum.add(new Decimal(item.quantity).mul(item.unit_price)),
+      new Decimal('0'),
+    );
+  return {
+    serviceSubtotal: service.toFixed(2),
+    productSubtotal: product.toFixed(2),
+    subtotal: service.add(product).toFixed(2),
   };
 }
 

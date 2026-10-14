@@ -7,6 +7,10 @@ const decimalStr = (decimals = 2) => z.string().regex(new RegExp(`^\\d+(\\.\\d{1
 export const QuoteItemSchema = z.object({
   catalog_item_id: z.string().uuid().optional(),
   description: z.string().min(1).max(300),
+  /** Frozen document classification; old clients may omit it. */
+  item_type: z.enum(['SERVICE', 'PRODUCT']).optional(),
+  /** Frozen unit label; old clients may omit it. */
+  unit: z.string().trim().min(1).max(20).optional(),
   quantity: decimalStr(3),
   unit_price: decimalStr(2),
 });

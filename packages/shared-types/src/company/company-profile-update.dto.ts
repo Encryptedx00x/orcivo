@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReceiptDocOptionsSchema } from './receipt-doc-options';
 
 export const PixKeyTypeEnum = z.enum(['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'RANDOM']);
 export type PixKeyType = z.infer<typeof PixKeyTypeEnum>;
@@ -35,6 +36,7 @@ export const CompanyProfileUpdateSchema = z
     state: z.string().max(2).nullable().optional(),
     pix_key_type: PixKeyTypeEnum.nullable().optional(),
     pix_key: z.string().max(140).nullable().optional(),
+    receipt_default_doc_options: ReceiptDocOptionsSchema.nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;

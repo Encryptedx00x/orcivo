@@ -552,6 +552,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** shared-types build; specs de migração/default/compatibilidade; cálculos de subtotais serviços/produtos em Decimal; isolamento por empresa
 - **Testes visuais:** revisão de fixtures e conteúdo nos modos, sem mudança visual antecipada
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** o modelo agora congela `item_type` e `unit` em cada item do orçamento, persiste subtotais de serviços/produtos calculados com `decimal.js` e mantém payloads antigos válidos com defaults neutros. Recibos ganharam contrato estrito `ReceiptDocOptions`, default completo para registros antigos, snapshot resolvido quando recebem numeração e campo separado de informações adicionais; assinatura continua por documento. A migração idempotente foi aplicada em banco PostgreSQL local efêmero desde zero e executada novamente com sucesso (`35` migrations, `7` colunas novas confirmadas), sem Docker. Shared passou `3/3`, quote/payment `79/79`, integrações tenant/financeiro `7/7`, Prisma validate, build, lint e typecheck backend/web/mobile passaram. Não houve mudança visual nesta tarefa; fixtures completas/legadas foram revisadas e a renderização fica para B4-25/B4-26.
 
 ### B4-25-quote-pdf-structure — Evoluir conteúdo do PDF de orçamento
 

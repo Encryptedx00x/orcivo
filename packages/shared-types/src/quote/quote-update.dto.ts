@@ -9,6 +9,8 @@ export const QuoteUpdateSchema = QuoteCreateSchema.omit({ items: true })
         z.object({
           catalog_item_id: z.string().uuid().optional(),
           description: z.string().min(1).max(300),
+          item_type: z.enum(['SERVICE', 'PRODUCT']).optional(),
+          unit: z.string().trim().min(1).max(20).optional(),
           quantity: z.string().regex(/^\d+(\.\d{1,3})?$/),
           unit_price: z.string().regex(/^\d+(\.\d{1,2})?$/),
         }),

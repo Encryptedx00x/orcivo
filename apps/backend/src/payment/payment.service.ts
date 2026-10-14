@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import {
   comparePaymentAmounts,
   formatMoney,
+  resolveReceiptDocOptions,
   subtractDecimal,
   sumDecimal,
 } from '@orcivo/shared-types';
@@ -126,16 +127,26 @@ export class PaymentService {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'receipt:' + companyId}))`;
     const current = await tx.payment.findUnique({
       where: { id: paymentId },
-      select: { receipt_number: true, status: true },
+      select: { receipt_number: true, receipt_doc_options: true, status: true },
     });
     if (!current || current.status !== 'PAID' || current.receipt_number !== null) return;
     const max = await tx.payment.aggregate({
       where: { company_id: companyId },
       _max: { receipt_number: true },
     });
+    const company = await tx.company.findUnique({
+      where: { id: companyId },
+      select: { receipt_default_doc_options: true },
+    });
+    const receiptDocOptions = resolveReceiptDocOptions(
+      current.receipt_doc_options ?? company?.receipt_default_doc_options,
+    );
     await tx.payment.update({
       where: { id: paymentId },
-      data: { receipt_number: (max._max.receipt_number ?? 0) + 1 },
+      data: {
+        receipt_number: (max._max.receipt_number ?? 0) + 1,
+        receipt_doc_options: receiptDocOptions,
+      },
     });
   }
 
@@ -191,6 +202,10 @@ export class PaymentService {
           work_order_id: dto.work_order_id,
           quote_id: dto.quote_id,
           description: dto.description,
+          receipt_additional_info: dto.receipt_additional_info,
+          receipt_doc_options: dto.receipt_doc_options
+            ? resolveReceiptDocOptions(dto.receipt_doc_options)
+            : undefined,
           expected_amount: confirmed.expected_amount,
           amount: confirmed.amount, // Prisma.Decimal aceita string decimal — nunca float
           overpayment_amount: confirmed.overpayment_amount,
@@ -430,6 +445,12 @@ export class PaymentService {
           overpayment_confirmed_at: confirmed.overpayment_confirmed_at,
           paid_at: dto.paid_at ? new Date(dto.paid_at) : new Date(),
           method: dto.method ?? payment.method ?? undefined,
+          ...(dto.receipt_additional_info !== undefined
+            ? { receipt_additional_info: dto.receipt_additional_info }
+            : {}),
+          ...(dto.receipt_doc_options !== undefined
+            ? { receipt_doc_options: resolveReceiptDocOptions(dto.receipt_doc_options) }
+            : {}),
         },
         include: { customer: customerSelect },
       });
@@ -517,6 +538,12 @@ export class PaymentService {
           ...(dto.status !== undefined ? { status: dto.status } : {}),
           ...(dueDate !== undefined ? { due_date: dueDate } : {}),
           ...(paidAt !== undefined ? { paid_at: paidAt } : {}),
+          ...(dto.receipt_additional_info !== undefined
+            ? { receipt_additional_info: dto.receipt_additional_info }
+            : {}),
+          ...(dto.receipt_doc_options !== undefined
+            ? { receipt_doc_options: resolveReceiptDocOptions(dto.receipt_doc_options) }
+            : {}),
         },
         include: { customer: customerSelect },
       });

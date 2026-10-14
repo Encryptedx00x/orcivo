@@ -21,6 +21,7 @@ import {
   assertValidQuoteAction,
   quoteAllowedActions,
   calculateQuoteTotals,
+  calculateQuoteCategorySubtotals,
   reviewQuoteCompleteness,
 } from '@orcivo/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -71,6 +72,27 @@ export class QuoteService {
     return calculateQuoteTotals(items, discountType, discountValue);
   }
 
+  /** Freezes catalog classification/unit on the quote and scopes every lookup to its company. */
+  private async resolveDocumentItems(items: QuoteCreateDto['items'], companyId: string) {
+    const catalogIds = [
+      ...new Set(items.map((item) => item.catalog_item_id).filter(Boolean)),
+    ] as string[];
+    const catalog = catalogIds.length
+      ? await this.prisma.catalogItem.findMany({
+          where: { id: { in: catalogIds }, company_id: companyId },
+          select: { id: true, type: true, unit: true },
+        })
+      : [];
+    return items.map((item) => {
+      const source = catalog.find((entry) => entry.id === item.catalog_item_id);
+      return {
+        ...item,
+        item_type: source?.type ?? item.item_type ?? ('SERVICE' as const),
+        unit: source?.unit ?? item.unit ?? 'un',
+      };
+    });
+  }
+
   private async approvedResult(
     quoteId: string,
     companyId: string,
@@ -118,6 +140,7 @@ export class QuoteService {
       dto.items.map((i) => i.catalog_item_id),
       companyId,
     );
+    const documentItems = await this.resolveDocumentItems(dto.items, companyId);
     const number = await this.nextQuoteNumber(companyId);
     // Without a choice in the form, the company's default ("Condições padrão") applies.
     const defaults = await this.prisma.company.findUnique({
@@ -134,10 +157,11 @@ export class QuoteService {
       dto.payment_terms === undefined ? defaults?.quote_default_payment_terms : dto.payment_terms;
     const warranty = dto.warranty ?? defaults?.quote_default_warranty ?? undefined;
     const { itemTotals, subtotal, total } = this.computeTotals(
-      dto.items,
+      documentItems,
       dto.discount_type ?? 'PERCENT',
       dto.discount_value ?? '0',
     );
+    const categorySubtotals = calculateQuoteCategorySubtotals(documentItems);
 
     return this.prisma.quote.create({
       data: {
@@ -153,13 +177,17 @@ export class QuoteService {
         payment_terms: (paymentTerms ?? Prisma.DbNull) as never,
         warranty,
         subtotal,
+        service_subtotal: categorySubtotals.serviceSubtotal,
+        product_subtotal: categorySubtotals.productSubtotal,
         total,
         created_by_user_id: userId,
         items: {
-          create: dto.items.map((item, i) => ({
+          create: documentItems.map((item, i) => ({
             company_id: companyId,
             catalog_item_id: item.catalog_item_id,
             description: item.description,
+            item_type: item.item_type,
+            unit: item.unit,
             quantity: item.quantity,
             unit_price: item.unit_price,
             total: itemTotals[i],
@@ -201,6 +229,8 @@ export class QuoteService {
         items: src.items.map((i) => ({
           catalog_item_id: i.catalog_item_id ?? undefined,
           description: i.description,
+          item_type: i.item_type,
+          unit: i.unit ?? undefined,
           quantity: i.quantity.toString(),
           unit_price: i.unit_price.toString(),
         })),
@@ -382,12 +412,22 @@ export class QuoteService {
 
     const discountType = dto.discount_type ?? (quote.discount_type as 'PERCENT' | 'FIXED');
     const discountValue = dto.discount_value ?? quote.discount_value.toString();
-    const items = dto.items ?? quote.items;
+    const items = dto.items
+      ? await this.resolveDocumentItems(dto.items, companyId)
+      : quote.items.map((item) => ({
+          catalog_item_id: item.catalog_item_id ?? undefined,
+          description: item.description,
+          item_type: item.item_type,
+          unit: item.unit ?? undefined,
+          quantity: item.quantity.toString(),
+          unit_price: item.unit_price.toString(),
+        }));
     const { itemTotals, subtotal, total } = this.computeTotals(
       items.map((i) => ({ quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })),
       discountType,
       discountValue.toString(),
     );
+    const categorySubtotals = calculateQuoteCategorySubtotals(items);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.quote.update({
@@ -405,15 +445,19 @@ export class QuoteService {
           discount_type: discountType,
           discount_value: discountValue,
           subtotal,
+          service_subtotal: categorySubtotals.serviceSubtotal,
+          product_subtotal: categorySubtotals.productSubtotal,
           total,
           ...(dto.items
             ? {
                 items: {
                   deleteMany: {},
-                  create: dto.items.map((item, i) => ({
+                  create: items.map((item, i) => ({
                     company_id: companyId,
                     catalog_item_id: item.catalog_item_id,
                     description: item.description,
+                    item_type: item.item_type,
+                    unit: item.unit,
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                     total: itemTotals[i],

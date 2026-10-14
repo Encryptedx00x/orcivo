@@ -2,6 +2,9 @@ import { PaymentService } from './payment.service';
 
 describe('PaymentService', () => {
   const tx = {
+    company: {
+      findUnique: jest.fn().mockResolvedValue({ receipt_default_doc_options: null }),
+    },
     payment: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -192,6 +195,9 @@ describe('PaymentService', () => {
       });
       tx.payment.findUnique.mockResolvedValue({ status: 'PAID', receipt_number: null });
       tx.payment.aggregate.mockResolvedValue({ _max: { receipt_number: 8 } });
+      tx.company.findUnique.mockResolvedValueOnce({
+        receipt_default_doc_options: { pix: false, footer: false },
+      });
 
       await service.create(
         { customer_id: 'customer-1', amount: '350.00', method: 'DINHEIRO', status: 'PAID' },
@@ -203,10 +209,15 @@ describe('PaymentService', () => {
       expect(tx.payment.aggregate).toHaveBeenCalledWith(
         expect.objectContaining({ where: { company_id: 'company-1' } }),
       );
-      expect(tx.payment.update).toHaveBeenCalledWith({
-        where: { id: 'payment-9' },
-        data: { receipt_number: 9 },
-      });
+      expect(tx.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'payment-9' },
+          data: expect.objectContaining({
+            receipt_number: 9,
+            receipt_doc_options: expect.objectContaining({ pix: false, footer: false }),
+          }),
+        }),
+      );
     });
 
     it('starts at 1 and never renumbers an already numbered payment', async () => {
@@ -222,10 +233,12 @@ describe('PaymentService', () => {
       tx.payment.aggregate.mockResolvedValue({ _max: { receipt_number: null } });
 
       await service.settle('payment-1', 'company-1', {}, 'user-1');
-      expect(tx.payment.update).toHaveBeenLastCalledWith({
-        where: { id: 'payment-1' },
-        data: { receipt_number: 1 },
-      });
+      expect(tx.payment.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: { id: 'payment-1' },
+          data: expect.objectContaining({ receipt_number: 1 }),
+        }),
+      );
 
       tx.payment.update.mockClear();
       tx.payment.findUnique.mockResolvedValueOnce({ status: 'PAID', receipt_number: 1 });

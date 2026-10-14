@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReceiptDocOptionsSchema } from '@orcivo/shared-types';
 export { ReceiptSignatureUpdateSchema as ReceiptSignatureSchema } from '@orcivo/shared-types';
 
 const MONEY = z
@@ -27,6 +28,8 @@ export const PaymentCreateSchema = z
     work_order_id: z.string().uuid().optional(),
     quote_id: z.string().uuid().optional(),
     description: z.string().max(200).optional(),
+    receipt_additional_info: z.string().trim().max(2000).optional(),
+    receipt_doc_options: ReceiptDocOptionsSchema.optional(),
     amount: MONEY,
     method: PaymentMethodEnum.optional(),
     status: PaymentStatusEnum.optional(),
@@ -41,6 +44,8 @@ export const PaymentSettleSchema = z
     method: PaymentMethodEnum.optional(),
     paid_at: z.string().datetime().optional(),
     received_amount: MONEY.optional(),
+    receipt_additional_info: z.string().trim().max(2000).nullable().optional(),
+    receipt_doc_options: ReceiptDocOptionsSchema.optional(),
   })
   .merge(OverpaymentConfirmationSchema);
 export type PaymentSettleDto = z.infer<typeof PaymentSettleSchema>;
@@ -54,6 +59,8 @@ export const PaymentUpdateSchema = z
     status: PaymentStatusEnum.optional(),
     due_date: z.string().datetime().nullable().optional(),
     paid_at: z.string().datetime().nullable().optional(),
+    receipt_additional_info: z.string().trim().max(2000).nullable().optional(),
+    receipt_doc_options: ReceiptDocOptionsSchema.optional(),
     justification: JUSTIFICATION,
   })
   .merge(OverpaymentConfirmationSchema)
@@ -63,7 +70,9 @@ export const PaymentUpdateSchema = z
       value.method !== undefined ||
       value.status !== undefined ||
       value.due_date !== undefined ||
-      value.paid_at !== undefined,
+      value.paid_at !== undefined ||
+      value.receipt_additional_info !== undefined ||
+      value.receipt_doc_options !== undefined,
     { message: 'Informe ao menos um campo para atualizar o recebimento.' },
   );
 export type PaymentUpdateDto = z.infer<typeof PaymentUpdateSchema>;

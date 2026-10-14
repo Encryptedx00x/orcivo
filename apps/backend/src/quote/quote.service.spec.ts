@@ -31,6 +31,9 @@ const mockTx = {
 const mockAudit = { record: jest.fn().mockResolvedValue(undefined) };
 
 const mockPrisma = {
+  catalogItem: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
   quote: {
     create: jest.fn(),
     findMany: jest.fn(),
@@ -198,6 +201,18 @@ describe('QuoteService', () => {
     it('inclui uma taxa de deslocamento do catálogo como item comum e soma em Decimal', async () => {
       mockRedis.incr.mockResolvedValue(2);
       mockPrisma.quote.create.mockResolvedValue({ id: 'q-travel', items: [] });
+      mockPrisma.catalogItem.findMany.mockResolvedValueOnce([
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          type: 'SERVICE',
+          unit: 'h',
+        },
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          type: 'PRODUCT',
+          unit: 'un',
+        },
+      ]);
 
       await service.create(
         {
@@ -225,7 +240,23 @@ describe('QuoteService', () => {
 
       expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ subtotal: '135.50', total: '135.50' }),
+          data: expect.objectContaining({
+            subtotal: '135.50',
+            service_subtotal: '100.00',
+            product_subtotal: '35.50',
+            total: '135.50',
+            items: {
+              create: [
+                expect.objectContaining({ item_type: 'SERVICE', unit: 'h' }),
+                expect.objectContaining({ item_type: 'PRODUCT', unit: 'un' }),
+              ],
+            },
+          }),
+        }),
+      );
+      expect(mockPrisma.catalogItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ company_id: 'comp-1' }),
         }),
       );
     });
@@ -1592,6 +1623,7 @@ describe('QuoteExpiryProcessor', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma = {
+      catalogItem: { findMany: jest.fn() },
       quote: {
         create: jest.fn(),
         findMany: jest.fn(),
