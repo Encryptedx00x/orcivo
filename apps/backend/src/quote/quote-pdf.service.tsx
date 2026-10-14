@@ -184,10 +184,27 @@ const styles = StyleSheet.create({
     borderColor: C.border2,
   },
   tRowLast: { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
-  cDesc: { flex: 3.3 },
-  cQty: { flex: 1, textAlign: 'right' },
-  cPrice: { flex: 1.3, textAlign: 'right' },
-  cTotal: { flex: 1.3, textAlign: 'right' },
+  categoryHeader: {
+    marginTop: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: C.purple50,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+  },
+  categoryTitle: {
+    fontFamily: SANS,
+    fontWeight: 600,
+    fontSize: 9,
+    color: C.purple800,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  cDesc: { flex: 2.8 },
+  cQty: { flex: 0.75, textAlign: 'right' },
+  cUnit: { flex: 0.7, textAlign: 'right' },
+  cPrice: { flex: 1.2, textAlign: 'right' },
+  cTotal: { flex: 1.2, textAlign: 'right' },
   cellText: { fontSize: 10, color: C.ink },
   cellMuted: { fontSize: 10, color: C.fg2 },
   cellMono: { fontFamily: MONO, fontSize: 9.5, color: C.fg2 },
@@ -346,6 +363,8 @@ interface QuoteData {
   payment_terms?: unknown;
   warranty?: string | null;
   subtotal: DecimalLike;
+  service_subtotal?: DecimalLike;
+  product_subtotal?: DecimalLike;
   discount_type: string;
   discount_value: DecimalLike;
   total: DecimalLike;
@@ -355,6 +374,8 @@ interface QuoteData {
   created_at?: Date | null;
   items: Array<{
     description: string;
+    item_type?: 'SERVICE' | 'PRODUCT';
+    unit?: string | null;
     quantity: DecimalLike;
     unit_price: DecimalLike;
     total: DecimalLike;
@@ -380,6 +401,66 @@ interface QuoteData {
     signature_image_url?: string | null;
     approved_at?: Date | null;
   } | null;
+}
+
+interface PreparedQuoteItem {
+  description: string;
+  item_type: 'SERVICE' | 'PRODUCT';
+  unit: string;
+  quantity: string;
+  unit_price: string;
+  total: string;
+}
+
+export interface QuotePdfSection {
+  type: 'SERVICE' | 'PRODUCT';
+  title: 'Serviços' | 'Produtos';
+  subtotal: string;
+  items: PreparedQuoteItem[];
+}
+
+/**
+ * Prepara o agrupamento impresso sem converter dinheiro para Number. Orçamentos
+ * antigos sem os campos da B4-24 continuam como serviços e têm subtotal exato.
+ */
+export function prepareQuotePdfSections(quote: QuoteData): QuotePdfSection[] {
+  const items: PreparedQuoteItem[] = quote.items.map((item) => ({
+    ...item,
+    item_type: item.item_type === 'PRODUCT' ? 'PRODUCT' : 'SERVICE',
+    unit: item.unit?.trim() || 'un',
+    quantity: item.quantity.toString(),
+    unit_price: item.unit_price.toString(),
+    total: item.total.toString(),
+  }));
+  const definitions = [
+    {
+      type: 'SERVICE' as const,
+      title: 'Serviços' as const,
+      storedSubtotal: quote.service_subtotal,
+    },
+    {
+      type: 'PRODUCT' as const,
+      title: 'Produtos' as const,
+      storedSubtotal: quote.product_subtotal,
+    },
+  ];
+
+  return definitions.flatMap(({ type, title, storedSubtotal }) => {
+    const categoryItems = items.filter((item) => item.item_type === type);
+    if (!categoryItems.length) return [];
+    const calculated = categoryItems.reduce(
+      (sum, item) => sum.add(new Decimal(item.quantity).mul(item.unit_price)),
+      new Decimal(0),
+    );
+    return [
+      {
+        type,
+        title,
+        subtotal: storedSubtotal?.toString() ?? calculated.toFixed(2),
+        items: categoryItems,
+      },
+    ];
+  });
 }
 
 interface CompanyData {
@@ -419,6 +500,8 @@ export class QuotePdfService {
     const q = {
       ...quote,
       subtotal: quote.subtotal.toString(),
+      service_subtotal: quote.service_subtotal?.toString(),
+      product_subtotal: quote.product_subtotal?.toString(),
       discount_value: quote.discount_value.toString(),
       total: quote.total.toString(),
       items: quote.items.map((item) => ({
@@ -428,6 +511,7 @@ export class QuotePdfService {
         total: item.total.toString(),
       })),
     };
+    const sections = prepareQuotePdfSections(q);
 
     const showWatermark = company.plan_code === 'LIVRE';
     const location = [company.city, company.state].filter(Boolean).join(' · ');
@@ -557,39 +641,61 @@ export class QuotePdfService {
           </View>
 
           {/* ── Tabela de itens ── */}
-          <View>
-            <View style={styles.tHeadRow}>
-              <Text style={[styles.th, styles.cDesc]}>Descrição</Text>
-              <Text style={[styles.th, styles.cQty]}>Qtd</Text>
-              {itemPrices && <Text style={[styles.th, styles.cPrice]}>Preço un.</Text>}
-              {itemPrices && <Text style={[styles.th, styles.cTotal]}>Total</Text>}
+          {sections.map((section) => (
+            <View key={section.type}>
+              <View style={styles.categoryHeader} wrap={false}>
+                <Text style={[styles.categoryTitle, { color: accent }]}>{section.title}</Text>
+              </View>
+              <View style={styles.tHeadRow} wrap={false}>
+                <Text style={[styles.th, styles.cDesc]}>Descrição</Text>
+                <Text style={[styles.th, styles.cQty]}>Qtd</Text>
+                <Text style={[styles.th, styles.cUnit]}>Un.</Text>
+                {itemPrices && <Text style={[styles.th, styles.cPrice]}>Preço un.</Text>}
+                {itemPrices && <Text style={[styles.th, styles.cTotal]}>Total</Text>}
+              </View>
+              {section.items.map((item, i) => {
+                const last = i === section.items.length - 1;
+                return (
+                  <View
+                    key={`${section.type}-${i}`}
+                    style={[styles.tRow, last ? styles.tRowLast : {}]}
+                    wrap={false}
+                  >
+                    <Text style={[styles.cellText, styles.cDesc]}>{item.description}</Text>
+                    <Text style={[styles.cellMono, styles.cQty]}>{fmtQty(item.quantity)}</Text>
+                    <Text style={[styles.cellMuted, styles.cUnit]}>{item.unit}</Text>
+                    {itemPrices && (
+                      <Text style={[styles.cellMono, styles.cPrice]}>
+                        {formatMoney(item.unit_price)}
+                      </Text>
+                    )}
+                    {itemPrices && (
+                      <Text style={[styles.cellMoney, styles.cTotal]}>
+                        {formatMoney(item.total)}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
-            {q.items.map((item, i) => {
-              const last = i === q.items.length - 1;
-              return (
-                <View key={i} style={[styles.tRow, last ? styles.tRowLast : {}]} wrap={false}>
-                  <Text style={[styles.cellText, styles.cDesc]}>{item.description}</Text>
-                  <Text style={[styles.cellMono, styles.cQty]}>{fmtQty(item.quantity)}</Text>
-                  {itemPrices && (
-                    <Text style={[styles.cellMono, styles.cPrice]}>
-                      {formatMoney(item.unit_price)}
-                    </Text>
-                  )}
-                  {itemPrices && (
-                    <Text style={[styles.cellMoney, styles.cTotal]}>{formatMoney(item.total)}</Text>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+          ))}
 
           {/* ── Totais ── */}
           {anyPrice && (
             <View style={styles.totalsWrap}>
               <View style={styles.totalsBox}>
-                {opts.subtotal && (
+                {opts.subtotal &&
+                  sections.map((section) => (
+                    <View key={section.type} style={styles.tLine}>
+                      <Text style={styles.tLineLabel}>
+                        Subtotal de {section.title.toLowerCase()}
+                      </Text>
+                      <Text style={styles.tLineValue}>{formatMoney(section.subtotal)}</Text>
+                    </View>
+                  ))}
+                {opts.subtotal && hasDiscount && (
                   <View style={styles.tLine}>
-                    <Text style={styles.tLineLabel}>Subtotal</Text>
+                    <Text style={styles.tLineLabel}>Subtotal geral</Text>
                     <Text style={styles.tLineValue}>{formatMoney(q.subtotal)}</Text>
                   </View>
                 )}

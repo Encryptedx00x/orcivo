@@ -566,6 +566,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** snapshots/extração de conteúdo PDF; specs de paginação e Decimal; download real
 - **Testes visuais:** render A4 com 1 e múltiplas páginas, textos longos e logo; inspeção sem corte/sobreposição; ações nos três viewports e app
 - **Autonomia:** Nível B
+- **Evidência parcial (2026-10-14):** o PDF agora separa serviços e produtos, imprime unidade, quantidade, preço unitário e total por item e apresenta subtotais por categoria antes do total geral. Orçamentos antigos continuam como serviços com unidade `un`; todos os cálculos permanecem em `Decimal`/string decimal. Foram geradas localmente três fixtures reais com logo: documento mínimo de `1` página, documento completo de `2` páginas e documento longo de `7` páginas com `55` itens e textos extensos. Checklist visual das páginas inicial, de transição de categoria e final: sem corte de linha, sobreposição ou vazamento; cabeçalho, dados do cliente, validade, pagamento, garantia, adicionais, assinaturas e rodapé permaneceram legíveis. A extração confirmou rodapé e numeração em todas as `7` páginas. Specs backend `78/78`, shared `9/9` e contratos de download web/app `4/4` passaram; typecheck, build e lint backend passaram (um warning preexistente em `main.ts`). Falta somente repetir as ações de abrir/baixar nos três viewports e no app: o controlador do navegador continua recusando a aba local, portanto a tarefa permanece aberta.
 
 ### B4-26-receipt-pdf-structure — Evoluir conteúdo configurável do recibo
 
