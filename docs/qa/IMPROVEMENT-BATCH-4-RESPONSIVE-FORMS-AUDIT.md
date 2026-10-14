@@ -54,3 +54,15 @@ A sidebar completa recolhida por `transform` no mobile foi excluída dos resulta
 ## Fila de correção
 
 A B4-47 deve corrigir RF-01, RF-02 e RF-03 sem recriar o design system. Depois da correção, a matriz acima deve ser repetida e os três IDs atualizados com evidência de revalidação.
+
+## Revalidação B4-47
+
+Data: 2026-10-13
+
+| ID    | Resultado       | Evidência de revalidação                                                                                                                                                                                                                                                                                                       |
+| ----- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| RF-01 | corrigido       | Em `360×800`, `Situação` e `Data do recebimento` empilham com 257 px úteis cada; modal e documento mediram 345/345 px, sem overflow. Em `390×844`, os campos permanecem lado a lado com 138 px cada e conteúdo legível. Em `1440×900`, permanecem lado a lado com 186 px cada. O mesmo comportamento cobre cadastro e edição.  |
+| RF-02 | corrigido       | Em `360×800` e `390×844`, clicar em `Identidade visual` alinha a aba ativa inteira no início da faixa (`left=0`), sem texto parcial da aba anterior; documento permaneceu com largura rolável igual à largura útil. Em desktop, a navegação vertical não mudou.                                                                |
+| RF-03 | não reproduzido | A medição original ocorreu antes da troca responsiva do shell terminar. Após aguardar a estabilização, `/facil` e o editor de assinatura mediram 305/305 px em `320×800`, sem overflow. Nos viewports oficiais, o modo fácil mediu 1440/1440, 390/390 e 345/345 px. Nenhuma correção nativa foi inferida desse falso positivo. |
+
+O modal continua limitado a `calc(100dvh - 32px)` e rolável verticalmente para teclado virtual/safe area. A matriz foi repetida nos modos completo e fácil em `1440×900`, `390×844` e `360×800`. O app permanece `não reproduzido/bloqueado` até B4-15/B4-16, conforme a regra de não atribuir ao nativo um defeito observado apenas no web.

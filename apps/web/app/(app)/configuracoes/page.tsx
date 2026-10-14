@@ -484,7 +484,11 @@ export default function ConfiguracoesPage(): React.JSX.Element {
               role="tab"
               aria-selected={tab === id}
               className="ov-config-tab"
-              onClick={() => setTab(id)}
+              onClick={(event) => {
+                setTab(id);
+                const button = event.currentTarget;
+                button.parentElement?.scrollTo({ left: Math.max(0, button.offsetLeft) });
+              }}
               style={{
                 width: '100%',
                 border: 0,

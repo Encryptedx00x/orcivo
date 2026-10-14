@@ -18,8 +18,11 @@ for (const [surface, source] of [
     assert.match(source, /overflowX: 'hidden'/);
   });
 
-  test(`${surface} impede que o input de data force overflow horizontal`, () => {
-    assert.match(source, /gridTemplateColumns: 'repeat\(2, minmax\(0, 1fr\)\)'/);
+  test(`${surface} empilha campos antes que data e situação fiquem ilegíveis`, () => {
+    assert.match(
+      source,
+      /gridTemplateColumns: 'repeat\(auto-fit, minmax\(min\(132px, 100%\), 1fr\)\)'/,
+    );
     assert.match(source, /minWidth: 0/);
     assert.match(source, /maxWidth: '100%'/);
   });

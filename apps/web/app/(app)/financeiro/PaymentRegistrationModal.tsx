@@ -349,7 +349,7 @@ export function PaymentRegistrationModal({
 
 const twoColumns: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(132px, 100%), 1fr))',
   gap: 12,
 };
 const fieldContainerStyle: React.CSSProperties = { minWidth: 0 };

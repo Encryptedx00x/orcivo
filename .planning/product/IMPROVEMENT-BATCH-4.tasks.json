@@ -3067,7 +3067,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-VISUAL",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-48-draft-pdf-delivery-semantics",
