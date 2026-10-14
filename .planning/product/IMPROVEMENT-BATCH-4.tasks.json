@@ -1097,7 +1097,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-MOBILE",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-17-mobile-start-invite-build-audit",
