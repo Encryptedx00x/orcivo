@@ -680,6 +680,17 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** modelagem de transições e matriz de casos
 - **Testes visuais:** protótipos de estado parcial nas seis combinações
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/qa/B4-32-PARTIAL-WORK-ORDER-DOMAIN-MATRIX.md` confirma que os itens
+  existem apenas no orçamento: a OS guarda só `quote_id`, cobrança nasce pelo total aprovado, estoque movimenta todos
+  os produtos e garantia/auditoria operam no nível da OS. A matriz cobre doze cenários e dez invariantes, inclusive
+  três contratados/dois realizados, quantidade parcial, zero realizado, pagamento/recibo já emitido, concorrência e
+  isolamento tenant. A ADR-024 propõe snapshot `WorkOrderItem`, `DONE` com resultado derivado `FULL/PARTIAL`,
+  settlement financeiro explícito em Decimal, movimentos compensatórios de estoque, garantia por item e eventos
+  idempotentes; orçamento e recibos históricos não são reescritos. Wireframes funcionais cobrem web desktop/mobile e
+  app nos modos fácil/completo. A baseline atual ficou verde em `118/118` testes: shared-types `10`, máquina de OS
+  `80`, estoque `4`, recebimentos `13` e integração real de aprovação/transação `11`, com banco/Redis locais e
+  `--runInBand`. Oito decisões de domínio/dinheiro permanecem reservadas ao dono na B4-33; nenhum schema ou produto foi
+  alterado.
 
 ### B4-33-owner-strategy-decisions — Registrar decisões estratégicas do dono
 
