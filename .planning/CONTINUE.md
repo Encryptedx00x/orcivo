@@ -108,7 +108,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-29 — ADR de posicionamento:** inventário reproduzível, vocabulário neutro, preferências, compatibilidade e
       amostras de copy propostos na ADR-021; sete decisões reservadas ao gate B4-33 (`6843131`).
 - [x] **B4-30 — ADR de multiempresa:** empresa ativa por sessão, isolamento, convites, migração e wireflow definidos
-      na ADR-022; sete decisões reservadas ao gate B4-33 (commit pendente).
+      na ADR-022; sete decisões reservadas ao gate B4-33 (`23bd215`).
 - [ ] **B4-31…B4-32 — ADRs:** modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
