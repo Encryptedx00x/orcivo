@@ -608,6 +608,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** inventário de PlanLimit/endpoints/feature gates e testes existentes
 - **Testes visuais:** wireframes descritivos para desktop/mobile/app sem mudar design system
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/decisions/ADR-020-usage-plan-limits.md` inventaria a fonte operacional dos quatro limites, flags, assinatura, telas e testes existentes; registra que a web não mostra consumo e que o app reconta OS de forma incompleta. A proposta cria um snapshot tenant-scoped calculado somente no backend, estados normal/80%/100%/excedido/uso justo, tela Uso separada de billing, indicadores antecipados e wireframes responsivos sem novo design system. Armazenamento/fotos não recebem limites inventados. Sete escolhas de valores, período e diferenciação comercial ficam explicitamente reservadas ao dono na B4-33. O inventário foi confrontado com `32/32` testes verdes de backend, shared-types, web, mobile e site; nenhum código de produto, preço, limite ou billing foi alterado.
 
 ### B4-29-neutral-positioning-adr — ADR de posicionamento e linguagem neutra
 

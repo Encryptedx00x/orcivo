@@ -1852,7 +1852,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-STRATEGY",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "decisionDeliverable": "ADR/proposta da tela Uso e limites"
     },
     {
