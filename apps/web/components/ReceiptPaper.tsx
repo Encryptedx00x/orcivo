@@ -179,7 +179,7 @@ export function ReceiptPaper({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={signatureUrl}
-              alt="Assinatura do técnico"
+              alt="Assinatura do responsável"
               style={{ height: 56, objectFit: 'contain', alignSelf: 'flex-start' }}
             />
           ) : (
@@ -189,7 +189,9 @@ export function ReceiptPaper({
           )}
           <div style={{ height: 1, background: '#94A3B8' }} />
           <span style={{ fontSize: sm, color: '#475569' }}>
-            {receipt.receipt_signer_name ? `${receipt.receipt_signer_name} · Técnico` : 'Técnico'}
+            {receipt.receipt_signer_name
+              ? `${receipt.receipt_signer_name} · Responsável`
+              : 'Responsável'}
           </span>
         </div>
       )}

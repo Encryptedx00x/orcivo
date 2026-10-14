@@ -46,3 +46,4 @@ export * from './quote/quote-completeness';
 export * from './finance/expense';
 export * from './appointment/appointment';
 export * from './reports/reports.dto';
+export * from './payment/receipt-signature';

@@ -18,6 +18,7 @@ import {
   receiptCustomerOptions,
   receiptLinkOptions,
   setReceiptSignature,
+  setReceiptSignatureOnce,
   type LinkOption,
 } from '../../(app)/documentos/receipt-actions';
 import {
@@ -42,7 +43,6 @@ import {
   Loading,
   Options,
   Search,
-  Toggle,
   card,
   useToast,
 } from '../ui';
@@ -197,6 +197,18 @@ export function ReceiptScreen(): React.JSX.Element {
     toast(signed ? 'Assinatura tirada do recibo.' : 'Sua assinatura vai no recibo.');
   };
 
+  const handleOneOffSignature = async (file: File | undefined) => {
+    if (!file || busy) return;
+    setBusy(true);
+    const form = new FormData();
+    form.append('file', file);
+    const res = await setReceiptSignatureOnce(r.id, form);
+    setBusy(false);
+    if (!res.ok) return toast(res.message);
+    receipt.setData(res.data);
+    toast('Assinatura usada somente neste recibo.');
+  };
+
   return (
     <>
       <H1 size={28}>Recibo nº {receiptNo(r.receipt_number)}</H1>
@@ -210,19 +222,35 @@ export function ReceiptScreen(): React.JSX.Element {
           gap: 6,
         }}
       >
-        {hasSavedSignature && (
-          <Toggle
-            on={signed}
-            onClick={() => void toggle()}
-            label="Pôr minha assinatura no recibo"
-          />
+        {signed && <Hint>Assinatura incluída neste recibo.</Hint>}
+        {(signed || hasSavedSignature) && (
+          <Btn tone="outline" onClick={() => void toggle()} disabled={busy}>
+            {signed ? 'Remover assinatura' : 'Usar assinatura salva'}
+          </Btn>
         )}
-        {!signature.loading && !hasSavedSignature && (
+        {!signature.loading && !hasSavedSignature && !signed && (
           <Hint>Adicione uma assinatura para poder incluí-la neste recibo.</Hint>
         )}
         <Btn tone="link" onClick={() => go('sign', { standalone: '1' })}>
           {hasSavedSignature ? 'Trocar assinatura' : 'Adicionar assinatura'}
         </Btn>
+        <label
+          className="ov-btn ov-btn-outline"
+          style={{ cursor: busy ? 'wait' : 'pointer', justifyContent: 'center' }}
+        >
+          Usar outra só neste recibo
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            disabled={busy}
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              void handleOneOffSignature(file);
+            }}
+          />
+        </label>
       </div>
       <ActionBar>
         <Btn

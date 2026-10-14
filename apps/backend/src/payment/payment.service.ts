@@ -368,6 +368,36 @@ export class PaymentService {
     return this.findOne(id, companyId);
   }
 
+  /** Freezes a one-off signature on this receipt without reading or changing the saved one. */
+  async setReceiptSignatureOnce(
+    id: string,
+    companyId: string,
+    userId: string,
+    buffer: Buffer,
+    mimetype: string,
+  ) {
+    const p = await this.findOne(id, companyId);
+    if (p.status !== 'PAID' || p.receipt_number === null) {
+      throw new NotFoundException('Este recebimento ainda não foi pago, então não tem recibo.');
+    }
+    this.storage.assertUploadable(buffer, mimetype, 2 * 1024 * 1024, [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+    ]);
+    const key = `${companyId}/payments/${id}/receipt-signature`;
+    await this.storage.uploadBuffer(PHOTO_BUCKET, key, buffer, mimetype);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    await this.prisma.payment.update({
+      where: { id },
+      data: { receipt_signature_key: key, receipt_signer_name: user?.name ?? null },
+    });
+    return this.findOne(id, companyId);
+  }
+
   async settle(id: string, companyId: string, dto: PaymentSettleDto, userId: string) {
     const payment = await this.prisma.payment.findFirst({
       where: { id, company_id: companyId, deleted_at: null },

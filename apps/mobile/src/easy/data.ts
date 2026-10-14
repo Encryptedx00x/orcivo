@@ -358,6 +358,20 @@ export const easy = {
   createCost: (dto: ExpenseCreateDto) => api.post<{ id: string }>('/expenses', dto),
   setReceiptSignature: (id: string, apply: boolean) =>
     api.patch<EasyReceipt>(`/payments/${enc(id)}/receipt-signature`, { apply }),
+  /** Uses an image only on this receipt; it does not replace the saved signature. */
+  setReceiptSignatureOnce: (id: string, uri: string, mimeType?: string) => {
+    const form = new FormData();
+    const normalizedType =
+      mimeType === 'image/png' || mimeType === 'image/webp' ? mimeType : 'image/jpeg';
+    const extension =
+      normalizedType === 'image/png' ? 'png' : normalizedType === 'image/webp' ? 'webp' : 'jpg';
+    form.append('file', {
+      uri,
+      type: normalizedType,
+      name: `assinatura-recibo.${extension}`,
+    } as unknown as Blob);
+    return api.postFormData<EasyReceipt>(`/payments/${enc(id)}/receipt-signature/once`, form);
+  },
 
   // ── Empresa / Configurações ──
   company: () => api.get<EasyCompany>('/company/me'),

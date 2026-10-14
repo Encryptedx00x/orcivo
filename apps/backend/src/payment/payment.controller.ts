@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -10,7 +11,11 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { receiptSignatureShouldApply, type ReceiptSignatureUpdate } from '@orcivo/shared-types';
 import type { Response } from 'express';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
@@ -73,7 +78,27 @@ export class PaymentController {
       id,
       req.companyId,
       req.user.userId,
-      (body as { apply: boolean }).apply,
+      receiptSignatureShouldApply(body as ReceiptSignatureUpdate),
+    );
+  }
+
+  /** Uses an image only on this receipt; it never changes the reusable signature. */
+  @AdminOnly()
+  @Post(':id/receipt-signature/once')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  receiptSignatureOnce(
+    @Param('id') id: string,
+    @Req() req: TenantRequest,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Arquivo de assinatura obrigatório.');
+    return this.paymentService.setReceiptSignatureOnce(
+      id,
+      req.companyId,
+      req.user.userId,
+      file.buffer,
+      file.mimetype,
     );
   }
 

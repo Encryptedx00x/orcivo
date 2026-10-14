@@ -1,6 +1,7 @@
 // Recibos (app): list, receipt and "Novo recibo". Registered in the easy stack and
 // in the full app's Mais stack, so both modes have the same receipts.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import { Alert, Image, Pressable, Text, View } from 'react-native';
 import { useNavigation, type RouteProp, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -40,7 +41,6 @@ import {
   Page,
   Search,
   Sub,
-  Toggle,
   s,
   useLoad,
 } from '../ui';
@@ -285,12 +285,12 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
               source={{ uri: r.receipt_signature_url }}
               style={{ height: 56, width: 200 }}
               resizeMode="contain"
-              accessibilityLabel="Assinatura do técnico"
+              accessibilityLabel="Assinatura do responsável"
             />
           ) : null}
           <View style={{ height: 1, backgroundColor: '#94A3B8' }} />
           <Text style={s.muted}>
-            {r.receipt_signer_name ? `${r.receipt_signer_name} · Técnico` : 'Técnico'}
+            {r.receipt_signer_name ? `${r.receipt_signer_name} · Responsável` : 'Responsável'}
           </Text>
         </View>
       ) : null}
@@ -353,6 +353,26 @@ export function ReceiptScreen() {
     }
   };
 
+  const handleOneOffSignature = async () => {
+    if (busy) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.9,
+      allowsEditing: false,
+    });
+    if (picked.canceled || !picked.assets[0]) return;
+    setBusy(true);
+    try {
+      const asset = picked.assets[0];
+      receipt.setData(await easy.setReceiptSignatureOnce(r.id, asset.uri, asset.mimeType));
+      Alert.alert('Assinatura incluída', 'Ela será usada somente neste recibo.');
+    } catch (err) {
+      Alert.alert('Não deu certo', errorText(err, 'Não foi possível usar esta assinatura.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Page
       bar={
@@ -369,17 +389,19 @@ export function ReceiptScreen() {
       <H1 size={28}>Recibo nº {receiptNo(r.receipt_number)}</H1>
       <ReceiptPaperView r={r} company={company.data} />
       <Card style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
-        {hasSavedSignature ? (
-          <Toggle
-            on={signed}
-            onChange={(on) => void toggle(on)}
-            label="Pôr minha assinatura no recibo"
-          />
+        {signed ? <Text style={s.muted}>Assinatura incluída neste recibo.</Text> : null}
+        {signed || hasSavedSignature ? (
+          <Btn tone="outline" disabled={busy} onPress={() => void toggle(!signed)}>
+            {signed ? 'Remover assinatura' : 'Usar assinatura salva'}
+          </Btn>
         ) : (
           <Text style={s.muted}>Adicione uma assinatura para poder incluí-la neste recibo.</Text>
         )}
         <Btn tone="link" onPress={() => nav.navigate('QuoteSign', { standalone: true })}>
           {hasSavedSignature ? 'Trocar assinatura' : 'Adicionar assinatura'}
+        </Btn>
+        <Btn tone="outline" disabled={busy} onPress={() => void handleOneOffSignature()}>
+          Usar outra só neste recibo
         </Btn>
       </Card>
     </Page>

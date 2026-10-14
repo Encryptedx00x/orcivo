@@ -195,7 +195,7 @@ export class ReceiptPdfService {
                 <Image style={s.sigImage} src={r.signatureDataUri} />
                 <View style={s.sigLine} />
                 <Text style={s.small}>
-                  {[r.signerName, 'Técnico', company.professional_registration]
+                  {[r.signerName, 'Responsável', company.professional_registration]
                     .filter(Boolean)
                     .join(' · ')}
                 </Text>

@@ -91,7 +91,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       specs e `4/4` contratos verdes. Falta a matriz visual porque o controlador recusou a aba localhost.
 - [~] **B4-21 — completude do orçamento:** contrato/backend e quatro experiências implementados; `3/3`
       shared, `66/66` backend e `4/4` contratos verdes. Falta a mesma matriz visual bloqueada por localhost.
-- [ ] **B4-22…B4-23 — fluxos:** implementar assinatura e opções de recibo.
+- [~] **B4-22 — assinatura no recibo:** contrato, backend e seis superfícies implementados; `2/2` shared,
+      `16/16` payment, build/typecheck/lint verdes. Falta a matriz visual bloqueada pelo controlador da aba local.
+- [ ] **B4-23 — opções do recibo:** inventariar campos, origens, padrões e lacunas antes da modelagem.
 - [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
@@ -99,9 +101,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21 assim que o navegador integrado aceitar a aba
-local; enquanto esse bloqueio externo persistir, avançar para `B4-22-receipt-signature-flow`, independente das duas,
-sem antecipar terminologia configurável das B4-29/B4-37.
+**Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22 assim que o navegador integrado aceitar
+a aba local; enquanto esse bloqueio externo persistir, avançar para `B4-23-receipt-fields-inventory`, sem antecipar
+a modelagem da B4-24 nem a terminologia configurável das B4-29/B4-37.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

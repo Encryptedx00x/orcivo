@@ -523,6 +523,8 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** specs assinatura salva/avulsa/ausente; testes de não sobrescrita; shared-types build
 - **Testes visuais:** emitir recibo nos três estados em todas as superfícies existentes
 - **Autonomia:** Nível B
+- **Evidência automática parcial (2026-10-14):** o contrato compartilhado distingue `NONE`, `SAVED` e `ONCE`, mantendo compatibilidade com clientes que ainda enviam `apply`. O backend congela a assinatura salva ou uma imagem PNG/JPEG/WebP avulsa no caminho tenant-scoped do recibo; a opção avulsa não consulta nem altera a assinatura reutilizável. Web completa/fácil e a tela nativa compartilhada pelos modos completo/fácil oferecem remover, usar a salva, adicionar/trocar a reutilizável e usar outra somente no documento. A identificação visual passou a usar o termo neutro “Responsável”. Shared passou `2/2`, payment passou `16/16`, build de shared-types, typecheck de backend/web/mobile e lint passaram (somente avisos preexistentes no backend/web).
+- **Verificação visual pendente:** o navegador integrado expõe a aba local como erro `ERR_TOO_MANY_REDIRECTS` e, ao tentar vinculá-la, o controlador recusa a URL por política. Sem contornar essa política, ainda faltam os três estados em `1440×900`, `390×844`, `360×800`, fácil/completo e Expo web. A tarefa permanece aberta; nenhuma conclusão visual do app foi inferida sem reprodução.
 
 ### B4-23-receipt-fields-inventory — Inventariar opções de informação do recibo
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export { ReceiptSignatureUpdateSchema as ReceiptSignatureSchema } from '@orcivo/shared-types';
 
 const MONEY = z
   .string()
@@ -84,5 +85,3 @@ export const PaymentListQuerySchema = z.object({
 export type PaymentListQueryDto = Omit<z.infer<typeof PaymentListQuerySchema>, 'receipts'> & {
   receipts?: boolean;
 };
-
-export const ReceiptSignatureSchema = z.object({ apply: z.boolean() });

@@ -18,11 +18,13 @@ import { ReceiptPaper } from '../../../components/ReceiptPaper';
 import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
 import {
   createReceipt,
+  getReceiptSignatureAvailability,
   getReceipt,
   listReceipts,
   receiptCompany,
   receiptLinkOptions,
   setReceiptSignature,
+  setReceiptSignatureOnce,
   type LinkOption,
   type ReceiptCompany,
 } from './receipt-actions';
@@ -385,9 +387,13 @@ function ReceiptModal({
   const [r, setR] = useState<Receipt | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hasSavedSignature, setHasSavedSignature] = useState<boolean | null>(null);
 
   useEffect(() => {
     void getReceipt(id).then((res) => (res.ok ? setR(res.data) : setErr(res.message)));
+    void getReceiptSignatureAvailability().then((res) => {
+      if (res.ok) setHasSavedSignature(res.data);
+    });
   }, [id]);
 
   const toggleSig = async () => {
@@ -401,28 +407,63 @@ function ReceiptModal({
     onChanged();
   };
 
+  const handleOneOffSignature = async (file: File | undefined) => {
+    if (!r || !file || busy) return;
+    setBusy(true);
+    const form = new FormData();
+    form.append('file', file);
+    const res = await setReceiptSignatureOnce(r.id, form);
+    setBusy(false);
+    if (!res.ok) return setErr(res.message);
+    setErr('');
+    setR(res.data);
+    onChanged();
+  };
+
   return (
     <Modal title={r ? `Recibo nº ${receiptNo(r.receipt_number)}` : 'Recibo'} onClose={onClose}>
       {!r && !err && <div style={{ color: '#64748B' }}>Carregando…</div>}
       {r && <ReceiptPaper receipt={r} company={company ?? { trade_name: '' }} />}
       {r && (
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            fontSize: 14,
-            cursor: 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={!!r.receipt_signature_key}
-            disabled={busy}
-            onChange={() => void toggleSig()}
-          />
-          Aplicar minha assinatura salva
-        </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {r.receipt_signature_key && (
+            <span style={{ color: '#475569', fontSize: 14 }}>
+              Assinatura incluída neste recibo.
+            </span>
+          )}
+          {(r.receipt_signature_key || hasSavedSignature) && (
+            <button
+              type="button"
+              className="ov-btn ov-btn-outline"
+              disabled={busy}
+              onClick={() => void toggleSig()}
+            >
+              {r.receipt_signature_key ? 'Remover assinatura' : 'Usar assinatura salva'}
+            </button>
+          )}
+          {hasSavedSignature === false && !r.receipt_signature_key && (
+            <span style={{ color: '#64748B', fontSize: 14 }}>
+              Você ainda não tem assinatura salva.
+            </span>
+          )}
+          <label
+            className="ov-btn ov-btn-outline"
+            style={{ cursor: busy ? 'wait' : 'pointer', justifyContent: 'center' }}
+          >
+            Usar outra só neste recibo
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={busy}
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                void handleOneOffSignature(file);
+              }}
+            />
+          </label>
+        </div>
       )}
       {err && (
         <p role="alert" style={{ margin: 0, color: '#B91C1C', fontSize: 14 }}>

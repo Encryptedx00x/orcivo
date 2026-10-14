@@ -1,7 +1,10 @@
 'use server';
 
+import { cookies } from 'next/headers';
 import { apiFetch } from '../../../lib/api';
 import type { Receipt } from '../../../lib/receipts';
+
+const API_URL = process.env['API_URL'] ?? 'http://localhost:3000';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -71,6 +74,43 @@ export async function setReceiptSignature(id: string, apply: boolean): Promise<R
       return { ok: false, message: 'Você ainda não tem assinatura salva. Salve uma primeiro.' };
     if (status === '403') return { ok: false, message: 'Seu perfil não pode fazer isso.' };
     return { ok: false, message: 'Não foi possível mudar a assinatura do recibo.' };
+  }
+}
+
+export async function getReceiptSignatureAvailability(): Promise<Result<boolean>> {
+  return run(async () => {
+    const data = await apiFetch<{ signature_url: string | null }>('/users/me/signature');
+    return !!data.signature_url;
+  }, 'Não foi possível consultar sua assinatura salva.');
+}
+
+/** Attaches an image only to this receipt; the reusable signature remains untouched. */
+export async function setReceiptSignatureOnce(
+  id: string,
+  formData: FormData,
+): Promise<Result<Receipt>> {
+  try {
+    const token = (await cookies()).get('access_token')?.value;
+    if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
+    const response = await fetch(
+      `${API_URL}/payments/${encodeURIComponent(id)}/receipt-signature/once`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        cache: 'no-store',
+      },
+    );
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      return {
+        ok: false,
+        message: body?.message ?? 'Não foi possível usar esta assinatura no recibo.',
+      };
+    }
+    return { ok: true, data: (await response.json()) as Receipt };
+  } catch {
+    return { ok: false, message: 'Não foi possível usar esta assinatura no recibo.' };
   }
 }
 
