@@ -594,6 +594,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes de defaults/override/serialização; typecheck/lint web/mobile
 - **Testes visuais:** preview/configuração nos três viewports, dois modos e app
 - **Autonomia:** Nível B
+- **Evidência parcial (2026-10-14):** os defaults de orçamento e recibo agora são carregados e salvos pela empresa nas configurações completas e na tela compartilhada dos modos fácil/completo, no web e no app. As opções exibem uma prévia textual do que aparece ou fica oculto; número, pagador, valor, referência e data são identificados como núcleo não ocultável do recibo. O backend valida e audita `receipt_default_doc_options`, e os fluxos continuam usando o override por documento já existente para orçamento; o recibo congela os defaults na emissão. Shared e backend passaram `26/26` specs, os contratos web/app passaram `4/4`, e typecheck/lint de shared, backend, web e mobile passaram (somente avisos preexistentes). A nova tentativa no navegador integrado continuou expondo `http://127.0.0.1:3001/dashboard` e `http://localhost:3001/dashboard` como `ERR_TOO_MANY_REDIRECTS`; por isso a matriz `1440×900`, `390×844`, `360×800`, fácil/completo e Expo web permanece pendente e a tarefa não foi fechada.
 
 ### B4-28-usage-plans-adr — ADR de Uso, limites e diferenciação de planos
 

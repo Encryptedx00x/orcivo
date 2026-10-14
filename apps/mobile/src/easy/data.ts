@@ -474,6 +474,7 @@ export interface EasyCompany {
   quote_default_terms: string | null;
   quote_default_validity_days: number | null;
   quote_default_doc_options?: QuoteDocOptions | null;
+  receipt_default_doc_options?: ReceiptDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
   work_order_fields?: WorkOrderField[];

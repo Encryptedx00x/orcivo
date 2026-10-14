@@ -5,6 +5,7 @@ import {
   COMPANY_DOC_FIELDS,
   type QuoteDocOptions,
   type QuotePaymentTerms,
+  type ReceiptDocOptions,
   type WorkOrderExtraStatus,
   type WorkOrderField,
   type HomeShortcut,
@@ -13,7 +14,10 @@ import {
 import { OsFieldsSettings } from './OsFieldsSettings';
 import { OsStatusesSettings } from './OsStatusesSettings';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
-import { QuoteDocOptionsForm } from '../../../components/QuoteDocOptionsForm';
+import {
+  QuoteDocOptionsForm,
+  ReceiptDocOptionsForm,
+} from '../../../components/QuoteDocOptionsForm';
 import {
   Building2,
   Image,
@@ -85,6 +89,7 @@ interface CompanyMeResponse {
   quote_default_terms?: string | null;
   quote_default_validity_days?: number | null;
   quote_default_doc_options?: QuoteDocOptions | null;
+  receipt_default_doc_options?: ReceiptDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
   work_order_fields?: WorkOrderField[];
@@ -221,6 +226,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [validity, setValidity] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [receiptDocOptions, setReceiptDocOptions] = useState<ReceiptDocOptions | null>(null);
   const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
   const [osFields, setOsFields] = useState<WorkOrderField[] | null>(null);
@@ -263,6 +269,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         setTerms(d.quote_default_terms ?? DEFAULT_TERMS);
         setValidity(d.quote_default_validity_days ?? 15);
         setDocOptions(d.quote_default_doc_options ?? null);
+        setReceiptDocOptions(d.receipt_default_doc_options ?? null);
         setPayTerms(d.quote_default_payment_terms ?? null);
         setWarranty(d.quote_default_warranty ?? '');
         setOsFields(d.work_order_fields ?? []);
@@ -1036,6 +1043,15 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                   }}
                 />
               </div>
+              <div style={{ marginBottom: 20 }}>
+                <ReceiptDocOptionsForm
+                  value={receiptDocOptions}
+                  onChange={(value) => {
+                    setReceiptDocOptions(value);
+                    setTermsSaved(false);
+                  }}
+                />
+              </div>
               {termsError && (
                 <p role="alert" style={{ color: '#B91C1C', fontSize: 13, margin: '0 0 12px' }}>
                   {termsError}
@@ -1052,6 +1068,7 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                       quote_default_terms: terms.trim() || null,
                       quote_default_validity_days: validity,
                       quote_default_doc_options: docOptions,
+                      receipt_default_doc_options: receiptDocOptions,
                       quote_default_payment_terms: payTerms,
                       quote_default_warranty: warranty.trim() || null,
                     });

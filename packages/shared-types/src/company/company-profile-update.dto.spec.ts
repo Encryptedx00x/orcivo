@@ -86,6 +86,19 @@ describe('CompanyProfileUpdateSchema', () => {
     const result = CompanyProfileUpdateSchema.safeParse({ pix_key_type: 'CPF' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts strict receipt defaults and rejects unknown switches', () => {
+    expect(
+      CompanyProfileUpdateSchema.safeParse({
+        receipt_default_doc_options: { client_details: false, pix: false },
+      }).success,
+    ).toBe(true);
+    expect(
+      CompanyProfileUpdateSchema.safeParse({
+        receipt_default_doc_options: { amount: false },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('isValidPixKey', () => {

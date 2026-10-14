@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import type {
   QuoteDocOptions,
   QuotePaymentTerms,
+  ReceiptDocOptions,
   WorkOrderExtraStatus,
 } from '@orcivo/shared-types';
 
@@ -83,9 +84,7 @@ export async function updateWorkOrderFields(work_order_fields: string[]): Promis
  * empresa (R5b). Endpoint dedicado (@AdminOnly) — a lista aceita é validada
  * pelo backend com o schema do shared-types.
  */
-export async function updateWorkOrderStatuses(
-  statuses: WorkOrderExtraStatus[],
-): Promise<Result> {
+export async function updateWorkOrderStatuses(statuses: WorkOrderExtraStatus[]): Promise<Result> {
   const token = (await cookies()).get('access_token')?.value;
   if (!token) return { ok: false, message: 'Sua sessão expirou. Entre novamente.' };
   try {
@@ -120,6 +119,7 @@ export async function updateQuoteDefaults(body: {
   quote_default_terms: string | null;
   quote_default_validity_days: number;
   quote_default_doc_options: QuoteDocOptions | null;
+  receipt_default_doc_options: ReceiptDocOptions | null;
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
 }): Promise<Result> {

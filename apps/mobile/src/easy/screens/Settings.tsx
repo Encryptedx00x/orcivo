@@ -24,10 +24,11 @@ import {
   onlyDigits,
   type QuoteDocOptions,
   type QuotePaymentTerms,
+  type ReceiptDocOptions,
   COMPANY_DOC_FIELDS,
 } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../PaymentTerms';
-import { DocOptionsFields } from '../DocOptions';
+import { DocOptionsFields, ReceiptDocOptionsFields } from '../DocOptions';
 import { easy, errorText, type ApprovalMethod } from '../data';
 import { useEasyMode } from '../EasyModeContext';
 import {
@@ -510,6 +511,7 @@ function TermsEdit() {
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [receiptDocOptions, setReceiptDocOptions] = useState<ReceiptDocOptions | null>(null);
   const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
   const c = company.data;
@@ -517,6 +519,7 @@ function TermsEdit() {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
     setDocOptions(c.quote_default_doc_options ?? null);
+    setReceiptDocOptions(c.receipt_default_doc_options ?? null);
     setPayTerms(c.quote_default_payment_terms ?? null);
     setWarranty(c.quote_default_warranty ?? '');
   }
@@ -542,6 +545,7 @@ function TermsEdit() {
                   quote_default_terms: terms.trim() || null,
                   quote_default_validity_days: days,
                   quote_default_doc_options: docOptions,
+                  receipt_default_doc_options: receiptDocOptions,
                   quote_default_payment_terms: payTerms,
                   quote_default_warranty: warranty.trim() || null,
                 }),
@@ -580,6 +584,7 @@ function TermsEdit() {
         multiline
       />
       <DocOptionsFields value={docOptions} onChange={setDocOptions} />
+      <ReceiptDocOptionsFields value={receiptDocOptions} onChange={setReceiptDocOptions} />
       <Text style={s.muted}>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Text>
     </Page>
   );

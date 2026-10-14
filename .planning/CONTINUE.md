@@ -101,16 +101,18 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       `7` páginas inspecionadas, testes de conteúdo/download verdes. Falta a matriz de ações bloqueada pela aba local.
 - [~] **B4-26 — PDF de recibo:** opções congeladas e adicionais alinhados em PDF/web/app; fixtures completas,
       mínimas e longas inspecionadas. Falta a matriz visual bloqueada pelo `ERR_TOO_MANY_REDIRECTS` da aba local.
-- [ ] **B4-27 — documentos:** configurações e preview dos documentos.
+- [~] **B4-27 — documentos:** defaults e preview consistentes em web/app, fácil/completo; `26/26` specs e `4/4`
+      contratos verdes. Falta a matriz visual bloqueada pelo `ERR_TOO_MANY_REDIRECTS` da aba local.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22 assim que o navegador integrado aceitar
-a aba local; enquanto esse bloqueio externo persistir, avançar para `B4-27-document-settings-surfaces`, sem antecipar
-a terminologia configurável das B4-29/B4-37.
+**Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22/B4-25/B4-26/B4-27 assim que o
+navegador integrado aceitar a aba local; enquanto esse bloqueio externo persistir, avançar para
+`B4-28-usage-plans-adr`, sem implementar decisões estratégicas nem antecipar a terminologia configurável das
+B4-29/B4-37.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

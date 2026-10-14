@@ -4,10 +4,13 @@ import {
   QUOTE_DOC_COLORS,
   QUOTE_DOC_SWITCHES,
   QUOTE_DOC_TITLES,
+  RECEIPT_DOC_SWITCHES,
   resolveQuoteDocOptions,
+  resolveReceiptDocOptions,
   type QuoteDocColor,
   type QuoteDocOptions,
   type QuoteDocTitle,
+  type ReceiptDocOptions,
 } from '@orcivo/shared-types';
 
 /** Full mode "O que vai no orçamento": document name + what the client sees. */
@@ -68,6 +71,84 @@ export function QuoteDocOptionsForm({
           ))}
         </div>
       </fieldset>
+      <OptionsPreview
+        visible={QUOTE_DOC_SWITCHES.filter((item) => o[item.key]).map((item) => item.label)}
+        hidden={QUOTE_DOC_SWITCHES.filter((item) => !o[item.key]).map((item) => item.label)}
+      />
+    </div>
+  );
+}
+
+/** Company default for receipts; core proof fields remain always visible. */
+export function ReceiptDocOptionsForm({
+  value,
+  onChange,
+}: {
+  value: ReceiptDocOptions | null | undefined;
+  onChange: (v: ReceiptDocOptions) => void;
+}): React.JSX.Element {
+  const options = resolveReceiptDocOptions(value);
+  return (
+    <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+      <legend className="ov-label">O que aparece no recibo</legend>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '6px 16px',
+        }}
+      >
+        {RECEIPT_DOC_SWITCHES.map((item) => (
+          <label
+            key={item.key}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 36, fontSize: 14 }}
+          >
+            <input
+              type="checkbox"
+              checked={options[item.key]}
+              onChange={() => onChange({ ...options, [item.key]: !options[item.key] })}
+              style={{ width: 18, height: 18, accentColor: '#6D28D9' }}
+            />
+            {item.label}
+          </label>
+        ))}
+      </div>
+      <OptionsPreview
+        visible={RECEIPT_DOC_SWITCHES.filter((item) => options[item.key]).map((item) => item.label)}
+        hidden={RECEIPT_DOC_SWITCHES.filter((item) => !options[item.key]).map((item) => item.label)}
+      />
+      <p style={{ color: '#64748B', fontSize: 13, margin: '8px 0 0' }}>
+        Número, pagador, valor, referência e data permanecem sempre no recibo.
+      </p>
+    </fieldset>
+  );
+}
+
+function OptionsPreview({ visible, hidden }: { visible: string[]; hidden: string[] }) {
+  return (
+    <div
+      aria-label="Prévia do conteúdo"
+      style={{
+        marginTop: 10,
+        borderRadius: 12,
+        border: '1px solid #E2E8F0',
+        background: '#F8FAFC',
+        padding: 12,
+        fontSize: 13,
+        lineHeight: 1.5,
+      }}
+    >
+      <strong style={{ display: 'block', color: '#0A0A0F', marginBottom: 3 }}>
+        Prévia do conteúdo
+      </strong>
+      <span style={{ color: '#334155' }}>
+        Vai aparecer: {visible.join(', ') || 'só o essencial'}.
+      </span>
+      {hidden.length ? (
+        <span style={{ display: 'block', color: '#64748B' }}>
+          Não vai aparecer: {hidden.join(', ')}.
+        </span>
+      ) : null}
     </div>
   );
 }

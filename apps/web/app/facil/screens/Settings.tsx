@@ -31,9 +31,10 @@ import {
   type ExpenseCategory,
   type QuoteDocOptions,
   type QuotePaymentTerms,
+  type ReceiptDocOptions,
 } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../../../components/PaymentTermsFields';
-import { DocOptionsFields } from '../DocOptions';
+import { DocOptionsFields, ReceiptDocOptionsFields } from '../DocOptions';
 import { getTechnicianSignature } from '../../(app)/orcamentos/[id]/signature-actions';
 import {
   createCost,
@@ -321,10 +322,7 @@ export function OsStatusesScreen(): React.JSX.Element {
       {statuses.loading && !statuses.data ? (
         <Loading />
       ) : statuses.error ? (
-        <ErrorBox
-          title="Não foi possível carregar os status da OS."
-          onRetry={statuses.reload}
-        />
+        <ErrorBox title="Não foi possível carregar os status da OS." onRetry={statuses.reload} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(Object.keys(WORK_ORDER_EXTRA_STATUSES) as WorkOrderExtraStatus[]).map((k) => {
@@ -761,6 +759,7 @@ function TermsEdit() {
   const [terms, setTerms] = useState<string | null>(null);
   const [days, setDays] = useState(15);
   const [docOptions, setDocOptions] = useState<QuoteDocOptions | null>(null);
+  const [receiptDocOptions, setReceiptDocOptions] = useState<ReceiptDocOptions | null>(null);
   const [payTerms, setPayTerms] = useState<QuotePaymentTerms | null>(null);
   const [warranty, setWarranty] = useState('');
   const c = company.data;
@@ -768,6 +767,7 @@ function TermsEdit() {
     setTerms(c.quote_default_terms ?? DEFAULT_TERMS);
     setDays(c.quote_default_validity_days ?? 15);
     setDocOptions(c.quote_default_doc_options ?? null);
+    setReceiptDocOptions(c.receipt_default_doc_options ?? null);
     setPayTerms(c.quote_default_payment_terms ?? null);
     setWarranty(c.quote_default_warranty ?? '');
   }
@@ -814,6 +814,7 @@ function TermsEdit() {
           rows={2}
         />
         <DocOptionsFields value={docOptions} onChange={setDocOptions} />
+        <ReceiptDocOptionsFields value={receiptDocOptions} onChange={setReceiptDocOptions} />
         <Hint>Isso é o padrão. Dá para mudar em cada orçamento, em Mais opções.</Hint>
       </div>
       <SaveBar
@@ -825,6 +826,7 @@ function TermsEdit() {
                 quote_default_terms: terms.trim() || null,
                 quote_default_validity_days: days,
                 quote_default_doc_options: docOptions,
+                receipt_default_doc_options: receiptDocOptions,
                 quote_default_payment_terms: payTerms,
                 quote_default_warranty: warranty.trim() || null,
               }),

@@ -34,6 +34,7 @@ const COMPANY_SELECT = {
   quote_default_doc_options: true,
   quote_default_payment_terms: true,
   quote_default_warranty: true,
+  receipt_default_doc_options: true,
   work_order_fields: true,
   work_order_statuses: true,
   plan_code: true,
@@ -65,6 +66,7 @@ const PROFILE_FIELD_LABELS: Record<
   | 'quote_default_doc_options'
   | 'quote_default_payment_terms'
   | 'quote_default_warranty'
+  | 'receipt_default_doc_options'
   | 'work_order_fields',
   string
 > = {
@@ -85,6 +87,7 @@ const PROFILE_FIELD_LABELS: Record<
   quote_default_doc_options: 'o que vai no orçamento',
   quote_default_payment_terms: 'condição de pagamento padrão',
   quote_default_warranty: 'garantia padrão',
+  receipt_default_doc_options: 'o que vai no recibo',
   work_order_fields: 'campos da OS',
 };
 

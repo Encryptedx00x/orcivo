@@ -3,9 +3,12 @@
 import {
   QUOTE_DOC_SWITCHES,
   QUOTE_DOC_TITLES,
+  RECEIPT_DOC_SWITCHES,
   resolveQuoteDocOptions,
+  resolveReceiptDocOptions,
   type QuoteDocOptions,
   type QuoteDocTitle,
+  type ReceiptDocOptions,
 } from '@orcivo/shared-types';
 import { ColorSwatches } from '../../components/QuoteDocOptionsForm';
 import { C, Options, Toggle } from './ui';
@@ -49,6 +52,62 @@ export function DocOptionsFields({
       <span style={{ fontSize: 15, color: C.fg3 }}>
         Vale para o PDF e para o link de aprovação. O que estiver desligado não vai para o cliente.
       </span>
+      <ContentPreview
+        visible={QUOTE_DOC_SWITCHES.filter((item) => o[item.key]).map((item) => item.label)}
+        hidden={QUOTE_DOC_SWITCHES.filter((item) => !o[item.key]).map((item) => item.label)}
+      />
+    </div>
+  );
+}
+
+export function ReceiptDocOptionsFields({
+  value,
+  onChange,
+}: {
+  value: ReceiptDocOptions | null | undefined;
+  onChange: (v: ReceiptDocOptions) => void;
+}): React.JSX.Element {
+  const options = resolveReceiptDocOptions(value);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 17, fontWeight: 600 }}>O que aparece no recibo</span>
+      {RECEIPT_DOC_SWITCHES.map((item) => (
+        <Toggle
+          key={item.key}
+          on={options[item.key]}
+          label={item.label}
+          onClick={() => onChange({ ...options, [item.key]: !options[item.key] })}
+        />
+      ))}
+      <ContentPreview
+        visible={RECEIPT_DOC_SWITCHES.filter((item) => options[item.key]).map((item) => item.label)}
+        hidden={RECEIPT_DOC_SWITCHES.filter((item) => !options[item.key]).map((item) => item.label)}
+      />
+      <span style={{ fontSize: 15, color: C.fg3 }}>
+        Número, pagador, valor, referência e data ficam sempre visíveis.
+      </span>
+    </div>
+  );
+}
+
+function ContentPreview({ visible, hidden }: { visible: string[]; hidden: string[] }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${C.line}`,
+        borderRadius: 12,
+        background: C.bg,
+        padding: 12,
+        color: C.fg2,
+        fontSize: 14,
+        lineHeight: 1.5,
+      }}
+    >
+      <strong style={{ display: 'block', color: C.ink }}>Prévia do conteúdo</strong>
+      <span>Vai aparecer: {visible.join(', ') || 'só o essencial'}.</span>
+      {hidden.length ? (
+        <span style={{ display: 'block' }}>Oculto: {hidden.join(', ')}.</span>
+      ) : null}
     </div>
   );
 }

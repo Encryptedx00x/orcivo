@@ -85,6 +85,39 @@ describe('CompanyService.updateProfile', () => {
       }),
     );
   });
+
+  it('persiste defaults do recibo e registra o snapshot na auditoria', async () => {
+    const before = {
+      id: 'c1',
+      trade_name: 'Elétrica Silva',
+      receipt_default_doc_options: null,
+    };
+    const defaults = {
+      company_details: true,
+      client_details: false,
+      payment_details: true,
+      additional_info: true,
+      pix: false,
+      footer: true,
+    };
+    const updated = { ...before, receipt_default_doc_options: defaults };
+    txMockPrisma.company.findUnique.mockResolvedValue(before);
+    mockTx.company.update.mockResolvedValue(updated);
+
+    await service.updateProfile('c1', { receipt_default_doc_options: defaults }, 'u1');
+
+    expect(mockTx.company.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { receipt_default_doc_options: defaults } }),
+    );
+    expect(mockAudit.record).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({
+        from: { receipt_default_doc_options: null },
+        to: { receipt_default_doc_options: defaults },
+        humanText: expect.stringContaining('o que vai no recibo'),
+      }),
+    );
+  });
 });
 
 describe('CompanyService.updateWorkOrderStatuses (R5b)', () => {
