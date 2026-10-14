@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { QuoteDocOptions, QuotePaymentTerms } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  maskPhone,
+  multiplyDecimal,
+  quotePdfDeliveryPolicy,
+  type QuoteDocOptions,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../../../../components/PaymentTermsFields';
 import { QuoteDocOptionsForm } from '../../../../components/QuoteDocOptionsForm';
 import {
@@ -19,7 +26,6 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
-import { formatMoney, multiplyDecimal } from '@orcivo/shared-types';
 import { openWhatsApp } from '../../../../lib/whatsapp';
 import { SignatureCanvas } from '../../../approve/[token]/SignatureCanvas';
 import type { Quote, QuoteItem } from '../../../../lib/quote.service';
@@ -37,7 +43,6 @@ import {
   saveTechnicianSignature,
   sendQuoteWithSignature,
 } from './signature-actions';
-import { maskPhone } from '@orcivo/shared-types';
 
 const STATUS_LABEL: Record<Quote['status'], string> = {
   DRAFT: 'Rascunho',
@@ -108,6 +113,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
   const [drawnSignature, setDrawnSignature] = useState('');
   const [typedSignatureName, setTypedSignatureName] = useState('');
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [showDraftPdfConfirm, setShowDraftPdfConfirm] = useState(false);
 
   // PB1-P35/AC2: os botões vêm direto da lista de ações permitidas calculada
   // pelo backend para o estado atual + papel do usuário logado.
@@ -352,6 +358,18 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
   }
 
   const currentApprovalUrl = getApprovalUrl(quote);
+  const pdfDelivery = quotePdfDeliveryPolicy(quote.status);
+
+  function downloadQuotePdf(): void {
+    const anchor = document.createElement('a');
+    anchor.href = `/api/quotes/${quote.id}/pdf?download=1`;
+    anchor.download = `orcamento-${quote.number}.pdf`;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setShowDraftPdfConfirm(false);
+  }
 
   return (
     <div style={{ maxWidth: 760 }}>
@@ -403,15 +421,21 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
             }
             style={headerBtn}
           >
-            <Eye size={15} /> Ver PDF
+            <Eye size={15} /> {pdfDelivery.previewLabel}
           </button>
-          <a
-            href={`/api/quotes/${quote.id}/pdf?download=1`}
-            download={`orcamento-${quote.number}.pdf`}
-            style={{ ...headerBtn, textDecoration: 'none' }}
-          >
-            <Download size={15} /> Baixar PDF
-          </a>
+          {pdfDelivery.requiresDeliveryConfirmation ? (
+            <button onClick={() => setShowDraftPdfConfirm(true)} style={headerBtn}>
+              <Download size={15} /> {pdfDelivery.downloadLabel}
+            </button>
+          ) : (
+            <a
+              href={`/api/quotes/${quote.id}/pdf?download=1`}
+              download={`orcamento-${quote.number}.pdf`}
+              style={{ ...headerBtn, textDecoration: 'none' }}
+            >
+              <Download size={15} /> {pdfDelivery.downloadLabel}
+            </a>
+          )}
           <button
             onClick={async () => {
               const r = await duplicateQuote(quote.id);
@@ -1013,6 +1037,51 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
           )}
         </div>
       </div>
+
+      {showDraftPdfConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="draft-pdf-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(10,10,15,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: 12,
+              padding: 24,
+              width: 420,
+              maxWidth: '100%',
+              boxSizing: 'border-box',
+            }}
+          >
+            <h3 id="draft-pdf-title" style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>
+              Prévia interna de rascunho
+            </h3>
+            <p style={{ color: '#64748B', fontSize: 14, marginBottom: 16 }}>
+              Este orçamento ainda não foi enviado. O PDF terá a marca Rascunho e não deve ser
+              confundido com a versão de entrega ao cliente.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setShowDraftPdfConfirm(false)} style={btnSecondary}>
+                Voltar
+              </button>
+              <button onClick={downloadQuotePdf} style={btnPrimary}>
+                <Download size={16} /> Baixar prévia mesmo assim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PB1-P35/AC3: modal de justificativa — obrigatório antes de aplicar a ação de status. */}
       {pendingAction && (

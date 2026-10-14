@@ -1,6 +1,31 @@
 export type QuoteStatus = 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
 export type DiscountType = 'PERCENT' | 'FIXED';
 
+export interface QuotePdfDeliveryPolicy {
+  previewLabel: 'Ver prévia' | 'Ver PDF';
+  downloadLabel: 'Baixar prévia' | 'Baixar PDF';
+  requiresDeliveryConfirmation: boolean;
+}
+
+/**
+ * DRAFT é uma prévia interna. O arquivo continua disponível para revisão,
+ * mas baixar/compartilhar exige uma confirmação consciente na superfície.
+ */
+export function quotePdfDeliveryPolicy(status: QuoteStatus): QuotePdfDeliveryPolicy {
+  if (status === 'DRAFT') {
+    return {
+      previewLabel: 'Ver prévia',
+      downloadLabel: 'Baixar prévia',
+      requiresDeliveryConfirmation: true,
+    };
+  }
+  return {
+    previewLabel: 'Ver PDF',
+    downloadLabel: 'Baixar PDF',
+    requiresDeliveryConfirmation: false,
+  };
+}
+
 /**
  * Ações de domínio de Quote (PB1-P01 / ADR-016): o ÚNICO caminho para o
  * status de um orçamento mudar — não existe `<select>` de status livre.

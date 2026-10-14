@@ -15,7 +15,7 @@ import {
   RotateCcw,
   XCircle,
 } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, quotePdfDeliveryPolicy } from '@orcivo/shared-types';
 import {
   getQuoteFull,
   getQuoteShare,
@@ -244,6 +244,7 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
   const sheet = useSheet();
   const { go, setDraft } = useNav();
   const chip = quoteChip(q.status);
+  const delivery = quotePdfDeliveryPolicy(q.status);
   const meta = `#${q.number} · ${q.status === 'DRAFT' ? 'criado' : q.status === 'APPROVED' ? 'aprovado' : 'atualizado'} ${ago(q.updated_at ?? q.created_at)}`;
 
   const resend = async () => {
@@ -332,10 +333,26 @@ function QuoteCard({ q, onChanged }: { q: EasyQuote; onChanged: () => void }) {
       void edit(true, r.id);
     },
   };
+  const downloadPdfNow = () => downloadQuotePdf(q.id, q.number);
+  const requestPdfDownload = () => {
+    if (!delivery.requiresDeliveryConfirmation) return downloadPdfNow();
+    sheet({
+      title: 'Prévia interna de rascunho',
+      sub: 'O PDF terá a marca Rascunho. Para entregar ao cliente, envie o orçamento primeiro.',
+      actions: [
+        {
+          label: 'Baixar prévia mesmo assim',
+          icon: Download,
+          run: downloadPdfNow,
+        },
+      ],
+    });
+  };
   const pdf: SheetAction = {
-    label: 'Baixar PDF',
+    label: delivery.downloadLabel,
+    sub: delivery.requiresDeliveryConfirmation ? 'Uso interno — ainda não enviado' : undefined,
     icon: Download,
-    run: () => downloadQuotePdf(q.id, q.number),
+    run: requestPdfDownload,
   };
   const link: SheetAction = {
     label: 'Copiar link de aprovação',

@@ -71,7 +71,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       registrada em `docs/qa/IMPROVEMENT-BATCH-4-RESPONSIVE-FORMS-AUDIT.md`; RF-01…RF-03 seguem para B4-47.
 - [x] **B4-47 — responsividade transversal:** RF-01 e RF-02 corrigidos nos três viewports; RF-03 reclassificado como
       medição transitória e não reproduzido após estabilização em 320 px. Typecheck/lint web/mobile e 8 testes verdes.
-- [ ] **B4-48 — PDF em rascunho:** proteger contra entrega acidental de orçamento ainda em DRAFT.
+- [x] **B4-48 — PDF em rascunho:** contrato compartilhado, confirmação explícita no web completo/fácil e download
+      real DRAFT/SENT validados nos três viewports; app não reproduzido até B4-15/B4-16.
 - [ ] **B4-14A — passada curta:** 3 viewports × 2 modos + app quando aplicável, registrada em
       `docs/qa/IMPROVEMENT-BATCH-4-BLOCK-1-2-EXPLORATORY.md`; bloqueia `DEPLOY-B4-1`.
 - [ ] **B4-15…B4-18 — app:** URL por ambiente/guard de localhost, autenticação real, auditoria Home/convite/build e tamanho.
@@ -83,9 +84,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar `B4-48-draft-pdf-delivery-semantics`. Preservar a prévia interna do rascunho,
-marcar o PDF DRAFT de forma inequívoca e impedir que uma ação apresentada como envio/compartilhamento entregue o
-rascunho silenciosamente. O app permanece sem atribuição até B4-15/B4-16.
+**Próxima ação concreta:** executar `B4-14A-exploratory-block-1-2`. Repetir a passada curta dos blocos 1–2 em
+`1440×900`, `390×844` e `360×800`, nos modos completo/fácil, incluindo concorrência, valores, download real,
+navegação e os achados B4-46…B4-48. Registrar o checklist em `docs/qa` antes do gate de deploy.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
