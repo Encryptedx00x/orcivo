@@ -94,7 +94,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [~] **B4-22 — assinatura no recibo:** contrato, backend e seis superfícies implementados; `2/2` shared,
       `16/16` payment, build/typecheck/lint verdes. Falta a matriz visual bloqueada pelo controlador da aba local.
 - [x] **B4-23 — opções do recibo:** matriz de campos, origens, defaults, configuração, superfícies e lacunas
-      concluída; referências e PDF Orcivo do HEAD renderizados e comparados sem copiar identidade visual.
+      concluída; referências e PDF Orcivo do HEAD renderizados e comparados sem copiar identidade visual (`acea7a7`).
 - [ ] **B4-24…B4-27 — documentos:** modelo, PDF de orçamento, PDF de recibo e configurações/preview.
 - [ ] **B4-28…B4-32 — ADRs:** Uso/planos, posicionamento, multiempresa, modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
