@@ -1,6 +1,11 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from '@react-pdf/renderer';
 import { Injectable } from '@nestjs/common';
-import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  maskCpfCnpj,
+  maskPhone,
+  resolveReceiptDocOptions,
+} from '@orcivo/shared-types';
 import { registerPdfFonts } from '../quote/pdf-fonts';
 
 registerPdfFonts();
@@ -18,8 +23,8 @@ const C = {
 };
 
 const s = StyleSheet.create({
-  page: { padding: 48, fontFamily: 'Inter', fontSize: 11, color: C.ink, lineHeight: 1.5 },
-  card: { borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 32, gap: 18 },
+  page: { padding: 40, fontFamily: 'Inter', fontSize: 11, color: C.ink, lineHeight: 1.5 },
+  card: { borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, gap: 14 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   tile: {
     width: 44,
@@ -34,19 +39,26 @@ const s = StyleSheet.create({
   small: { fontSize: 10, color: C.fg3 },
   smallStrong: { fontSize: 10, color: C.fg3, fontWeight: 600 },
   divider: { height: 1, backgroundColor: C.line },
-  amount: { fontSize: 30, fontWeight: 700, letterSpacing: -0.5, lineHeight: 1.25, marginTop: 2 },
+  amount: { fontSize: 28, fontWeight: 700, letterSpacing: -0.5, lineHeight: 1.25, marginTop: 2 },
   body: { fontSize: 12 },
   bold: { fontWeight: 700 },
   grid: { flexDirection: 'row', gap: 12 },
   col: { flex: 1 },
   value: { fontSize: 12, fontWeight: 600 },
   sigBox: { width: 260, gap: 6 },
-  sigImage: { height: 56, objectFit: 'contain', alignSelf: 'flex-start' },
+  sigImage: { height: 48, objectFit: 'contain', alignSelf: 'flex-start' },
   sigLine: { height: 1, backgroundColor: C.sigLine },
   parties: { flexDirection: 'row', gap: 16 },
   party: { flex: 1, borderRadius: 12, backgroundColor: C.slate50, padding: 12, gap: 2 },
   partyName: { fontSize: 11, fontWeight: 700 },
   pix: { borderRadius: 12, backgroundColor: C.slate50, padding: 12, color: C.fg2, fontSize: 10 },
+  additional: {
+    borderRadius: 12,
+    backgroundColor: C.slate50,
+    padding: 12,
+    color: C.fg2,
+    fontSize: 10,
+  },
 });
 
 export interface ReceiptData {
@@ -57,6 +69,8 @@ export interface ReceiptData {
   reference: string;
   method: string;
   paidAt: Date;
+  docOptions?: unknown;
+  additionalInfo?: string | null;
   signatureDataUri?: string | null;
   signerName?: string | null;
 }
@@ -103,6 +117,8 @@ const initials = (name: string) =>
 @Injectable()
 export class ReceiptPdfService {
   async generate(r: ReceiptData, company: ReceiptCompany): Promise<Buffer> {
+    const opts = resolveReceiptDocOptions(r.docOptions);
+    const paidDate = r.paidAt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const doc = (
       <Document
         title={`Recibo nº ${receiptNumber(r.number)}`}
@@ -122,9 +138,26 @@ export class ReceiptPdfService {
               )}
               <View>
                 <Text style={s.company}>{company.trade_name}</Text>
-                {company.document ? (
+                {opts.company_details && company.document ? (
                   <Text style={s.small}>
                     {company.document_type ?? 'Documento'} {company.document}
+                  </Text>
+                ) : null}
+                {opts.company_details && (company.phone || company.address) ? (
+                  <Text style={s.small}>
+                    {[company.phone ? maskPhone(company.phone) : '', company.address]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
+                {opts.company_details && (company.instagram || company.website) ? (
+                  <Text style={s.small}>
+                    {[
+                      company.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
+                      company.website ?? '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </Text>
                 ) : null}
               </View>
@@ -136,28 +169,31 @@ export class ReceiptPdfService {
               <Text style={s.amount}>{formatMoney(r.amount)}</Text>
             </View>
             <Text style={s.body}>
-              Recebi de <Text style={s.bold}>{r.client}</Text> o valor acima, referente a{' '}
-              {r.reference}.
+              Declaro que recebi de <Text style={s.bold}>{r.client}</Text> o valor de{' '}
+              <Text style={s.bold}>{formatMoney(r.amount)}</Text>, referente a {r.reference}, em{' '}
+              {paidDate}.
             </Text>
             <View style={s.parties}>
               <View style={s.party}>
                 <Text style={s.smallStrong}>Quem recebeu</Text>
                 <Text style={s.partyName}>{company.trade_name}</Text>
-                {partyLines({
-                  document: company.document,
-                  phone: company.phone,
-                  address: [
-                    company.address,
-                    [company.city, company.state].filter(Boolean).join('/'),
-                  ]
-                    .filter(Boolean)
-                    .join(' · '),
-                }).map((l) => (
-                  <Text key={l} style={s.small}>
-                    {l}
-                  </Text>
-                ))}
-                {company.instagram || company.website ? (
+                {opts.company_details
+                  ? partyLines({
+                      document: company.document,
+                      phone: company.phone,
+                      address: [
+                        company.address,
+                        [company.city, company.state].filter(Boolean).join('/'),
+                      ]
+                        .filter(Boolean)
+                        .join(' · '),
+                    }).map((l) => (
+                      <Text key={l} style={s.small}>
+                        {l}
+                      </Text>
+                    ))
+                  : null}
+                {opts.company_details && (company.instagram || company.website) ? (
                   <Text style={s.small}>
                     {[
                       company.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
@@ -171,25 +207,33 @@ export class ReceiptPdfService {
               <View style={s.party}>
                 <Text style={s.smallStrong}>Quem pagou</Text>
                 <Text style={s.partyName}>{r.client}</Text>
-                {partyLines(r.clientDetails ?? {}).map((l) => (
-                  <Text key={l} style={s.small}>
-                    {l}
-                  </Text>
-                ))}
+                {opts.client_details
+                  ? partyLines(r.clientDetails ?? {}).map((l) => (
+                      <Text key={l} style={s.small}>
+                        {l}
+                      </Text>
+                    ))
+                  : null}
               </View>
             </View>
             <View style={s.grid}>
-              <View style={s.col}>
-                <Text style={s.small}>Forma de pagamento</Text>
-                <Text style={s.value}>{r.method}</Text>
-              </View>
+              {opts.payment_details ? (
+                <View style={s.col}>
+                  <Text style={s.small}>Forma de pagamento</Text>
+                  <Text style={s.value}>{r.method}</Text>
+                </View>
+              ) : null}
               <View style={s.col}>
                 <Text style={s.small}>Data</Text>
-                <Text style={s.value}>
-                  {r.paidAt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-                </Text>
+                <Text style={s.value}>{paidDate}</Text>
               </View>
             </View>
+            {opts.additional_info && r.additionalInfo ? (
+              <View style={s.additional}>
+                <Text style={s.smallStrong}>Informações adicionais</Text>
+                <Text>{r.additionalInfo}</Text>
+              </View>
+            ) : null}
             {r.signatureDataUri ? (
               <View style={s.sigBox}>
                 <Image style={s.sigImage} src={r.signatureDataUri} />
@@ -201,8 +245,10 @@ export class ReceiptPdfService {
                 </Text>
               </View>
             ) : null}
-            {company.pix_key ? <Text style={s.pix}>Chave Pix: {company.pix_key}</Text> : null}
-            {company.document_footer ? (
+            {opts.pix && company.pix_key ? (
+              <Text style={s.pix}>Chave Pix: {company.pix_key}</Text>
+            ) : null}
+            {opts.footer && company.document_footer ? (
               <Text style={[s.small, { textAlign: 'center', marginTop: 16 }]}>
                 {company.document_footer}
               </Text>

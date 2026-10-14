@@ -1,6 +1,6 @@
 // Recibos: shared types and labels for the full and easy screens. A receipt is
 // a PAID payment with a per-company receipt_number (see backend PaymentService).
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, type ReceiptDocOptions } from '@orcivo/shared-types';
 
 export interface Receipt {
   id: string;
@@ -12,6 +12,8 @@ export interface Receipt {
   created_at: string;
   receipt_signature_key: string | null;
   receipt_signer_name: string | null;
+  receipt_doc_options?: ReceiptDocOptions | null;
+  receipt_additional_info?: string | null;
   /** Short-lived URL of the frozen signature (detail endpoint only). */
   receipt_signature_url?: string | null;
   customer: {

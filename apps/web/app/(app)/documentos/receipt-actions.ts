@@ -199,6 +199,10 @@ export interface ReceiptCompany {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  instagram?: string | null;
+  website?: string | null;
+  professional_registration?: string | null;
+  document_footer?: string | null;
 }
 
 export async function receiptCompany(): Promise<Result<ReceiptCompany>> {

@@ -346,6 +346,8 @@ export class PaymentService {
         reference: this.receiptReference(p),
         method: METHOD_LABEL[p.method ?? ''] ?? 'Não informado',
         paidAt: p.paid_at ?? p.updated_at,
+        docOptions: p.receipt_doc_options,
+        additionalInfo: p.receipt_additional_info,
         signatureDataUri,
         signerName: p.receipt_signer_name,
       },

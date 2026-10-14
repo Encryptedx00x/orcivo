@@ -15,7 +15,13 @@ import {
   Share2,
   UserPlus,
 } from 'lucide-react-native';
-import { formatMoney, isPositiveDecimal, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  isPositiveDecimal,
+  maskCpfCnpj,
+  maskPhone,
+  resolveReceiptDocOptions,
+} from '@orcivo/shared-types';
 import {
   RECEIPT_METHODS,
   easy,
@@ -182,6 +188,8 @@ function partyLines(
 }
 
 export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: EasyCompany | null }) {
+  const opts = resolveReceiptDocOptions(r.receipt_doc_options);
+  const paidDate = new Date(r.paid_at ?? r.created_at).toLocaleDateString('pt-BR');
   const initials =
     (company?.trade_name ?? '')
       .trim()
@@ -215,9 +223,26 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
         )}
         <View style={{ flex: 1 }}>
           <Text style={[s.body, { fontWeight: '700' }]}>{company?.trade_name ?? ''}</Text>
-          {company?.document ? (
+          {opts.company_details && company?.document ? (
             <Text style={s.muted}>
               {company.document_type ?? 'Documento'} {company.document}
+            </Text>
+          ) : null}
+          {opts.company_details && (company?.phone || company?.address) ? (
+            <Text style={s.muted}>
+              {[company?.phone ? maskPhone(company.phone) : '', company?.address]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          ) : null}
+          {opts.company_details && (company?.instagram || company?.website) ? (
+            <Text style={s.muted}>
+              {[
+                company?.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
+                company?.website ?? '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           ) : null}
         </View>
@@ -231,26 +256,31 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
         </Text>
       </View>
       <Text style={s.body}>
-        Recebi de <Text style={{ fontWeight: '700' }}>{r.customer.name}</Text> o valor acima,
-        referente a {receiptRef(r)}.
+        Declaro que recebi de <Text style={{ fontWeight: '700' }}>{r.customer.name}</Text> o valor
+        de <Text style={{ fontWeight: '700' }}>{formatMoney(r.amount)}</Text>, referente a{' '}
+        {receiptRef(r)}, em {paidDate}.
       </Text>
       {[
         {
           title: 'Quem recebeu',
           name: company?.trade_name ?? '',
-          lines: partyLines(company?.document, company?.phone, [
-            company?.address,
-            [company?.city, company?.state].filter(Boolean).join('/'),
-          ]),
+          lines: opts.company_details
+            ? partyLines(company?.document, company?.phone, [
+                company?.address,
+                [company?.city, company?.state].filter(Boolean).join('/'),
+              ])
+            : [],
         },
         {
           title: 'Quem pagou',
           name: r.customer.name,
-          lines: partyLines(r.customer.tax_id, r.customer.phone, [
-            [r.customer.street, r.customer.number].filter(Boolean).join(', '),
-            r.customer.neighborhood,
-            [r.customer.city, r.customer.state].filter(Boolean).join('/'),
-          ]),
+          lines: opts.client_details
+            ? partyLines(r.customer.tax_id, r.customer.phone, [
+                [r.customer.street, r.customer.number].filter(Boolean).join(', '),
+                r.customer.neighborhood,
+                [r.customer.city, r.customer.state].filter(Boolean).join('/'),
+              ])
+            : [],
         },
       ].map((p) => (
         <View
@@ -267,17 +297,23 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
         </View>
       ))}
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.muted}>Forma de pagamento</Text>
-          <Text style={[s.body, { fontWeight: '600' }]}>{methodLabel(r.method)}</Text>
-        </View>
+        {opts.payment_details ? (
+          <View style={{ flex: 1 }}>
+            <Text style={s.muted}>Forma de pagamento</Text>
+            <Text style={[s.body, { fontWeight: '600' }]}>{methodLabel(r.method)}</Text>
+          </View>
+        ) : null}
         <View style={{ flex: 1 }}>
           <Text style={s.muted}>Data</Text>
-          <Text style={[s.body, { fontWeight: '600' }]}>
-            {new Date(r.paid_at ?? r.created_at).toLocaleDateString('pt-BR')}
-          </Text>
+          <Text style={[s.body, { fontWeight: '600' }]}>{paidDate}</Text>
         </View>
       </View>
+      {opts.additional_info && r.receipt_additional_info ? (
+        <View style={{ borderRadius: 12, backgroundColor: C.bg, padding: 12, gap: 4 }}>
+          <Text style={[s.muted, { fontWeight: '600' }]}>Informações adicionais</Text>
+          <Text style={s.muted}>{r.receipt_additional_info}</Text>
+        </View>
+      ) : null}
       {r.receipt_signature_key ? (
         <View style={{ gap: 6, maxWidth: 280 }}>
           {r.receipt_signature_url ? (
@@ -290,11 +326,13 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
           ) : null}
           <View style={{ height: 1, backgroundColor: '#94A3B8' }} />
           <Text style={s.muted}>
-            {r.receipt_signer_name ? `${r.receipt_signer_name} · Responsável` : 'Responsável'}
+            {[r.receipt_signer_name, 'Responsável', company?.professional_registration]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
         </View>
       ) : null}
-      {company?.pix_key ? (
+      {opts.pix && company?.pix_key ? (
         <View
           style={{
             borderRadius: 12,
@@ -308,6 +346,9 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
           <QrCode size={20} color={C.fg2} />
           <Text style={[s.muted, { flex: 1 }]}>Chave Pix: {company.pix_key}</Text>
         </View>
+      ) : null}
+      {opts.footer && company?.document_footer ? (
+        <Text style={[s.muted, { textAlign: 'center' }]}>{company.document_footer}</Text>
       ) : null}
     </Card>
   );

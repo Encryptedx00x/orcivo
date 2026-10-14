@@ -9,6 +9,7 @@ import type {
   QuoteCreateDto,
   QuoteDocOptions,
   QuotePaymentTerms,
+  ReceiptDocOptions,
   WorkOrderAction,
   WorkOrderAssignableMember,
   WorkOrderDetails,
@@ -437,6 +438,8 @@ export interface EasyReceipt {
   receipt_signature_key: string | null;
   receipt_signer_name: string | null;
   receipt_signature_url?: string | null;
+  receipt_doc_options?: ReceiptDocOptions | null;
+  receipt_additional_info?: string | null;
   customer: {
     id: string;
     name: string;

@@ -1,4 +1,9 @@
-import { formatMoney, maskCpfCnpj, maskPhone } from '@orcivo/shared-types';
+import {
+  formatMoney,
+  maskCpfCnpj,
+  maskPhone,
+  resolveReceiptDocOptions,
+} from '@orcivo/shared-types';
 import { QrCode } from 'lucide-react';
 import { methodLabel, receiptDate, receiptNo, receiptRef, type Receipt } from '../lib/receipts';
 
@@ -19,27 +24,37 @@ export function ReceiptPaper({
     address?: string | null;
     city?: string | null;
     state?: string | null;
+    instagram?: string | null;
+    website?: string | null;
+    professional_registration?: string | null;
+    document_footer?: string | null;
   };
   large?: boolean;
 }): React.JSX.Element {
   const c = receipt.customer;
+  const opts = resolveReceiptDocOptions(receipt.receipt_doc_options);
+  const paidDate = receiptDate(receipt);
   const parties = [
     {
       title: 'Quem recebeu',
       name: company.trade_name,
-      lines: partyLines(company.document, company.phone, [
-        company.address,
-        [company.city, company.state].filter(Boolean).join('/'),
-      ]),
+      lines: opts.company_details
+        ? partyLines(company.document, company.phone, [
+            company.address,
+            [company.city, company.state].filter(Boolean).join('/'),
+          ])
+        : [],
     },
     {
       title: 'Quem pagou',
       name: c.name,
-      lines: partyLines(c.tax_id, c.phone, [
-        [c.street, c.number].filter(Boolean).join(', '),
-        c.neighborhood,
-        [c.city, c.state].filter(Boolean).join('/'),
-      ]),
+      lines: opts.client_details
+        ? partyLines(c.tax_id, c.phone, [
+            [c.street, c.number].filter(Boolean).join(', '),
+            c.neighborhood,
+            [c.city, c.state].filter(Boolean).join('/'),
+          ])
+        : [],
     },
   ];
   const initials =
@@ -100,9 +115,26 @@ export function ReceiptPaper({
           <span style={{ fontSize: large ? 17 : 15, fontWeight: 700, lineHeight: 1.3 }}>
             {company.trade_name}
           </span>
-          {company.document && (
+          {opts.company_details && company.document && (
             <span style={{ fontSize: sm, color: '#475569' }}>
               {company.document_type ?? 'Documento'} {company.document}
+            </span>
+          )}
+          {opts.company_details && (company.phone || company.address) && (
+            <span style={{ fontSize: sm, color: '#475569', overflowWrap: 'anywhere' }}>
+              {[company.phone ? maskPhone(company.phone) : '', company.address]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          )}
+          {opts.company_details && (company.instagram || company.website) && (
+            <span style={{ fontSize: sm, color: '#475569', overflowWrap: 'anywhere' }}>
+              {[
+                company.instagram ? `@${company.instagram.replace(/^@/, '')}` : '',
+                company.website ?? '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </span>
           )}
         </div>
@@ -126,8 +158,9 @@ export function ReceiptPaper({
         </span>
       </div>
       <p style={{ margin: 0, fontSize: body, lineHeight: 1.5 }}>
-        Recebi de <strong>{receipt.customer.name}</strong> o valor acima, referente a{' '}
-        {receiptRef(receipt)}.
+        Declaro que recebi de <strong>{receipt.customer.name}</strong> o valor de{' '}
+        <strong>{formatMoney(receipt.amount)}</strong>, referente a {receiptRef(receipt)}, em{' '}
+        {paidDate}.
       </p>
       <div
         style={{
@@ -161,18 +194,43 @@ export function ReceiptPaper({
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: sm, color: '#475569' }}>Forma de pagamento</span>
-          <span style={{ fontSize: body, fontWeight: 600 }}>{methodLabel(receipt.method)}</span>
-        </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: opts.payment_details ? '1fr 1fr' : '1fr',
+          gap: 12,
+        }}
+      >
+        {opts.payment_details && (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: sm, color: '#475569' }}>Forma de pagamento</span>
+            <span style={{ fontSize: body, fontWeight: 600 }}>{methodLabel(receipt.method)}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: sm, color: '#475569' }}>Data</span>
           <span style={{ fontSize: body, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-            {receiptDate(receipt)}
+            {paidDate}
           </span>
         </div>
       </div>
+      {opts.additional_info && receipt.receipt_additional_info && (
+        <div
+          style={{
+            borderRadius: 12,
+            background: '#F8FAFC',
+            padding: '10px 12px',
+            color: '#334155',
+          }}
+        >
+          <strong style={{ display: 'block', fontSize: sm, marginBottom: 4 }}>
+            Informações adicionais
+          </strong>
+          <span style={{ fontSize: sm, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            {receipt.receipt_additional_info}
+          </span>
+        </div>
+      )}
       {signed && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 320 }}>
           {signatureUrl ? (
@@ -189,13 +247,13 @@ export function ReceiptPaper({
           )}
           <div style={{ height: 1, background: '#94A3B8' }} />
           <span style={{ fontSize: sm, color: '#475569' }}>
-            {receipt.receipt_signer_name
-              ? `${receipt.receipt_signer_name} · Responsável`
-              : 'Responsável'}
+            {[receipt.receipt_signer_name, 'Responsável', company.professional_registration]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         </div>
       )}
-      {company.pix_key && (
+      {opts.pix && company.pix_key && (
         <div
           style={{
             borderRadius: 12,
@@ -212,6 +270,11 @@ export function ReceiptPaper({
             Chave Pix: {company.pix_key}
           </span>
         </div>
+      )}
+      {opts.footer && company.document_footer && (
+        <p style={{ margin: 0, textAlign: 'center', fontSize: sm, color: '#475569' }}>
+          {company.document_footer}
+        </p>
       )}
     </div>
   );
