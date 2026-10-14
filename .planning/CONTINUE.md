@@ -110,7 +110,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-30 — ADR de multiempresa:** empresa ativa por sessão, isolamento, convites, migração e wireflow definidos
       na ADR-022; sete decisões reservadas ao gate B4-33 (`23bd215`).
 - [x] **B4-31 — ADR de modos no web mobile:** opção recomendada mantém fácil como entrada e completo responsivo/acessível;
-      inventário registra paridade, custo, gaps e ausência de telemetria (commit pendente).
+      inventário registra paridade, custo, gaps e ausência de telemetria (`c962129`).
 - [ ] **B4-32 — ADR de OS parcial:** modelar estado por item e impactos antes do gate.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
