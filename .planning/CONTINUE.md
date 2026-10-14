@@ -112,7 +112,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-31 — ADR de modos no web mobile:** opção recomendada mantém fácil como entrada e completo responsivo/acessível;
       inventário registra paridade, custo, gaps e ausência de telemetria (`c962129`).
 - [x] **B4-32 — ADR de OS parcial:** snapshot de itens, resultado agregado, conciliação, estoque, garantia e auditoria
-      propostos na ADR-024; oito decisões reservadas ao gate B4-33 (commit pendente).
+      propostos na ADR-024; oito decisões reservadas ao gate B4-33 (`e744a2c`).
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
