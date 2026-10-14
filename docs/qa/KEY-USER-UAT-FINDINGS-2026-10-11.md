@@ -636,6 +636,15 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** inventário de schema/endpoints/guards; matriz de isolamento e testes faltantes
 - **Testes visuais:** wireflow Arlindo/Leo/Marcus com troca de empresa
 - **Autonomia:** Nível B
+- **Evidência concluída (2026-10-14):** `docs/qa/B4-30-MULTICOMPANY-ISOLATION-MATRIX.md` confirma que o schema já
+  aceita vários vínculos e papéis por empresa, mas login, JWT, refresh, TenantGuard e caches ainda resolvem a empresa
+  implicitamente. `docs/decisions/ADR-022-multicompany-active-tenant.md` propõe empresa ativa por sessão/dispositivo,
+  token ligado a `sub+sid+cid`, `AuthSession`, seleção explícita, convite sem recadastro, criação transacional de
+  empresa adicional e limpeza/particionamento de caches e drafts. O wireflow Arlindo/Leo/Marcus e dezesseis cenários
+  de isolamento ficam definidos antes de qualquer migration/UI. Specs existentes ficaram verdes: TenantGuard `6/6`,
+  AuthService `8/8`, InviteService `3/3` e integração P02 tenant/RBAC `35/35` com banco/Redis locais e `--runInBand`;
+  a matriz registra como lacuna o caso do mesmo usuário simultaneamente em A+B. Sete decisões permanecem reservadas
+  ao dono na B4-33; nenhum schema, endpoint, UI ou dado de produção foi alterado.
 
 ### B4-31-web-mobile-mode-adr — ADR do modo completo no web mobile
 

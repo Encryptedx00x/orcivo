@@ -107,7 +107,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       propostos na ADR-020; sete escolhas comerciais reservadas ao gate B4-33 (`ca0b4cc`).
 - [x] **B4-29 — ADR de posicionamento:** inventário reproduzível, vocabulário neutro, preferências, compatibilidade e
       amostras de copy propostos na ADR-021; sete decisões reservadas ao gate B4-33 (`6843131`).
-- [ ] **B4-30…B4-32 — ADRs:** multiempresa, modo completo no web mobile e OS parcial.
+- [x] **B4-30 — ADR de multiempresa:** empresa ativa por sessão, isolamento, convites, migração e wireflow definidos
+      na ADR-022; sete decisões reservadas ao gate B4-33 (commit pendente).
+- [ ] **B4-31…B4-32 — ADRs:** modo completo no web mobile e OS parcial.
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
 - [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
@@ -115,7 +117,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 
 **Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22/B4-25/B4-26/B4-27 assim que o
 navegador integrado aceitar a aba local; enquanto esse bloqueio externo persistir, avançar para
-`B4-30-multicompany-adr`, sem implementar decisões estratégicas nem antecipar a onda B4-34…B4-42.
+`B4-31-web-mobile-mode-adr`, sem implementar decisões estratégicas nem antecipar a onda B4-34…B4-42.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
