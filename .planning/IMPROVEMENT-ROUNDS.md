@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 em andamento — B4-01…B4-18 e B4-43/B4-46…B4-48 concluídas; `DEPLOY-B4-1` saudável em produção; próxima tarefa B4-19; execução manual, sem autopilot | `a94d073`…`a6e89c4` |
+| Improvement Batch 4 | 🟡 em andamento — B4-01…B4-19 e B4-43/B4-46…B4-48 concluídas; `DEPLOY-B4-1` saudável em produção; próxima tarefa B4-20; execução manual, sem autopilot | `a94d073`…`919bc01` |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -73,7 +73,8 @@ publicar o app. B4-16 confirmou login, refresh, logout e os dois modos no ambien
 sanitizado e limitação de dispositivo/emulador registrada. B4-17 confirmou o fluxo de convite e as duas Homes no
 HEAD; a build observada pelo Key User é provavelmente anterior, mas o APK não estava disponível para hash. B4-18
 instituiu export Hermes reproduzível e orçamento de regressão; APK/AAB/IPA seguem sem medição exata na ausência de
-artefato e SDK. Próxima: B4-19.
+artefato e SDK. B4-19 definiu na ADR-019 a atribuição opcional com “Responsável pelo serviço”, reutilizando o vínculo
+existente e sem antecipar terminologia configurável. Próxima: B4-20.
 
 ---
 

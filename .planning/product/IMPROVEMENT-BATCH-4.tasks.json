@@ -1269,7 +1269,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-FLOWS",
-      "status": "SCHEDULED",
+      "status": "DONE",
       "decisionDeliverable": "ADR de atribuição e nomenclatura neutra"
     },
     {
