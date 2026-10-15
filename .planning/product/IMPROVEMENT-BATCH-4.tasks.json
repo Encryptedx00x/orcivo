@@ -1659,7 +1659,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-DOCS",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-26-receipt-pdf-structure",

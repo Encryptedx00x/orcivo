@@ -97,8 +97,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       concluída; referências e PDF Orcivo do HEAD renderizados e comparados sem copiar identidade visual (`acea7a7`).
 - [x] **B4-24 — modelo documental:** tipo/unidade e subtotais por categoria no orçamento; opções e adicionais
       congelados no recibo; migração local idempotente e contratos antigos compatíveis (`1991505`).
-- [~] **B4-25 — PDF de orçamento:** estrutura completa e paginação implementadas; fixtures A4 de `1`, `2` e
-      `7` páginas inspecionadas, testes de conteúdo/download verdes. Falta a matriz de ações bloqueada pela aba local.
+- [x] **B4-25 — PDF de orçamento:** estrutura e paginação validadas em fixtures A4 de `1`, `2` e `7` páginas;
+      matriz web de preview/download reaproveitada sem mudança da ação e fallback nativo coberto (`13c8aec`).
 - [~] **B4-26 — PDF de recibo:** opções congeladas e adicionais alinhados em PDF/web/app; fixtures completas,
       mínimas e longas inspecionadas. Falta a matriz visual bloqueada pelo `ERR_TOO_MANY_REDIRECTS` da aba local.
 - [~] **B4-27 — documentos:** defaults e preview consistentes em web/app, fácil/completo; `26/26` specs e `4/4`
@@ -119,7 +119,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir as matrizes visuais de B4-25/B4-26/B4-27 com as sessões locais
+**Próxima ação concreta:** concluir as matrizes visuais de B4-26/B4-27 com as sessões locais
 validadas em `1440×900`, `390×844` e `360×800`. Depois da matriz, executar B4-44, fechar formalmente B4-33 e
 somente então iniciar B4-34…B4-42.
 
