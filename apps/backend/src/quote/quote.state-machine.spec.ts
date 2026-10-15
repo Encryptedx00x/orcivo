@@ -67,6 +67,7 @@ const mockPrisma = {
       pix_key: null,
     }),
   },
+  workOrder: { findFirst: jest.fn() },
   $transaction: jest.fn(async (fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx)),
 };
 
@@ -142,6 +143,7 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
     jest.clearAllMocks();
     mockTx.quote.updateMany.mockResolvedValue({ count: 1 });
     mockTx.quote.findUnique.mockImplementation(async () => baseQuote('REJECTED'));
+    mockPrisma.workOrder.findFirst.mockResolvedValue({ id: 'wo-1' });
     mockRedis.get.mockResolvedValue('q1');
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -211,7 +213,10 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
     ];
     for (const action of serviceActions) {
       for (const status of ALL_STATUSES) {
-        if (!QUOTE_ACTIONS[action].allowedFrom.includes(status)) {
+        if (
+          !QUOTE_ACTIONS[action].allowedFrom.includes(status) &&
+          !(action === 'aprovar' && status === 'APPROVED')
+        ) {
           cases.push([action, status]);
         }
       }
@@ -230,6 +235,18 @@ describe('QuoteService — máquina de ações de domínio (PB1-P01)', () => {
         expect(mockTx.quote.update).not.toHaveBeenCalled();
       },
     );
+
+    it('aprovar novamente retorna estado atualizado sem erro técnico nem nova escrita', async () => {
+      await expect(invoke('aprovar', 'APPROVED')).resolves.toEqual({
+        status: 'APPROVED',
+        already_approved: true,
+        work_order_id: 'wo-1',
+        message: 'Este orçamento já foi aprovado. A tela foi atualizada.',
+      });
+      expect(mockAudit.record).not.toHaveBeenCalled();
+      expect(mockTx.quote.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.quote.update).not.toHaveBeenCalled();
+    });
   });
 
   // ── AC3/AC4: motivo nunca sobrescreve dados; histórico nunca é apagado ───
