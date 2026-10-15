@@ -1,8 +1,17 @@
 # ADR-020 — Uso, limites e diferenciação dos planos
 
-**Status:** Proposto — aguarda decisão do dono na B4-33  
-**Data:** 2026-10-14  
+**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Data:** 2026-10-14
 **Relacionado:** B4-28 (levantamento), B4-34/B4-35/B4-36 (implementação condicionada)
+
+## Decisão do dono — 2026-10-15
+
+- preservar os limites vigentes até revisão comercial específica;
+- manter `null` como uso justo, sem criar bloqueio artificial nesta onda;
+- alertar preventivamente a partir de 80%;
+- manter mês calendário para orçamentos/OS enquanto o ciclo comercial não for alterado;
+- clientes arquivados e membros inativos não consomem limite;
+- não inventar limite de armazenamento/fotos nem mudar billing nesta onda.
 
 ## Contexto
 

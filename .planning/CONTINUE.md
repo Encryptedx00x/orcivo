@@ -114,13 +114,15 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [x] **B4-32 — ADR de OS parcial:** snapshot de itens, resultado agregado, conciliação, estoque, garantia e auditoria
       propostos na ADR-024; oito decisões reservadas ao gate B4-33 (`e744a2c`).
 - [ ] **B4-44 — passada pré-deploy:** depende explicitamente de todas as tarefas A/B B4-02…B4-32 e B4-46…B4-48.
-- [ ] **B4-33 — gate do dono:** registrar decisões dos cinco ADRs; nenhuma implementação estratégica passa antes dele.
+- [~] **B4-33 — gate do dono:** pacote recomendado aprovado em 2026-10-15 e registrado nas ADRs 020–024; o fechamento
+      formal continua aguardando B4-44, conforme a dependência do plano.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
 **Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22/B4-25/B4-26/B4-27 assim que o
-navegador integrado aceitar a aba local; enquanto esse bloqueio externo persistir, avançar para
-o gate B4-33 com as recomendações das ADRs B4-28…B4-32, sem implementar a onda B4-34…B4-42.
+navegador integrado aceitar a aba local. Em 2026-10-15, backend/web/Expo voltaram a ouvir em `3000/3001/8081`, mas o
+controlador recusou vincular a própria aba `127.0.0.1` por política de segurança e proibiu contorno. Depois da matriz,
+executar B4-44, fechar formalmente B4-33 e somente então iniciar B4-34…B4-42.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

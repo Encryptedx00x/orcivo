@@ -1,8 +1,19 @@
 # ADR-024 — Realização parcial de ordem de serviço
 
-**Status:** Proposto — aguarda decisão do dono na B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
 **Data:** 2026-10-14
 **Relacionado:** B4-32 (levantamento), B4-41/B4-42 (implementação condicionada)
+
+## Decisão do dono — 2026-10-15
+
+- criar snapshot `WorkOrderItem` e item sintético para OS manual/legada;
+- preservar `DONE` e derivar resultado `FULL/PARTIAL`, sem status macro `PARTIAL`;
+- sugerir cobrança somente do realizado, mas exigir confirmação explícita antes de qualquer ajuste;
+- membros podem registrar execução; somente `OWNER`/`ADMIN` confirmam valor final, crédito ou ajuste após pagamento;
+- estoque segue quantidade entregue, com movimento compensatório quando a baixa ocorreu na aprovação;
+- garantia começa por item realizado e o acionamento seleciona itens elegíveis;
+- quantidade parcial respeita a unidade e as restrições do catálogo; produto com estoque inteiro continua inteiro;
+- legado recebe item sintético sem reconstrução retroativa de detalhes inexistentes.
 
 ## Contexto
 

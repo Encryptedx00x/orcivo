@@ -1,8 +1,16 @@
 # ADR-023 — Estratégia dos modos no web mobile
 
-**Status:** Proposto — aguarda decisão do dono na B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
 **Data:** 2026-10-14
 **Relacionado:** B4-31 (levantamento), B4-40 (implementação condicionada)
+
+## Decisão do dono — 2026-10-15
+
+- aprovada a opção C;
+- modo fácil é a entrada recomendada para novos aparelhos no web mobile;
+- modo completo permanece acessível, responsivo e alcançável por alternância/deep link;
+- troca com alterações não salvas exige confirmação;
+- telemetria agregada fica para tarefa futura e somente após avaliação de privacidade/LGPD.
 
 ## Contexto
 

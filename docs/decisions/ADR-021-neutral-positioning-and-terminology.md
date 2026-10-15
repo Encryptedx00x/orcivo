@@ -1,8 +1,17 @@
 # ADR-021 — Posicionamento neutro, nomenclatura e onboarding
 
-**Status:** Proposto — aguarda decisão do dono na B4-33  
-**Data:** 2026-10-14  
+**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Data:** 2026-10-14
 **Relacionado:** B4-29 (levantamento), B4-30 (multiempresa), B4-37 (implementação condicionada), ADR-019
+
+## Decisão do dono — 2026-10-15
+
+- adotar posicionamento amplo para empresas e profissionais que gerenciam clientes, serviços, produtos, orçamentos e recebimentos;
+- usar “Membro” como rótulo público do papel interno `TECNICO`;
+- usar “Responsável pelo serviço”/“Responsável” como fallback configurável pela empresa;
+- coletar nicho e objetivos de forma progressiva; profissão/cargo pertence ao vínculo pessoa–empresa e tratamento à pessoa;
+- permitir termo profissional da empresa nos documentos quando aplicável, preservando snapshots históricos;
+- não alterar Termos/Privacidade nem ampliar coleta LGPD nesta onda.
 
 ## Contexto
 

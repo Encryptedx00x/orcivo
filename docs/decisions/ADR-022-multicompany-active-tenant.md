@@ -1,8 +1,18 @@
 # ADR-022 — Multiempresa, empresa ativa e isolamento por sessão
 
-**Status:** Proposto — aguarda decisão do dono na B4-33  
-**Data:** 2026-10-14  
+**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Data:** 2026-10-14
 **Relacionado:** B4-30 (levantamento), B4-38/B4-39 (implementação condicionada), ADR-011/013/014
+
+## Decisão do dono — 2026-10-15
+
+- empresa ativa é definida por sessão/dispositivo;
+- login com vários vínculos exige seleção explícita;
+- implementar `AuthSession` como fonte da empresa ativa;
+- não criar bloqueio comercial artificial para empresas privadas adicionais nesta onda;
+- Gastrobodes usa Arlindo `OWNER`, Leo `ADMIN` e Marcus no papel operacional interno `TECNICO`, exibido como “Membro”;
+- sessões legadas multiempresa exigem nova seleção/login, sem `findFirst` silencioso;
+- saída, transferência do último OWNER e exclusão permanecem adiadas para requisito destrutivo próprio.
 
 ## Contexto
 
