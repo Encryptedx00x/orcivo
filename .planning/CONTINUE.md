@@ -87,8 +87,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       registrados; APK/AAB/IPA permanecem não reproduzidos sem artefato/SDK, sem remover recursos (`a6e89c4`).
 - [x] **B4-19 — ADR do responsável:** atribuição opcional reutiliza `assigned_to_user_id`, linguagem neutra,
       seletor tenant-scoped mínimo e separação de assinatura/termo configurável definidos na ADR-019 (`919bc01`).
-- [~] **B4-20 — responsável pelo serviço:** backend/shared-types e seis superfícies implementados; `86/86`
-      specs e `4/4` contratos verdes. Falta a matriz visual porque o controlador recusou a aba localhost.
+- [x] **B4-20 — responsável pelo serviço:** atribuição opcional, troca e remoção verificadas nas seis superfícies;
+      `86/86` specs, `6/6` web e `2/2` mobile verdes, com proxies web corrigidos (`27710e0`).
 - [~] **B4-21 — completude do orçamento:** contrato/backend e quatro experiências implementados; `3/3`
       shared, `66/66` backend e `4/4` contratos verdes. Falta a mesma matriz visual bloqueada por localhost.
 - [~] **B4-22 — assinatura no recibo:** contrato, backend e seis superfícies implementados; `2/2` shared,
@@ -119,10 +119,9 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir as matrizes visuais de B4-20/B4-21/B4-22/B4-25/B4-26/B4-27 assim que o
-navegador integrado aceitar a aba local. Em 2026-10-15, backend/web/Expo voltaram a ouvir em `3000/3001/8081`, mas o
-controlador recusou vincular a própria aba `127.0.0.1` por política de segurança e proibiu contorno. Depois da matriz,
-executar B4-44, fechar formalmente B4-33 e somente então iniciar B4-34…B4-42.
+**Próxima ação concreta:** concluir as matrizes visuais de B4-21/B4-22/B4-25/B4-26/B4-27 com as sessões locais
+validadas em `1440×900`, `390×844` e `360×800`. Depois da matriz, executar B4-44, fechar formalmente B4-33 e
+somente então iniciar B4-34…B4-42.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de
