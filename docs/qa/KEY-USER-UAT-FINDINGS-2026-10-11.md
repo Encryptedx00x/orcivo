@@ -704,6 +704,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** validação documental e rastreabilidade das decisões
 - **Testes visuais:** n/a
 - **Autonomia:** Nível C — gate `batch4-strategy-owner-approval`
+- **Decisão formalizada (2026-10-15):** depois da conclusão documentada da B4-44, o gate registra o pacote já aprovado pelo dono nas ADRs 020–024: limites vigentes/uso justo e alerta em 80%; posicionamento neutro, “Membro” e “Responsável pelo serviço”; empresa ativa por `AuthSession`, seleção explícita e isolamento por vínculo; opção C para o web mobile; e snapshot `WorkOrderItem` com realização/settlement explícitos. Billing, LGPD, remoções destrutivas, lojas e produção continuam fora da autorização. B4-34…B4-42 podem iniciar estritamente dentro dessas decisões.
 
 ### B4-34-usage-backend-contract — Contrato backend da tela Uso
 

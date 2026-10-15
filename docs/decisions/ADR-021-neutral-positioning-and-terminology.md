@@ -1,6 +1,6 @@
 # ADR-021 — Posicionamento neutro, nomenclatura e onboarding
 
-**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — gate B4-33 formalizado após a conclusão da B4-44
 **Data:** 2026-10-14
 **Relacionado:** B4-29 (levantamento), B4-30 (multiempresa), B4-37 (implementação condicionada), ADR-019
 

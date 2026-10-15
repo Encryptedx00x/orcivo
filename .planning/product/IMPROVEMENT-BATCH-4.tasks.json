@@ -2164,7 +2164,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-DECISION",
-      "status": "OWNER_GATE",
+      "status": "DONE",
       "decisionDeliverable": "registro de aprovação do dono"
     },
     {

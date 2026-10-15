@@ -1,6 +1,6 @@
 # ADR-022 — Multiempresa, empresa ativa e isolamento por sessão
 
-**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — gate B4-33 formalizado após a conclusão da B4-44
 **Data:** 2026-10-14
 **Relacionado:** B4-30 (levantamento), B4-38/B4-39 (implementação condicionada), ADR-011/013/014
 

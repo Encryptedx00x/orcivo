@@ -118,14 +118,13 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       foi idempotente; o download real respondeu 200; matriz e prints estão em `docs/qa/evidence/b4-44`. A passada
       também corrigiu o corte inferior do modal de recibo (`36fea69`). Evidência completa em
       `docs/qa/IMPROVEMENT-BATCH-4-PREDEPLOY-EXPLORATORY.md`.
-- [~] **B4-33 — gate do dono:** pacote recomendado aprovado em 2026-10-15 e registrado nas ADRs 020–024; o fechamento
-      formal continua aguardando B4-44, conforme a dependência do plano.
+- [x] **B4-33 — gate do dono:** pacote aprovado em 2026-10-15 e formalizado após a conclusão da B4-44. ADRs 020–024
+      autorizam a onda B4-34…B4-42 dentro dos limites registrados; billing, LGPD, destrutivos, lojas e produção ficam fora.
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** fechar formalmente B4-33 com as decisões do dono já aprovadas e registradas nas ADRs
-020–024; somente então iniciar B4-34…B4-42. `DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi
-executado.
+**Próxima ação concreta:** iniciar B4-34 pelo contrato backend/shared-types da tela Uso, seguido da B4-35/B4-36.
+`DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi executado.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
 UI só fecha com `1440×900`, `390×844`, `360×800`, fácil/completo e app quando o fluxo existir; reproduzir antes de

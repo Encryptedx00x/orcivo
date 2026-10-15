@@ -1,6 +1,6 @@
 # ADR-023 — Estratégia dos modos no web mobile
 
-**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — gate B4-33 formalizado após a conclusão da B4-44
 **Data:** 2026-10-14
 **Relacionado:** B4-31 (levantamento), B4-40 (implementação condicionada)
 

@@ -1,6 +1,6 @@
 # ADR-020 — Uso, limites e diferenciação dos planos
 
-**Status:** Aprovado pelo dono em 2026-10-15 — implementação continua condicionada à B4-44/B4-33
+**Status:** Aprovado pelo dono em 2026-10-15 — gate B4-33 formalizado após a conclusão da B4-44
 **Data:** 2026-10-14
 **Relacionado:** B4-28 (levantamento), B4-34/B4-35/B4-36 (implementação condicionada)
 
