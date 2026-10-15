@@ -1727,7 +1727,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-DOCS",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-27-document-settings-surfaces",
