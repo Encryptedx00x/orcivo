@@ -35,6 +35,7 @@ export * from './auth/reset-password.dto';
 export * from './helpers/money';
 export * from './helpers/br-format';
 export * from './billing/subscription.dto';
+export * from './billing/plan-usage';
 export * from './invite/invite.dto';
 export * from './notification';
 export * from './company/company-doc-fields';

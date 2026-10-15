@@ -5,7 +5,7 @@
 export type PlanLimitCode = 'LIVRE' | 'SOLO' | 'MAIS' | 'EQUIPE';
 
 export interface PlanLimitValues {
-  /** null = ilimitado */
+  /** null = uso justo; nunca apresentar como "ilimitado". */
   customers_max: number | null;
   quotes_per_month: number | null;
   work_orders_per_month: number | null;
