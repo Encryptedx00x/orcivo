@@ -5,11 +5,11 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-14)
+## 1. Estado agora (atualizado 2026-10-15)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `919bc01` — B4-19 decidida na ADR-019; registro reconciliado vem no commit seguinte |
+| `main` / `origin/main` | `b9efc1a` — B4-34 expõe o snapshot autoritativo de Uso no backend/shared-types; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -120,10 +120,14 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       `docs/qa/IMPROVEMENT-BATCH-4-PREDEPLOY-EXPLORATORY.md`.
 - [x] **B4-33 — gate do dono:** pacote aprovado em 2026-10-15 e formalizado após a conclusão da B4-44. ADRs 020–024
       autorizam a onda B4-34…B4-42 dentro dos limites registrados; billing, LGPD, destrutivos, lojas e produção ficam fora.
-- [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
+- [x] **B4-34 — contrato backend de Uso:** endpoint autenticado tenant-scoped, contrato compartilhado, períodos,
+      contadores, estados 80/100/excedido/uso justo/indisponível e features autoritativas (`b9efc1a`).
+- [ ] **B4-35…B4-42 — implementação estratégica aprovada:** telas/alertas de Uso, posicionamento/onboarding,
+      multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** iniciar B4-34 pelo contrato backend/shared-types da tela Uso, seguido da B4-35/B4-36.
+**Próxima ação concreta:** executar B4-35 nas seis superfícies consumindo exclusivamente o contrato da B4-34;
+depois B4-36 adiciona os alertas antecipados sem duplicar regras do backend.
 `DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi executado.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;

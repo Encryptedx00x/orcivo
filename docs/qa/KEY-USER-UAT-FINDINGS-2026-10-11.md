@@ -718,6 +718,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** shared-types build; specs 0/79/80/99/100/excedido; tenant isolation e datas de reset
 - **Testes visuais:** fixtures legíveis para UIs
 - **Autonomia:** Nível C — gate `batch4-strategy-owner-approval`
+- **Evidência concluída (2026-10-15):** contrato Zod compartilhado e endpoint autenticado `GET /company/me/usage` entregam plano, assinatura, período mensal/reset, uso, limite, restante, estado e features a partir do `company_id` da sessão. O backend conta somente clientes não arquivados e membros ativos, delimita os contadores mensais por início/fim do mês e representa falhas como `UNAVAILABLE`, sem inventar zero; limites nulos são `FAIR_USE`, nunca “ilimitado”. O caminho HTTP local respondeu 200 com os quatro recursos e quatro features do Orcivo Livre. Build/shared-types, 105/105 testes compartilhados, 7/7 specs do serviço, build/typecheck/lint backend e typecheck/lint shared ficaram verdes; o único warning é o `console` preexistente em `main.ts`. Nenhuma migration, billing, bloqueio novo ou dado de produção foi alterado (`b9efc1a`).
 
 ### B4-35-usage-screen — Tela Uso nas superfícies
 
