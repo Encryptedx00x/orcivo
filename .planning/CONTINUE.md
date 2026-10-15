@@ -101,8 +101,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       matriz web de preview/download reaproveitada sem mudança da ação e fallback nativo coberto (`13c8aec`).
 - [x] **B4-26 — PDF de recibo:** opções congeladas e adicionais alinhados em PDF/web/app; fixtures completa,
       mínima e longa mais a matriz visual das seis superfícies validadas sem overflow (`41c9625`).
-- [~] **B4-27 — documentos:** defaults e preview consistentes em web/app, fácil/completo; `26/26` specs e `4/4`
-      contratos verdes. Falta a matriz visual bloqueada pelo `ERR_TOO_MANY_REDIRECTS` da aba local.
+- [x] **B4-27 — documentos:** defaults, overrides e previews consistentes nas seis superfícies; matriz agregada de
+      configurações/revisão/documentos sem overflow e contratos backend/shared/web/app verdes (`2097116`).
 - [x] **B4-28 — ADR de Uso/planos:** inventário de limites/gates, contrato backend, tela Uso, estados e wireframes
       propostos na ADR-020; sete escolhas comerciais reservadas ao gate B4-33 (`ca0b4cc`).
 - [x] **B4-29 — ADR de posicionamento:** inventário reproduzível, vocabulário neutro, preferências, compatibilidade e
@@ -119,8 +119,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir a matriz visual de B4-27 com as sessões locais
-validadas em `1440×900`, `390×844` e `360×800`. Depois da matriz, executar B4-44, fechar formalmente B4-33 e
+**Próxima ação concreta:** executar B4-44 com as sessões locais validadas em `1440×900`, `390×844` e `360×800`.
+Depois da passada, fechar formalmente B4-33 e
 somente então iniciar B4-34…B4-42.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;

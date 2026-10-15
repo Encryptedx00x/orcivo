@@ -1790,7 +1790,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-DOCS",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-28-usage-plans-adr",
