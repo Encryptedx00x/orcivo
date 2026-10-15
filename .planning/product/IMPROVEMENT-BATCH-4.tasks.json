@@ -2881,7 +2881,7 @@
       },
       "verificationProfile": "B",
       "phaseGate": "B4-QA-PREDEPLOY",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-45-key-user-exploratory-post-strategy",
