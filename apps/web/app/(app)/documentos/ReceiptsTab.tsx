@@ -16,6 +16,7 @@ import {
 } from '../../../lib/receipts';
 import { ReceiptPaper } from '../../../components/ReceiptPaper';
 import { CustomerSearchPicker } from '../../../components/CustomerSearchPicker';
+import { saveTechnicianSignature } from '../orcamentos/[id]/signature-actions';
 import {
   createReceipt,
   getReceiptSignatureAvailability,
@@ -420,6 +421,26 @@ function ReceiptModal({
     onChanged();
   };
 
+  const handleSavedSignature = async (file: File | undefined) => {
+    if (!r || !file || busy) return;
+    setBusy(true);
+    const form = new FormData();
+    form.append('file', file);
+    const saved = await saveTechnicianSignature(form);
+    if (!saved.ok) {
+      setBusy(false);
+      setErr(saved.message);
+      return;
+    }
+    const attached = await setReceiptSignature(r.id, true);
+    setBusy(false);
+    if (!attached.ok) return setErr(attached.message);
+    setErr('');
+    setHasSavedSignature(true);
+    setR(attached.data);
+    onChanged();
+  };
+
   return (
     <Modal title={r ? `Recibo nº ${receiptNo(r.receipt_number)}` : 'Recibo'} onClose={onClose}>
       {!r && !err && <div style={{ color: '#64748B' }}>Carregando…</div>}
@@ -442,9 +463,31 @@ function ReceiptModal({
             </button>
           )}
           {hasSavedSignature === false && !r.receipt_signature_key && (
-            <span style={{ color: '#64748B', fontSize: 14 }}>
-              Você ainda não tem assinatura salva.
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ color: '#64748B', fontSize: 14 }}>
+                Você ainda não tem assinatura salva.
+              </span>
+              <label
+                className="ov-btn ov-btn-outline"
+                style={{ cursor: busy ? 'wait' : 'pointer', justifyContent: 'center' }}
+              >
+                Adicionar assinatura
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={busy}
+                  hidden
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = '';
+                    void handleSavedSignature(file);
+                  }}
+                />
+              </label>
+              <span style={{ color: '#64748B', fontSize: 12 }}>
+                Ela ficará salva para os próximos orçamentos e recibos.
+              </span>
+            </div>
           )}
           <label
             className="ov-btn ov-btn-outline"
