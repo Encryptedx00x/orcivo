@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 em andamento — ADRs B4-28…B4-32 concluídas e pacote estratégico aprovado em 2026-10-15; B4-21/B4-22/B4-25/B4-26/B4-27 aguardam matriz visual para liberar B4-44; execução manual, sem autopilot | `a94d073`…`27710e0` |
+| Improvement Batch 4 | 🟡 em andamento — ADRs B4-28…B4-32 concluídas e pacote estratégico aprovado em 2026-10-15; B4-22/B4-25/B4-26/B4-27 aguardam matriz visual para liberar B4-44; execução manual, sem autopilot | `a94d073`…`c3fff54` |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -75,7 +75,9 @@ HEAD; a build observada pelo Key User é provavelmente anterior, mas o APK não 
 instituiu export Hermes reproduzível e orçamento de regressão; APK/AAB/IPA seguem sem medição exata na ausência de
 artefato e SDK. B4-19 definiu na ADR-019 a atribuição opcional com “Responsável pelo serviço”, reutilizando o vínculo
 existente e sem antecipar terminologia configurável. B4-20 concluiu a atribuição opcional nas seis superfícies,
-incluindo os proxies autenticados ausentes na web e a matriz visual completa. Próxima: B4-21.
+incluindo os proxies autenticados ausentes na web e a matriz visual completa. B4-21 validou a revisão de completude
+não bloqueante nas seis superfícies e corrigiu o aviso residual após o
+preenchimento inline. Próxima: B4-22.
 
 Decisão de 2026-10-15: o dono aprovou o pacote recomendado das ADRs 020–024. A aprovação foi registrada sem antecipar
 a implementação estratégica: o gate B4-33 só fecha depois da passada B4-44, conforme o DAG. Uso mantém limites

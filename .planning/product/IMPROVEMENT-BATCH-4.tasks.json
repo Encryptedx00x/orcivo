@@ -1401,7 +1401,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-FLOWS",
-      "status": "SCHEDULED"
+      "status": "DONE"
     },
     {
       "taskId": "B4-22-receipt-signature-flow",

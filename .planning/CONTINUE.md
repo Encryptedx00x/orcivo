@@ -89,8 +89,8 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       seletor tenant-scoped mínimo e separação de assinatura/termo configurável definidos na ADR-019 (`919bc01`).
 - [x] **B4-20 — responsável pelo serviço:** atribuição opcional, troca e remoção verificadas nas seis superfícies;
       `86/86` specs, `6/6` web e `2/2` mobile verdes, com proxies web corrigidos (`27710e0`).
-- [~] **B4-21 — completude do orçamento:** contrato/backend e quatro experiências implementados; `3/3`
-      shared, `66/66` backend e `4/4` contratos verdes. Falta a mesma matriz visual bloqueada por localhost.
+- [x] **B4-21 — completude do orçamento:** revisão não bloqueante validada nas seis superfícies; `3/3`
+      shared, `66/66` backend, `3/3` web e `2/2` mobile verdes; aviso pós-preenchimento corrigido (`c3fff54`).
 - [~] **B4-22 — assinatura no recibo:** contrato, backend e seis superfícies implementados; `2/2` shared,
       `16/16` payment, build/typecheck/lint verdes. Falta a matriz visual bloqueada pelo controlador da aba local.
 - [x] **B4-23 — opções do recibo:** matriz de campos, origens, defaults, configuração, superfícies e lacunas
@@ -119,7 +119,7 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
 - [ ] **B4-34…B4-42 — implementação condicionada:** Uso, posicionamento/onboarding, multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** concluir as matrizes visuais de B4-21/B4-22/B4-25/B4-26/B4-27 com as sessões locais
+**Próxima ação concreta:** concluir as matrizes visuais de B4-22/B4-25/B4-26/B4-27 com as sessões locais
 validadas em `1440×900`, `390×844` e `360×800`. Depois da matriz, executar B4-44, fechar formalmente B4-33 e
 somente então iniciar B4-34…B4-42.
 
