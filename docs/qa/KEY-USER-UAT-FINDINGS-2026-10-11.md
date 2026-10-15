@@ -847,6 +847,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** suite completa serial, integração --runInBand, typecheck/lint/build e secret scan; reexecução de todos os testes adicionados no Batch 4
 - **Testes visuais:** 1440x900, 390x844, 360x800 em fácil/completo; app nativo fácil/completo; duas sessões, download real e fluxo completo com evidência
 - **Autonomia:** Nível A
+- **Evidência automática parcial (2026-10-15):** `docs/qa/IMPROVEMENT-BATCH-4-PREDEPLOY-EXPLORATORY.md` registra shared `95/95`, backend `567/567`, todos os `25` arquivos de teste web e `32` mobile, build/typecheck/lint e health locais. A suíte revelou e corrigiu o contrato antigo que ainda esperava o erro técnico de reaprovação (`4a60a0a`). A passada visual fresca permanece pendente porque a política do controlador recusou autoridade sobre a URL local e proibiu alternativa de navegador; evidências anteriores não foram apresentadas como substitutas. B4-44 e `DEPLOY-B4-2` continuam bloqueados.
 
 ### B4-45-key-user-exploratory-post-strategy — Passada exploratória pós-onda estratégica
 
