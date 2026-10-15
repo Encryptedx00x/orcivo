@@ -18,3 +18,9 @@ test('web fácil mostra ausências e mantém preenchimento dentro do fluxo', () 
   assert.match(easy, /setMoreOpen\(true\)/);
   assert.match(easy, /Continuar sem preencher/);
 });
+
+test('web completo limpa o aviso pendente quando o preenchimento fica completo', () => {
+  assert.match(create, /if \(!completeness\.complete \|\| !pendingCompletionAction\) return/);
+  assert.match(create, /setPendingCompletionAction\(null\)/);
+  assert.match(create, /setError\(''\)/);
+});

@@ -409,6 +409,12 @@ export default function NovoOrcamentoForm(): React.JSX.Element {
     doc_options: docOptions,
   });
 
+  useEffect(() => {
+    if (!completeness.complete || !pendingCompletionAction) return;
+    setPendingCompletionAction(null);
+    setError('');
+  }, [completeness.complete, pendingCompletionAction]);
+
   function runCompletionAction(action: 'pdf' | 'share'): void {
     if (action === 'pdf') void handlePdf();
     else void handleWhatsApp();
