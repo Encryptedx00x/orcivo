@@ -20,7 +20,15 @@ const webRoot = fileURLToPath(new URL('../../', import.meta.url));
 const stubs = {
   'next/server': `
     export class NextResponse {
-      constructor(kind, location) { this.kind = kind; this.location = location; this.cookies = { set() {} }; }
+      constructor(kind, location) {
+        this.kind = kind;
+        this.location = location;
+        this.deletedCookies = [];
+        this.cookies = {
+          set() {},
+          delete: (name) => this.deletedCookies.push(name),
+        };
+      }
       static next() { return new NextResponse('next'); }
       static redirect(url) { return new NextResponse('redirect', String(url)); }
     }`,
@@ -135,6 +143,7 @@ function middlewareFor(pathname, cookies = {}) {
 }
 // JWT válido por 1h, para o middleware não tentar renovar a sessão.
 const liveJwt = `x.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.y`;
+const expiredJwt = `x.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 3600 })).toString('base64url')}.y`;
 
 describe('AC8 — middleware libera as rotas públicas sem access_token', () => {
   const publicRoutes = [
@@ -174,6 +183,15 @@ describe('AC8 — middleware libera as rotas públicas sem access_token', () => 
     const res = await middlewareFor('/login', { access_token: liveJwt });
     assert.equal(res.kind, 'redirect');
     assert.match(res.location, /\/dashboard$/);
+  });
+
+  test('regressão: /login limpa sessão expirada sem criar ciclo com /dashboard', async () => {
+    const res = await middlewareFor('/login', {
+      access_token: expiredJwt,
+      refresh_token: 'refresh-invalido',
+    });
+    assert.equal(res.kind, 'next');
+    assert.deepEqual(res.deletedCookies.sort(), ['access_token', 'refresh_token']);
   });
 });
 

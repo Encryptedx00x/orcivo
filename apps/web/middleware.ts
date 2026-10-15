@@ -6,6 +6,30 @@ const publicPaths = ['/login', '/signup'];
 // funcionar para quem aceita convite de outra empresa estando logado na própria conta.
 // Os proxies /submit de cada rota são cobertos pelo mesmo prefixo.
 const alwaysPublicPaths = ['/approve', '/forgot-password', '/reset-password', '/convite'];
+const authCookieOptions = {
+  httpOnly: true,
+  sameSite: 'strict' as const,
+  secure: process.env['NODE_ENV'] === 'production',
+  path: '/',
+};
+
+function clearAuthCookies(response: NextResponse): NextResponse {
+  response.cookies.delete('access_token');
+  response.cookies.delete('refresh_token');
+  return response;
+}
+
+function applyRefreshedSession(
+  req: NextRequest,
+  response: NextResponse,
+  refreshed: { accessToken: string; refreshToken: string },
+): NextResponse {
+  req.cookies.set('access_token', refreshed.accessToken);
+  req.cookies.set('refresh_token', refreshed.refreshToken);
+  response.cookies.set('access_token', refreshed.accessToken, authCookieOptions);
+  response.cookies.set('refresh_token', refreshed.refreshToken, authCookieOptions);
+  return response;
+}
 
 function jwtExpiresAt(token: string): number {
   try {
@@ -54,8 +78,20 @@ export async function middleware(req: NextRequest) {
   }
 
   if (publicPaths.some((p) => pathname.startsWith(p))) {
-    if (accessToken) return NextResponse.redirect(new URL('/dashboard', req.url));
-    return NextResponse.next();
+    if (!accessToken) return NextResponse.next();
+
+    const exp = jwtExpiresAt(accessToken);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (exp - nowSec >= 60) return NextResponse.redirect(new URL('/dashboard', req.url));
+
+    const refreshed = await tryRefresh(req);
+    if (!refreshed) return clearAuthCookies(NextResponse.next());
+
+    return applyRefreshedSession(
+      req,
+      NextResponse.redirect(new URL('/dashboard', req.url)),
+      refreshed,
+    );
   }
 
   if (!accessToken && !isApi) return NextResponse.redirect(new URL('/login', req.url));
@@ -66,23 +102,18 @@ export async function middleware(req: NextRequest) {
   if (exp - nowSec < 60) {
     const refreshed = await tryRefresh(req);
     if (!refreshed) {
-      return isApi ? NextResponse.next() : NextResponse.redirect(new URL('/login', req.url));
+      return clearAuthCookies(
+        isApi ? NextResponse.next() : NextResponse.redirect(new URL('/login', req.url)),
+      );
     }
 
     // Hand the fresh token to this same request too: pages and server actions read the
     // request cookies, so setting it only on the response left them with the expired one.
-    req.cookies.set('access_token', refreshed.accessToken);
-    req.cookies.set('refresh_token', refreshed.refreshToken);
-    const res = NextResponse.next({ request: { headers: req.headers } });
-    const cookieOpts = {
-      httpOnly: true,
-      sameSite: 'strict' as const,
-      secure: process.env['NODE_ENV'] === 'production',
-      path: '/',
-    };
-    res.cookies.set('access_token', refreshed.accessToken, cookieOpts);
-    res.cookies.set('refresh_token', refreshed.refreshToken, cookieOpts);
-    return res;
+    return applyRefreshedSession(
+      req,
+      NextResponse.next({ request: { headers: req.headers } }),
+      refreshed,
+    );
   }
 
   return NextResponse.next();
