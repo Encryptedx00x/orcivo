@@ -2479,7 +2479,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-STRATEGY-IMPL",
-      "status": "OWNER_GATE",
+      "status": "DONE",
       "protectedPathGrants": [
         "prisma/schema.prisma"
       ]

@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `69de438` — B4-37 aplica posicionamento neutro, onboarding progressivo e termos profissionais congelados; registro reconciliado vem no commit seguinte |
+| `main` / `origin/main` | `c36c0f7` — B4-38 adiciona sessões vinculadas à empresa ativa, seleção/troca explícita, isolamento A/B e convite sem recadastro; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -128,10 +128,12 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       estados de atenção/limite/excedente, verificados nas seis superfícies (`5b9cd8d`).
 - [x] **B4-37 — posicionamento/onboarding:** linguagem neutra, nicho/objetivos/tratamento/termos, snapshots de
       documentos e matriz de 24 cenários nas seis superfícies (`69de438`).
-- [ ] **B4-38…B4-42 — implementação estratégica aprovada:** multiempresa, modos e OS parcial.
+- [x] **B4-38 — domínio multiempresa:** `AuthSession`, tokens presos à empresa, seleção/troca explícita, refresh legado
+      seguro, criação de empresa e convite de conta existente sem recadastro; isolamento A/B e RBAC verdes (`c36c0f7`).
+- [ ] **B4-39…B4-42 — implementação estratégica aprovada:** UX multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar B4-38 implementando domínio e isolamento multiempresa aprovados na ADR-022.
+**Próxima ação concreta:** executar B4-39 expondo seleção/troca, empresa ativa, criação e convite multiempresa nas seis superfícies.
 `DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi executado.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;

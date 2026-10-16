@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 em andamento — B4-37 concluiu posicionamento neutro e onboarding progressivo nas seis superfícies; próxima B4-38, execução manual sem autopilot | `a94d073`…`69de438` |
+| Improvement Batch 4 | 🟡 em andamento — B4-38 concluiu sessões e isolamento multiempresa no backend; próxima B4-39, execução manual sem autopilot | `a94d073`…`c36c0f7` |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -94,7 +94,9 @@ contadores, estados e features autoritativas. A B4-35 separou Uso de cobrança e
 e CTAs nas seis superfícies, com matriz visual completa. A B4-36 levou indicadores autoritativos para Clientes,
 Orçamentos e OS e validou o alerta de 80% sem regra duplicada. A B4-37 aplicou a linguagem neutra aprovada,
 preferências progressivas de nicho/objetivos/tratamento/termos e snapshots documentais, com matriz de 24 cenários
-nas seis superfícies e PDFs A4 inspecionados; próxima: B4-38.
+nas seis superfícies e PDFs A4 inspecionados. A B4-38 vinculou cada sessão a uma empresa ativa, eliminou seleção
+ambígua de tenant, preservou refresh legado de associação única e comprovou A/B, troca, sessões paralelas, RBAC e
+convites sem recadastro em integração local; próxima: B4-39.
 
 Decisão de 2026-10-15: o dono aprovou o pacote recomendado das ADRs 020–024. A aprovação foi registrada sem antecipar
 a implementação estratégica: o gate B4-33 só fecha depois da passada B4-44, conforme o DAG. Uso mantém limites
