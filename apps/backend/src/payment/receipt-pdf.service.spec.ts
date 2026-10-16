@@ -100,4 +100,13 @@ describe('ReceiptPdfService', () => {
     expect(text).not.toContain('Chave Pix:');
     expect(text).not.toContain('Obrigado pela confiança.');
   });
+
+  it('usa o termo profissional congelado na assinatura do recibo', async () => {
+    await service.generate({ ...receipt, signatureLabel: 'Arquiteto responsável' }, company);
+
+    const [document] = (renderToBuffer as jest.Mock).mock.calls[0];
+    const text = renderedText(document);
+    expect(text).toContain('Arquiteto responsável');
+    expect(text).not.toMatch(/(?:^|\s)Técnico(?:\s|$)/);
+  });
 });

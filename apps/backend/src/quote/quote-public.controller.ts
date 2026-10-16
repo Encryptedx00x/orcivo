@@ -23,7 +23,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { Request } from 'express';
 
 /**
- * What the technician hid on the document (prices, validity, conditions) is not sent
+ * What the company hid on the document (prices, validity, conditions) is not sent
  * to the client at all, not only hidden on screen.
  */
 export function hideByDocOptions<

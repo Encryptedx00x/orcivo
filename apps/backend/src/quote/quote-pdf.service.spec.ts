@@ -175,6 +175,18 @@ describe('QuotePdfService', () => {
       expect(text).toContain('Serviço detalhado 45');
       expect(countNoWrapRows(document)).toBeGreaterThanOrEqual(items.length);
     });
+
+    it('usa o termo profissional congelado no documento', async () => {
+      await service.generate(
+        { ...mockQuote, signature_label_snapshot: 'Arquiteto responsável' },
+        { ...companySolo, trade_name: 'Empresa XPTO' },
+      );
+
+      const [document] = (renderToBuffer as jest.Mock).mock.calls[0];
+      const text = renderedText(document);
+      expect(text).toContain('Arquiteto responsável');
+      expect(text).not.toMatch(/(?:^|\s)Técnico(?:\s|$)/);
+    });
   });
 
   describe('prepareQuotePdfSections()', () => {

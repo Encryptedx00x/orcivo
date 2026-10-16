@@ -19,6 +19,8 @@ model User {
   // Versão (data de vigência) dos documentos aceitos; 'pre-versioning' = conta anterior ao registro.
   accepted_terms_version   String   @default("pre-versioning")
   accepted_privacy_version String   @default("pre-versioning")
+  salutation               String   @default("NONE")
+  salutation_custom        String?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -38,7 +40,7 @@ model User {
 // ─── Empresa (tenant) ─────────────────────────────────────────────────────────
 
 model Company {
-  id                          String           @id @default(uuid())
+  id                          String                 @id @default(uuid())
   trade_name                  String
   document_type               DocumentType?
   document                    String?
@@ -65,17 +67,23 @@ model Company {
   /// Default ReceiptDocOptions; copied to the payment when a receipt number is assigned.
   receipt_default_doc_options Json?
   /// Extra OS fields turned on for the segment (keys of WORK_ORDER_FIELDS).
-  work_order_fields           String[]  @default([])
+  work_order_fields           String[]               @default([])
   /// Extra OS statuses turned on for the company (keys of WORK_ORDER_EXTRA_STATUSES, R5b).
   work_order_statuses         WorkOrderExtraStatus[] @default([])
-  plan_code                   PlanCode         @default(LIVRE)
-  allowed_approval_methods    ApprovalMethod[] @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
-  stock_depletion_event       StockDepletionEvent @default(QUOTE_APPROVAL)
-  contact_save_preference     ContactSavePreference @default(ASK)
-  catalog_name                String @default("Catálogo")
-  catalog_units               String[] @default(["un", "h", "m", "m²", "kg", "l"])
+  plan_code                   PlanCode               @default(LIVRE)
+  allowed_approval_methods    ApprovalMethod[]       @default([APPROVE_BUTTON, TYPED_NAME, DRAWN_SIGNATURE, PHOTO_SIGNATURE])
+  stock_depletion_event       StockDepletionEvent    @default(QUOTE_APPROVAL)
+  contact_save_preference     ContactSavePreference  @default(ASK)
+  catalog_name                String                 @default("Catálogo")
+  catalog_units               String[]               @default(["un", "h", "m", "m²", "kg", "l"])
   /// Atalhos escolhidos pela empresa para a tela inicial (R8).
-  home_shortcuts              String[] @default(["CUSTOMER", "QUOTE", "WORK_ORDER", "APPOINTMENT", "PAYMENT", "CATALOG_ITEM"])
+  home_shortcuts              String[]               @default(["CUSTOMER", "QUOTE", "WORK_ORDER", "APPOINTMENT", "PAYMENT", "CATALOG_ITEM"])
+  /// Progressive onboarding preferences; presentation only, never authorization.
+  industry_code               String?
+  industry_other              String?
+  onboarding_goals            String[]               @default([])
+  service_owner_term          String                 @default("Responsável")
+  document_professional_term  String?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -126,11 +134,12 @@ enum ContactSavePreference {
 // ─── Membership (usuário ↔ empresa) ──────────────────────────────────────────
 
 model CompanyMember {
-  id         String     @id @default(uuid())
-  company_id String
-  user_id    String
-  role       MemberRole @default(TECNICO)
-  active     Boolean    @default(true)
+  id               String     @id @default(uuid())
+  company_id       String
+  user_id          String
+  role             MemberRole @default(TECNICO)
+  active           Boolean    @default(true)
+  profession_title String?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -153,7 +162,7 @@ enum MemberRole {
 // ─── Cliente (tabela de negócio — tem company_id obrigatório) ─────────────────
 
 model Customer {
-  id                  String        @id @default(uuid())
+  id                  String          @id @default(uuid())
   company_id          String
   name                String
   type                CustomerType?
@@ -161,7 +170,7 @@ model Customer {
   phone               String?
   phone2              String?
   origin              CustomerOrigin?
-  birthday            DateTime?     @db.Date
+  birthday            DateTime?       @db.Date
   internal_notes      String?
   email               String?
   cep                 String?
@@ -251,13 +260,13 @@ model CatalogItem {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company     Company     @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  quote_items QuoteItem[]
+  company         Company         @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  quote_items     QuoteItem[]
   stock_movements StockMovement[]
 
+  @@unique([company_id, internal_code])
   @@index([company_id])
   @@index([company_id, is_active])
-  @@unique([company_id, internal_code])
   @@map("catalog_items")
 }
 
@@ -287,10 +296,10 @@ model StockMovement {
   quantity        Decimal            @db.Decimal(10, 3)
   created_at      DateTime           @default(now())
 
-  company      Company      @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  catalog_item CatalogItem  @relation(fields: [catalog_item_id], references: [id], onDelete: Restrict)
-  quote        Quote?       @relation(fields: [quote_id], references: [id], onDelete: SetNull)
-  work_order   WorkOrder?   @relation(fields: [work_order_id], references: [id], onDelete: SetNull)
+  company      Company        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  catalog_item CatalogItem    @relation(fields: [catalog_item_id], references: [id], onDelete: Restrict)
+  quote        Quote?         @relation(fields: [quote_id], references: [id], onDelete: SetNull)
+  work_order   WorkOrder?     @relation(fields: [work_order_id], references: [id], onDelete: SetNull)
   reversal_of  StockMovement? @relation("StockMovementReversal", fields: [reversal_of_id], references: [id], onDelete: Restrict)
   reversal     StockMovement? @relation("StockMovementReversal")
 
@@ -325,39 +334,42 @@ enum ApprovalMethod {
 }
 
 model Quote {
-  id                       String       @id @default(uuid())
-  company_id               String
-  customer_id              String
-  number                   Int
-  title                    String?
-  notes                    String?
-  status                   QuoteStatus  @default(DRAFT)
-  valid_until              DateTime?
-  discount_type            DiscountType @default(PERCENT)
-  discount_value           Decimal      @default(0) @db.Decimal(12, 2)
-  subtotal                 Decimal      @default(0) @db.Decimal(12, 2)
-  service_subtotal         Decimal      @default(0) @db.Decimal(12, 2)
-  product_subtotal         Decimal      @default(0) @db.Decimal(12, 2)
-  total                    Decimal      @default(0) @db.Decimal(12, 2)
-  pdf_url                  String?
-  technician_signature_key String?
+  id                          String       @id @default(uuid())
+  company_id                  String
+  customer_id                 String
+  number                      Int
+  title                       String?
+  notes                       String?
+  status                      QuoteStatus  @default(DRAFT)
+  valid_until                 DateTime?
+  discount_type               DiscountType @default(PERCENT)
+  discount_value              Decimal      @default(0) @db.Decimal(12, 2)
+  subtotal                    Decimal      @default(0) @db.Decimal(12, 2)
+  service_subtotal            Decimal      @default(0) @db.Decimal(12, 2)
+  product_subtotal            Decimal      @default(0) @db.Decimal(12, 2)
+  total                       Decimal      @default(0) @db.Decimal(12, 2)
+  pdf_url                     String?
+  technician_signature_key    String?
   /// QuoteDocOptions: title and what the document shows (PDF and approval page).
-  doc_options              Json?
+  doc_options                 Json?
   /// QuotePaymentTerms (shared-types); receivables are created from it on approval.
-  payment_terms            Json?
-  warranty                 String?
-  approval_token           String?      @unique
-  created_by_user_id       String?
+  payment_terms               Json?
+  warranty                    String?
+  approval_token              String?      @unique
+  created_by_user_id          String?
+  /// Frozen terminology used when this document is emitted.
+  service_owner_term_snapshot String       @default("Responsável pelo serviço")
+  signature_label_snapshot    String       @default("Assinatura")
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company    Company        @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  customer   Customer       @relation(fields: [customer_id], references: [id])
-  created_by User?          @relation("QuoteCreatedBy", fields: [created_by_user_id], references: [id])
-  items      QuoteItem[]
-  approval   QuoteApproval?
-  work_order WorkOrder?
+  company         Company         @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer        Customer        @relation(fields: [customer_id], references: [id])
+  created_by      User?           @relation("QuoteCreatedBy", fields: [created_by_user_id], references: [id])
+  items           QuoteItem[]
+  approval        QuoteApproval?
+  work_order      WorkOrder?
   stock_movements StockMovement[]
 
   @@unique([company_id, number])
@@ -367,16 +379,16 @@ model Quote {
 }
 
 model QuoteItem {
-  id              String  @id @default(uuid())
+  id              String          @id @default(uuid())
   company_id      String
   quote_id        String
   catalog_item_id String?
   description     String
   item_type       CatalogItemType @default(SERVICE)
   unit            String?
-  quantity        Decimal @db.Decimal(10, 3)
-  unit_price      Decimal @db.Decimal(12, 2)
-  total           Decimal @db.Decimal(12, 2)
+  quantity        Decimal         @db.Decimal(10, 3)
+  unit_price      Decimal         @db.Decimal(12, 2)
+  total           Decimal         @db.Decimal(12, 2)
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -451,12 +463,12 @@ model WorkOrder {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  company     Company          @relation(fields: [company_id], references: [id], onDelete: Cascade)
-  customer    Customer         @relation(fields: [customer_id], references: [id])
-  quote       Quote?           @relation(fields: [quote_id], references: [id])
-  assigned_to User?            @relation("WorkOrderAssignedTo", fields: [assigned_to_user_id], references: [id])
-  created_by  User             @relation("WorkOrderCreatedBy", fields: [created_by_user_id], references: [id])
-  photos      WorkOrderPhoto[]
+  company         Company          @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  customer        Customer         @relation(fields: [customer_id], references: [id])
+  quote           Quote?           @relation(fields: [quote_id], references: [id])
+  assigned_to     User?            @relation("WorkOrderAssignedTo", fields: [assigned_to_user_id], references: [id])
+  created_by      User             @relation("WorkOrderCreatedBy", fields: [created_by_user_id], references: [id])
+  photos          WorkOrderPhoto[]
   stock_movements StockMovement[]
 
   @@unique([company_id, number])
@@ -696,35 +708,36 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                    String         @id @default(uuid())
-  company_id            String
-  customer_id           String
-  work_order_id         String?
-  quote_id              String?
-  description           String?
+  id                       String         @id @default(uuid())
+  company_id               String
+  customer_id              String
+  work_order_id            String?
+  quote_id                 String?
+  description              String?
   /// Amount expected before settlement; preserved when the actual amount differs.
-  expected_amount Decimal? @db.Decimal(12, 2)
-  amount                Decimal        @db.Decimal(12, 2)
+  expected_amount          Decimal?       @db.Decimal(12, 2)
+  amount                   Decimal        @db.Decimal(12, 2)
   /// Positive difference explicitly confirmed when amount exceeds expected_amount.
-  overpayment_amount Decimal? @db.Decimal(12, 2)
-  overpayment_reason String?
+  overpayment_amount       Decimal?       @db.Decimal(12, 2)
+  overpayment_reason       String?
   overpayment_confirmed_at DateTime?
-  method                PaymentMethod?
-  status                PaymentStatus  @default(PENDING)
-  due_date              DateTime?
-  paid_at               DateTime?
-  created_at            DateTime       @default(now())
-  updated_at            DateTime       @updatedAt
-  deleted_at            DateTime?
+  method                   PaymentMethod?
+  status                   PaymentStatus  @default(PENDING)
+  due_date                 DateTime?
+  paid_at                  DateTime?
+  created_at               DateTime       @default(now())
+  updated_at               DateTime       @updatedAt
+  deleted_at               DateTime?
   /// Sequential per company, assigned when the payment becomes PAID (recibo nº).
-  receipt_number        Int?
-  /// Frozen copy of the technician signature applied to the receipt (storage key).
-  receipt_signature_key String?
-  receipt_signer_name   String?
+  receipt_number           Int?
+  /// Frozen copy of the selected signature applied to the receipt (storage key).
+  receipt_signature_key    String?
+  receipt_signer_name      String?
+  receipt_signature_label  String?
   /// Resolved ReceiptDocOptions frozen when the receipt is numbered.
-  receipt_doc_options Json?
+  receipt_doc_options      Json?
   /// Optional content separate from the mandatory payment reference.
-  receipt_additional_info String?
+  receipt_additional_info  String?
 
   company  Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
   customer Customer @relation(fields: [customer_id], references: [id])
@@ -767,36 +780,36 @@ enum AppointmentRecurrence {
 }
 
 model Appointment {
-  id                 String          @id @default(uuid())
-  company_id         String
-  customer_id        String?
-  work_order_id      String?
-  title              String
-  type               AppointmentType @default(OUTRO)
-  status             AppointmentStatus @default(SCHEDULED)
-  notes              String?
-  starts_at          DateTime
-  ends_at            DateTime?
-  schedule_period    AppointmentPeriod?
-  reminder_minutes   Int?
-  reminder_sent_at   DateTime?
-  recurrence_type    AppointmentRecurrence?
-  recurrence_interval Int?
+  id                   String                 @id @default(uuid())
+  company_id           String
+  customer_id          String?
+  work_order_id        String?
+  title                String
+  type                 AppointmentType        @default(OUTRO)
+  status               AppointmentStatus      @default(SCHEDULED)
+  notes                String?
+  starts_at            DateTime
+  ends_at              DateTime?
+  schedule_period      AppointmentPeriod?
+  reminder_minutes     Int?
+  reminder_sent_at     DateTime?
+  recurrence_type      AppointmentRecurrence?
+  recurrence_interval  Int?
   recurrence_series_id String?
-  recurrence_next_at DateTime?
-  recurrence_amount  Decimal? @db.Decimal(12, 2)
-  recurrence_active  Boolean @default(false)
-  created_by_user_id String
-  created_at         DateTime        @default(now())
-  updated_at         DateTime        @updatedAt
+  recurrence_next_at   DateTime?
+  recurrence_amount    Decimal?               @db.Decimal(12, 2)
+  recurrence_active    Boolean                @default(false)
+  created_by_user_id   String
+  created_at           DateTime               @default(now())
+  updated_at           DateTime               @updatedAt
 
   company  Company   @relation(fields: [company_id], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customer_id], references: [id])
 
+  @@unique([company_id, recurrence_series_id, starts_at])
   @@index([company_id])
   @@index([company_id, starts_at])
   @@index([company_id, recurrence_active, recurrence_next_at])
-  @@unique([company_id, recurrence_series_id, starts_at])
   @@map("appointments")
 }
 

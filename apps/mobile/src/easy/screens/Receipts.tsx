@@ -326,7 +326,11 @@ export function ReceiptPaperView({ r, company }: { r: EasyReceipt; company: Easy
           ) : null}
           <View style={{ height: 1, backgroundColor: '#94A3B8' }} />
           <Text style={s.muted}>
-            {[r.receipt_signer_name, 'Responsável', company?.professional_registration]
+            {[
+              r.receipt_signer_name,
+              r.receipt_signature_label || 'Assinatura',
+              company?.professional_registration,
+            ]
               .filter(Boolean)
               .join(' · ')}
           </Text>

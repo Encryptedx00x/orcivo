@@ -205,7 +205,7 @@ export default function ApprovePage(): React.JSX.Element {
           </h1>
           <p style={{ fontSize: 15, color: '#64748B', maxWidth: 400, margin: '0 auto 8px' }}>
             {approvalNotice ||
-              'Sua aprovação foi registrada com sucesso. Em breve o técnico responsável entrará em contato.'}
+              `Sua aprovação foi registrada com sucesso. Em breve ${quote?.service_owner_term_snapshot?.toLocaleLowerCase('pt-BR') ?? 'o responsável pelo serviço'} entrará em contato.`}
           </p>
           <p style={{ fontSize: 13, color: '#94A3B8', maxWidth: 400, margin: '0 auto' }}>
             Uma ordem de serviço foi gerada automaticamente.

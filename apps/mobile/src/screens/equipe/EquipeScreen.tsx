@@ -26,7 +26,7 @@ interface Member {
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin',
-  TECNICO: 'Técnico',
+  TECNICO: 'Membro',
   OWNER: 'Proprietário',
 };
 
@@ -247,7 +247,7 @@ export function EquipeScreen() {
             <View style={styles.empty}>
               <Text style={styles.name}>Nenhum membro ainda.</Text>
               <Text style={styles.description}>
-                Convide técnicos e admins para colaborar na empresa.
+                Convide membros e administradores para colaborar na empresa.
               </Text>
             </View>
           ) : (

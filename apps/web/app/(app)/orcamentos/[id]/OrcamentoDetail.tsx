@@ -676,7 +676,7 @@ export default function OrcamentoDetail({ quote: initialQuote }: Props): React.J
               }}
             >
               <p style={{ fontSize: 13, fontWeight: 600, color: '#334155', margin: 0 }}>
-                Assinatura do técnico
+                Assinatura
               </p>
               {signatureError && (
                 <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>{signatureError}</p>

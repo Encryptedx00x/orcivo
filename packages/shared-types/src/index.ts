@@ -39,6 +39,7 @@ export * from './billing/plan-usage';
 export * from './invite/invite.dto';
 export * from './notification';
 export * from './company/company-doc-fields';
+export * from './company/company-preferences';
 export * from './company/company-profile-update.dto';
 export * from './company/receipt-doc-options';
 export * from './company/inventory-settings';

@@ -11,6 +11,10 @@ export interface CompanyProfile {
   document_footer: string;
   city: string;
   state: string;
+  industry_code: string;
+  industry_other: string;
+  service_owner_term: string;
+  document_professional_term: string;
 }
 
 export type CompanyResponse = {
@@ -37,6 +41,10 @@ export function profileFromCompany(company: CompanyResponse): CompanyProfile {
     document_footer: company.document_footer ?? '',
     city: company.city ?? '',
     state: company.state ?? '',
+    industry_code: company.industry_code ?? '',
+    industry_other: company.industry_other ?? '',
+    service_owner_term: company.service_owner_term ?? 'Responsável',
+    document_professional_term: company.document_professional_term ?? '',
   };
 }
 
@@ -52,6 +60,11 @@ export function profilePayload(profile: CompanyProfile) {
     document_footer: profile.document_footer.trim() || null,
     city: profile.city.trim() || null,
     state: profile.state.trim().toUpperCase() || null,
+    industry_code: profile.industry_code || null,
+    industry_other:
+      profile.industry_code === 'OTHER' ? profile.industry_other.trim() || null : null,
+    service_owner_term: profile.service_owner_term.trim(),
+    document_professional_term: profile.document_professional_term.trim() || null,
   };
 }
 

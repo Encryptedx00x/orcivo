@@ -381,6 +381,9 @@ interface QuoteData {
     total: DecimalLike;
   }>;
   customer_name?: string | null;
+  /** Frozen presentation term: historical PDFs never change with company settings. */
+  service_owner_term_snapshot?: string | null;
+  signature_label_snapshot?: string | null;
   /** Full customer row (callers include it); shown when doc option client_details is on. */
   customer?: {
     phone?: string | null;
@@ -769,9 +772,9 @@ export class QuotePdfService {
               )}
               <Text style={styles.signLabel}>{company.trade_name}</Text>
               <Text style={styles.signSub}>
-                {company.professional_registration
-                  ? `Responsável · ${company.professional_registration}`
-                  : 'Responsável'}
+                {[q.signature_label_snapshot || 'Assinatura', company.professional_registration]
+                  .filter(Boolean)
+                  .join(' · ')}
               </Text>
             </View>
             {q.customer_name ? (
@@ -803,8 +806,8 @@ export class QuotePdfService {
           {/* ── Rodapé ── */}
           <View style={styles.footer} fixed>
             <Text style={styles.footerText}>
-              Gerado por <Text style={styles.footerBrand}>Orcivo</Text> — gestão para técnicos
-              instaladores
+              Gerado por <Text style={styles.footerBrand}>Orcivo</Text> — gestão de serviços para
+              empresas e profissionais
             </Text>
             <Text
               style={styles.footerPage}

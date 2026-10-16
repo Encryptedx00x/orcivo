@@ -497,6 +497,11 @@ export interface EasyCompany {
   quote_default_warranty?: string | null;
   work_order_statuses?: WorkOrderExtraStatus[];
   work_order_fields?: WorkOrderField[];
+  industry_code?: import('@orcivo/shared-types').CompanyIndustry | null;
+  industry_other?: string | null;
+  onboarding_goals?: import('@orcivo/shared-types').OnboardingGoal[];
+  service_owner_term?: string;
+  document_professional_term?: string | null;
 }
 export async function getCompany(): Promise<Result<EasyCompany>> {
   return run(() => apiFetch<EasyCompany>('/company/me'), 'Não foi possível carregar a empresa.');

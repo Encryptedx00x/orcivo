@@ -1,8 +1,8 @@
 import { pageMetadata } from './seo';
 
 export const metadata = pageMetadata(
-  'Orcivo — Gestão para técnicos instaladores',
-  'Orçamentos, OS, PDF e aprovação pelo WhatsApp — tudo no celular.',
+  'Orcivo — Gestão de serviços para o seu negócio',
+  'Clientes, serviços, produtos, orçamentos e recebimentos em um só lugar.',
   '/',
   true,
 );
@@ -64,7 +64,7 @@ const FAQ = [
   },
   {
     q: 'Funciona no celular?',
-    a: 'Sim. O Orcivo foi feito para o técnico em campo: monte e envie orçamentos direto do celular.',
+    a: 'Sim. O Orcivo acompanha quem trabalha em campo: monte e envie orçamentos direto do celular.',
   },
   {
     q: 'O cliente precisa instalar algo para aprovar?',
@@ -121,7 +121,7 @@ export default function HomePage() {
           {/* Coluna texto */}
           <div>
             <span className="ov-anim-hero inline-flex items-center gap-2 text-xs font-semibold text-primary-700 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full mb-6">
-              <Zap size={13} /> Feito para técnicos instaladores
+              <Zap size={13} /> Feito para empresas e profissionais de serviços
             </span>
             <h1 className="ov-anim-hero ov-d1 text-4xl sm:text-5xl font-bold text-slate-900 leading-[1.08] tracking-tight mb-5">
               Do orçamento à aprovação,
@@ -230,7 +230,7 @@ export default function HomePage() {
               Menos planilha, mais serviço fechado
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              Tudo que o técnico precisa para passar uma imagem profissional e fechar mais rápido.
+              Tudo que seu negócio precisa para passar uma imagem profissional e fechar mais rápido.
             </p>
           </Reveal>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -339,7 +339,9 @@ export default function HomePage() {
               “Antes eu mandava orçamento no caderno e foto. Agora o cliente recebe um PDF com a
               minha logo e aprova na hora. Passei a fechar muito mais.”
             </blockquote>
-            <p className="text-sm text-slate-500">João Ribeiro · Instalador de CFTV · São Paulo</p>
+            <p className="text-sm text-slate-500">
+              João Ribeiro · Profissional de serviços · São Paulo
+            </p>
           </Reveal>
         </div>
       </section>

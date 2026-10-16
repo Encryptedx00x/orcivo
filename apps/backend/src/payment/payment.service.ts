@@ -10,6 +10,7 @@ import {
   comparePaymentAmounts,
   formatMoney,
   resolveReceiptDocOptions,
+  resolveCompanyTerminology,
   subtractDecimal,
   sumDecimal,
 } from '@orcivo/shared-types';
@@ -136,7 +137,7 @@ export class PaymentService {
     });
     const company = await tx.company.findUnique({
       where: { id: companyId },
-      select: { receipt_default_doc_options: true },
+      select: { receipt_default_doc_options: true, document_professional_term: true },
     });
     const receiptDocOptions = resolveReceiptDocOptions(
       current.receipt_doc_options ?? company?.receipt_default_doc_options,
@@ -146,6 +147,7 @@ export class PaymentService {
       data: {
         receipt_number: (max._max.receipt_number ?? 0) + 1,
         receipt_doc_options: receiptDocOptions,
+        receipt_signature_label: resolveCompanyTerminology(company ?? {}).signatureLabel,
       },
     });
   }
@@ -350,6 +352,7 @@ export class PaymentService {
         additionalInfo: p.receipt_additional_info,
         signatureDataUri,
         signerName: p.receipt_signer_name,
+        signatureLabel: p.receipt_signature_label,
       },
       company,
     );

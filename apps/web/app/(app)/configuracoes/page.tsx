@@ -10,6 +10,10 @@ import {
   type WorkOrderField,
   type HomeShortcut,
   DEFAULT_HOME_SHORTCUTS,
+  COMPANY_INDUSTRY_LABELS,
+  ONBOARDING_GOAL_LABELS,
+  type CompanyIndustry,
+  type OnboardingGoal,
 } from '@orcivo/shared-types';
 import { OsFieldsSettings } from './OsFieldsSettings';
 import { OsStatusesSettings } from './OsStatusesSettings';
@@ -55,6 +59,11 @@ interface EmpresaForm {
   website: string;
   professional_registration: string;
   document_footer: string;
+  industry_code: CompanyIndustry | '';
+  industry_other: string;
+  onboarding_goals: OnboardingGoal[];
+  service_owner_term: string;
+  document_professional_term: string;
 }
 
 const DOC_FIELDS = COMPANY_DOC_FIELDS;
@@ -70,6 +79,8 @@ interface AccountForm {
   current_password: string;
   new_password: string;
   confirm_password: string;
+  salutation: 'NONE' | 'SR' | 'SRA' | 'CUSTOM';
+  salutation_custom: string;
 }
 
 interface CompanyMeResponse {
@@ -99,6 +110,11 @@ interface CompanyMeResponse {
   catalog_name?: string;
   catalog_units?: string[];
   home_shortcuts?: HomeShortcut[];
+  industry_code?: CompanyIndustry | null;
+  industry_other?: string | null;
+  onboarding_goals?: OnboardingGoal[];
+  service_owner_term?: string;
+  document_professional_term?: string | null;
 }
 
 const DEFAULT_TERMS =
@@ -115,6 +131,11 @@ const EMPTY_EMPRESA: EmpresaForm = {
   website: '',
   professional_registration: '',
   document_footer: '',
+  industry_code: '',
+  industry_other: '',
+  onboarding_goals: [],
+  service_owner_term: 'Responsável',
+  document_professional_term: '',
 };
 const EMPTY_PIX: PixForm = { pix_key_type: 'CNPJ', pix_key: '' };
 const EMPTY_ACCOUNT: AccountForm = {
@@ -123,6 +144,8 @@ const EMPTY_ACCOUNT: AccountForm = {
   current_password: '',
   new_password: '',
   confirm_password: '',
+  salutation: 'NONE',
+  salutation_custom: '',
 };
 /** Sem coluna dedicada para o tipo — inferido do formato da chave já salva. */
 function inferPixKeyType(key: string): PixKeyType {
@@ -252,9 +275,12 @@ export default function ConfiguracoesPage(): React.JSX.Element {
   const [pixError, setPixError] = useState('');
 
   const [account, setAccount] = useState<AccountForm>(EMPTY_ACCOUNT);
-  const [accountOriginal, setAccountOriginal] = useState<{ name: string; email: string } | null>(
-    null,
-  );
+  const [accountOriginal, setAccountOriginal] = useState<{
+    name: string;
+    email: string;
+    salutation: string;
+    salutation_custom: string;
+  } | null>(null);
   const [accountLoading, setAccountLoading] = useState(true);
   const [accountSaving, setAccountSaving] = useState(false);
   const [accountError, setAccountError] = useState('');
@@ -292,6 +318,11 @@ export default function ConfiguracoesPage(): React.JSX.Element {
           website: d.website ?? '',
           professional_registration: d.professional_registration ?? '',
           document_footer: d.document_footer ?? '',
+          industry_code: d.industry_code ?? '',
+          industry_other: d.industry_other ?? '',
+          onboarding_goals: d.onboarding_goals ?? [],
+          service_owner_term: d.service_owner_term ?? 'Responsável',
+          document_professional_term: d.document_professional_term ?? '',
         });
         if (d.pix_key) {
           setPix({
@@ -311,8 +342,15 @@ export default function ConfiguracoesPage(): React.JSX.Element {
           ...previous,
           name: result.account.name,
           email: result.account.email,
+          salutation: (result.account.salutation ?? 'NONE') as AccountForm['salutation'],
+          salutation_custom: result.account.salutation_custom ?? '',
         }));
-        setAccountOriginal({ name: result.account.name, email: result.account.email });
+        setAccountOriginal({
+          name: result.account.name,
+          email: result.account.email,
+          salutation: result.account.salutation ?? 'NONE',
+          salutation_custom: result.account.salutation_custom ?? '',
+        });
       } else {
         setAccountError(result.message);
       }
@@ -332,6 +370,12 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         address: empresa.address.trim() || null,
         city: empresa.city || null,
         state: empresa.state || null,
+        industry_code: empresa.industry_code || null,
+        industry_other:
+          empresa.industry_code === 'OTHER' ? empresa.industry_other.trim() || null : null,
+        onboarding_goals: empresa.onboarding_goals,
+        service_owner_term: empresa.service_owner_term.trim(),
+        document_professional_term: empresa.document_professional_term.trim() || null,
         ...Object.fromEntries(DOC_FIELDS.map((f) => [f.key, empresa[f.key].trim() || null])),
       });
       if (!result.ok) {
@@ -404,13 +448,16 @@ export default function ConfiguracoesPage(): React.JSX.Element {
     const changingPassword = Boolean(account.new_password);
     const nameChanged = name !== accountOriginal?.name;
     const emailChanged = email !== accountOriginal?.email;
+    const salutationChanged =
+      account.salutation !== accountOriginal?.salutation ||
+      account.salutation_custom.trim() !== accountOriginal?.salutation_custom;
     const credentialsChanged = emailChanged || changingPassword;
 
     if (!name) {
       setAccountError('Informe seu nome.');
       return;
     }
-    if (!nameChanged && !credentialsChanged) {
+    if (!nameChanged && !credentialsChanged && !salutationChanged) {
       setAccountSaved('Nenhuma alteração para salvar.');
       return;
     }
@@ -432,6 +479,13 @@ export default function ConfiguracoesPage(): React.JSX.Element {
         ...(emailChanged ? { email } : {}),
         ...(credentialsChanged ? { current_password: account.current_password } : {}),
         ...(changingPassword ? { new_password: account.new_password } : {}),
+        ...(salutationChanged
+          ? {
+              salutation: account.salutation,
+              salutation_custom:
+                account.salutation === 'CUSTOM' ? account.salutation_custom.trim() : null,
+            }
+          : {}),
       });
       if (!result.ok) {
         setAccountError(result.message);
@@ -440,11 +494,18 @@ export default function ConfiguracoesPage(): React.JSX.Element {
       setAccount({
         name: result.account.name,
         email: result.account.email,
+        salutation: (result.account.salutation ?? 'NONE') as AccountForm['salutation'],
+        salutation_custom: result.account.salutation_custom ?? '',
         current_password: '',
         new_password: '',
         confirm_password: '',
       });
-      setAccountOriginal({ name: result.account.name, email: result.account.email });
+      setAccountOriginal({
+        name: result.account.name,
+        email: result.account.email,
+        salutation: result.account.salutation ?? 'NONE',
+        salutation_custom: result.account.salutation_custom ?? '',
+      });
       setAccountSaved(
         result.passwordChanged
           ? 'Senha atualizada. As outras sessões foram encerradas.'
@@ -570,6 +631,43 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                       autoComplete="email"
                     />
                   </div>
+                  <div>
+                    <label className="ov-label" htmlFor="account-salutation">
+                      Como deseja ser chamado?
+                    </label>
+                    <select
+                      id="account-salutation"
+                      className="ov-input"
+                      value={account.salutation}
+                      onChange={(event) =>
+                        setAccount({
+                          ...account,
+                          salutation: event.target.value as AccountForm['salutation'],
+                        })
+                      }
+                    >
+                      <option value="NONE">Sem tratamento</option>
+                      <option value="SR">Sr.</option>
+                      <option value="SRA">Sra.</option>
+                      <option value="CUSTOM">Personalizado</option>
+                    </select>
+                  </div>
+                  {account.salutation === 'CUSTOM' && (
+                    <div>
+                      <label className="ov-label" htmlFor="account-salutation-custom">
+                        Tratamento personalizado
+                      </label>
+                      <input
+                        id="account-salutation-custom"
+                        className="ov-input"
+                        maxLength={40}
+                        value={account.salutation_custom}
+                        onChange={(event) =>
+                          setAccount({ ...account, salutation_custom: event.target.value })
+                        }
+                      />
+                    </div>
+                  )}
                   <div
                     style={{
                       borderTop: '1px solid #E2E8F0',
@@ -667,7 +765,13 @@ export default function ConfiguracoesPage(): React.JSX.Element {
               {loading ? (
                 <p style={{ color: '#94A3B8', fontSize: 13 }}>Carregando…</p>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
+                    gap: 16,
+                  }}
+                >
                   <div>
                     <label className="ov-label">Nome fantasia</label>
                     <input
@@ -763,6 +867,100 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                       }}
                     />
                   </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="ov-label" htmlFor="cfg-industry">
+                      Nicho da empresa (opcional)
+                    </label>
+                    <select
+                      id="cfg-industry"
+                      className="ov-input"
+                      value={empresa.industry_code}
+                      onChange={(e) =>
+                        setEmpresa({
+                          ...empresa,
+                          industry_code: e.target.value as CompanyIndustry | '',
+                        })
+                      }
+                    >
+                      <option value="">Prefiro informar depois</option>
+                      {Object.entries(COMPANY_INDUSTRY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {empresa.industry_code === 'OTHER' && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label className="ov-label" htmlFor="cfg-industry-other">
+                        Qual é o nicho?
+                      </label>
+                      <input
+                        id="cfg-industry-other"
+                        className="ov-input"
+                        maxLength={80}
+                        value={empresa.industry_other}
+                        onChange={(e) => setEmpresa({ ...empresa, industry_other: e.target.value })}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="ov-label" htmlFor="cfg-owner-term">
+                      Nome do responsável pelo serviço
+                    </label>
+                    <input
+                      id="cfg-owner-term"
+                      className="ov-input"
+                      maxLength={40}
+                      value={empresa.service_owner_term}
+                      onChange={(e) =>
+                        setEmpresa({ ...empresa, service_owner_term: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="ov-label" htmlFor="cfg-professional-term">
+                      Termo profissional nos documentos (opcional)
+                    </label>
+                    <input
+                      id="cfg-professional-term"
+                      className="ov-input"
+                      maxLength={40}
+                      placeholder="Ex.: Arquiteto responsável"
+                      value={empresa.document_professional_term}
+                      onChange={(e) =>
+                        setEmpresa({ ...empresa, document_professional_term: e.target.value })
+                      }
+                    />
+                  </div>
+                  <fieldset style={{ gridColumn: '1 / -1', border: 0, padding: 0, margin: 0 }}>
+                    <legend className="ov-label">
+                      O que você quer organizar no Orcivo? (opcional)
+                    </legend>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                      {Object.entries(ONBOARDING_GOAL_LABELS).map(([value, label]) => {
+                        const goal = value as OnboardingGoal;
+                        const checked = empresa.onboarding_goals.includes(goal);
+                        return (
+                          <label key={value} className="ov-checkbox-row" style={{ width: 'auto' }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() =>
+                                setEmpresa({
+                                  ...empresa,
+                                  onboarding_goals: checked
+                                    ? empresa.onboarding_goals.filter((item) => item !== goal)
+                                    : [...empresa.onboarding_goals, goal],
+                                })
+                              }
+                            />
+                            <span>{label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
                 </div>
               )}
 

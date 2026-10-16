@@ -437,6 +437,7 @@ export interface EasyReceipt {
   created_at: string;
   receipt_signature_key: string | null;
   receipt_signer_name: string | null;
+  receipt_signature_label?: string | null;
   receipt_signature_url?: string | null;
   receipt_doc_options?: ReceiptDocOptions | null;
   receipt_additional_info?: string | null;
@@ -478,6 +479,11 @@ export interface EasyCompany {
   quote_default_payment_terms?: QuotePaymentTerms | null;
   quote_default_warranty?: string | null;
   work_order_fields?: WorkOrderField[];
+  industry_code?: import('@orcivo/shared-types').CompanyIndustry | null;
+  industry_other?: string | null;
+  onboarding_goals?: import('@orcivo/shared-types').OnboardingGoal[];
+  service_owner_term?: string;
+  document_professional_term?: string | null;
 }
 
 export const RECEIPT_METHODS = [

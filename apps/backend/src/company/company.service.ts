@@ -44,6 +44,11 @@ const COMPANY_SELECT = {
   catalog_name: true,
   catalog_units: true,
   home_shortcuts: true,
+  industry_code: true,
+  industry_other: true,
+  onboarding_goals: true,
+  service_owner_term: true,
+  document_professional_term: true,
 } as const;
 
 // pix_key_type is validation-only input (see company-profile-update.schema.ts) —
@@ -67,7 +72,12 @@ const PROFILE_FIELD_LABELS: Record<
   | 'quote_default_payment_terms'
   | 'quote_default_warranty'
   | 'receipt_default_doc_options'
-  | 'work_order_fields',
+  | 'work_order_fields'
+  | 'industry_code'
+  | 'industry_other'
+  | 'onboarding_goals'
+  | 'service_owner_term'
+  | 'document_professional_term',
   string
 > = {
   trade_name: 'nome fantasia',
@@ -89,6 +99,11 @@ const PROFILE_FIELD_LABELS: Record<
   quote_default_warranty: 'garantia padrão',
   receipt_default_doc_options: 'o que vai no recibo',
   work_order_fields: 'campos da OS',
+  industry_code: 'nicho da empresa',
+  industry_other: 'descrição do nicho',
+  onboarding_goals: 'objetivos no Orcivo',
+  service_owner_term: 'nome do responsável pelo serviço',
+  document_professional_term: 'termo profissional nos documentos',
 };
 
 @Injectable()
@@ -203,6 +218,7 @@ export class CompanyService {
       select: {
         id: true,
         role: true,
+        profession_title: true,
         user: { select: { name: true, email: true } },
       },
     });
@@ -348,6 +364,9 @@ export class CompanyService {
     // pix_key_type only selects which format `pix_key` is validated against; it has no column.
     const persistable: Record<string, AuditJsonValue | undefined> = { ...dto };
     delete persistable['pix_key_type'];
+    if (dto.industry_code !== undefined && dto.industry_code !== 'OTHER') {
+      persistable['industry_other'] = null;
+    }
 
     const changedKeys = (Object.keys(persistable) as (keyof typeof PROFILE_FIELD_LABELS)[]).filter(
       (key) => persistable[key] !== undefined,

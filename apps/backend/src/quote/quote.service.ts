@@ -8,7 +8,11 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma, type MemberRole } from '@prisma/client';
-import { buildPaymentSchedule, type QuotePaymentTerms } from '@orcivo/shared-types';
+import {
+  buildPaymentSchedule,
+  resolveCompanyTerminology,
+  type QuotePaymentTerms,
+} from '@orcivo/shared-types';
 import * as crypto from 'crypto';
 import {
   ApproveQuoteDto,
@@ -39,7 +43,7 @@ import { StockService } from '../stock/stock.service';
 const APPROVAL_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const APPROVAL_TOKEN_TTL_MS = APPROVAL_TOKEN_TTL_SECONDS * 1000;
 
-/** How the client approved, as the technician reads it in Atividades. */
+/** How the client approved, as the team reads it in Atividades. */
 const APPROVAL_METHOD_TEXT: Record<string, string> = {
   APPROVE_BUTTON: 'botão Aprovar',
   TYPED_NAME: 'nome digitado',
@@ -149,8 +153,11 @@ export class QuoteService {
         quote_default_doc_options: true,
         quote_default_payment_terms: true,
         quote_default_warranty: true,
+        service_owner_term: true,
+        document_professional_term: true,
       },
     });
+    const terminology = resolveCompanyTerminology(defaults ?? {});
     const docOptions = dto.doc_options ?? defaults?.quote_default_doc_options ?? undefined;
     // undefined = not chosen in the form → company default; null = explicitly none.
     const paymentTerms =
@@ -181,6 +188,8 @@ export class QuoteService {
         product_subtotal: categorySubtotals.productSubtotal,
         total,
         created_by_user_id: userId,
+        service_owner_term_snapshot: terminology.serviceOwnerLong,
+        signature_label_snapshot: terminology.signatureLabel,
         items: {
           create: documentItems.map((item, i) => ({
             company_id: companyId,
@@ -531,7 +540,7 @@ export class QuoteService {
   }
 
   /**
-   * PB1-P10/AC2: quando o técnico opta por aplicar a assinatura reutilizável no
+   * PB1-P10/AC2: quando o usuário opta por aplicar a assinatura reutilizável no
    * envio, congela uma cópia dela junto do orçamento. O PDF enviado e qualquer PDF
    * regerado depois (download no app) usam essa cópia — trocar a assinatura
    * reutilizável depois não altera orçamentos já enviados. Sem assinatura salva ou
@@ -609,10 +618,13 @@ export class QuoteService {
     // o destino da ação (`enviar` → SENT) — o estado que se torna verdadeiro
     // neste momento. Um PDF enviado nunca exibe 'Rascunho'.
     const company = await this.pdfCompany(companyId);
+    const terminology = resolveCompanyTerminology(company);
     const pdfBuffer = await this.pdfService.generate(
       {
         ...quote,
         status: spec.to,
+        service_owner_term_snapshot: terminology.serviceOwnerLong,
+        signature_label_snapshot: terminology.signatureLabel,
         customer_name: quote.customer?.name ?? null,
         technician_signature_url: technicianSignature?.dataUri ?? null,
       },
@@ -637,6 +649,8 @@ export class QuoteService {
           approval_token: token,
           pdf_url: pdfKey,
           technician_signature_key: technicianSignature?.key ?? null,
+          service_owner_term_snapshot: terminology.serviceOwnerLong,
+          signature_label_snapshot: terminology.signatureLabel,
         },
         include: { items: true, customer: true, approval: true },
       });
@@ -651,7 +665,7 @@ export class QuoteService {
         to: 'SENT',
         humanText:
           `Orçamento #${q.number} (${customerName}) enviado para aprovação` +
-          (technicianSignature ? ' com assinatura do técnico aplicada' : ''),
+          (technicianSignature ? ' com assinatura aplicada' : ''),
       });
       return q;
     });
@@ -865,7 +879,7 @@ export class QuoteService {
   /**
    * Recusa pelo próprio cliente no link público (mesmo escopo de acesso do
    * approve): SENT → REJECTED. O motivo é opcional para o cliente e vai só
-   * para a auditoria, que também avisa o técnico (notificações).
+   * para a auditoria, que também avisa o responsável (notificações).
    */
   async rejectByToken(token: string, reason?: string) {
     const quote = await this.getByApprovalToken(token);
@@ -1132,6 +1146,8 @@ export class QuoteService {
       notes: true,
       payment_terms: true,
       warranty: true,
+      service_owner_term_snapshot: true,
+      signature_label_snapshot: true,
       customer: { select: { id: true, name: true, phone: true } },
       items: {
         select: {

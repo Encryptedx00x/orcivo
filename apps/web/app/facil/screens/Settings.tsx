@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   Check,
@@ -23,6 +23,10 @@ import {
   maskPhone,
   onlyDigits,
   type WorkOrderExtraStatus,
+  COMPANY_INDUSTRY_LABELS,
+  ONBOARDING_GOAL_LABELS,
+  type CompanyIndustry,
+  type OnboardingGoal,
 } from '@orcivo/shared-types';
 import { setEasyMode } from '../../../components/EasyMode';
 import { LogoField } from '../../../components/LogoField';
@@ -552,8 +556,10 @@ function CompanyEdit() {
   const company = useLoad(getCompany);
   const { busy, save } = useSaver();
   const [f, setF] = useState<Record<string, string> | null>(null);
+  const [goals, setGoals] = useState<OnboardingGoal[] | null>(null);
   const c = company.data;
-  if (c && !f)
+  useEffect(() => {
+    if (!c || f !== null) return;
     setF({
       trade_name: c.trade_name ?? '',
       document: c.document ?? '',
@@ -562,7 +568,13 @@ function CompanyEdit() {
       city: c.city ?? '',
       state: c.state ?? '',
       ...Object.fromEntries(COMPANY_DOC_FIELDS.map((d) => [d.key, c[d.key] ?? ''])),
+      industry_code: c.industry_code ?? '',
+      industry_other: c.industry_other ?? '',
+      service_owner_term: c.service_owner_term ?? 'Responsável',
+      document_professional_term: c.document_professional_term ?? '',
     });
+    setGoals(c.onboarding_goals ?? []);
+  }, [c, f]);
   if (!f)
     return company.error ? (
       <ErrorBox title="Não foi possível carregar a empresa." onRetry={company.reload} />
@@ -615,6 +627,55 @@ function CompanyEdit() {
             placeholder={d.placeholder}
           />
         ))}
+        <strong style={{ fontSize: 14 }}>Nicho da empresa (opcional)</strong>
+        <Options
+          cols={2}
+          options={[
+            { value: '', label: 'Informar depois' },
+            ...Object.entries(COMPANY_INDUSTRY_LABELS).map(([value, label]) => ({ value, label })),
+          ]}
+          value={f.industry_code}
+          onPick={(value) => set('industry_code')(value)}
+        />
+        {f.industry_code === 'OTHER' ? (
+          <Field
+            label="Qual é o nicho?"
+            value={f.industry_other}
+            onChange={(value) => set('industry_other')(value.slice(0, 80))}
+          />
+        ) : null}
+        <Field
+          label="Nome do responsável pelo serviço"
+          value={f.service_owner_term}
+          onChange={(value) => set('service_owner_term')(value.slice(0, 40))}
+        />
+        <Field
+          label="Termo profissional nos documentos (opcional)"
+          value={f.document_professional_term}
+          onChange={(value) => set('document_professional_term')(value.slice(0, 40))}
+          placeholder="Ex.: Arquiteto responsável"
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <strong style={{ fontSize: 14 }}>O que você quer organizar? (opcional)</strong>
+          {Object.entries(ONBOARDING_GOAL_LABELS).map(([value, label]) => {
+            const goal = value as OnboardingGoal;
+            const active = (goals ?? []).includes(goal);
+            return (
+              <Toggle
+                key={value}
+                label={label}
+                on={active}
+                onClick={() =>
+                  setGoals(
+                    active
+                      ? (goals ?? []).filter((item) => item !== goal)
+                      : [...(goals ?? []), goal],
+                  )
+                }
+              />
+            );
+          })}
+        </div>
       </div>
       <SaveBar
         busy={busy}
@@ -631,6 +692,12 @@ function CompanyEdit() {
                 address: f.address.trim() || null,
                 city: f.city.trim() || null,
                 state: f.state.trim() || null,
+                industry_code: (f.industry_code || null) as CompanyIndustry | null,
+                industry_other:
+                  f.industry_code === 'OTHER' ? f.industry_other.trim() || null : null,
+                onboarding_goals: goals ?? [],
+                service_owner_term: f.service_owner_term.trim(),
+                document_professional_term: f.document_professional_term.trim() || null,
                 ...Object.fromEntries(
                   COMPANY_DOC_FIELDS.map((d) => [d.key, f[d.key].trim() || null]),
                 ),

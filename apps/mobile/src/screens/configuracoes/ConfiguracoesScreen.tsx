@@ -15,11 +15,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ApprovalMethodsPicker, LogoPicker } from '../../easy/screens/Settings';
+import { Options, Toggle } from '../../easy/ui';
 import { useEasyMode } from '../../easy/EasyModeContext';
 import {
   COMPANY_DOC_FIELDS,
   DEFAULT_HOME_SHORTCUTS,
   type HomeShortcut,
+  COMPANY_INDUSTRY_LABELS,
+  ONBOARDING_GOAL_LABELS,
+  type OnboardingGoal,
 } from '@orcivo/shared-types';
 import { api, newIdempotencyKey } from '../../services/api';
 import {
@@ -89,6 +93,7 @@ export function ConfiguracoesScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [profile, setProfile] = useState<CompanyProfile>(profileFromCompany({}));
+  const [goals, setGoals] = useState<OnboardingGoal[]>([]);
   const [pix, setPix] = useState<{ pix_key_type: PixKeyType; pix_key: string }>({
     pix_key_type: 'CNPJ',
     pix_key: '',
@@ -120,10 +125,13 @@ export function ConfiguracoesScreen() {
     setLoading(true);
     setLoadError('');
     void api
-      .get<CompanyResponse & InventorySettings>('/company/me')
+      .get<CompanyResponse & InventorySettings & { onboarding_goals?: OnboardingGoal[] }>(
+        '/company/me',
+      )
       .then((company) => {
         if (!active) return;
         setProfile(profileFromCompany(company));
+        setGoals(company.onboarding_goals ?? []);
         const key = company.pix_key ?? '';
         setPix({ pix_key_type: inferPixKeyType(key), pix_key: key });
         setInventory((current) => ({
@@ -157,7 +165,7 @@ export function ConfiguracoesScreen() {
 
   async function saveProfile() {
     if (profileLock.current) return;
-    const payload = profilePayload(profile);
+    const payload = { ...profilePayload(profile), onboarding_goals: goals };
     setProfileSaved(false);
     if (payload.trade_name.length < 2) {
       setProfileError('Informe o nome da empresa com pelo menos 2 caracteres.');
@@ -328,6 +336,58 @@ export function ConfiguracoesScreen() {
             editable={!profileBusy}
             onChangeText={(value) => editProfile('state', value.toUpperCase())}
           />
+          <Text style={styles.label}>Nicho da empresa (opcional)</Text>
+          <Options
+            cols={1}
+            options={[
+              { value: '', label: 'Informar depois' },
+              ...Object.entries(COMPANY_INDUSTRY_LABELS).map(([value, label]) => ({
+                value,
+                label,
+              })),
+            ]}
+            value={profile.industry_code}
+            onPick={(value) => editProfile('industry_code', value)}
+          />
+          {profile.industry_code === 'OTHER' ? (
+            <Field
+              label="Qual é o nicho?"
+              value={profile.industry_other}
+              maxLength={80}
+              editable={!profileBusy}
+              onChangeText={(value) => editProfile('industry_other', value)}
+            />
+          ) : null}
+          <Field
+            label="Nome do responsável pelo serviço"
+            value={profile.service_owner_term}
+            maxLength={40}
+            editable={!profileBusy}
+            onChangeText={(value) => editProfile('service_owner_term', value)}
+          />
+          <Field
+            label="Termo profissional nos documentos (opcional)"
+            value={profile.document_professional_term}
+            maxLength={40}
+            placeholder="Ex.: Arquiteto responsável"
+            editable={!profileBusy}
+            onChangeText={(value) => editProfile('document_professional_term', value)}
+          />
+          <Text style={styles.label}>O que você quer organizar? (opcional)</Text>
+          {Object.entries(ONBOARDING_GOAL_LABELS).map(([value, label]) => {
+            const goal = value as OnboardingGoal;
+            const active = goals.includes(goal);
+            return (
+              <Toggle
+                key={value}
+                label={label}
+                on={active}
+                onChange={() =>
+                  setGoals(active ? goals.filter((item) => item !== goal) : [...goals, goal])
+                }
+              />
+            );
+          })}
           {!!profileError && (
             <Text accessibilityRole="alert" style={styles.error}>
               {profileError}

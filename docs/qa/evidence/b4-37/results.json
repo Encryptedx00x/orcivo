@@ -1,0 +1,197 @@
+{
+  "results": [
+    {
+      "surface": "site-landing",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-1",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-2",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-empresa",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-conta",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-facil-empresa",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "site-landing",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-1",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-2",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-empresa",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-conta",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-facil-empresa",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "site-landing",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-1",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-onboarding-etapa-2",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-empresa",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-completo-conta",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "web-facil-empresa",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-completo-empresa",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-facil-empresa",
+      "viewport": "1440x900",
+      "documentWidth": 1440,
+      "innerWidth": 1440,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-completo-empresa",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-facil-empresa",
+      "viewport": "390x844",
+      "documentWidth": 390,
+      "innerWidth": 390,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-completo-empresa",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    },
+    {
+      "surface": "app-facil-empresa",
+      "viewport": "360x800",
+      "documentWidth": 360,
+      "innerWidth": 360,
+      "horizontalOverflow": false,
+      "clippedControls": []
+    }
+  ],
+  "failures": []
+}

@@ -9,7 +9,7 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** PB1-P10/AC1-AC3: assinatura reutilizável do técnico, privada e tenant-scoped (P03 storage). */
+/** PB1-P10/AC1-AC3: assinatura reutilizável, privada e tenant-scoped (P03 storage). */
 export async function getTechnicianSignature(): Promise<{ signature_url: string | null }> {
   const auth = await authHeader();
   if (!auth['Authorization']) return { signature_url: null };
@@ -41,7 +41,7 @@ export async function saveTechnicianSignature(
   return { ok: true, signature_url: data.signature_url };
 }
 
-/** PB1-P10/AC2: envio do orçamento com opção de aplicar a assinatura salva do técnico. */
+/** PB1-P10/AC2: envio do orçamento com opção de aplicar a assinatura salva. */
 export async function sendQuoteWithSignature(
   quoteId: string,
   applySignature: boolean,

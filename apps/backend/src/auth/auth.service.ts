@@ -49,6 +49,8 @@ export class AuthService {
         accepted_terms_at: new Date(),
         accepted_terms_version: dto.terms_version ?? LEGAL_DOCS_VERSION,
         accepted_privacy_version: dto.privacy_version ?? LEGAL_DOCS_VERSION,
+        salutation: dto.salutation ?? 'NONE',
+        salutation_custom: dto.salutation === 'CUSTOM' ? dto.salutation_custom : null,
       },
       select: { id: true, name: true, email: true },
     });
@@ -101,9 +103,17 @@ export class AuthService {
           state: dto.state,
           brand_color: dto.brand_color,
           pix_key: dto.pix_key,
+          industry_code: dto.industry_code,
+          industry_other: dto.industry_code === 'OTHER' ? dto.industry_other : null,
+          onboarding_goals: dto.onboarding_goals ?? [],
           plan_code: 'LIVRE',
           members: {
-            create: { user_id: userId, role: 'OWNER', active: true },
+            create: {
+              user_id: userId,
+              role: 'OWNER',
+              active: true,
+              profession_title: dto.profession_title,
+            },
           },
         },
       }),
@@ -248,14 +258,21 @@ export class AuthService {
   async getAccount(userId: string) {
     return this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, salutation: true, salutation_custom: true },
     });
   }
 
   async updateAccount(companyId: string, userId: string, dto: AccountUpdateDto) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, name: true, email: true, password_hash: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        salutation: true,
+        salutation_custom: true,
+        password_hash: true,
+      },
     });
 
     const changingCredentials = dto.email !== undefined || dto.new_password !== undefined;
@@ -269,7 +286,13 @@ export class AuthService {
       if (existing) throw new ConflictException('E-mail já cadastrado');
     }
 
-    const data: { name?: string; email?: string; password_hash?: string } = {};
+    const data: {
+      name?: string;
+      email?: string;
+      password_hash?: string;
+      salutation?: string;
+      salutation_custom?: string | null;
+    } = {};
     const changedFields: string[] = [];
     if (dto.name !== undefined && dto.name !== user.name) {
       data.name = dto.name;
@@ -283,9 +306,29 @@ export class AuthService {
       data.password_hash = await argon2.hash(dto.new_password);
       changedFields.push('senha');
     }
+    if (dto.salutation !== undefined && dto.salutation !== user.salutation) {
+      data.salutation = dto.salutation;
+      data.salutation_custom = dto.salutation === 'CUSTOM' ? (dto.salutation_custom ?? null) : null;
+      changedFields.push('tratamento');
+    } else if (
+      dto.salutation === 'CUSTOM' &&
+      dto.salutation_custom !== undefined &&
+      dto.salutation_custom !== user.salutation_custom
+    ) {
+      data.salutation_custom = dto.salutation_custom;
+      changedFields.push('tratamento');
+    }
 
     if (changedFields.length === 0) {
-      return { account: { id: user.id, name: user.name, email: user.email } };
+      return {
+        account: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          salutation: user.salutation,
+          salutation_custom: user.salutation_custom,
+        },
+      };
     }
 
     const passwordChanged = dto.new_password !== undefined;
@@ -293,7 +336,7 @@ export class AuthService {
       const updated = await tx.user.update({
         where: { id: userId },
         data,
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, salutation: true, salutation_custom: true },
       });
 
       if (passwordChanged) {

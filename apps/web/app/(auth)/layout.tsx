@@ -14,7 +14,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }):
       <div className="ov-auth-art">
         <AuthArtPanel
           headline="Orçamentos profissionais. Em minutos."
-          sub="A plataforma feita para técnicos instaladores criarem orçamentos, organizarem serviços e atenderem melhor seus clientes pelo celular e pelo computador."
+          sub="Clientes, serviços, produtos, orçamentos e recebimentos em um só lugar, pelo celular e pelo computador."
           testimonialQuote="Antes eu fazia orçamento no Word às 22h. Agora eu faço no celular dentro do cliente, e ele já assina ali."
           testimonialWho="Marcos Pereira"
           testimonialRole="Elétrica · São Paulo"

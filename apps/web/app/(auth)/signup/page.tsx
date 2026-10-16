@@ -3,7 +3,16 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { User, Mail, Phone, Lock, Eye, EyeOff, Building, MapPin, Shield } from 'lucide-react';
-import { LEGAL_DOCS_VERSION, maskPhone, onlyDigits } from '@orcivo/shared-types';
+import {
+  LEGAL_DOCS_VERSION,
+  maskPhone,
+  onlyDigits,
+  COMPANY_INDUSTRY_LABELS,
+  ONBOARDING_GOAL_LABELS,
+  type CompanyIndustry,
+  type OnboardingGoal,
+  type Salutation,
+} from '@orcivo/shared-types';
 import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
 const ESTADOS = [
@@ -46,8 +55,23 @@ function SignupForm(): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  const [s1, setS1] = useState({ name: '', email: '', phone: '', password: '' });
-  const [s2, setS2] = useState({ trade_name: '', city: '', state: '' });
+  const [s1, setS1] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    salutation: 'NONE' as Salutation,
+    salutation_custom: '',
+  });
+  const [s2, setS2] = useState({
+    trade_name: '',
+    city: '',
+    state: '',
+    industry_code: '' as CompanyIndustry | '',
+    industry_other: '',
+    profession_title: '',
+    onboarding_goals: [] as OnboardingGoal[],
+  });
 
   const handleStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +110,12 @@ function SignupForm(): React.JSX.Element {
     const res = await fetch('/api/auth/signup/company', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-signup-token': tempToken },
-      body: JSON.stringify(s2),
+      body: JSON.stringify({
+        ...s2,
+        industry_code: s2.industry_code || undefined,
+        industry_other: s2.industry_code === 'OTHER' ? s2.industry_other : undefined,
+        profession_title: s2.profession_title || undefined,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -210,6 +239,33 @@ function SignupForm(): React.JSX.Element {
                 />
               </div>
             </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Como deseja ser chamado? (opcional)</label>
+              <select
+                style={{ ...inp, paddingLeft: 12, width: '100%' }}
+                value={s1.salutation}
+                onChange={(e) => setS1((p) => ({ ...p, salutation: e.target.value as Salutation }))}
+              >
+                <option value="NONE">Sem tratamento</option>
+                <option value="SR">Sr.</option>
+                <option value="SRA">Sra.</option>
+                <option value="CUSTOM">Personalizado</option>
+              </select>
+            </div>
+            {s1.salutation === 'CUSTOM' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Tratamento personalizado</label>
+                <div style={inputWrap}>
+                  <User size={18} style={leadingIcon} />
+                  <input
+                    style={inp}
+                    maxLength={40}
+                    value={s1.salutation_custom}
+                    onChange={(e) => setS1((p) => ({ ...p, salutation_custom: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label style={lbl}>Senha (mín. 8 caracteres)</label>
@@ -346,7 +402,7 @@ function SignupForm(): React.JSX.Element {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr auto',
+                gridTemplateColumns: 'minmax(0, 1fr) minmax(76px, auto)',
                 gap: 10,
                 marginBottom: 16,
               }}
@@ -379,6 +435,84 @@ function SignupForm(): React.JSX.Element {
                 </select>
               </div>
             </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Nicho da empresa (opcional)</label>
+              <select
+                style={{ ...inp, paddingLeft: 12, width: '100%' }}
+                value={s2.industry_code}
+                onChange={(e) =>
+                  setS2((p) => ({ ...p, industry_code: e.target.value as CompanyIndustry | '' }))
+                }
+              >
+                <option value="">Informar depois</option>
+                {Object.entries(COMPANY_INDUSTRY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {s2.industry_code === 'OTHER' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Qual é o nicho?</label>
+                <div style={inputWrap}>
+                  <Building size={18} style={leadingIcon} />
+                  <input
+                    style={inp}
+                    maxLength={80}
+                    value={s2.industry_other}
+                    onChange={(e) => setS2((p) => ({ ...p, industry_other: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Sua profissão ou cargo (opcional)</label>
+              <div style={inputWrap}>
+                <User size={18} style={leadingIcon} />
+                <input
+                  style={inp}
+                  maxLength={40}
+                  value={s2.profession_title}
+                  onChange={(e) => setS2((p) => ({ ...p, profession_title: e.target.value }))}
+                />
+              </div>
+            </div>
+            <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
+              <legend style={lbl}>O que você quer organizar? (opcional)</legend>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {Object.entries(ONBOARDING_GOAL_LABELS).map(([value, label]) => {
+                  const goal = value as OnboardingGoal;
+                  const checked = s2.onboarding_goals.includes(goal);
+                  return (
+                    <label
+                      key={value}
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        alignItems: 'center',
+                        fontSize: 13,
+                        color: '#334155',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setS2((p) => ({
+                            ...p,
+                            onboarding_goals: checked
+                              ? p.onboarding_goals.filter((item) => item !== goal)
+                              : [...p.onboarding_goals, goal],
+                          }))
+                        }
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
 
             {error && <p style={errStyle}>{error}</p>}
             <button style={btn} type="submit" disabled={loading}>

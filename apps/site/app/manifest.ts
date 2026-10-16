@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Orcivo — Gestão para técnicos instaladores',
+    name: 'Orcivo — Gestão de serviços para o seu negócio',
     short_name: 'Orcivo',
     lang: 'pt-BR',
     start_url: '/',

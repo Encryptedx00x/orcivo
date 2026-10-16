@@ -172,6 +172,34 @@ describe('QuoteService', () => {
           data: expect.objectContaining({
             subtotal: '30.00',
             total: '30.00',
+            service_owner_term_snapshot: 'Responsável pelo serviço',
+            signature_label_snapshot: 'Assinatura',
+          }),
+        }),
+      );
+    });
+
+    it('congela a terminologia configurada pela empresa no documento', async () => {
+      mockPrisma.company.findUnique.mockResolvedValueOnce({
+        quote_default_doc_options: null,
+        service_owner_term: 'Profissional designado',
+        document_professional_term: 'Arquiteto responsável',
+      });
+      await service.create(
+        {
+          customer_id: 'cust-uuid',
+          items: [{ description: 'Serviço', quantity: '1', unit_price: '10.00' }],
+          discount_type: 'PERCENT',
+          discount_value: '0',
+        },
+        'comp-1',
+        'user-1',
+      );
+      expect(mockPrisma.quote.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            service_owner_term_snapshot: 'Profissional designado',
+            signature_label_snapshot: 'Arquiteto responsável',
           }),
         }),
       );

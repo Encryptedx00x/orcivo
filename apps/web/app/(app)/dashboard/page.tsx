@@ -203,7 +203,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     month: 'long',
   });
   const dateCap = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
-  const firstName = (s?.user.name ?? '').split(' ')[0] || 'técnico';
+  const firstName = (s?.user.name ?? '').split(' ')[0] || 'profissional';
   const planLabel = PLAN_LABEL[s?.company.plan_code ?? 'LIVRE'] ?? 'Orcivo Livre';
   const enabledShortcuts = new Set(
     s?.company.home_shortcuts?.length ? s.company.home_shortcuts : DEFAULT_HOME_SHORTCUTS,

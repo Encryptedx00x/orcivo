@@ -9,7 +9,13 @@ import type {
 } from '@orcivo/shared-types';
 
 type Result = { ok: true } | { ok: false; message: string };
-type Account = { id: string; name: string; email: string };
+type Account = {
+  id: string;
+  name: string;
+  email: string;
+  salutation: string;
+  salutation_custom: string | null;
+};
 type AccountResult =
   | { ok: true; account: Account; passwordChanged: boolean }
   | { ok: false; message: string };
@@ -63,6 +69,11 @@ export async function updateCompanyProfile(body: {
   website?: string | null;
   professional_registration?: string | null;
   document_footer?: string | null;
+  industry_code?: string | null;
+  industry_other?: string | null;
+  onboarding_goals?: string[];
+  service_owner_term?: string;
+  document_professional_term?: string | null;
 }): Promise<Result> {
   return patchCompanyMe(body);
 }
@@ -153,6 +164,8 @@ export async function updateAccountSettings(body: {
   email?: string;
   current_password?: string;
   new_password?: string;
+  salutation?: string;
+  salutation_custom?: string | null;
 }): Promise<AccountResult> {
   const cookieStore = await cookies();
   const token = cookieStore.get('access_token')?.value;

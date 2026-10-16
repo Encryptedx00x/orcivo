@@ -197,6 +197,7 @@ describe('PaymentService', () => {
       tx.payment.aggregate.mockResolvedValue({ _max: { receipt_number: 8 } });
       tx.company.findUnique.mockResolvedValueOnce({
         receipt_default_doc_options: { pix: false, footer: false },
+        document_professional_term: 'Arquiteto responsável',
       });
 
       await service.create(
@@ -215,6 +216,7 @@ describe('PaymentService', () => {
           data: expect.objectContaining({
             receipt_number: 9,
             receipt_doc_options: expect.objectContaining({ pix: false, footer: false }),
+            receipt_signature_label: 'Arquiteto responsável',
           }),
         }),
       );

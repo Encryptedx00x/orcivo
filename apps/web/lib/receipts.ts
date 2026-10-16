@@ -12,6 +12,7 @@ export interface Receipt {
   created_at: string;
   receipt_signature_key: string | null;
   receipt_signer_name: string | null;
+  receipt_signature_label?: string | null;
   receipt_doc_options?: ReceiptDocOptions | null;
   receipt_additional_info?: string | null;
   /** Short-lived URL of the frozen signature (detail endpoint only). */

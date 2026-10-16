@@ -4,7 +4,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 export interface PublicQuoteItem {
   description: string;
   quantity: string;
-  /** Absent when the technician hid the prices. */
+  /** Absent when the company hid the prices. */
   unit_price?: string;
   total?: string;
 }
@@ -24,6 +24,7 @@ export interface PublicQuote {
   notes?: string;
   payment_terms?: QuotePaymentTerms | null;
   warranty?: string | null;
+  service_owner_term_snapshot?: string | null;
   customer: { name: string; phone?: string };
   items: PublicQuoteItem[];
   company: {

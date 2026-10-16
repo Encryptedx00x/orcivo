@@ -35,7 +35,7 @@ interface PendingInvite {
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin',
-  TECNICO: 'Técnico',
+  TECNICO: 'Membro',
   OWNER: 'Proprietário',
 };
 
@@ -182,7 +182,7 @@ export default function EquipePage(): React.JSX.Element {
               Nenhum membro ainda.
             </p>
             <p style={{ fontSize: 14, color: T.fg3, margin: 0 }}>
-              Convide técnicos e admins para colaborar na plataforma.
+              Convide membros e administradores para colaborar na plataforma.
             </p>
           </div>
         ) : (
@@ -321,7 +321,7 @@ export default function EquipePage(): React.JSX.Element {
 
       {/* ── Permissões por função (padrão · somente leitura) ────────── */}
       <h3 style={{ fontSize: 15, fontWeight: 600, color: T.ink, margin: '24px 0 2px' }}>
-        Permissões — Função: Técnico
+        Permissões — Função: Membro
       </h3>
       <p style={{ fontSize: 13, color: T.fg3, margin: '0 0 12px' }}>
         Padrão da função, aplicado automaticamente. Permissões personalizadas chegam em breve.
@@ -349,7 +349,7 @@ export default function EquipePage(): React.JSX.Element {
               'Ordens de Serviço',
               [
                 ['Executar OS atribuídas', true],
-                ['Atribuir técnicos', false],
+                ['Atribuir responsáveis', false],
                 ['Cancelar OS', false],
               ],
             ],
@@ -500,7 +500,7 @@ export default function EquipePage(): React.JSX.Element {
                   onChange={(e) => setInviteRole(e.target.value as 'TECNICO' | 'ADMIN')}
                   className="ov-input"
                 >
-                  <option value="TECNICO">Técnico</option>
+                  <option value="TECNICO">Membro</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>

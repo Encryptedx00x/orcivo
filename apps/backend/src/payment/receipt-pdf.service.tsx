@@ -73,6 +73,7 @@ export interface ReceiptData {
   additionalInfo?: string | null;
   signatureDataUri?: string | null;
   signerName?: string | null;
+  signatureLabel?: string | null;
 }
 export interface ReceiptCompany {
   trade_name: string;
@@ -239,7 +240,11 @@ export class ReceiptPdfService {
                 <Image style={s.sigImage} src={r.signatureDataUri} />
                 <View style={s.sigLine} />
                 <Text style={s.small}>
-                  {[r.signerName, 'Responsável', company.professional_registration]
+                  {[
+                    r.signerName,
+                    r.signatureLabel || 'Assinatura',
+                    company.professional_registration,
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </Text>

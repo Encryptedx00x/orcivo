@@ -247,7 +247,11 @@ export function ReceiptPaper({
           )}
           <div style={{ height: 1, background: '#94A3B8' }} />
           <span style={{ fontSize: sm, color: '#475569' }}>
-            {[receipt.receipt_signer_name, 'Responsável', company.professional_registration]
+            {[
+              receipt.receipt_signer_name,
+              receipt.receipt_signature_label || 'Assinatura',
+              company.professional_registration,
+            ]
               .filter(Boolean)
               .join(' · ')}
           </span>

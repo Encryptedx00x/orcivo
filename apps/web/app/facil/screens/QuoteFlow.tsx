@@ -1482,7 +1482,7 @@ function Q3() {
   );
 }
 
-// ── Assinatura do técnico ─────────────────────────────────────────────
+// ── Assinatura do responsável ─────────────────────────────────────────
 type SigMethod = 'APPROVE_BUTTON' | 'TYPED_NAME' | 'DRAWN_SIGNATURE' | 'PHOTO_SIGNATURE';
 const SIG_METHODS: Array<{ k: SigMethod; label: string; icon: typeof XCircle }> = [
   { k: 'APPROVE_BUTTON', label: 'Sem assinatura', icon: XCircle },

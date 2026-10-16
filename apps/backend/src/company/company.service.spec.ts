@@ -86,6 +86,65 @@ describe('CompanyService.updateProfile', () => {
     );
   });
 
+  it('mantém preferências neutras isoladas na empresa atual', async () => {
+    const before = {
+      id: 'c1',
+      trade_name: 'Empresa',
+      service_owner_term: 'Responsável',
+      onboarding_goals: [],
+    };
+    const updated = {
+      ...before,
+      service_owner_term: 'Profissional designado',
+      onboarding_goals: ['CREATE_QUOTES'],
+    };
+    txMockPrisma.company.findUnique.mockResolvedValue(before);
+    mockTx.company.update.mockResolvedValue(updated);
+
+    await service.updateProfile(
+      'c1',
+      {
+        service_owner_term: 'Profissional designado',
+        onboarding_goals: ['CREATE_QUOTES'],
+      },
+      'u1',
+    );
+
+    expect(mockTx.company.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({
+          service_owner_term: 'Profissional designado',
+          onboarding_goals: ['CREATE_QUOTES'],
+        }),
+      }),
+    );
+  });
+
+  it('remove a descrição livre ao trocar para um nicho predefinido', async () => {
+    const before = {
+      id: 'c1',
+      trade_name: 'Empresa',
+      industry_code: 'OTHER',
+      industry_other: 'Nicho anterior',
+    };
+    txMockPrisma.company.findUnique.mockResolvedValue(before);
+    mockTx.company.update.mockResolvedValue({
+      ...before,
+      industry_code: 'MAINTENANCE',
+      industry_other: null,
+    });
+
+    await service.updateProfile('c1', { industry_code: 'MAINTENANCE' }, 'u1');
+
+    expect(mockTx.company.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ industry_code: 'MAINTENANCE', industry_other: null }),
+      }),
+    );
+  });
+
   it('persiste defaults do recibo e registra o snapshot na auditoria', async () => {
     const before = {
       id: 'c1',

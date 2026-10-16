@@ -4,6 +4,8 @@ export interface Account {
   id: string;
   name: string;
   email: string;
+  salutation: 'NONE' | 'SR' | 'SRA' | 'CUSTOM';
+  salutation_custom: string | null;
 }
 
 export interface AccountUpdateDto {
@@ -11,6 +13,8 @@ export interface AccountUpdateDto {
   email?: string;
   current_password?: string;
   new_password?: string;
+  salutation?: 'NONE' | 'SR' | 'SRA' | 'CUSTOM';
+  salutation_custom?: string | null;
 }
 
 export interface AccountUpdateResult {

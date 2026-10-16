@@ -1,5 +1,5 @@
 // Configurações do Modo fácil (app): mirrors apps/web/app/facil/screens/Settings.tsx.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Pressable, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,6 +26,10 @@ import {
   type QuotePaymentTerms,
   type ReceiptDocOptions,
   COMPANY_DOC_FIELDS,
+  COMPANY_INDUSTRY_LABELS,
+  ONBOARDING_GOAL_LABELS,
+  type CompanyIndustry,
+  type OnboardingGoal,
 } from '@orcivo/shared-types';
 import { PaymentTermsFields } from '../PaymentTerms';
 import { DocOptionsFields, ReceiptDocOptionsFields } from '../DocOptions';
@@ -296,8 +300,10 @@ function CompanyEdit() {
   const company = useLoad(easy.company, 'Não foi possível carregar a empresa.');
   const { busy, save } = useSave();
   const [f, setF] = useState<Record<string, string> | null>(null);
+  const [goals, setGoals] = useState<OnboardingGoal[] | null>(null);
   const c = company.data;
-  if (c && !f)
+  useEffect(() => {
+    if (!c || f !== null) return;
     setF({
       trade_name: c.trade_name ?? '',
       document: c.document ?? '',
@@ -306,7 +312,13 @@ function CompanyEdit() {
       city: c.city ?? '',
       state: c.state ?? '',
       ...Object.fromEntries(COMPANY_DOC_FIELDS.map((d) => [d.key, c[d.key] ?? ''])),
+      industry_code: c.industry_code ?? '',
+      industry_other: c.industry_other ?? '',
+      service_owner_term: c.service_owner_term ?? 'Responsável',
+      document_professional_term: c.document_professional_term ?? '',
     });
+    setGoals(c.onboarding_goals ?? []);
+  }, [c, f]);
   if (!f)
     return (
       <Page>
@@ -343,6 +355,12 @@ function CompanyEdit() {
                     address: f.address.trim() || null,
                     city: f.city.trim() || null,
                     state: f.state.trim() || null,
+                    industry_code: (f.industry_code || null) as CompanyIndustry | null,
+                    industry_other:
+                      f.industry_code === 'OTHER' ? f.industry_other.trim() || null : null,
+                    onboarding_goals: goals ?? [],
+                    service_owner_term: f.service_owner_term.trim(),
+                    document_professional_term: f.document_professional_term.trim() || null,
                     ...Object.fromEntries(
                       COMPANY_DOC_FIELDS.map((d) => [d.key, f[d.key].trim() || null]),
                     ),
@@ -395,6 +413,51 @@ function CompanyEdit() {
           placeholder={d.placeholder}
         />
       ))}
+      <Sub>Nicho da empresa (opcional)</Sub>
+      <Options
+        cols={1}
+        options={[
+          { value: '', label: 'Informar depois' },
+          ...Object.entries(COMPANY_INDUSTRY_LABELS).map(([value, label]) => ({ value, label })),
+        ]}
+        value={f.industry_code}
+        onPick={(value) => set('industry_code')(value)}
+      />
+      {f.industry_code === 'OTHER' ? (
+        <Field
+          label="Qual é o nicho?"
+          value={f.industry_other}
+          onChange={(value) => set('industry_other')(value.slice(0, 80))}
+        />
+      ) : null}
+      <Field
+        label="Nome do responsável pelo serviço"
+        value={f.service_owner_term}
+        onChange={(value) => set('service_owner_term')(value.slice(0, 40))}
+      />
+      <Field
+        label="Termo profissional nos documentos (opcional)"
+        value={f.document_professional_term}
+        onChange={(value) => set('document_professional_term')(value.slice(0, 40))}
+        placeholder="Ex.: Arquiteto responsável"
+      />
+      <Sub>O que você quer organizar? (opcional)</Sub>
+      {Object.entries(ONBOARDING_GOAL_LABELS).map(([value, label]) => {
+        const goal = value as OnboardingGoal;
+        const active = (goals ?? []).includes(goal);
+        return (
+          <Toggle
+            key={value}
+            label={label}
+            on={active}
+            onChange={() =>
+              setGoals(
+                active ? (goals ?? []).filter((item) => item !== goal) : [...(goals ?? []), goal],
+              )
+            }
+          />
+        );
+      })}
     </Page>
   );
 }

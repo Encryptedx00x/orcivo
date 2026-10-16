@@ -826,7 +826,7 @@ export function QuoteReviewScreen() {
   );
 }
 
-// ── Assinatura do técnico ─────────────────────────────────────────────
+// ── Assinatura do responsável ─────────────────────────────────────────
 type SigMethod = 'NONE' | 'TYPED' | 'DRAWN' | 'PHOTO';
 const SIG_METHODS: Array<{ k: SigMethod; label: string; icon: LucideIcon }> = [
   { k: 'NONE', label: 'Sem assinatura', icon: XCircle },

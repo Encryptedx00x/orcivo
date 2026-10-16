@@ -4,6 +4,10 @@ import {
   ReceiptDocOptionsSchema,
   WorkOrderExtraStatusListSchema,
   WorkOrderFieldListSchema,
+  CompanyIndustrySchema,
+  NeutralTermSchema,
+  OnboardingGoalSchema,
+  RequiredNeutralTermSchema,
 } from '@orcivo/shared-types';
 import { z } from 'zod';
 
@@ -53,6 +57,11 @@ export const CompanyProfileUpdateSchema = z
     quote_default_warranty: z.string().max(2000).nullable().optional(),
     receipt_default_doc_options: ReceiptDocOptionsSchema.nullable().optional(),
     work_order_fields: WorkOrderFieldListSchema.optional(),
+    industry_code: CompanyIndustrySchema.nullable().optional(),
+    industry_other: z.string().trim().max(80).nullable().optional(),
+    onboarding_goals: z.array(OnboardingGoalSchema).max(6).optional(),
+    service_owner_term: RequiredNeutralTermSchema.optional(),
+    document_professional_term: NeutralTermSchema.nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const hasType = data.pix_key_type != null;
@@ -83,6 +92,13 @@ export const CompanyProfileUpdateSchema = z
         code: z.ZodIssueCode.custom,
         path: ['pix_key'],
         message: `Chave Pix inválida para o tipo ${data.pix_key_type}.`,
+      });
+    }
+    if (data.industry_code === 'OTHER' && !data.industry_other?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['industry_other'],
+        message: 'Informe o nicho da empresa.',
       });
     }
   });

@@ -38,7 +38,7 @@ const jetBrainsMono = localFont({
 
 export const metadata: Metadata = {
   title: 'Orcivo',
-  description: 'Para técnicos que constroem negócios',
+  description: 'Clientes, serviços e recebimentos em um só lugar',
 };
 
 export const viewport: Viewport = {

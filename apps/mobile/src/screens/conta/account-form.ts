@@ -4,6 +4,8 @@ export interface AccountFormState {
   current_password: string;
   new_password: string;
   confirm_password: string;
+  salutation: 'NONE' | 'SR' | 'SRA' | 'CUSTOM';
+  salutation_custom: string;
 }
 
 export const EMPTY_ACCOUNT_FORM: AccountFormState = {
@@ -12,6 +14,8 @@ export const EMPTY_ACCOUNT_FORM: AccountFormState = {
   current_password: '',
   new_password: '',
   confirm_password: '',
+  salutation: 'NONE',
+  salutation_custom: '',
 };
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,7 +32,9 @@ export function accountError(error: unknown, action: 'load' | 'save'): string {
   }
   if (status === 400) {
     const errors = failure?.data?.errors;
-    return Array.isArray(errors) && errors.length > 0 && errors.every((item) => typeof item === 'string')
+    return Array.isArray(errors) &&
+      errors.length > 0 &&
+      errors.every((item) => typeof item === 'string')
       ? errors.join(' ')
       : 'Confira os campos e tente novamente.';
   }
