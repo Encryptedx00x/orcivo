@@ -37,6 +37,7 @@ import {
 } from '../ui';
 import { quoteChip } from './Quotes';
 import { useCustomerSearch } from '../useCustomerSearch';
+import { PlanUsageIndicator } from '../../components/PlanUsageIndicator';
 
 const PAGE = 20;
 const call = (phone: string) => void Linking.openURL(`tel:${phone.replace(/\D/g, '')}`);
@@ -52,6 +53,7 @@ export function ClientsScreen() {
   return (
     <Page top>
       <H1>Clientes</H1>
+      <PlanUsageIndicator code="CUSTOMERS" />
       <Search
         value={q}
         onChange={(v) => {

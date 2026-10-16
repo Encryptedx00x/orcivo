@@ -59,6 +59,7 @@ import {
   s,
   useLoad,
 } from '../ui';
+import { PlanUsageIndicator } from '../../components/PlanUsageIndicator';
 
 /** Ícones das ações de status extra (R5b) — mesmo conjunto do web. */
 const EXTRA_ICONS: Record<WorkOrderExtraAction, typeof Hourglass> = {
@@ -286,6 +287,7 @@ export function ServicesScreen() {
         <H1>{all ? 'Todos os serviços' : 'Serviços de hoje'}</H1>
         <Sub>{all ? 'Em andamento primeiro, depois os feitos' : longDate(new Date())}</Sub>
       </View>
+      <PlanUsageIndicator code="WORK_ORDERS_MONTH" />
       {orders.error ? <ErrorBox message={orders.error} onRetry={orders.refresh} /> : null}
       {!orders.data && !orders.error ? <Loading /> : null}
       {orders.data && !list.length ? (

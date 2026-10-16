@@ -2,7 +2,13 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ClipboardList, Columns3, List, Search, ChevronRight, Plus } from 'lucide-react';
-import { WORK_ORDER_STATUS_LABELS, formatMoney, type WorkOrderStatus } from '@orcivo/shared-types';
+import {
+  WORK_ORDER_STATUS_LABELS,
+  formatMoney,
+  type PlanUsageResource,
+  type WorkOrderStatus,
+} from '@orcivo/shared-types';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 import type { WorkOrder } from '../../../lib/work-order.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { useAuth } from '../../../components/AuthProvider';
@@ -68,7 +74,13 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React.JSX.Element {
+export function OSContent({
+  orders: firstPage,
+  usage,
+}: {
+  orders: WorkOrder[];
+  usage?: PlanUsageResource;
+}): React.JSX.Element {
   const { user } = useAuth();
   const list = usePagedList(firstPage, loadWorkOrdersPage);
   const orders = list.items;
@@ -272,6 +284,7 @@ export function OSContent({ orders: firstPage }: { orders: WorkOrder[] }): React
           </Link>
         </div>
       </div>
+      <PlanUsageIndicator resource={usage} />
 
       {/* Filters */}
       <div

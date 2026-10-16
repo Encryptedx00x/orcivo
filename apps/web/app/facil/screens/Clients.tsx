@@ -16,7 +16,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import { formatMoney, maskPhone, onlyDigits } from '@orcivo/shared-types';
-import { createClient, deleteClient, getClient, listQuotes, type EasyQuote } from '../actions';
+import {
+  createClient,
+  deleteClient,
+  getClient,
+  getPlanUsage,
+  listQuotes,
+  type EasyQuote,
+} from '../actions';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 import { ActionBar, Hint, emptyDraft, useLoad, useNav } from '../EasyApp';
 import {
   Avatar,
@@ -43,6 +51,7 @@ export function ClientsScreen(): React.JSX.Element {
   const { go } = useNav();
   const [q, setQ] = useState('');
   const clients = useCustomerSearch(q, 20);
+  const usage = useLoad(getPlanUsage);
 
   return (
     <>
@@ -62,6 +71,9 @@ export function ClientsScreen(): React.JSX.Element {
           </span>
         )}
       </div>
+      <PlanUsageIndicator
+        resource={usage.data?.resources.find((resource) => resource.code === 'CUSTOMERS')}
+      />
       {clients.loading && clients.items.length === 0 ? (
         <Loading />
       ) : clients.error ? (

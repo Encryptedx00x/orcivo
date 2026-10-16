@@ -15,6 +15,7 @@ import { workOrderService, WorkOrder } from '../services/work-order.service';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 import { STATUS_COLORS, type WorkOrderStatus } from './os/os-status';
 import { theme } from '../theme';
+import { PlanUsageIndicator } from '../components/PlanUsageIndicator';
 
 const { colors, radius, space, type } = theme;
 
@@ -90,6 +91,7 @@ export function WorkOrderListScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <FlatList
+        ListHeaderComponent={<PlanUsageIndicator code="WORK_ORDERS_MONTH" />}
         data={orders}
         keyExtractor={(o) => o.id}
         renderItem={renderItem}
@@ -102,7 +104,7 @@ export function WorkOrderListScreen({ navigation }: Props) {
             <ActivityIndicator color={colors.purple600} style={{ margin: 16 }} />
           ) : null
         }
-        contentContainerStyle={orders.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={orders.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.center}>
             <CheckCircle size={48} color={colors.slate300} />
@@ -138,6 +140,7 @@ const styles = StyleSheet.create({
   fabText: { color: colors.white, fontSize: 15, fontWeight: type.bold },
   total: { marginLeft: 'auto', fontSize: type.small, fontWeight: type.bold, color: colors.ink },
   container: { flex: 1, backgroundColor: colors.white },
+  listContent: { paddingTop: 12, paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.xl },
   emptyContainer: { flex: 1 },
   card: {

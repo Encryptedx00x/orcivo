@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Users, Search, ChevronRight } from 'lucide-react';
-import { maskPhone } from '@orcivo/shared-types';
+import { maskPhone, type PlanUsageResource } from '@orcivo/shared-types';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 
 interface Customer {
   id: string;
@@ -13,7 +14,13 @@ interface Customer {
   created_at: string | null;
 }
 
-export function ClientesContent({ customers }: { customers: Customer[] }): React.JSX.Element {
+export function ClientesContent({
+  customers,
+  usage,
+}: {
+  customers: Customer[];
+  usage?: PlanUsageResource;
+}): React.JSX.Element {
   const [q, setQ] = useState('');
   const [items, setItems] = useState(customers);
   const [page, setPage] = useState(1);
@@ -110,6 +117,8 @@ export function ClientesContent({ customers }: { customers: Customer[] }): React
           </Link>
         </div>
       </div>
+
+      <PlanUsageIndicator resource={usage} />
 
       {/* Search bar */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>

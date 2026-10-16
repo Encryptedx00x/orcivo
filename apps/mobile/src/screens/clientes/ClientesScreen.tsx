@@ -15,6 +15,7 @@ import { api } from '../../services/api';
 import type { ClientesStackParamList } from '../../navigation/AppTabs';
 import { AppButton, AppCard, AppInput, ListRow, ScreenHeader } from '../../components/AppUI';
 import { User } from 'lucide-react-native';
+import { PlanUsageIndicator } from '../../components/PlanUsageIndicator';
 
 interface Customer {
   id: string;
@@ -54,6 +55,7 @@ export function ClientesScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Clientes" subtitle="Pessoas e empresas atendidas" />
+      <PlanUsageIndicator code="CUSTOMERS" />
       <AppInput
         label="Buscar cliente"
         value={search}

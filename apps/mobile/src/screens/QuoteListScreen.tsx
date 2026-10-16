@@ -14,6 +14,7 @@ import { usePagedList } from '../hooks/usePagedList';
 import { quoteService, Quote, QuoteStatus } from '../services/quote.service';
 import type { QuotesStackParamList } from '../navigation/AppTabs';
 import { theme } from '../theme';
+import { PlanUsageIndicator } from '../components/PlanUsageIndicator';
 
 const { colors, radius, space, type } = theme;
 
@@ -116,6 +117,7 @@ export function QuoteListScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <FlatList
+        ListHeaderComponent={<PlanUsageIndicator code="QUOTES_MONTH" />}
         data={quotes}
         keyExtractor={(q) => q.id}
         renderItem={renderItem}
@@ -128,7 +130,7 @@ export function QuoteListScreen({ navigation }: Props) {
             <ActivityIndicator color={colors.purple600} style={{ margin: 16 }} />
           ) : null
         }
-        contentContainerStyle={quotes.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={quotes.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.center}>
             <Text style={styles.emptyText}>Nenhum orçamento ainda</Text>
@@ -156,6 +158,7 @@ export function QuoteListScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
+  listContent: { paddingTop: 12, paddingHorizontal: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: space.xl },
   emptyContainer: { flex: 1 },
   card: {

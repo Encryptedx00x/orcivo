@@ -19,10 +19,12 @@ import { formatMoney, quotePdfDeliveryPolicy } from '@orcivo/shared-types';
 import {
   getQuoteFull,
   getQuoteShare,
+  getPlanUsage,
   listQuotes,
   type EasyQuote,
   type EasyQuoteFull,
 } from '../actions';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 import {
   duplicateQuote,
   quoteAction,
@@ -110,6 +112,7 @@ function ago(iso?: string) {
 export function QuotesScreen(): React.JSX.Element {
   const { go, setDraft } = useNav();
   const quotes = useLoad(listQuotes);
+  const usage = useLoad(getPlanUsage);
   const [showHidden, setShowHidden] = useState(false);
   const all = quotes.data ?? [];
   const hidden = all.filter((q) => HIDDEN.includes(q.status));
@@ -123,6 +126,9 @@ export function QuotesScreen(): React.JSX.Element {
       <div style={{ padding: '8px 4px 0' }}>
         <H1>Orçamentos</H1>
       </div>
+      <PlanUsageIndicator
+        resource={usage.data?.resources.find((resource) => resource.code === 'QUOTES_MONTH')}
+      />
       {quotes.loading && !quotes.data ? (
         <Loading />
       ) : quotes.error ? (

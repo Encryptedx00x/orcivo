@@ -42,6 +42,7 @@ import {
   useLoad,
   type ChipKind,
 } from '../ui';
+import { PlanUsageIndicator } from '../../components/PlanUsageIndicator';
 
 export function quoteChip(status: QuoteStatus): { kind: ChipKind; label: string } {
   switch (status) {
@@ -131,6 +132,7 @@ export function QuotesScreen() {
   return (
     <Page top>
       <H1>Orçamentos</H1>
+      <PlanUsageIndicator code="QUOTES_MONTH" />
       <Btn
         icon={Plus}
         onPress={() => {

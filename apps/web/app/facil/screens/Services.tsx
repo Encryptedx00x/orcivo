@@ -31,6 +31,7 @@ import {
 import {
   completeWorkOrder,
   getCompany,
+  getPlanUsage,
   getWorkOrder,
   listAssignableMembers,
   listWorkOrders,
@@ -39,6 +40,7 @@ import {
   updateEasyWorkOrderResponsible,
   type EasyWorkOrder,
 } from '../actions';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 import { uploadWorkOrderPhoto } from '../../../lib/upload-photo';
 import { workOrderAction } from '../../(app)/ordens-de-servico/actions';
 import { MoreButton, reasonSheet, useSheet, type SheetAction } from '../sheet';
@@ -272,6 +274,7 @@ export function ServicesScreen(): React.JSX.Element {
   const { go, tab } = useNav();
   const toast = useToast();
   const orders = useLoad(listWorkOrders);
+  const usage = useLoad(getPlanUsage);
   const more = useServiceMore(orders.reload);
   const today = new Date().toDateString();
   // "Todos": every service in Modo fácil itself (open first, then the finished ones).
@@ -313,6 +316,9 @@ export function ServicesScreen(): React.JSX.Element {
           {all ? 'Em andamento primeiro, depois os feitos' : longDate()}
         </span>
       </div>
+      <PlanUsageIndicator
+        resource={usage.data?.resources.find((resource) => resource.code === 'WORK_ORDERS_MONTH')}
+      />
       {orders.loading && !orders.data ? (
         <Loading />
       ) : orders.error ? (

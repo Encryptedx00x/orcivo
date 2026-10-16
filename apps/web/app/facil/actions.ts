@@ -11,6 +11,7 @@ import type {
   QuoteCreateDto,
   QuoteDocOptions,
   QuotePaymentTerms,
+  PlanUsageResponse,
   ReceiptDocOptions,
   WorkOrderAction,
   WorkOrderAssignableMember,
@@ -57,6 +58,13 @@ export async function loadSummary(): Promise<Result<EasySummary>> {
   return run(
     () => apiFetch<EasySummary>('/dashboard/summary'),
     'Não foi possível carregar o seu dia.',
+  );
+}
+
+export async function getPlanUsage(): Promise<Result<PlanUsageResponse>> {
+  return run(
+    () => apiFetch<PlanUsageResponse>('/company/me/usage'),
+    'Não foi possível consultar o uso do plano.',
   );
 }
 

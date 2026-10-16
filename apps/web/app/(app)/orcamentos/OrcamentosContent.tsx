@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Plus, FileText, ChevronRight } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, type PlanUsageResource } from '@orcivo/shared-types';
+import { PlanUsageIndicator } from '../../../components/PlanUsageIndicator';
 import type { Quote } from '../../../lib/quote.service';
 import { LoadMore, usePagedList } from '../../../lib/use-paged-list';
 import { loadQuotesPage } from './list-actions';
@@ -68,7 +69,13 @@ function Pill({ k = 'slate', children }: { k?: string; children: React.ReactNode
   );
 }
 
-export function OrcamentosContent({ quotes: firstPage }: { quotes: Quote[] }): React.JSX.Element {
+export function OrcamentosContent({
+  quotes: firstPage,
+  usage,
+}: {
+  quotes: Quote[];
+  usage?: PlanUsageResource;
+}): React.JSX.Element {
   const list = usePagedList(firstPage, loadQuotesPage);
   const quotes = list.items;
   const [tab, setTab] = useState('todos');
@@ -101,6 +108,8 @@ export function OrcamentosContent({ quotes: firstPage }: { quotes: Quote[] }): R
           </Link>
         </div>
       </div>
+
+      <PlanUsageIndicator resource={usage} />
 
       {/* Tabs */}
       <div className="ov-tabs">

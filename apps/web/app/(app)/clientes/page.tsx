@@ -1,4 +1,5 @@
 import { apiFetch } from '../../../lib/api';
+import type { PlanUsageResponse } from '@orcivo/shared-types';
 import { ClientesContent } from './ClientesContent';
 
 interface Customer {
@@ -11,6 +12,14 @@ interface Customer {
 }
 
 export default async function ClientesPage(): Promise<React.JSX.Element> {
-  const data = await apiFetch<{ data: Customer[] }>('/customers?page=1&limit=20');
-  return <ClientesContent customers={data.data} />;
+  const [data, usage] = await Promise.all([
+    apiFetch<{ data: Customer[] }>('/customers?page=1&limit=20'),
+    apiFetch<PlanUsageResponse>('/company/me/usage'),
+  ]);
+  return (
+    <ClientesContent
+      customers={data.data}
+      usage={usage.resources.find((resource) => resource.code === 'CUSTOMERS')}
+    />
+  );
 }
