@@ -90,7 +90,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Conta', screen: 'Conta' },
   { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'Equipe' },
-  { label: 'Plano e assinatura', screen: 'Plano' },
+  { label: 'Uso', screen: 'Plano' },
   { label: 'Ajuda', screen: 'EmBreve' },
 ];
 
@@ -157,11 +157,7 @@ export function MaisStack() {
         component={DocumentosScreen}
         options={{ title: 'Documentos' }}
       />
-      <Stack.Screen
-        name="Plano"
-        component={PlanoScreen}
-        options={{ title: 'Plano e assinatura' }}
-      />
+      <Stack.Screen name="Plano" component={PlanoScreen} options={{ title: 'Uso' }} />
       <Stack.Screen
         name="Relatorios"
         component={RelatoriosScreen}

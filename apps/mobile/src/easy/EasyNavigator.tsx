@@ -279,11 +279,7 @@ export function EasyNavigator() {
           options={{ title: 'Configurações' }}
         />
         <Stack.Screen name="Equipe" component={reuse(EquipeScreen)} options={{ title: 'Equipe' }} />
-        <Stack.Screen
-          name="Plano"
-          component={reuse(PlanoScreen)}
-          options={{ title: 'Plano e assinatura' }}
-        />
+        <Stack.Screen name="Plano" component={reuse(PlanoScreen)} options={{ title: 'Uso' }} />
         <Stack.Screen name="Conta" component={reuse(ContaScreen)} options={{ title: 'Conta' }} />
       </Stack.Navigator>
     </DraftProvider>

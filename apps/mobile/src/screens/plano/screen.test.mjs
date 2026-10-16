@@ -47,7 +47,7 @@ native.Platform = { OS: 'ios' };
 
 // Same lightweight hook/host adapter used by EquipeScreen/FinanceiroScreen tests.
 // It verifies behavior and native props; device layout is not simulated.
-function mount({ getJson, getWorkOrders, planMetadata = plans } = {}) {
+function mount({ getJson, planMetadata = plans } = {}) {
   const slots = [];
   let index = 0;
   const effects = [];
@@ -79,9 +79,11 @@ function mount({ getJson, getWorkOrders, planMetadata = plans } = {}) {
       }
     } },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
-    'lucide-react-native': { CreditCard: 'CreditCard', ExternalLink: 'ExternalLink' },
+    'lucide-react-native': {
+      Check: 'Check', Clock3: 'Clock3', CreditCard: 'CreditCard',
+      ExternalLink: 'ExternalLink', LockKeyhole: 'LockKeyhole',
+    },
     '../../services/api': { api: { get: getJson ?? (async () => { throw new Error('unexpected api.get'); }) } },
-    '../../services/work-order.service': { workOrderService: { fetchAll: getWorkOrders ?? (async () => ({ data: [] })) } },
     './plano-errors': { planoError },
     './plans': planMetadata,
   });
@@ -104,12 +106,41 @@ function mount({ getJson, getWorkOrders, planMetadata = plans } = {}) {
   };
 }
 
-const livreStatus = { status: null, plan_code: 'LIVRE', is_blocked: false, is_past_due: false, message: null };
-const livreLimits = {
-  plan_code: 'LIVRE', customers_max: 5, quotes_per_month: 10, work_orders_per_month: 5, members_max: 1,
-  has_logo: false, pdf_watermark: true, has_reports: false, has_contracts: false,
-  subscription_status: null, is_blocked: false,
-};
+function usageFor(code = 'LIVRE', overrides = {}) {
+  const limits = sharedPlans.PLAN_LIMITS[code];
+  const resources = [
+    ['CUSTOMERS', 'Clientes', 4, limits.customers_max, 'TOTAL'],
+    ['QUOTES_MONTH', 'Orçamentos', 8, limits.quotes_per_month, 'CALENDAR_MONTH'],
+    ['WORK_ORDERS_MONTH', 'Ordens de serviço', 3, limits.work_orders_per_month, 'CALENDAR_MONTH'],
+    ['MEMBERS', 'Membros da equipe', 1, limits.members_max, 'TOTAL'],
+  ].map(([resourceCode, label, used, limit, period]) => ({
+    code: resourceCode,
+    label,
+    used,
+    limit,
+    remaining: limit == null ? null : Math.max(limit - used, 0),
+    period,
+    state: limit == null ? 'FAIR_USE' : used >= limit ? 'REACHED' : used * 100 >= limit * 80 ? 'ATTENTION' : 'NORMAL',
+  }));
+  return {
+    plan: { code, name: plans.planName(code), subscription_status: code === 'LIVRE' ? null : 'ACTIVE', is_blocked: false },
+    billing_period: code === 'LIVRE' ? null : {
+      start: '2026-10-01T03:00:00.000Z', end: '2026-11-01T03:00:00.000Z', renews_at: '2026-11-01T03:00:00.000Z',
+    },
+    usage_period: {
+      start: '2026-10-01T03:00:00.000Z', end: '2026-11-01T03:00:00.000Z', reset_at: '2026-11-01T03:00:00.000Z',
+    },
+    resources,
+    features: [
+      { code: 'LOGO', label: 'Logo própria', state: limits.has_logo ? 'AVAILABLE' : 'LOCKED' },
+      { code: 'PDF_WITHOUT_WATERMARK', label: "PDF sem marca d'água", state: limits.pdf_watermark ? 'LOCKED' : 'AVAILABLE' },
+      { code: 'REPORTS', label: 'Relatórios financeiros', state: limits.has_reports ? 'AVAILABLE' : 'LOCKED' },
+      { code: 'CONTRACTS', label: 'Contratos digitais', state: limits.has_contracts ? 'NOT_IMPLEMENTED' : 'LOCKED' },
+    ],
+    generated_at: '2026-10-15T12:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function jsonRouter(map) {
   return async (path) => {
@@ -121,10 +152,7 @@ function jsonRouter(map) {
 test('shows current shared monthly prices for every current plan and alternative', async () => {
   for (const code of Object.keys(sharedPlans.PLAN_PRICING)) {
     const screen = mount({
-      getJson: jsonRouter({
-        '/company/me/subscription-status': { ...livreStatus, plan_code: code },
-        '/company/me/plan-limits': { ...livreLimits, ...sharedPlans.PLAN_LIMITS[code], plan_code: code },
-      }),
+      getJson: jsonRouter({ '/company/me/usage': usageFor(code) }),
     });
     await screen.settle();
     for (const [planCode, pricing] of Object.entries(sharedPlans.PLAN_PRICING)) {
@@ -149,10 +177,7 @@ test('a shared price change reaches the current plan and alternatives without mo
   for (const code of ['MAIS', 'LIVRE']) {
     const screen = mount({
       planMetadata: changedPlans,
-      getJson: jsonRouter({
-        '/company/me/subscription-status': { ...livreStatus, plan_code: code },
-        '/company/me/plan-limits': { ...livreLimits, ...sharedPlans.PLAN_LIMITS[code], plan_code: code },
-      }),
+      getJson: jsonRouter({ '/company/me/usage': usageFor(code) }),
     });
     await screen.settle();
     assert.ok(screen.text('R$ 1.234,56/mês'));
@@ -162,7 +187,7 @@ test('a shared price change reaches the current plan and alternatives without mo
 
 test('shows a loading state, then the current plan with its real name (never FREE/POP/PRO/TOP)', async () => {
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': livreStatus, '/company/me/plan-limits': livreLimits }),
+    getJson: jsonRouter({ '/company/me/usage': usageFor() }),
   });
   assert.ok(screen.text('Carregando plano…'));
   await screen.settle();
@@ -173,51 +198,43 @@ test('shows a loading state, then the current plan with its real name (never FRE
   }
 });
 
-test('plans with a monthly cap show real usage counted from work orders created this month ("uso justo")', async () => {
-  const thisMonth = new Date();
-  const lastMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 15);
-  const workOrders = [
-    { id: 'wo-3', created_at: new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 20).toISOString() },
-    { id: 'wo-2', created_at: new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 10).toISOString() },
-    { id: 'wo-1', created_at: lastMonth.toISOString() },
-  ];
-  let calledWith;
+test('renders backend-authoritative usage, remaining quantities, reset and feature states', async () => {
+  const paths = [];
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': livreStatus, '/company/me/plan-limits': livreLimits }),
-    getWorkOrders: async (page) => { calledWith = page; return { data: workOrders }; },
+    getJson: async (path) => {
+      paths.push(path);
+      return usageFor();
+    },
   });
   await screen.settle();
-  assert.equal(calledWith, 1);
-  assert.ok(screen.text('2/5 OS'));
-  assert.ok(screen.textContaining('Uso justo'));
+  assert.deepEqual(paths, ['/company/me/usage']);
+  assert.ok(screen.text('4 de 5 · 1 restantes'));
+  assert.ok(screen.text('8 de 10 · 2 restantes'));
+  assert.ok(screen.text('Outro plano'));
+  assert.ok(screen.textContaining('Limites mensais reiniciam em'));
 });
 
-test('plans without a monthly cap show "uso ampliado" and skip the work-order usage fetch', async () => {
-  const maisStatus = { status: 'ACTIVE', plan_code: 'MAIS', is_blocked: false, is_past_due: false, message: null };
-  const maisLimits = {
-    plan_code: 'MAIS', customers_max: 200, quotes_per_month: null, work_orders_per_month: null, members_max: 3,
-    has_logo: true, pdf_watermark: false, has_reports: true, has_contracts: false,
-    subscription_status: 'ACTIVE', is_blocked: false,
-  };
-  let workOrderCalls = 0;
+test('fair-use and unavailable counters are shown without invented percentages', async () => {
+  const usage = usageFor('MAIS');
+  usage.resources[1] = { ...usage.resources[1], used: 27, limit: null, remaining: null, state: 'FAIR_USE' };
+  usage.resources[0] = { ...usage.resources[0], used: null, remaining: null, state: 'UNAVAILABLE' };
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': maisStatus, '/company/me/plan-limits': maisLimits }),
-    getWorkOrders: async () => { workOrderCalls++; return { data: [] }; },
+    getJson: jsonRouter({ '/company/me/usage': usage }),
   });
   await screen.settle();
   assert.ok(screen.text('Orcivo Mais'));
-  assert.ok(screen.textContaining('Uso ampliado'));
-  assert.equal(workOrderCalls, 0);
+  assert.ok(screen.text('27 usados · uso justo'));
+  assert.ok(screen.text('Não foi possível consultar agora'));
 });
 
-test('"Ver planos" and "Gerenciar assinatura" are both present and open the plans page (no in-app purchase implemented)', async () => {
+test('"Comparar planos" and "Gerenciar assinatura" are both present and open the plans page (no in-app purchase implemented)', async () => {
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': livreStatus, '/company/me/plan-limits': livreLimits }),
+    getJson: jsonRouter({ '/company/me/usage': usageFor() }),
   });
   await screen.settle();
-  assert.ok(screen.button('Ver planos'));
+  assert.ok(screen.button('Comparar planos'));
   assert.ok(screen.button('Gerenciar assinatura'));
-  screen.button('Ver planos').props.onPress();
+  screen.button('Comparar planos').props.onPress();
   screen.button('Gerenciar assinatura').props.onPress();
   assert.equal(screen.opened.length, 2);
   assert.ok(screen.opened.every((url) => url === 'https://orcivo.com.br/planos'));
@@ -226,32 +243,24 @@ test('"Ver planos" and "Gerenciar assinatura" are both present and open the plan
   }
 });
 
-test('a blocked/past-due subscription surfaces the backend message', async () => {
-  const blockedStatus = {
-    status: 'BLOCKED', plan_code: 'SOLO', is_blocked: true, is_past_due: false,
-    message: 'Sua assinatura está inativa. Acesse orcivo.com.br para regularizar.',
-  };
-  const soloLimits = {
-    plan_code: 'SOLO', customers_max: 50, quotes_per_month: 50, work_orders_per_month: 30, members_max: 1,
-    has_logo: true, pdf_watermark: false, has_reports: false, has_contracts: false,
-    subscription_status: 'BLOCKED', is_blocked: true,
-  };
+test('a blocked subscription surfaces its state and a contextual action', async () => {
+  const usage = usageFor('SOLO');
+  usage.plan = { ...usage.plan, subscription_status: 'BLOCKED', is_blocked: true };
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': blockedStatus, '/company/me/plan-limits': soloLimits }),
-    getWorkOrders: async () => ({ data: [] }),
+    getJson: jsonRouter({ '/company/me/usage': usage }),
   });
   await screen.settle();
   assert.ok(screen.text('Bloqueado'));
-  assert.ok(screen.text('Sua assinatura está inativa. Acesse orcivo.com.br para regularizar.'));
+  assert.ok(screen.text('Sua assinatura está inativa. Compare os planos para regularizar.'));
 });
 
 test('failed load exposes retry and reloads', async () => {
   let calls = 0;
   const screen = mount({
     getJson: async (path) => {
-      if (path === '/company/me/subscription-status' && ++calls === 1) throw new Error('offline');
-      if (path === '/company/me/subscription-status') return livreStatus;
-      return livreLimits;
+      assert.equal(path, '/company/me/usage');
+      if (++calls === 1) throw new Error('offline');
+      return usageFor();
     },
   });
   await screen.settle();
@@ -264,7 +273,7 @@ test('failed load exposes retry and reloads', async () => {
 
 test('lists the other plans with their real names, keeping the current plan out of the list', async () => {
   const screen = mount({
-    getJson: jsonRouter({ '/company/me/subscription-status': livreStatus, '/company/me/plan-limits': livreLimits }),
+    getJson: jsonRouter({ '/company/me/usage': usageFor() }),
   });
   await screen.settle();
   for (const plan of plans.PLANS) {

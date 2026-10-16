@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  CheckCircle,
   ClipboardList,
   DollarSign,
   FileText,
@@ -98,20 +97,10 @@ export function MenuScreen(): React.JSX.Element {
         />
         <MenuRow
           icon={Star}
-          label="Meu plano"
+          label="Uso e plano"
           sub={planName}
           last
-          onClick={() =>
-            sheet({
-              title: 'Meu plano',
-              sub: `Você está no ${planName}`,
-              actions: PLANS.map(([k, name]) => ({
-                label: k === plan ? `${name} · atual` : name,
-                icon: k === plan ? CheckCircle : Star,
-                run: () => (window.location.href = '/plano'),
-              })),
-            })
-          }
+          onClick={() => (window.location.href = '/uso')}
         />
       </div>
       <div style={box}>

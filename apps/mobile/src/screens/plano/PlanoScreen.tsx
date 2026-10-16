@@ -10,11 +10,9 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CreditCard, ExternalLink } from 'lucide-react-native';
-import type { PlanLimitsResponse, SubscriptionStatusResponse } from '@orcivo/shared-types';
+import { Check, Clock3, CreditCard, ExternalLink, LockKeyhole } from 'lucide-react-native';
+import type { PlanUsageFeature, PlanUsageResource, PlanUsageResponse } from '@orcivo/shared-types';
 import { api } from '../../services/api';
-import { workOrderService } from '../../services/work-order.service';
-import type { WorkOrder } from '../../services/work-order.service';
 import { planoError } from './plano-errors';
 import { PLANS, planName } from './plans';
 
@@ -30,27 +28,36 @@ const STATUS_LABEL: Record<string, string> = {
   EXPIRED: 'Expirado',
 };
 
-// GET /work-orders é paginado e não expõe total nem uso mensal — contamos localmente
-// pelas páginas mais recentes (ordenadas por created_at desc no backend). Suficiente para
-// os planos com limite numérico (Livre/Solo, hoje ≤ 30/mês); Mais/Equipe não têm teto.
-const MAX_USAGE_PAGES = 2;
-
-async function countWorkOrdersThisMonth(
-  fetchPage: (page: number) => Promise<{ data: WorkOrder[] }>,
-): Promise<number> {
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let count = 0;
-  for (let page = 1; page <= MAX_USAGE_PAGES; page++) {
-    const { data } = await fetchPage(page);
-    if (data.length === 0) break;
-    for (const order of data) {
-      const createdAt = (order as WorkOrder & { created_at?: string }).created_at;
-      if (createdAt && new Date(createdAt) < startOfMonth) return count;
-      count++;
-    }
-  }
-  return count;
+function dateLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString('pt-BR');
 }
+
+function resourceText(resource: PlanUsageResource): string {
+  if (resource.used === null) return 'Não foi possível consultar agora';
+  if (resource.limit === null) return `${resource.used} usados · uso justo`;
+  return `${resource.used} de ${resource.limit} · ${resource.remaining ?? 0} restantes`;
+}
+
+function resourceProgress(resource: PlanUsageResource): number | null {
+  if (resource.used === null || resource.limit === null || resource.limit === 0) return null;
+  return Math.min(100, Math.round((resource.used / resource.limit) * 100));
+}
+
+function resourceColor(resource: PlanUsageResource): string {
+  if (resource.state === 'EXCEEDED') return '#DC2626';
+  if (resource.state === 'REACHED' || resource.state === 'ATTENTION') return '#D97706';
+  return '#6D28D9';
+}
+
+const FEATURE_META: Record<
+  PlanUsageFeature['state'],
+  { label: string; color: string; icon: typeof Check }
+> = {
+  AVAILABLE: { label: 'Disponível', color: '#15803D', icon: Check },
+  LOCKED: { label: 'Outro plano', color: '#64748B', icon: LockKeyhole },
+  NOT_IMPLEMENTED: { label: 'Em breve', color: '#64748B', icon: Clock3 },
+};
 
 function Button({
   label,
@@ -80,28 +87,17 @@ export function PlanoScreen() {
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [subscription, setSubscription] = useState<SubscriptionStatusResponse | null>(null);
-  const [limits, setLimits] = useState<PlanLimitsResponse | null>(null);
-  const [osUsed, setOsUsed] = useState(0);
+  const [usage, setUsage] = useState<PlanUsageResponse | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setLoading(true);
       setLoadError('');
-      Promise.all([
-        api.get<SubscriptionStatusResponse>('/company/me/subscription-status'),
-        api.get<PlanLimitsResponse>('/company/me/plan-limits'),
-      ])
-        .then(async ([sub, planLimits]) => {
-          if (!active) return;
-          setSubscription(sub);
-          setLimits(planLimits);
-          const used =
-            planLimits.work_orders_per_month != null
-              ? await countWorkOrdersThisMonth((page) => workOrderService.fetchAll(page))
-              : 0;
-          if (active) setOsUsed(used);
+      api
+        .get<PlanUsageResponse>('/company/me/usage')
+        .then((snapshot) => {
+          if (active) setUsage(snapshot);
         })
         .catch((error: unknown) => {
           if (active) setLoadError(planoError(error));
@@ -132,12 +128,18 @@ export function PlanoScreen() {
       </View>
     );
 
-  const planCode = limits?.plan_code ?? subscription?.plan_code ?? 'LIVRE';
+  if (!usage) return null;
+
+  const planCode = usage.plan.code;
   const meta = PLANS.find((p) => p.code === planCode) ?? PLANS[0];
-  const cap = limits?.work_orders_per_month ?? null;
-  const statusLabel = subscription?.status
-    ? (STATUS_LABEL[subscription.status] ?? subscription.status)
+  const statusLabel = usage.plan.subscription_status
+    ? (STATUS_LABEL[usage.plan.subscription_status] ?? usage.plan.subscription_status)
     : 'Ativo';
+  const resetAt = dateLabel(usage.usage_period.reset_at);
+  const renewsAt = dateLabel(usage.billing_period?.renews_at);
+  const needsAttention = usage.resources.some((resource) =>
+    ['ATTENTION', 'REACHED', 'EXCEEDED'].includes(resource.state),
+  );
 
   return (
     <ScrollView
@@ -148,11 +150,11 @@ export function PlanoScreen() {
         <View style={styles.sectionHeading}>
           <CreditCard size={20} color="#6D28D9" />
           <Text accessibilityRole="header" style={styles.title}>
-            Plano e assinatura
+            Uso
           </Text>
         </View>
         <Text style={styles.description}>
-          Acompanhe seu plano, uso do mês e gerencie a assinatura.
+          Acompanhe a capacidade e os recursos da empresa ativa.
         </Text>
 
         <View style={styles.planBox}>
@@ -170,29 +172,82 @@ export function PlanoScreen() {
           </View>
         </View>
 
-        {!!subscription?.message && (
+        {usage.plan.is_blocked ? (
           <Text accessibilityRole="alert" style={styles.warning}>
-            {subscription.message}
+            Sua assinatura está inativa. Compare os planos para regularizar.
           </Text>
-        )}
+        ) : null}
 
-        <View style={styles.usageBox}>
-          <Text style={styles.usageLabel}>Uso do mês</Text>
-          {cap != null ? (
-            <>
-              <Text style={styles.usageValue}>{`${osUsed}/${cap} OS`}</Text>
-              <Text
-                style={styles.usageHint}
-              >{`Uso justo — o ${meta.name} inclui até ${cap} OS por mês.`}</Text>
-            </>
-          ) : (
-            <Text style={styles.usageHint}>
-              Uso ampliado — este plano não tem um teto fixo de OS por mês.
-            </Text>
-          )}
+        <View style={styles.periodBox}>
+          {resetAt ? (
+            <Text style={styles.usageHint}>Limites mensais reiniciam em {resetAt}</Text>
+          ) : null}
+          {renewsAt ? <Text style={styles.usageHint}>Assinatura renova em {renewsAt}</Text> : null}
         </View>
 
-        <Button label="Ver planos" onPress={() => void Linking.openURL(PLANOS_URL)} />
+        <Text accessibilityRole="header" style={styles.subtitle}>
+          Uso do plano
+        </Text>
+        <Text style={styles.description}>Dados calculados pelo Orcivo para a empresa ativa.</Text>
+        <View style={styles.resourcesGrid}>
+          {usage.resources.map((resource) => {
+            const progress = resourceProgress(resource);
+            const color = resourceColor(resource);
+            return (
+              <View key={resource.code} style={styles.usageBox}>
+                <Text style={styles.resourceLabel}>{resource.label}</Text>
+                <Text style={[styles.usageHint, { color }]}>{resourceText(resource)}</Text>
+                {progress !== null ? (
+                  <View
+                    accessible
+                    accessibilityRole="progressbar"
+                    accessibilityLabel={`Uso de ${resource.label}`}
+                    accessibilityValue={{ min: 0, max: 100, now: progress }}
+                    style={styles.progressTrack}
+                  >
+                    <View
+                      style={[
+                        styles.progressValue,
+                        { width: `${progress}%`, backgroundColor: color },
+                      ]}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.progressTrack} />
+                )}
+              </View>
+            );
+          })}
+        </View>
+
+        <Text accessibilityRole="header" style={[styles.subtitle, { marginTop: 8 }]}>
+          Recursos do plano
+        </Text>
+        <View style={styles.featureList}>
+          {usage.features.map((feature) => {
+            const featureMeta = FEATURE_META[feature.state];
+            const Icon = featureMeta.icon;
+            return (
+              <View key={feature.code} style={styles.featureRow}>
+                <Icon size={16} color={featureMeta.color} />
+                <Text style={styles.featureName}>{feature.label}</Text>
+                <Text style={[styles.featureState, { color: featureMeta.color }]}>
+                  {featureMeta.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={[styles.contextBox, needsAttention && styles.contextBoxAttention]}>
+          <Text style={[styles.contextText, needsAttention && styles.contextTextAttention]}>
+            {needsAttention
+              ? 'Seu uso está próximo ou chegou a um limite do plano.'
+              : 'Precisa de mais capacidade ou recursos para sua empresa?'}
+          </Text>
+        </View>
+
+        <Button label="Comparar planos" onPress={() => void Linking.openURL(PLANOS_URL)} />
         <Button
           label="Gerenciar assinatura"
           secondary
@@ -260,11 +315,45 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
     padding: 12,
+    marginBottom: 0,
+  },
+  periodBox: { gap: 2, marginBottom: 18 },
+  resourcesGrid: { gap: 10, marginBottom: 20 },
+  resourceLabel: { color: '#0A0A0F', fontSize: 14, fontWeight: '600' },
+  usageHint: { color: '#64748B', fontSize: 12, marginTop: 4 },
+  progressTrack: {
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginTop: 10,
+  },
+  progressValue: { height: '100%', borderRadius: 999 },
+  featureList: { gap: 8, marginTop: 10 },
+  featureRow: {
+    minHeight: 42,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featureName: { color: '#334155', fontSize: 13, flex: 1 },
+  featureState: { fontSize: 11, fontWeight: '600' },
+  contextBox: { borderRadius: 10, backgroundColor: '#F5F3FF', padding: 12, marginTop: 16 },
+  contextBoxAttention: { backgroundColor: '#FFFBEB' },
+  contextText: { color: '#334155', fontSize: 13, lineHeight: 18 },
+  contextTextAttention: { color: '#B45309' },
+  warning: {
+    color: '#92400E',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 13,
     marginBottom: 16,
   },
-  usageLabel: { color: '#64748B', fontSize: 12, fontWeight: '500', textTransform: 'uppercase' },
-  usageValue: { color: '#0A0A0F', fontSize: 18, fontWeight: '700', marginTop: 4 },
-  usageHint: { color: '#64748B', fontSize: 12, marginTop: 4 },
   button: {
     backgroundColor: '#6D28D9',
     borderRadius: 12,
@@ -289,12 +378,4 @@ const styles = StyleSheet.create({
   },
   name: { color: '#0A0A0F', fontSize: 15, fontWeight: '600' },
   error: { color: '#DC2626', fontSize: 14, lineHeight: 20 },
-  warning: {
-    color: '#92400E',
-    backgroundColor: '#FEF3C7',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 13,
-    marginBottom: 16,
-  },
 });

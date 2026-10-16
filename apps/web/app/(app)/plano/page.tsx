@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Check, Inbox } from 'lucide-react';
-import { formatMoney } from '@orcivo/shared-types';
+import { formatMoney, type PlanUsageResponse } from '@orcivo/shared-types';
 import { apiFetch } from '../../../lib/api';
 import { CancelButton } from './cancel-button';
 import { PLANS, priceLabel } from './plans';
@@ -20,10 +20,6 @@ const T = {
   successBg: '#DCFCE7',
 };
 
-interface Subscription {
-  plan_code: string;
-  status: string | null;
-}
 interface SubPayment {
   id: string;
   amount: string;
@@ -58,19 +54,20 @@ export default async function PlanoPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<React.JSX.Element> {
   const searchParams = await props.searchParams;
-  const [sub, paymentsRes, members, pendingPix] = await Promise.all([
-    apiFetch<Subscription>('/billing/subscription'),
+  const [usage, paymentsRes, pendingPix] = await Promise.all([
+    apiFetch<PlanUsageResponse>('/company/me/usage'),
     apiFetch<{ data: SubPayment[] }>('/billing/payments'),
-    apiFetch<Array<unknown>>('/company/members'),
     getPendingPix(),
   ]);
   const payments: SubPayment[] = paymentsRes.data;
-  const memberCount = Array.isArray(members) ? members.length : 1;
+  const memberCount = usage.resources.find((resource) => resource.code === 'MEMBERS')?.used;
 
-  const current = PLANS.find((p) => p.code === sub.plan_code) ?? PLANS[0];
+  const current = PLANS.find((p) => p.code === usage.plan.code) ?? PLANS[0];
   const isLivre = current.code === 'LIVRE';
-  const isCancelled = sub.status === 'CANCELLED';
-  const statusLabel = sub.status ? (STATUS_LABEL[sub.status] ?? sub.status) : '—';
+  const isCancelled = usage.plan.subscription_status === 'CANCELLED';
+  const statusLabel = usage.plan.subscription_status
+    ? (STATUS_LABEL[usage.plan.subscription_status] ?? usage.plan.subscription_status)
+    : 'Ativo';
   const justSubscribed = searchParams?.['checkout'] === 'ok';
   const currentPrice = priceLabel(current.code, 'MONTHLY');
 
@@ -193,7 +190,9 @@ export default async function PlanoPage(props: {
               >
                 Usuários na equipe
               </div>
-              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{memberCount}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+                {memberCount ?? 'Indisponível'}
+              </div>
             </div>
             <div>
               <div

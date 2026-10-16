@@ -878,11 +878,11 @@ export default function ConfiguracoesPage(): React.JSX.Element {
                 Gerencie seu plano, pagamentos e uso da plataforma.
               </div>
               <Link
-                href="/plano"
+                href="/uso"
                 className="ov-btn ov-btn-primary"
                 style={{ textDecoration: 'none', display: 'inline-flex' }}
               >
-                Gerenciar assinatura →
+                Ver uso →
               </Link>
             </div>
           )}

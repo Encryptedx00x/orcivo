@@ -98,7 +98,7 @@ export function MenuScreen() {
           sub="Modo fácil, empresa, Pix, aprovação"
           onPress={() => nav.navigate('Settings')}
         />
-        <Row icon={Star} label="Meu plano" sub={plan} onPress={() => nav.navigate('Plano')} />
+        <Row icon={Star} label="Uso e plano" sub={plan} onPress={() => nav.navigate('Plano')} />
       </Card>
 
       <Card style={{ overflow: 'hidden' }}>
