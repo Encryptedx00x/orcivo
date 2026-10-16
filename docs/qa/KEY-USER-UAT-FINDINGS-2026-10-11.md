@@ -732,6 +732,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes de render por estado e contrato; typecheck/lint
 - **Testes visuais:** 1440x900, 390x844, 360x800 nos dois modos e app
 - **Autonomia:** Nível C — gate `batch4-strategy-owner-approval`
+- **Evidência concluída (2026-10-16):** a web ganhou o destino `/uso`, separado de `/plano`, acessível por Configurações e pelo menu fácil; o app expõe `Uso` no modo completo e `Uso e plano` no fácil, reutilizando o mesmo snapshot de `GET /company/me/usage`. As telas exibem plano/assinatura, reset, usado/limite/restante, uso justo/indisponível, recursos disponíveis/bloqueados e CTA contextual sem reconstruir regras no frontend nem inventar armazenamento. A auditoria reproduzível gerou 15 combinações em `docs/qa/evidence/b4-35`: web completo, menu fácil e tela fácil, mais app completo/fácil, em `1440×900`, `390×844` e `360×800`; todas registraram largura do documento igual ao viewport e zero overflow. Render web `2/2`, app `9/9`, typecheck/lint web/mobile e build de produção web ficaram verdes; warnings de `<img>` permanecem preexistentes (`ef1a365`).
 
 ### B4-36-usage-early-warnings — Alertas antecipados de uso
 

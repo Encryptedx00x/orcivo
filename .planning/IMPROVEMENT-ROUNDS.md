@@ -17,7 +17,7 @@ Roteiro de testes de cada rodada: `docs/qa/CATALOGO-DE-TESTES.md` (IDs O/S/F/N/P
 | R4 | ✅ produção — custos (`/expenses`), resumo do mês, web completo + fácil + app fácil; **custos e lucro por OS** (web), resultado do mês no Financeiro do app completo | `b28e341`, `6422c1b`, `d380c1a`, `a15c654` |
 | R3 (sobras) | ✅ produção — formas de pagamento aceitas (em `payment_terms.methods`, sem migration) no PDF/link; laudo = Observações rotuladas "Laudo técnico" quando o tipo é LAUDO; campo morto "Observações internas" removido do novo orçamento web | `beab4c9` |
 | R5a | ✅ produção — campos da OS por segmento: `companies.work_order_fields` + `work_orders.details` (JSONB), modelos ar-condicionado/elétrica/CFTV/portões, Configurações → Ordem de serviço (web), Nova OS + cartão "Dados do equipamento" (web e app completo) | `2d7d2c0` |
-| Improvement Batch 4 | 🟡 em andamento — B4-34 concluiu o contrato autoritativo de Uso; próxima B4-35, execução manual sem autopilot | `a94d073`…`b9efc1a` |
+| Improvement Batch 4 | 🟡 em andamento — B4-35 concluiu a tela Uso nas seis superfícies; próxima B4-36, execução manual sem autopilot | `a94d073`…`ef1a365` |
 
 Decisões:
 - Desconto separado serviços × produtos: **descartado** por ora — itens livres não têm tipo; exigiria tipo no item, dois pares de desconto e recálculo em 6 telas para pouco ganho sobre o desconto geral. Reabrir se técnicos pedirem.
@@ -90,7 +90,8 @@ B4-27 concluiu defaults, overrides e previews de documentos nas seis superfície
 configurações, revisão e documentos. A B4-44 concluiu o fluxo fresco nas três superfícies e corrigiu o modal de
 recibo mobile. O gate B4-33 formalizou as decisões já aprovadas nas ADRs 020–024; próxima: B4-34 e a onda
 B4-34…B4-42. A B4-34 publicou o snapshot tenant-scoped de Uso em shared-types/backend, com período/reset,
-contadores, estados e features autoritativas; próxima: B4-35 nas seis superfícies.
+contadores, estados e features autoritativas. A B4-35 separou Uso de cobrança e publicou progresso, recursos, estados
+e CTAs nas seis superfícies, com matriz visual completa; próxima: B4-36.
 
 Decisão de 2026-10-15: o dono aprovou o pacote recomendado das ADRs 020–024. A aprovação foi registrada sem antecipar
 a implementação estratégica: o gate B4-33 só fecha depois da passada B4-44, conforme o DAG. Uso mantém limites

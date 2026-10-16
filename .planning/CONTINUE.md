@@ -5,11 +5,11 @@
 > acabar no meio de algo, a próxima IA continua daqui sem precisar da conversa anterior.
 > Sem segredos, tokens, prompts ou transcrições neste arquivo.
 
-## 1. Estado agora (atualizado 2026-10-15)
+## 1. Estado agora (atualizado 2026-10-16)
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `b9efc1a` — B4-34 expõe o snapshot autoritativo de Uso no backend/shared-types; registro reconciliado vem no commit seguinte |
+| `main` / `origin/main` | `ef1a365` — B4-35 adiciona a tela Uso separada de cobrança nas superfícies web/app; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -122,12 +122,14 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       autorizam a onda B4-34…B4-42 dentro dos limites registrados; billing, LGPD, destrutivos, lojas e produção ficam fora.
 - [x] **B4-34 — contrato backend de Uso:** endpoint autenticado tenant-scoped, contrato compartilhado, períodos,
       contadores, estados 80/100/excedido/uso justo/indisponível e features autoritativas (`b9efc1a`).
-- [ ] **B4-35…B4-42 — implementação estratégica aprovada:** telas/alertas de Uso, posicionamento/onboarding,
+- [x] **B4-35 — tela Uso:** destino separado de cobrança, snapshot autoritativo, progresso, recursos, estados e CTAs
+      verificados nas seis superfícies e nos três viewports (`ef1a365`).
+- [ ] **B4-36…B4-42 — implementação estratégica aprovada:** alertas de Uso, posicionamento/onboarding,
       multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar B4-35 nas seis superfícies consumindo exclusivamente o contrato da B4-34;
-depois B4-36 adiciona os alertas antecipados sem duplicar regras do backend.
+**Próxima ação concreta:** executar B4-36 adicionando alertas antecipados nas telas relacionadas, sem duplicar regras
+do backend nem criar bloqueios artificiais.
 `DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi executado.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
