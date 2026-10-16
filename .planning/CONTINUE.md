@@ -9,7 +9,7 @@
 
 | Item | Valor |
 | --- | --- |
-| `main` / `origin/main` | `5b9cd8d` — B4-36 antecipa o consumo e alertas de limite nas telas relacionadas; registro reconciliado vem no commit seguinte |
+| `main` / `origin/main` | `69de438` — B4-37 aplica posicionamento neutro, onboarding progressivo e termos profissionais congelados; registro reconciliado vem no commit seguinte |
 | Produção (app/site/api.orcivo.com.br) | `fade582` — `DEPLOY-B4-1` `20261014-005020`, saudável (`HEALTH: healthy healthy healthy` + `DEPLOY_DONE`) |
 | Banco de produção | Reinicializado em 2026-10-11 para o primeiro Key User; deploy criou backup restaurável `pre-20261014-005020.sql.gz`; consulta somente leitura confirmou 34 migrations e `20261011210000_payment_overpayment_confirmation` aplicada uma vez |
 | Última rodada concluída | R5b…R9 e melhoria adicional de seletores concluídas nas quatro superfícies aplicáveis; typecheck, lint, build, testes integrados, varredura de segredos e revisão visual aprovados; produção validada. |
@@ -126,11 +126,12 @@ Fonte de verdade: `docs/qa/KEY-USER-UAT-FINDINGS-2026-10-11.md` e
       verificados nas seis superfícies e nos três viewports (`ef1a365`).
 - [x] **B4-36 — alertas antecipados:** indicadores autoritativos em Clientes, Orçamentos e OS, com CTA somente nos
       estados de atenção/limite/excedente, verificados nas seis superfícies (`5b9cd8d`).
-- [ ] **B4-37…B4-42 — implementação estratégica aprovada:** posicionamento/onboarding,
-      multiempresa, modos e OS parcial.
+- [x] **B4-37 — posicionamento/onboarding:** linguagem neutra, nicho/objetivos/tratamento/termos, snapshots de
+      documentos e matriz de 24 cenários nas seis superfícies (`69de438`).
+- [ ] **B4-38…B4-42 — implementação estratégica aprovada:** multiempresa, modos e OS parcial.
 - [ ] **B4-45 — passada pós-estratégia:** valida B4-34…B4-42 antes do terceiro deploy.
 
-**Próxima ação concreta:** executar B4-37 aplicando o posicionamento e onboarding neutros aprovados na ADR-021.
+**Próxima ação concreta:** executar B4-38 implementando domínio e isolamento multiempresa aprovados na ADR-022.
 `DEPLOY-B4-2` está tecnicamente liberado pela B4-44, mas não foi executado.
 
 Regras específicas do lote: não fazer deploy; não alterar dados de produção; app com login só depois de `B4-15/B4-16`;
