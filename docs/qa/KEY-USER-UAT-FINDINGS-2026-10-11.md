@@ -746,6 +746,7 @@ design system. `320px`/painel estreito é diagnóstico adicional; os critérios 
 - **Testes automáticos:** testes de limiares/CTA e ausência de regra duplicada
 - **Testes visuais:** telas de clientes/orçamentos/OS e Uso nos três viewports/app
 - **Autonomia:** Nível C — gate `batch4-strategy-owner-approval`
+- **Evidência concluída (2026-10-16):** Clientes, Orçamentos e OS agora exibem o recurso correspondente do snapshot da B4-34 no web completo, web fácil, app completo e app fácil. A UI não calcula limiar: `ATTENTION`, `REACHED` e `EXCEEDED` recebidos do backend ativam texto, ícone e CTA `Comparar planos`; estado normal aponta para Uso na web e permanece apenas informativo no app. O app deduplica somente requisições concorrentes por empresa e revalida ao foco, sem polling. Os testes de apresentação passaram `3/3` web e `2/2` app, cobrindo atenção, normal, uso justo e indisponível; typecheck/lint web/mobile e build web ficaram verdes. A matriz reproduzível em `docs/qa/evidence/b4-36` cobriu 36 combinações de Clientes/Orçamentos/OS em `1440×900`, `390×844` e `360×800`, nos dois modos da web e do app, todas sem overflow, mais fixture visual de atenção no app em `390×844`; Uso permanece coberto pela matriz da B4-35 (`5b9cd8d`).
 
 ### B4-37-neutral-copy-and-onboarding — Aplicar posicionamento e onboarding aprovados
 

@@ -2345,7 +2345,7 @@
       },
       "verificationProfile": "C",
       "phaseGate": "B4-STRATEGY-IMPL",
-      "status": "OWNER_GATE"
+      "status": "DONE"
     },
     {
       "taskId": "B4-37-neutral-copy-and-onboarding",
