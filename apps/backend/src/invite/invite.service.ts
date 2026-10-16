@@ -1,4 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MailService } from '../mail/mail.service';
@@ -60,44 +66,33 @@ export class InviteService {
     return invite;
   }
 
-  async accept(token: string, userId?: string, name?: string, password?: string) {
+  async acceptNew(token: string, name?: string, password?: string) {
     const invite = await this.prisma.companyInvite.findUnique({
       where: { token },
       include: { company: true },
     });
 
     if (!invite) throw new NotFoundException('Convite não encontrado.');
-    if (invite.status !== 'PENDING')
-      throw new BadRequestException('Convite já foi usado ou expirou.');
-    if (invite.expires_at < new Date()) {
-      await this.prisma.companyInvite.update({
-        where: { id: invite.id },
-        data: { status: 'EXPIRED' },
-      });
-      throw new BadRequestException('Convite expirado.');
+    await this.assertPending(invite);
+    if (!name || !password)
+      throw new BadRequestException('Nome e senha são obrigatórios para criar conta.');
+    const existing = await this.prisma.user.findUnique({ where: { email: invite.email } });
+    if (existing) {
+      throw new ConflictException('Este e-mail já tem conta. Entre para aceitar o convite.');
     }
-
-    let targetUserId = userId;
-    if (!targetUserId) {
-      if (!name || !password)
-        throw new BadRequestException('Nome e senha são obrigatórios para criar conta.');
-      const argon2 = await import('argon2');
-      const hash = await argon2.hash(password);
-      const acceptedTermsAt = new Date();
-      const newUser = await this.prisma.user.create({
+    const argon2 = await import('argon2');
+    const hash = await argon2.hash(password);
+    const targetUserId = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
         data: {
           name,
           email: invite.email,
           password_hash: hash,
-          accepted_terms_at: acceptedTermsAt,
+          accepted_terms_at: new Date(),
         },
       });
-      targetUserId = newUser.id;
-    }
-
-    await this.prisma.$transaction(async (tx) => {
       await tx.companyMember.create({
-        data: { company_id: invite.company_id, user_id: targetUserId, role: invite.role },
+        data: { company_id: invite.company_id, user_id: user.id, role: invite.role },
       });
       await tx.companyInvite.update({
         where: { id: invite.id },
@@ -106,7 +101,7 @@ export class InviteService {
       await this.audit.record(tx, {
         companyId: invite.company_id,
         actorType: 'USER',
-        actorUserId: targetUserId,
+        actorUserId: user.id,
         action: 'invite.accepted',
         entityType: 'invite',
         entityId: invite.id,
@@ -116,14 +111,85 @@ export class InviteService {
           `${invite.email} aceitou o convite e entrou em "${invite.company.trade_name}" ` +
           `como ${invite.role}`,
       });
+      return user.id;
     });
 
     // Bust the auth caches so the new membership/role takes effect on the next
     // request instead of after the 60s TTL (ADR-014).
-    await this.redis.del(`membership:${targetUserId}`);
-    await this.redis.del(`tenant:${targetUserId}`);
+    await this.redis.del(`membership:${targetUserId}:${invite.company_id}`);
 
     return { company: invite.company };
+  }
+
+  async acceptExisting(token: string, userId: string) {
+    const invite = await this.prisma.companyInvite.findUnique({
+      where: { token },
+      include: { company: true },
+    });
+    if (!invite) throw new NotFoundException('Convite não encontrado.');
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user || user.email.toLowerCase() !== invite.email.toLowerCase()) {
+      throw new UnauthorizedException('Este convite pertence a outro e-mail.');
+    }
+
+    const existingMembership = await this.prisma.companyMember.findUnique({
+      where: { company_id_user_id: { company_id: invite.company_id, user_id: userId } },
+    });
+    if (invite.status === 'ACCEPTED' && existingMembership) {
+      return { company: invite.company, already_member: true };
+    }
+    await this.assertPending(invite);
+
+    const alreadyMember = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.companyInvite.updateMany({
+        where: { id: invite.id, status: 'PENDING' },
+        data: { status: 'ACCEPTED', accepted_at: new Date() },
+      });
+      if (claimed.count !== 1) {
+        const concurrentMembership = await tx.companyMember.findUnique({
+          where: { company_id_user_id: { company_id: invite.company_id, user_id: userId } },
+        });
+        if (concurrentMembership) return true;
+        throw new BadRequestException('Convite já foi usado ou expirou.');
+      }
+      await tx.companyMember.upsert({
+        where: { company_id_user_id: { company_id: invite.company_id, user_id: userId } },
+        create: { company_id: invite.company_id, user_id: userId, role: invite.role },
+        update: { active: true, role: invite.role },
+      });
+      await this.audit.record(tx, {
+        companyId: invite.company_id,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'invite.accepted',
+        entityType: 'invite',
+        entityId: invite.id,
+        from: 'PENDING',
+        to: 'ACCEPTED',
+        humanText:
+          `${invite.email} aceitou o convite e entrou em "${invite.company.trade_name}" ` +
+          `como ${invite.role}`,
+      });
+      return false;
+    });
+    await this.redis.del(`membership:${userId}:${invite.company_id}`);
+    return { company: invite.company, already_member: alreadyMember };
+  }
+
+  private async assertPending(invite: { id: string; status: string; expires_at: Date }) {
+    if (invite.status !== 'PENDING') {
+      throw new BadRequestException('Convite já foi usado ou expirou.');
+    }
+    if (invite.expires_at < new Date()) {
+      await this.prisma.companyInvite.update({
+        where: { id: invite.id },
+        data: { status: 'EXPIRED' },
+      });
+      throw new BadRequestException('Convite expirado.');
+    }
   }
 
   async list(companyId: string) {

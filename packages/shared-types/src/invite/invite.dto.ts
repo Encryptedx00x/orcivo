@@ -12,3 +12,6 @@ export const AcceptInviteSchema = z.object({
   password: z.string().min(8).optional(),
 });
 export type AcceptInviteDto = z.infer<typeof AcceptInviteSchema>;
+
+export const AcceptExistingInviteSchema = z.object({ token: z.string().uuid() });
+export type AcceptExistingInviteDto = z.infer<typeof AcceptExistingInviteSchema>;

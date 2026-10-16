@@ -27,6 +27,7 @@ model User {
 
   company_members      CompanyMember[]
   refresh_tokens       RefreshToken[]
+  auth_sessions        AuthSession[]
   assigned_customers   Customer[]         @relation("AssignedTo")
   work_orders_assigned WorkOrder[]        @relation("WorkOrderAssignedTo")
   work_orders_created  WorkOrder[]        @relation("WorkOrderCreatedBy")
@@ -102,6 +103,7 @@ model Company {
   idempotency_keys   RequestIdempotency[]
   notification_reads NotificationRead[]
   stock_movements    StockMovement[]
+  auth_sessions      AuthSession[]
 
   expenses Expense[]
 
@@ -217,18 +219,41 @@ enum CustomerOrigin {
 // ─── Refresh Token ────────────────────────────────────────────────────────────
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  user_id    String
-  session_id String   @default(dbgenerated("gen_random_uuid()::text"))
-  token_hash String   @unique
-  expires_at DateTime
-  revoked    Boolean  @default(false)
-  created_at DateTime @default(now())
+  id              String   @id @default(uuid())
+  user_id         String
+  session_id      String   @default(dbgenerated("gen_random_uuid()::text"))
+  auth_session_id String?
+  token_hash      String   @unique
+  expires_at      DateTime
+  revoked         Boolean  @default(false)
+  created_at      DateTime @default(now())
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  auth_session AuthSession? @relation(fields: [auth_session_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
+  @@index([auth_session_id])
   @@map("refresh_tokens")
+}
+
+// Sessão autenticada vinculada a uma única empresa ativa. O tenant nunca é
+// escolhido por header/body: sid + cid vêm do token assinado e são revalidados.
+model AuthSession {
+  id                String    @id @default(uuid())
+  user_id           String
+  active_company_id String
+  version           Int       @default(1)
+  revoked_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  active_company Company        @relation(fields: [active_company_id], references: [id], onDelete: Cascade)
+  refresh_tokens RefreshToken[]
+
+  @@index([user_id])
+  @@index([active_company_id])
+  @@map("auth_sessions")
 }
 
 // ─── Catálogo ─────────────────────────────────────────────────────────────────

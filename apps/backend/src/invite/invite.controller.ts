@@ -4,6 +4,9 @@ import { InviteService } from './invite.service';
 import { TenantRequest } from '../common/interfaces/tenant-request.interface';
 import { Public } from '../auth/decorators/public.decorator';
 import { AdminOnly } from '../auth/decorators/roles.decorator';
+import { AllowPastDue } from '../billing/allow-past-due.decorator';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AcceptExistingInviteSchema, AcceptInviteSchema } from '@orcivo/shared-types';
 
 // Tenant context (companyId/role) set by the global TenantGuard — see ADR-014.
 // Invite management is admin-only; accepting an invite is public (token-based).
@@ -38,10 +41,22 @@ export class InviteController {
   @UseGuards(ThrottlerGuard)
   @Post('accept')
   accept(
-    @Body() body: { token: string; name?: string; password?: string },
-    @Req() req: { user?: { userId: string } },
+    @Body(new ZodValidationPipe(AcceptInviteSchema))
+    body: {
+      token: string;
+      name?: string;
+      password?: string;
+    },
   ) {
-    const userId = req.user?.userId;
-    return this.inviteService.accept(body.token, userId, body.name, body.password);
+    return this.inviteService.acceptNew(body.token, body.name, body.password);
+  }
+
+  @AllowPastDue()
+  @Post('accept-existing')
+  acceptExisting(
+    @Body(new ZodValidationPipe(AcceptExistingInviteSchema)) body: { token: string },
+    @Req() req: TenantRequest,
+  ) {
+    return this.inviteService.acceptExisting(body.token, req.user.userId);
   }
 }

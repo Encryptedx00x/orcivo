@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CompanySelectionRequiredSchema } from './multicompany.dto';
 
 export const LoginSchema = z.object({
   email: z.string().email(),
@@ -15,3 +16,6 @@ export const LoginResponseSchema = z.object({
 });
 
 export type LoginResponseDto = z.infer<typeof LoginResponseSchema>;
+
+export const LoginResultSchema = z.union([LoginResponseSchema, CompanySelectionRequiredSchema]);
+export type LoginResultDto = z.infer<typeof LoginResultSchema>;

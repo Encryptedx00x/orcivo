@@ -18,6 +18,8 @@ import {
   ResetPasswordSchema,
   SignupStep1Schema,
   SignupStep2Schema,
+  SelectCompanySchema,
+  SwitchCompanySchema,
 } from '@orcivo/shared-types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
@@ -26,6 +28,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
+import { AllowPastDue } from '../billing/allow-past-due.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -58,11 +61,31 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(200)
+  @Post('select-company')
+  selectCompany(@Body(new ZodValidationPipe(SelectCompanySchema)) body: unknown) {
+    const dto = body as { selection_token: string; company_id: string };
+    return this.authService.selectCompany(dto.selection_token, dto.company_id);
+  }
+
+  @Public()
   @UseGuards(ThrottlerGuard, RefreshTokenGuard)
   @HttpCode(200)
   @Post('refresh')
-  refresh(@Req() req: { user: { userId: string; refreshToken: string } }) {
-    return this.authService.refresh(req.user.userId, req.user.refreshToken);
+  refresh(
+    @Req()
+    req: {
+      user: {
+        userId: string;
+        refreshToken: string;
+        sessionId?: string;
+        companyId?: string;
+        sessionVersion?: number;
+      };
+    },
+  ) {
+    return this.authService.refresh(req.user.userId, req.user.refreshToken, req.user);
   }
 
   @Public()
@@ -84,8 +107,21 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   @Post('logout')
-  logout(@CurrentUser() user: { userId: string }) {
-    return this.authService.logout(user.userId);
+  logout(@CurrentUser() user: { userId: string; sessionId: string }) {
+    return this.authService.logout(user.userId, user.sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @AllowPastDue()
+  @HttpCode(200)
+  @Post('switch-company')
+  switchCompany(
+    @CurrentUser()
+    user: { userId: string; email: string; sessionId: string; companyId: string },
+    @Body(new ZodValidationPipe(SwitchCompanySchema)) body: unknown,
+  ) {
+    const dto = body as { company_id: string; refresh_token: string };
+    return this.authService.switchCompany(user, dto.company_id, dto.refresh_token);
   }
 
   @Public()

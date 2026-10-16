@@ -124,6 +124,49 @@ export class CompanyService {
     return { ...company, logo_url: await this.logoUrl(company.logo_url) };
   }
 
+  async listForUser(userId: string, activeCompanyId: string) {
+    const memberships = await this.prisma.companyMember.findMany({
+      where: { user_id: userId, active: true },
+      orderBy: { created_at: 'asc' },
+      select: {
+        company_id: true,
+        role: true,
+        company: { select: { trade_name: true } },
+      },
+    });
+    return memberships.map((membership) => ({
+      company_id: membership.company_id,
+      trade_name: membership.company.trade_name,
+      role: membership.role,
+      active: membership.company_id === activeCompanyId,
+    }));
+  }
+
+  async createForUser(userId: string, tradeName: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: {
+          trade_name: tradeName,
+          plan_code: 'LIVRE',
+          members: { create: { user_id: userId, role: 'OWNER', active: true } },
+        },
+        select: { id: true, trade_name: true },
+      });
+      await this.audit.record(tx, {
+        companyId: company.id,
+        actorType: 'USER',
+        actorUserId: userId,
+        action: 'company.created',
+        entityType: 'company',
+        entityId: company.id,
+        from: null,
+        to: { trade_name: company.trade_name, role: 'OWNER' },
+        humanText: `Empresa "${company.trade_name}" criada`,
+      });
+      return { ...company, role: 'OWNER' as const, active: false };
+    });
+  }
+
   private async logoUrl(stored: string | null): Promise<string | null> {
     if (!stored) return null;
     if (/^https?:/i.test(stored)) return stored;

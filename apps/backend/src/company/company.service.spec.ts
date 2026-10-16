@@ -28,6 +28,52 @@ describe('CompanyService', () => {
   });
 });
 
+describe('CompanyService multiempresa', () => {
+  const tx = { company: { create: jest.fn() } };
+  const prisma = {
+    companyMember: { findMany: jest.fn() },
+    $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+  };
+  const service = new CompanyService(prisma as never, mockAudit as never, {} as never);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('lista papéis por empresa e marca somente a sessão ativa', async () => {
+    prisma.companyMember.findMany.mockResolvedValue([
+      { company_id: 'a', role: 'OWNER', company: { trade_name: 'Empresa A' } },
+      { company_id: 'b', role: 'TECNICO', company: { trade_name: 'Empresa B' } },
+    ]);
+
+    await expect(service.listForUser('u1', 'a')).resolves.toEqual([
+      { company_id: 'a', trade_name: 'Empresa A', role: 'OWNER', active: true },
+      { company_id: 'b', trade_name: 'Empresa B', role: 'TECNICO', active: false },
+    ]);
+  });
+
+  it('cria empresa privada com associação OWNER sem trocar a empresa ativa', async () => {
+    tx.company.create.mockResolvedValue({ id: 'b', trade_name: 'Empresa B' });
+
+    await expect(service.createForUser('u1', 'Empresa B')).resolves.toEqual({
+      id: 'b',
+      trade_name: 'Empresa B',
+      role: 'OWNER',
+      active: false,
+    });
+    expect(tx.company.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          plan_code: 'LIVRE',
+          members: { create: { user_id: 'u1', role: 'OWNER', active: true } },
+        }),
+      }),
+    );
+    expect(mockAudit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ action: 'company.created', actorUserId: 'u1' }),
+    );
+  });
+});
+
 describe('CompanyService.updateProfile', () => {
   let service: CompanyService;
   const mockTx = { company: { update: jest.fn() } };

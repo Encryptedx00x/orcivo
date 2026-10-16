@@ -19,6 +19,13 @@ const mockPrisma = {
     updateMany: jest.fn(),
     create: jest.fn(),
   },
+  authSession: {
+    create: jest.fn().mockResolvedValue({
+      id: 'auth-session-1',
+      active_company_id: 'company-123',
+      version: 1,
+    }),
+  },
   $transaction: jest.fn(),
 };
 
@@ -26,6 +33,7 @@ const mockTransaction = {
   $queryRaw: jest.fn().mockResolvedValue([]),
   user: { update: jest.fn() },
   refreshToken: { updateMany: jest.fn() },
+  authSession: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
 };
 
 const mockRedis = {
@@ -122,6 +130,9 @@ describe('AuthService — forgotPassword / resetPassword', () => {
         where: { user_id: 'user-123', revoked: false },
         data: { revoked: true },
       });
+      expect(mockTransaction.authSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { user_id: 'user-123', revoked_at: null } }),
+      );
       expect(mockRedis.getdel).toHaveBeenCalledWith('pwd:reset:valid-uuid-token');
     });
 
@@ -237,6 +248,9 @@ describe('AuthService — forgotPassword / resetPassword', () => {
         where: { user_id: 'user-123', revoked: false },
         data: { revoked: true },
       });
+      expect(mockTransaction.authSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { user_id: 'user-123', revoked_at: null } }),
+      );
       expect(mockAudit.record).toHaveBeenCalledWith(
         mockTransaction,
         expect.objectContaining({

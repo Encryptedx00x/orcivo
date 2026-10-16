@@ -7,6 +7,9 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 interface JwtPayload {
   sub: string;
   email: string;
+  sid?: string;
+  cid?: string;
+  sv?: number;
 }
 
 @Injectable()
@@ -21,6 +24,13 @@ export class RefreshTokenStrategy extends PassportStrategy(Strategy, 'jwt-refres
 
   validate(req: Request, payload: JwtPayload) {
     const refreshToken = req.body?.refresh_token as string;
-    return { userId: payload.sub, email: payload.email, refreshToken };
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      refreshToken,
+      sessionId: payload.sid,
+      companyId: payload.cid,
+      sessionVersion: payload.sv,
+    };
   }
 }

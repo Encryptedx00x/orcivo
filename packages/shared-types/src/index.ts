@@ -15,6 +15,7 @@ export type DocumentType = z.infer<typeof DocumentTypeEnum>;
 export * from './auth/signup-step1.dto';
 export * from './auth/signup-step2.dto';
 export * from './auth/login.dto';
+export * from './auth/multicompany.dto';
 export * from './customer/customer-create.dto';
 export * from './customer/customer-list.dto';
 export * from './catalog/catalog-item-create.dto';

@@ -15,6 +15,8 @@ import {
   SignupStep2Dto,
   LoginDto,
   LoginResponseDto,
+  LoginResultDto,
+  CompanySelectionRequiredDto,
 } from '@orcivo/shared-types';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
@@ -72,23 +74,27 @@ export class AuthService {
     }
   }
 
-  async signupCompany(userId: string, dto: SignupStep2Dto): Promise<LoginResponseDto> {
+  async signupCompany(userId: string, dto: SignupStep2Dto): Promise<LoginResultDto> {
     // Idempotent: a double-submit must not create a second company/membership.
-    const already = await this.prisma.companyMember.findFirst({
+    const existingMemberships = await this.prisma.companyMember.findMany({
       where: { user_id: userId, active: true },
       include: { company: { select: { id: true, trade_name: true } } },
     });
-    if (already) {
+    if (existingMemberships.length > 0) {
       const u = await this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: { id: true, name: true, email: true },
       });
-      const t = await this.issueTokens(userId, u.email);
+      if (existingMemberships.length > 1) {
+        return this.companySelectionRequired(u.id, u.email, existingMemberships);
+      }
+      const membership = existingMemberships[0]!;
+      const t = await this.createSessionAndIssueTokens(userId, u.email, membership.company_id);
       return {
         access_token: t.access_token,
         refresh_token: t.refresh_token,
         user: u,
-        company: already.company,
+        company: membership.company,
       };
     }
 
@@ -124,7 +130,7 @@ export class AuthService {
       select: { id: true, name: true, email: true },
     });
 
-    const tokens = await this.issueTokens(userId, user.email);
+    const tokens = await this.createSessionAndIssueTokens(userId, user.email, company.id);
     return {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
@@ -133,7 +139,7 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto): Promise<LoginResponseDto> {
+  async login(dto: LoginDto): Promise<LoginResultDto> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: { id: true, name: true, email: true, password_hash: true },
@@ -142,12 +148,17 @@ export class AuthService {
     const valid = user && (await argon2.verify(user.password_hash, dto.password));
     if (!valid) throw new UnauthorizedException('Credenciais inválidas');
 
-    const membership = await this.prisma.companyMember.findFirst({
+    const memberships = await this.prisma.companyMember.findMany({
       where: { user_id: user.id, active: true },
       include: { company: { select: { id: true, trade_name: true } } },
+      orderBy: { created_at: 'asc' },
     });
 
-    if (!membership) throw new UnauthorizedException('Sem empresa associada');
+    if (memberships.length === 0) throw new UnauthorizedException('Sem empresa associada');
+    if (memberships.length > 1) {
+      return this.companySelectionRequired(user.id, user.email, memberships);
+    }
+    const membership = memberships[0]!;
 
     const tokens = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
@@ -158,7 +169,7 @@ export class AuthService {
       if (current.password_hash !== user.password_hash) {
         throw new UnauthorizedException('Credenciais inválidas');
       }
-      return this.issueTokens(user.id, user.email, tx);
+      return this.createSessionAndIssueTokens(user.id, user.email, membership.company_id, tx);
     });
     return {
       access_token: tokens.access_token,
@@ -171,6 +182,7 @@ export class AuthService {
   async refresh(
     userId: string,
     rawRefreshToken: string,
+    claims?: { sessionId?: string; companyId?: string; sessionVersion?: number },
   ): Promise<{ access_token: string; refresh_token: string }> {
     return this.prisma.$transaction(async (tx) => {
       // Serialize rotation with reset/logout. A refresh read before revocation
@@ -178,8 +190,39 @@ export class AuthService {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       const stored = await tx.refreshToken.findFirst({
         where: { user_id: userId, token_hash: this.hashToken(rawRefreshToken), revoked: false },
+        include: { auth_session: true },
       });
       if (!stored || stored.expires_at < new Date()) throw new UnauthorizedException();
+      let session = stored.auth_session;
+      if (session) {
+        if (
+          session.revoked_at ||
+          session.user_id !== userId ||
+          claims?.sessionId !== session.id ||
+          claims.companyId !== session.active_company_id ||
+          claims.sessionVersion !== session.version
+        ) {
+          throw new UnauthorizedException();
+        }
+        const membership = await tx.companyMember.findUnique({
+          where: {
+            company_id_user_id: { company_id: session.active_company_id, user_id: userId },
+          },
+          select: { active: true },
+        });
+        if (!membership?.active) throw new UnauthorizedException();
+      } else {
+        const memberships = await tx.companyMember.findMany({
+          where: { user_id: userId, active: true },
+          select: { company_id: true },
+        });
+        if (memberships.length !== 1) {
+          throw new UnauthorizedException('Selecione a empresa novamente.');
+        }
+        session = await tx.authSession.create({
+          data: { user_id: userId, active_company_id: memberships[0]!.company_id },
+        });
+      }
       const claimed = await tx.refreshToken.updateMany({
         where: { id: stored.id, revoked: false },
         data: { revoked: true },
@@ -189,8 +232,84 @@ export class AuthService {
         where: { id: userId },
         select: { email: true },
       });
-      return this.issueTokens(userId, user.email, tx, stored.session_id);
+      return this.issueTokens(userId, user.email, session, tx, stored.session_id);
     });
+  }
+
+  async selectCompany(selectionToken: string, companyId: string): Promise<LoginResponseDto> {
+    const payload = this.verifySelectionToken(selectionToken);
+    const membership = await this.prisma.companyMember.findUnique({
+      where: { company_id_user_id: { company_id: companyId, user_id: payload.sub } },
+      include: { company: { select: { id: true, trade_name: true } } },
+    });
+    if (!membership?.active)
+      throw new UnauthorizedException('Empresa indisponível para esta conta.');
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: payload.sub },
+      select: { id: true, name: true, email: true },
+    });
+    const tokens = await this.createSessionAndIssueTokens(user.id, user.email, companyId);
+    return { ...tokens, user, company: membership.company };
+  }
+
+  async switchCompany(
+    user: { userId: string; email: string; sessionId: string; companyId: string },
+    companyId: string,
+    rawRefreshToken: string,
+  ): Promise<LoginResponseDto> {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const target = await tx.companyMember.findUnique({
+        where: { company_id_user_id: { company_id: companyId, user_id: user.userId } },
+        include: { company: { select: { id: true, trade_name: true } } },
+      });
+      if (!target?.active) throw new UnauthorizedException('Empresa indisponível para esta conta.');
+
+      const current = await tx.authSession.findUnique({ where: { id: user.sessionId } });
+      const stored = await tx.refreshToken.findFirst({
+        where: {
+          user_id: user.userId,
+          auth_session_id: user.sessionId,
+          token_hash: this.hashToken(rawRefreshToken),
+          revoked: false,
+        },
+      });
+      if (
+        !current ||
+        current.revoked_at ||
+        current.active_company_id !== user.companyId ||
+        !stored
+      ) {
+        throw new UnauthorizedException();
+      }
+
+      await tx.authSession.update({
+        where: { id: current.id },
+        data: { revoked_at: new Date(), version: { increment: 1 } },
+      });
+      await tx.refreshToken.updateMany({
+        where: { auth_session_id: current.id, revoked: false },
+        data: { revoked: true },
+      });
+      const tokens = await this.createSessionAndIssueTokens(user.userId, user.email, companyId, tx);
+      await this.audit.record(tx, {
+        companyId,
+        actorType: 'USER',
+        actorUserId: user.userId,
+        action: 'auth.company_switched',
+        entityType: 'auth_session',
+        entityId: user.sessionId,
+        from: { company_id: user.companyId },
+        to: { company_id: companyId },
+        humanText: `Empresa ativa alterada para "${target.company.trade_name}"`,
+      });
+      const account = await tx.user.findUniqueOrThrow({
+        where: { id: user.userId },
+        select: { id: true, name: true, email: true },
+      });
+      return { ...tokens, user: account, company: target.company };
+    });
+    await this.redis.del(`session:${user.sessionId}`);
+    return result;
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
@@ -218,41 +337,62 @@ export class AuthService {
     if (!userId) throw new BadRequestException('Token inválido ou expirado');
 
     const hash = await argon2.hash(dto.new_password);
-    await this.prisma.$transaction(async (tx) => {
+    const revokedSessionIds = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      const sessions = await tx.authSession.findMany({
+        where: { user_id: userId, revoked_at: null },
+        select: { id: true },
+      });
       await tx.user.update({ where: { id: userId }, data: { password_hash: hash } });
       await tx.refreshToken.updateMany({
         where: { user_id: userId, revoked: false },
         data: { revoked: true },
       });
+      await tx.authSession.updateMany({
+        where: { user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date(), version: { increment: 1 } },
+      });
+      return sessions.map((session) => session.id);
     });
+    await Promise.all(revokedSessionIds.map((sessionId) => this.redis.del(`session:${sessionId}`)));
   }
 
   async logoutRefresh(userId: string, rawRefreshToken: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    const sessionId = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       const token = await tx.refreshToken.findFirst({
         where: { user_id: userId, token_hash: this.hashToken(rawRefreshToken) },
       });
-      if (!token || token.expires_at < new Date()) return;
+      if (!token || token.expires_at < new Date()) return null;
       // Include a just-rotated successor when refresh raced with logout.
       await tx.refreshToken.updateMany({
         where: { user_id: userId, session_id: token.session_id, revoked: false },
         data: { revoked: true },
       });
+      if (token.auth_session_id) {
+        await tx.authSession.updateMany({
+          where: { id: token.auth_session_id, user_id: userId, revoked_at: null },
+          data: { revoked_at: new Date(), version: { increment: 1 } },
+        });
+      }
+      return token.auth_session_id;
     });
+    if (sessionId) await this.redis.del(`session:${sessionId}`);
   }
 
-  async logout(userId: string) {
+  async logout(userId: string, sessionId: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       await tx.refreshToken.updateMany({
-        where: { user_id: userId, revoked: false },
+        where: { user_id: userId, auth_session_id: sessionId, revoked: false },
         data: { revoked: true },
       });
+      await tx.authSession.updateMany({
+        where: { id: sessionId, user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date(), version: { increment: 1 } },
+      });
     });
-    await this.redis.del(`membership:${userId}`);
-    await this.redis.del(`tenant:${userId}`);
+    await this.redis.del(`session:${sessionId}`);
   }
 
   async getAccount(userId: string) {
@@ -332,17 +472,27 @@ export class AuthService {
     }
 
     const passwordChanged = dto.new_password !== undefined;
-    const account = await this.prisma.$transaction(async (tx) => {
+    const { account, revokedSessionIds } = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
         where: { id: userId },
         data,
         select: { id: true, name: true, email: true, salutation: true, salutation_custom: true },
       });
 
+      let sessionIds: string[] = [];
       if (passwordChanged) {
+        const sessions = await tx.authSession.findMany({
+          where: { user_id: userId, revoked_at: null },
+          select: { id: true },
+        });
+        sessionIds = sessions.map((session) => session.id);
         await tx.refreshToken.updateMany({
           where: { user_id: userId, revoked: false },
           data: { revoked: true },
+        });
+        await tx.authSession.updateMany({
+          where: { user_id: userId, revoked_at: null },
+          data: { revoked_at: new Date(), version: { increment: 1 } },
         });
       }
 
@@ -357,25 +507,52 @@ export class AuthService {
         to: { fields: changedFields },
         humanText: `Dados da conta atualizados (${changedFields.join(', ')})`,
       });
-      return updated;
+      return { account: updated, revokedSessionIds: sessionIds };
     });
 
     if (!passwordChanged) return { account };
 
+    await Promise.all(revokedSessionIds.map((sessionId) => this.redis.del(`session:${sessionId}`)));
+
     // A fresh pair keeps the initiating session active. All pre-existing
     // refresh tokens were revoked in the transaction above.
-    const tokens = await this.issueTokens(userId, account.email);
+    const tokens = await this.createSessionAndIssueTokens(userId, account.email, companyId);
     return { account, ...tokens };
+  }
+
+  private async createSessionAndIssueTokens(
+    userId: string,
+    email: string,
+    companyId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const session = await tx.authSession.create({
+      data: { user_id: userId, active_company_id: companyId },
+    });
+    return this.issueTokens(userId, email, session, tx);
   }
 
   private async issueTokens(
     userId: string,
     email: string,
+    session: { id: string; active_company_id: string; version: number },
     tx: Prisma.TransactionClient = this.prisma,
     sessionId: string = crypto.randomUUID(),
   ) {
-    const access_token = this.signAccess(userId, email);
-    const refresh_token = this.signRefresh(userId, email);
+    const access_token = this.signAccess(
+      userId,
+      email,
+      session.id,
+      session.active_company_id,
+      session.version,
+    );
+    const refresh_token = this.signRefresh(
+      userId,
+      email,
+      session.id,
+      session.active_company_id,
+      session.version,
+    );
     const tokenHash = this.hashToken(refresh_token);
 
     const expiresAt = new Date();
@@ -385,6 +562,7 @@ export class AuthService {
       data: {
         user_id: userId,
         session_id: sessionId,
+        auth_session_id: session.id,
         token_hash: tokenHash,
         expires_at: expiresAt,
       },
@@ -392,23 +570,84 @@ export class AuthService {
     return { access_token, refresh_token };
   }
 
-  private signAccess(userId: string, email: string) {
+  private signAccess(
+    userId: string,
+    email: string,
+    sessionId?: string,
+    companyId?: string,
+    sessionVersion?: number,
+  ) {
     return this.jwt.sign(
-      { sub: userId, email },
+      {
+        sub: userId,
+        email,
+        ...(sessionId ? { sid: sessionId } : {}),
+        ...(companyId ? { cid: companyId } : {}),
+        ...(sessionVersion !== undefined ? { sv: sessionVersion } : {}),
+      },
       { secret: this.config.getOrThrow('JWT_ACCESS_SECRET'), expiresIn: '15m' },
     );
   }
 
-  private signRefresh(userId: string, email: string) {
+  private signRefresh(
+    userId: string,
+    email: string,
+    sessionId: string,
+    companyId: string,
+    sessionVersion: number,
+  ) {
     // jti guarantees each refresh token (and thus its hash) is unique even when
     // two are issued for the same user in the same second.
     return this.jwt.sign(
-      { sub: userId, email, jti: crypto.randomUUID() },
+      {
+        sub: userId,
+        email,
+        sid: sessionId,
+        cid: companyId,
+        sv: sessionVersion,
+        jti: crypto.randomUUID(),
+      },
       { secret: this.config.getOrThrow('JWT_REFRESH_SECRET'), expiresIn: '30d' },
     );
   }
 
   private hashToken(token: string) {
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private companySelectionRequired(
+    userId: string,
+    email: string,
+    memberships: Array<{
+      company_id: string;
+      role: 'OWNER' | 'ADMIN' | 'TECNICO';
+      company: { trade_name: string };
+    }>,
+  ): CompanySelectionRequiredDto {
+    const selection_token = this.jwt.sign(
+      { sub: userId, email, purpose: 'company_selection' },
+      { secret: this.config.getOrThrow('JWT_ACCESS_SECRET'), expiresIn: '5m' },
+    );
+    return {
+      requires_company_selection: true,
+      selection_token,
+      companies: memberships.map((membership) => ({
+        company_id: membership.company_id,
+        trade_name: membership.company.trade_name,
+        role: membership.role,
+      })),
+    };
+  }
+
+  private verifySelectionToken(token: string): { sub: string; email: string } {
+    try {
+      const payload = this.jwt.verify<{ sub: string; email: string; purpose?: string }>(token, {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      });
+      if (payload.purpose !== 'company_selection') throw new Error('invalid purpose');
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Seleção de empresa expirada. Entre novamente.');
+    }
   }
 }

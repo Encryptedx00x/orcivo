@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Patch,
+  Post,
   Put,
   Req,
   UploadedFile,
@@ -26,6 +27,7 @@ import {
   InventorySettingsSchema,
   type HomeShortcutsDto,
   type InventorySettingsDto,
+  CreateCompanySchema,
 } from '@orcivo/shared-types';
 
 // Tenant context set by the global TenantGuard — see ADR-014.
@@ -138,5 +140,28 @@ export class CompanyController {
   @Get('me/subscription-status')
   getSubscriptionStatus(@Req() req: TenantRequest) {
     return this.subscriptionService.getSubscriptionStatus(req.companyId);
+  }
+}
+
+@Controller('companies')
+export class CompaniesController {
+  constructor(private readonly companyService: CompanyService) {}
+
+  @AllowPastDue()
+  @Get()
+  list(@Req() req: TenantRequest) {
+    return this.companyService.listForUser(req.user.userId, req.companyId);
+  }
+
+  @AllowPastDue()
+  @Post()
+  create(
+    @Req() req: TenantRequest,
+    @Body(new ZodValidationPipe(CreateCompanySchema)) body: unknown,
+  ) {
+    return this.companyService.createForUser(
+      req.user.userId,
+      (body as { trade_name: string }).trade_name,
+    );
   }
 }

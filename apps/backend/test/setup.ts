@@ -34,6 +34,8 @@ export async function cleanupDatabase(): Promise<void> {
   await prisma.workOrder.deleteMany();
   await prisma.catalogItem.deleteMany();
   await prisma.companyInvite.deleteMany();
+  await prisma.refreshToken.deleteMany();
+  await prisma.authSession.deleteMany();
   await prisma.subscriptionPayment.deleteMany();
   await prisma.subscription.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -41,7 +43,6 @@ export async function cleanupDatabase(): Promise<void> {
   await prisma.customer.deleteMany();
   await prisma.companyMember.deleteMany();
   await prisma.company.deleteMany();
-  await prisma.refreshToken.deleteMany();
   await prisma.user.deleteMany();
   await prisma.$disconnect();
 }

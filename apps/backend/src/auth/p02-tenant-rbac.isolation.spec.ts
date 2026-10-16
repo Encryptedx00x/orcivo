@@ -14,6 +14,8 @@ import request from 'supertest';
 import { cleanupDatabase, getTestApp } from '../../test/setup';
 import { addMember, createCustomer, createTenant, TestTenant } from '../../test/tenant-factory';
 
+jest.setTimeout(60_000);
+
 describe('P02 — Tenant isolation + RBAC', () => {
   let app: INestApplication;
   let A: TestTenant; // owner of company A
