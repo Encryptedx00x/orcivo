@@ -16,6 +16,7 @@ import {
   UserCheck,
   UserRound,
   Users,
+  BriefcaseBusiness,
 } from 'lucide-react-native';
 import {
   formatMoney,
@@ -60,6 +61,7 @@ type Params = {
   Catalog: undefined;
   Equipe: undefined;
   Conta: undefined;
+  Empresas: undefined;
 };
 type Nav = NativeStackNavigationProp<Params>;
 
@@ -146,6 +148,12 @@ export function SettingsScreen() {
             icon={Package}
             label="Meus serviços e preços"
             onPress={() => nav.navigate('Catalog')}
+          />
+          <Row
+            icon={BriefcaseBusiness}
+            label="Empresas"
+            sub="Empresa ativa, troca e convites"
+            onPress={() => nav.navigate('Empresas')}
           />
           <Row
             icon={Users}

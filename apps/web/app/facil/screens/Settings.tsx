@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
+  Building,
   Check,
   FileText,
   Image as ImageIcon,
@@ -189,6 +190,12 @@ export function SettingsScreen(): React.JSX.Element {
             label="Ordem de serviço"
             sub={osStatusesSummary(c.work_order_statuses)}
             onClick={() => go('osStatuses')}
+          />
+          <MenuRow
+            icon={Building}
+            label="Empresas"
+            sub="Empresa ativa, troca e convites"
+            href="/empresas"
           />
           <MenuRow icon={Users} label="Equipe" sub="Membros e convites" href="/equipe" />
           <MenuRow

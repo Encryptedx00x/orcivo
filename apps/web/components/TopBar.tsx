@@ -2,7 +2,17 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Check, ChevronDown, CreditCard, LogOut, Menu, Settings, Smile } from 'lucide-react';
+import {
+  Bell,
+  Building2,
+  Check,
+  ChevronDown,
+  CreditCard,
+  LogOut,
+  Menu,
+  Settings,
+  Smile,
+} from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { useMobileSidebar } from './MobileSidebar';
 import { BrandMark } from './BrandMark';
@@ -489,6 +499,7 @@ export function TopBar(): React.JSX.Element {
                 </div>
               )}
               {[
+                { label: 'Trocar empresa', href: '/empresas', icon: Building2 },
                 { label: 'Configurações', href: '/configuracoes', icon: Settings },
                 { label: 'Plano e assinatura', href: '/plano', icon: CreditCard },
               ].map(({ label, href, icon: Icon }) => (

@@ -9,6 +9,7 @@ import {
   Package,
   ReceiptText,
   Settings,
+  Building2,
   Star,
 } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
@@ -38,7 +39,7 @@ export function MenuScreen() {
       <H1>Menu</H1>
       <View>
         <Text style={[s.body, { fontWeight: '700' }]}>{user?.name}</Text>
-        <Text style={s.muted}>{company?.trade_name}</Text>
+        <Text style={s.muted}>Empresa ativa: {company?.trade_name}</Text>
       </View>
 
       <Card style={{ overflow: 'hidden' }}>
@@ -91,6 +92,12 @@ export function MenuScreen() {
           label="Meus serviços e preços"
           sub="Itens e preços dos orçamentos"
           onPress={() => nav.navigate('Catalog')}
+        />
+        <Row
+          icon={Building2}
+          label="Trocar empresa"
+          sub={company?.trade_name ?? 'Escolha a empresa ativa'}
+          onPress={() => nav.navigate('Empresas')}
         />
         <Row
           icon={Settings}

@@ -1,4 +1,10 @@
-export type InviteFailure = 'NOT_FOUND' | 'EXPIRED' | 'ALREADY_USED' | 'NEEDS_ACCOUNT' | 'ACCOUNT_EXISTS' | 'ERROR';
+export type InviteFailure =
+  | 'NOT_FOUND'
+  | 'EXPIRED'
+  | 'ALREADY_USED'
+  | 'NEEDS_ACCOUNT'
+  | 'ACCOUNT_EXISTS'
+  | 'ERROR';
 
 export interface InviteFailureInfo {
   code: InviteFailure;
@@ -19,36 +25,51 @@ export function classifyInviteError(error: unknown): InviteFailureInfo {
 
   if (status === 404) {
     return {
-      code: 'NOT_FOUND', terminal: true, title: 'Convite não encontrado',
-      message: 'Este convite não existe ou o código está incorreto. Peça um novo convite a quem convidou você.',
+      code: 'NOT_FOUND',
+      terminal: true,
+      title: 'Convite não encontrado',
+      message:
+        'Este convite não existe ou o código está incorreto. Peça um novo convite a quem convidou você.',
     };
   }
   if (status === 400 && message.startsWith('Convite expirado')) {
     return {
-      code: 'EXPIRED', terminal: true, title: 'Convite expirado',
+      code: 'EXPIRED',
+      terminal: true,
+      title: 'Convite expirado',
       message: 'Este convite expirou. Peça um novo convite a quem convidou você.',
     };
   }
   if (status === 400 && message.startsWith('Convite já foi usado')) {
     return {
-      code: 'ALREADY_USED', terminal: true, title: 'Convite já utilizado',
-      message: 'Este convite já foi aceito (ou expirou/foi cancelado). Se você já aceitou, é só entrar na sua conta.',
+      code: 'ALREADY_USED',
+      terminal: true,
+      title: 'Convite já utilizado',
+      message:
+        'Este convite já foi aceito (ou expirou/foi cancelado). Se você já aceitou, é só entrar na sua conta.',
     };
   }
   if (status === 400 && message.startsWith('Nome e senha')) {
     return {
-      code: 'NEEDS_ACCOUNT', terminal: false, title: 'Dados obrigatórios',
+      code: 'NEEDS_ACCOUNT',
+      terminal: false,
+      title: 'Dados obrigatórios',
       message: 'Informe seu nome e uma senha para criar a conta.',
     };
   }
-  if (status !== undefined && status >= 500) {
+  if (status === 409) {
     return {
-      code: 'ACCOUNT_EXISTS', terminal: false, title: 'Não foi possível aceitar',
-      message: 'Não foi possível criar sua conta. Se você já tem conta com o e-mail do convite, entre nela e aceite o convite pelo link no navegador.',
+      code: 'ACCOUNT_EXISTS',
+      terminal: false,
+      title: 'Não foi possível aceitar',
+      message:
+        'Este e-mail já tem conta. Entre nela, reabra o convite e aceite sem recadastrar seus dados.',
     };
   }
   return {
-    code: 'ERROR', terminal: false, title: 'Erro',
+    code: 'ERROR',
+    terminal: false,
+    title: 'Erro',
     message: 'Não foi possível aceitar o convite agora. Verifique sua conexão e tente novamente.',
   };
 }

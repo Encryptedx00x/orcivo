@@ -2,7 +2,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Building2, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { intentQuery, postAuthPath, readCheckoutIntent } from '../checkout-intent';
 
 function LoginForm(): React.JSX.Element {
@@ -14,6 +14,19 @@ function LoginForm(): React.JSX.Element {
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selection, setSelection] = useState<{
+    token: string;
+    companies: Array<{
+      company_id: string;
+      trade_name: string;
+      role: 'OWNER' | 'ADMIN' | 'TECNICO';
+    }>;
+  } | null>(null);
+
+  const finishLogin = () => {
+    router.push(postAuthPath(intent));
+    router.refresh();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +42,104 @@ function LoginForm(): React.JSX.Element {
       setLoading(false);
       return;
     }
-    router.push(postAuthPath(intent));
-    router.refresh();
+    const data = (await res.json()) as {
+      requires_company_selection?: boolean;
+      selection_token?: string;
+      companies?: Array<{
+        company_id: string;
+        trade_name: string;
+        role: 'OWNER' | 'ADMIN' | 'TECNICO';
+      }>;
+    };
+    if (data.requires_company_selection && data.selection_token && data.companies) {
+      setSelection({ token: data.selection_token, companies: data.companies });
+      setLoading(false);
+      return;
+    }
+    finishLogin();
   };
+
+  const selectCompany = async (companyId: string) => {
+    if (!selection) return;
+    setLoading(true);
+    setError('');
+    const response = await fetch('/api/auth/select-company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selection_token: selection.token, company_id: companyId }),
+    });
+    if (!response.ok) {
+      setError('A seleção expirou. Entre novamente.');
+      setSelection(null);
+      setLoading(false);
+      return;
+    }
+    finishLogin();
+  };
+
+  if (selection) {
+    return (
+      <div>
+        <h1 style={{ fontSize: 30, fontWeight: 700, color: '#0A0A0F', marginBottom: 8 }}>
+          Em qual empresa você vai entrar?
+        </h1>
+        <p style={{ fontSize: 14, color: '#64748B', marginBottom: 24 }}>
+          Cada empresa mantém clientes, serviços e histórico separados.
+        </p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {selection.companies.map((company) => (
+            <button
+              key={company.company_id}
+              type="button"
+              disabled={loading}
+              onClick={() => void selectCompany(company.company_id)}
+              style={{
+                minHeight: 60,
+                padding: '10px 14px',
+                border: '1px solid #DDD6FE',
+                borderRadius: 12,
+                background: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <Building2 size={20} color="#6D28D9" aria-hidden="true" />
+              <span style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', color: '#0A0A0F', fontSize: 14 }}>
+                  {company.trade_name}
+                </strong>
+                <span style={{ color: '#64748B', fontSize: 12 }}>
+                  {company.role === 'OWNER'
+                    ? 'Proprietário'
+                    : company.role === 'ADMIN'
+                      ? 'Administrador'
+                      : 'Membro'}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+        {error && <p style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
+        <button
+          type="button"
+          onClick={() => setSelection(null)}
+          style={{
+            ...btn,
+            marginTop: 16,
+            background: '#fff',
+            color: '#6D28D9',
+            border: '1px solid #DDD6FE',
+          }}
+        >
+          Voltar
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>

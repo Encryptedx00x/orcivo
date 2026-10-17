@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { LockKeyhole, Mail } from 'lucide-react-native';
+import { Building2, LockKeyhole, Mail } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../contexts/AuthContext';
 import type { AuthStackParamList } from '../../navigation/AuthStack';
@@ -11,7 +11,7 @@ import { describeLoginError } from './login-feedback';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
-  const { login } = useAuth();
+  const { login, pendingCompanySelection, selectCompany, cancelCompanySelection } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,6 +28,55 @@ export function LoginScreen({ navigation }: Props) {
       setLoading(false);
     }
   };
+
+  const handleCompany = async (companyId: string) => {
+    setLoading(true);
+    try {
+      await selectCompany(companyId);
+    } catch (e: unknown) {
+      const feedback = describeLoginError(e);
+      Alert.alert('Não foi possível entrar', feedback.message);
+      cancelCompanySelection();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (pendingCompanySelection) {
+    return (
+      <AuthScaffold
+        title="Escolha a empresa"
+        subtitle="Clientes, serviços e históricos ficam separados em cada empresa."
+      >
+        <View style={styles.companyList}>
+          {pendingCompanySelection.companies.map((company) => (
+            <TouchableOpacity
+              key={company.company_id}
+              accessibilityRole="button"
+              disabled={loading}
+              style={styles.companyButton}
+              onPress={() => void handleCompany(company.company_id)}
+            >
+              <Building2 size={20} color={theme.colors.purple600} />
+              <View style={styles.companyText}>
+                <Text style={styles.companyName}>{company.trade_name}</Text>
+                <Text style={styles.companyRole}>
+                  {company.role === 'OWNER'
+                    ? 'Proprietário'
+                    : company.role === 'ADMIN'
+                      ? 'Administrador'
+                      : 'Membro'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity style={styles.secondaryBtn} onPress={cancelCompanySelection}>
+          <Text style={styles.secondaryText}>Voltar</Text>
+        </TouchableOpacity>
+      </AuthScaffold>
+    );
+  }
 
   return (
     <AuthScaffold
@@ -170,4 +219,19 @@ const styles = StyleSheet.create({
     fontSize: theme.type.small,
     fontWeight: theme.type.semibold,
   },
+  companyList: { gap: theme.space.sm, marginBottom: theme.space.lg },
+  companyButton: {
+    minHeight: 60,
+    padding: theme.space.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.colors.slate200,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.white,
+  },
+  companyText: { flex: 1 },
+  companyName: { color: theme.colors.ink, fontSize: theme.type.body, fontWeight: '600' },
+  companyRole: { marginTop: 2, color: theme.colors.slate500, fontSize: theme.type.caption },
 });

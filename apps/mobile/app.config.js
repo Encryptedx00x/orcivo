@@ -6,6 +6,7 @@ module.exports = {
   expo: {
     name: 'Orcivo',
     slug: 'orcivo',
+    scheme: 'orcivo',
     version: '0.0.1',
     orientation: 'portrait',
     icon: './assets/icon.png',

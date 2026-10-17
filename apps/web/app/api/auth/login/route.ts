@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { setSessionCookies } from '../session-cookies';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -11,13 +11,7 @@ export async function POST(req: NextRequest) {
   });
   if (!res.ok) return NextResponse.json({ message: 'Credenciais inválidas' }, { status: 401 });
   const data = await res.json();
-  const cookieOpts = {
-    httpOnly: true,
-    sameSite: 'strict' as const,
-    secure: process.env['NODE_ENV'] === 'production',
-    path: '/',
-  };
-  (await cookies()).set('access_token', data.access_token, cookieOpts);
-  if (data.refresh_token) (await cookies()).set('refresh_token', data.refresh_token, cookieOpts);
+  if (data.requires_company_selection === true) return NextResponse.json(data);
+  await setSessionCookies(data);
   return NextResponse.json({ user: data.user, company: data.company });
 }

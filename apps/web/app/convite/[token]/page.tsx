@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 type TerminalCode = 'NOT_FOUND' | 'EXPIRED' | 'ALREADY_USED';
@@ -18,8 +18,6 @@ const TERMINAL_TITLES: Record<TerminalCode, string> = {
 export default function ConvitePage(): React.JSX.Element {
   const params = useParams();
   const token = params.token as string;
-  const router = useRouter();
-
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,12 +48,6 @@ export default function ConvitePage(): React.JSX.Element {
       if (res.ok) {
         const authenticated = Boolean(data.authenticated);
         setResult({ kind: 'success', authenticated, companyName: data.companyName ?? null });
-        if (authenticated) {
-          setTimeout(() => {
-            router.push('/clientes');
-            router.refresh();
-          }, 1500);
-        }
         return;
       }
       if (data.code === 'NOT_FOUND' || data.code === 'EXPIRED' || data.code === 'ALREADY_USED') {
@@ -100,10 +92,17 @@ export default function ConvitePage(): React.JSX.Element {
                 ? `Você agora faz parte da equipe ${result.companyName}.`
                 : 'Você agora faz parte da equipe.'}
               {result.authenticated
-                ? ' Redirecionando...'
+                ? ' Sua empresa atual não mudou. Escolha quando quiser trocar.'
                 : ' Entre com seu e-mail e senha para começar.'}
             </p>
-            {!result.authenticated && (
+            {result.authenticated ? (
+              <Link
+                href="/empresas"
+                className="block w-full py-3 text-center bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Ver minhas empresas
+              </Link>
+            ) : (
               <Link
                 href="/login"
                 className="block w-full py-3 text-center bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"

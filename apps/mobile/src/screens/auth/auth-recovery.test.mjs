@@ -22,9 +22,10 @@ test('AC6: erros recuperáveis mantêm o formulário (não são terminais)', () 
   const needs = classifyInviteError({ status: 400, data: { message: 'Nome e senha são obrigatórios para criar conta.' } });
   assert.equal(needs.code, 'NEEDS_ACCOUNT');
   assert.equal(needs.terminal, false);
-  const existing = classifyInviteError({ status: 500, data: {} });
+  const existing = classifyInviteError({ status: 409, data: {} });
   assert.equal(existing.code, 'ACCOUNT_EXISTS');
   assert.equal(existing.terminal, false);
+  assert.equal(classifyInviteError({ status: 500, data: {} }).code, 'ERROR');
   const network = classifyInviteError(new Error('Network request failed'));
   assert.equal(network.code, 'ERROR');
   assert.equal(network.terminal, false);

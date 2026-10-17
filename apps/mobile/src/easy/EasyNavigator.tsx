@@ -36,6 +36,7 @@ import { EquipeScreen } from '../screens/equipe/EquipeScreen';
 import { PlanoScreen } from '../screens/plano/PlanoScreen';
 import { ContaScreen } from '../screens/conta/ContaScreen';
 import { WorkOrderListScreen } from '../screens/WorkOrderListScreen';
+import { CompaniesScreen } from '../screens/companies/CompaniesScreen';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { MaisStackParamList } from '../navigation/MaisStack';
 
@@ -101,6 +102,7 @@ export type EasyStackParamList = {
   Equipe: undefined;
   Plano: undefined;
   Conta: undefined;
+  Empresas: { token?: string } | undefined;
 };
 
 const Tab = createBottomTabNavigator<EasyTabsParamList>();
@@ -281,6 +283,7 @@ export function EasyNavigator() {
         <Stack.Screen name="Equipe" component={reuse(EquipeScreen)} options={{ title: 'Equipe' }} />
         <Stack.Screen name="Plano" component={reuse(PlanoScreen)} options={{ title: 'Uso' }} />
         <Stack.Screen name="Conta" component={reuse(ContaScreen)} options={{ title: 'Conta' }} />
+        <Stack.Screen name="Empresas" component={CompaniesScreen} options={{ title: 'Empresas' }} />
       </Stack.Navigator>
     </DraftProvider>
   );

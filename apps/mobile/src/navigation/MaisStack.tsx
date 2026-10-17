@@ -15,6 +15,7 @@ import { WorkOrderDetailScreen } from '../screens/WorkOrderDetailScreen';
 import { WorkOrderCreateScreen } from '../screens/WorkOrderCreateScreen';
 import { WorkOrderPhotoScreen } from '../screens/WorkOrderPhotoScreen';
 import { RelatoriosScreen } from '../screens/relatorios/RelatoriosScreen';
+import { CompaniesScreen } from '../screens/companies/CompaniesScreen';
 import type { CatalogItem } from '../services/catalog.service';
 import { ReceiptsScreen, ReceiptScreen, ReceiptNewScreen } from '../easy/screens/Receipts';
 import { NoticesScreen } from '../easy/screens/Notices';
@@ -24,6 +25,7 @@ import { ClientNewScreen } from '../easy/screens/Clients';
 import { CostNewScreen } from '../easy/screens/Money';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEasyMode } from '../easy/EasyModeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export type WorkOrderPhotoStage = 'BEFORE' | 'DURING' | 'AFTER';
 
@@ -36,6 +38,7 @@ export type MaisStackParamList = {
   Documentos: undefined;
   Plano: undefined;
   Relatorios: undefined;
+  Empresas: { token?: string } | undefined;
   EmBreve: { title: string };
   Notices: undefined;
   Receipts: undefined;
@@ -75,7 +78,8 @@ type MaisMenuItem =
         | 'Notices'
         | 'Documentos'
         | 'Plano'
-        | 'Relatorios';
+        | 'Relatorios'
+        | 'Empresas';
     }
   | { label: string; screen: 'EmBreve' };
 
@@ -88,6 +92,7 @@ const MAIS_ITEMS: MaisMenuItem[] = [
   { label: 'Avisos', screen: 'Notices' },
   { label: 'Documentos', screen: 'Documentos' },
   { label: 'Conta', screen: 'Conta' },
+  { label: 'Empresas', screen: 'Empresas' },
   { label: 'Configurações', screen: 'Configuracoes' },
   { label: 'Usuários e permissões', screen: 'Equipe' },
   { label: 'Uso', screen: 'Plano' },
@@ -98,8 +103,21 @@ type MaisMenuProps = NativeStackScreenProps<MaisStackParamList, 'MaisMenu'>;
 
 function MaisMenuScreen({ navigation }: MaisMenuProps) {
   const { setEasy } = useEasyMode();
+  const { company } = useAuth();
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={[styles.row, styles.companyRow]}
+        onPress={() => navigation.navigate('Empresas')}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.companyCaption}>Empresa ativa</Text>
+          <Text numberOfLines={1} style={styles.label}>
+            {company?.trade_name ?? 'Escolha uma empresa'}
+          </Text>
+        </View>
+        <Text style={[styles.arrow, styles.easyLabel]}>Trocar</Text>
+      </TouchableOpacity>
       <TouchableOpacity
         accessibilityRole="button"
         style={[styles.row, styles.easyRow]}
@@ -142,6 +160,7 @@ export function MaisStack() {
         options={{ title: 'Configurações' }}
       />
       <Stack.Screen name="Conta" component={ContaScreen} options={{ title: 'Conta' }} />
+      <Stack.Screen name="Empresas" component={CompaniesScreen} options={{ title: 'Empresas' }} />
       <Stack.Screen
         name="Equipe"
         component={EquipeScreen}
@@ -244,4 +263,6 @@ const styles = StyleSheet.create({
   easyRow: { backgroundColor: '#F5F3FF' },
   easyLabel: { color: '#6D28D9', fontWeight: '700' },
   easySub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  companyRow: { backgroundColor: '#FAF8FF' },
+  companyCaption: { color: '#6D28D9', fontSize: 12, fontWeight: '700', marginBottom: 2 },
 });

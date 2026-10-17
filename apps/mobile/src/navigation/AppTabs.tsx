@@ -14,14 +14,14 @@ import { AgendaScreen } from '../screens/agenda/AgendaScreen';
 import { AgendaCreateScreen } from '../screens/agenda/AgendaCreateScreen';
 import { AgendaDetailScreen } from '../screens/agenda/AgendaDetailScreen';
 import type { Appointment } from '../services/appointment.service';
-import { MaisStack } from './MaisStack';
+import { MaisStack, type MaisStackParamList } from './MaisStack';
 
 export type AppTabsParamList = {
   Início: undefined;
   Clientes: NavigatorScreenParams<ClientesStackParamList>;
   Orçamentos: NavigatorScreenParams<QuotesStackParamList>;
   Agenda: NavigatorScreenParams<AgendaStackParamList>;
-  Mais: undefined;
+  Mais: NavigatorScreenParams<MaisStackParamList> | undefined;
 };
 
 const Tab = createBottomTabNavigator<AppTabsParamList>();

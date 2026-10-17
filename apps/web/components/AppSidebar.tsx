@@ -14,6 +14,7 @@ import {
   Settings,
   UserPlus,
   CreditCard,
+  Building2,
   LogOut,
   X,
 } from 'lucide-react';
@@ -48,6 +49,7 @@ const NAV_MAIN = [
 ];
 
 const NAV_ACCOUNT = [
+  { label: 'Empresas', href: '/empresas', icon: Building2 },
   { label: 'Equipe', href: '/equipe', icon: UserPlus },
   { label: 'Plano e assinatura', href: '/plano', icon: CreditCard },
   { label: 'Configurações', href: '/configuracoes', icon: Settings },
